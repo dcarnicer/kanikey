@@ -83,6 +83,7 @@ already solved and tested on hardware in
 
 | Document | What it contains |
 |---|---|
+| [ROADMAP.md](ROADMAP.md) | Current status and prioritized remaining work |
 | [docs/design.md](docs/design.md) | Product, scope, architecture, memory, risks and roadmap |
 | [docs/ux.md](docs/ux.md) | Visual language, keyboard, flows and screen by screen |
 | [docs/api-sync.md](docs/api-sync.md) | WaniKani API, cache, offline queue and data model |
