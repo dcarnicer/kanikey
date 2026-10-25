@@ -112,4 +112,9 @@ WkResponse wkPost(const String& path, const String& token, const String& body,
     return request("POST", path, token, body, maxBodyBytes, timeoutMs);
 }
 
+WkResponse wkPut(const String& path, const String& token, const String& body,
+                 size_t maxBodyBytes, uint32_t timeoutMs) {
+    return request("PUT", path, token, body, maxBodyBytes, timeoutMs);
+}
+
 }  // namespace kk

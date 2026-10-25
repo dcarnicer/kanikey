@@ -122,6 +122,22 @@ not planned.
 
 ---
 
+## 2026-10-25 — Streaming summary, DOM for small responses
+
+**Decision:** `/summary` is parsed by a small streaming parser that keeps bucket
+counts and at most 20 subject IDs per bucket. `/user` and the assignment/subject
+pages still use the small JSON DOM.
+
+**Why:** the summary's 568 subject IDs made the DOM large enough to throw
+`std::bad_alloc` during boot on the Cardputer, especially after the canvas and
+lesson code grew the heap pressure.
+
+**Implications:** summary parsing no longer allocates a tree; the bounded IDs
+are enough for a 20-item review/lesson batch. Subject pages remain the next
+place where a truly streaming parser is needed if batches grow.
+
+---
+
 ## 2026-10-25 — Idle dim, blank, then deep sleep
 
 **Decision:** the panel dims after 30 s, blanks after 60 s and the device

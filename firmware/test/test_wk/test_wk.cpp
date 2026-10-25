@@ -9,7 +9,9 @@
 #include "wk/Outbox.h"
 #include "wk/Json.h"
 #include "wk/SubjectParser.h"
+#include "wk/Text.h"
 #include "wk/Summary.h"
+#include "wk/SummaryParser.h"
 #include "wk/Time.h"
 #include "wk/User.h"
 #include "wk/ReviewQueue.h"
@@ -521,6 +523,46 @@ static void test_outbox_model() {
     TEST_ASSERT_EQUAL_UINT32(3, outboxAdd(box, 103, 12, 0, 0, 0));
 }
 
+
+static void test_markup_and_subject_details() {
+    TEST_ASSERT_EQUAL_STRING("A ground B", stripMarkup("A <radical>ground</radical> B").c_str());
+    JsonParser p;
+    JsonValue v;
+    const char* text =
+        "{\"data\":[{\"id\":10,\"object\":\"kanji\",\"data\":{\"level\":5,"
+        "\"characters\":\"休\",\"meanings\":[{\"meaning\":\"rest\",\"primary\":true,"
+        "\"accepted_answer\":true}],\"component_subject_ids\":[1,2],"
+        "\"meaning_mnemonic\":\"A <radical>person</radical> by a <kanji>tree</kanji>.\","
+        "\"reading_mnemonic\":\"<reading>kyuu</reading>.\"}}]}";
+    TEST_ASSERT_TRUE(p.parse(text, &v));
+    const std::vector<Subject> ss = parseSubjects(v, true);
+    TEST_ASSERT_EQUAL(1, ss.size());
+    TEST_ASSERT_EQUAL(2, ss[0].componentSubjectIds.size());
+    TEST_ASSERT_EQUAL_STRING("A person by a tree.", ss[0].meaningMnemonic.c_str());
+    TEST_ASSERT_EQUAL_STRING("kyuu.", ss[0].readingMnemonic.c_str());
+}
+
+
+static void test_summary_text_parser() {
+    const char* text =
+        "{\"object\":\"report\",\"url\":\"x\",\"data_updated_at\":\"2026-10-25T12:00:00Z\","
+        "\"data\":{\"lessons\":[{\"available_at\":\"2026-10-25T12:00:00Z\","
+        "\"subject_ids\":[1,2,3]}],\"next_reviews_at\":\"2026-10-25T13:00:00Z\","
+        "\"reviews\":[{\"available_at\":\"2026-10-25T12:00:00Z\","
+        "\"subject_ids\":[10,11]},{\"available_at\":\"2026-10-25T13:00:00Z\","
+        "\"subject_ids\":[12]}]}}";
+    Summary s;
+    TEST_ASSERT_TRUE(parseSummaryText(text, &s, 2));
+    TEST_ASSERT_EQUAL(3, s.totalReviews());
+    TEST_ASSERT_EQUAL(3, s.totalLessons());
+    TEST_ASSERT_EQUAL_STRING("2026-10-25T13:00:00Z", s.nextReviewsAt.c_str());
+    TEST_ASSERT_EQUAL(2, s.reviews[0].subjectIds.size());
+    TEST_ASSERT_EQUAL(1, s.reviews[1].subjectIds.size());
+    uint32_t now = 0;
+    TEST_ASSERT_TRUE(parseIso8601("2026-10-25T12:30:00Z", &now));
+    TEST_ASSERT_EQUAL(2, s.dueReviews(now));
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_romaji_common_words);
@@ -549,9 +591,11 @@ int main(int, char**) {
     RUN_TEST(test_iso8601_round_trip);
     RUN_TEST(test_user_parse);
     RUN_TEST(test_summary_parse_and_counts);
+    RUN_TEST(test_summary_text_parser);
     RUN_TEST(test_assignment_parse);
     RUN_TEST(test_subject_parse);
     RUN_TEST(test_summary_subject_ids);
+    RUN_TEST(test_markup_and_subject_details);
     RUN_TEST(test_crc32_known_vector);
     RUN_TEST(test_outbox_model);
     return UNITY_END();

@@ -96,8 +96,10 @@ prints or stores the password. `token` prompts for the WaniKani token, sends
 | `z` | Clear the outbox (test only) |
 | `b` | Fetch a 20-item review batch (logs only) |
 | `v` | Fetch (if needed) and start a review session |
+| `l` | Fetch and show the first lesson card |
+| `g` | Next mnemonic page in a lesson |
 | `y <text>` | Type text into the current answer (test helper) |
-| `e` | Check the answer or advance after feedback |
+| `e` | Check the answer / advance after feedback / start the lesson |
 | `q` | Quit the review session |
 | `r` | Restart |
 

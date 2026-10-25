@@ -23,8 +23,8 @@ App: display, keyboard controller, microSD, heap report, Wi-Fi, TLS
 
 | | |
 |---|---|
-| Flash used | 1,717,673 B of 1,835,008 B (93.6%) |
-| Static RAM | 51,664 B of 327,680 B (15.8%) |
+| Flash used | 1,727,105 B of 1,835,008 B (94.1%) |
+| Static RAM | 51,720 B of 327,680 B (15.8%) |
 
 ### Heap
 
@@ -142,16 +142,29 @@ E (221) esp_core_dump_flash: No core dump partition found!
   That reconciliation has unit-level coverage but not a hardware timeout test.
 - Rejected records stay until a user-facing way to dismiss them exists; for
   now the dev command `z` clears the outbox.
-- Flash headroom is now ~117 KB; the efont fallback is the next thing to
+- Flash headroom is now ~107 KB; the efont fallback is the next thing to
   replace when the visual pack lands.
 - Home shows `Outbox: N pending` or `N need attention` below the sync time.
 - Power: dim after 30 s, blank after 60 s, deep sleep after 2 min only when no
   review is active and the device is on battery. A key wakes the panel; the
   first key on a blank screen only wakes it.
 
+### Lessons (M4 start)
+
+- `/v2/assignments?subject_ids=...` for 5 lesson IDs: ~2.3 KB.
+- Subjects fetched in batches of 3 and 2, with mnemonics/components: ~9.2 KB and
+  ~5.7 KB.
+- The lesson card uses `efontJA_16` for the prompt, 3 wrapped mnemonic lines,
+  paging and `PUT /v2/assignments/{id}/start` -> **200**.
+- The summary DOM was replaced by a small streaming parser: the 568-id summary
+  tree had caused an intermittent `std::bad_alloc` (`operator new` in
+  `JsonParser::array`). The new parser keeps counts and at most 20 IDs per
+  bucket. Two consecutive boots and a lesson start have been clean.
+- Still missing: a lesson list, components on the card, and a lesson quiz.
+
 ### Next
 
-- Offline end-to-end test and a way to dismiss rejected outbox items.
-- Lessons.
+- Ways to dismiss rejected outbox items.
+- Lesson list and components.
 - Visual pack (replace the efont fallback).
 - Real renderer/UI font instead of the M5GFX text calls.

@@ -10,6 +10,6 @@
 
 namespace kk {
 
-std::vector<Subject> parseSubjects(const JsonValue& root);
+std::vector<Subject> parseSubjects(const JsonValue& root, bool details = false);
 
 }  // namespace kk

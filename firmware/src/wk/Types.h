@@ -34,6 +34,11 @@ struct Subject {
     std::vector<std::string> meaningSynonyms;  // study material synonyms
     std::vector<std::string> whitelist;        // auxiliary whitelist
     std::vector<std::string> blacklist;        // auxiliary blacklist
+    std::vector<uint32_t> componentSubjectIds;  // lesson components
+    std::string meaningMnemonic;                // lessons (stripped markup)
+    std::string readingMnemonic;
+    std::string meaningHint;
+    std::string readingHint;
 
     bool needsReading() const {
         return type == SubjectType::Kanji || type == SubjectType::Vocabulary;

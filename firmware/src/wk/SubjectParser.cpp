@@ -2,6 +2,8 @@
 
 #include <utility>
 
+#include "wk/Text.h"
+
 #include "wk/Assignment.h"
 
 namespace kk {
@@ -15,7 +17,7 @@ ReadingType readingTypeFromString(std::string_view s) {
 }
 }  // namespace
 
-std::vector<Subject> parseSubjects(const JsonValue& root) {
+std::vector<Subject> parseSubjects(const JsonValue& root, bool details) {
     std::vector<Subject> out;
     const JsonValue* data = root.find("data");
     if (!data || !data->isArray()) return out;
@@ -60,6 +62,20 @@ std::vector<Subject> parseSubjects(const JsonValue& root) {
                     reading.type = readingTypeFromString(t->string);
                 if (!reading.text.empty()) s.readings.push_back(std::move(reading));
             }
+        }
+        if (const JsonValue* comps = d->find("component_subject_ids"); comps && comps->isArray()) {
+            for (const JsonValue& c : comps->array)
+                if (c.isNumber()) s.componentSubjectIds.push_back(static_cast<uint32_t>(c.number));
+        }
+        if (details) {
+            auto textField = [d](const char* key) {
+                const JsonValue* v = d->find(key);
+                return v && v->isString() ? stripMarkup(v->string) : std::string();
+            };
+            s.meaningMnemonic = textField("meaning_mnemonic");
+            s.readingMnemonic = textField("reading_mnemonic");
+            s.meaningHint = textField("meaning_hint");
+            s.readingHint = textField("reading_hint");
         }
         if (const JsonValue* aux = d->find("auxiliary_meanings"); aux && aux->isArray()) {
             for (const JsonValue& a : aux->array) {

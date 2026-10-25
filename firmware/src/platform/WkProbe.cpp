@@ -4,6 +4,7 @@
 
 #include "platform/WkClient.h"
 #include "wk/Json.h"
+#include "wk/SummaryParser.h"
 
 namespace kk {
 
@@ -45,8 +46,8 @@ SummaryProbeResult probeWaniKaniSummary(const String& token) {
     r.ms = http.ms;
     r.bytes = http.bytes;
     if (http.httpCode == 200) {
-        JsonValue v;
-        if (parseBody(http.body, &v)) r.parsed = parseSummary(v, &r.summary);
+        r.parsed = parseSummaryText(std::string_view(http.body.c_str(), http.body.length()),
+                                    &r.summary);
         if (r.parsed)
             Serial.printf("[summary] %u reviews, %u lessons, next %s\n",
                           static_cast<unsigned>(r.summary.totalReviews()),

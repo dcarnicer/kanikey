@@ -162,6 +162,25 @@ inline int levenshtein(std::string_view a, std::string_view b) {
     return prev[b.size()];
 }
 
+// Remove WaniKani's <radical>...</radical> style tags; keep the text.
+inline std::string stripMarkup(std::string_view s) {
+    std::string out;
+    out.reserve(s.size());
+    bool tag = false;
+    for (char c : s) {
+        if (c == '<') {
+            tag = true;
+            continue;
+        }
+        if (c == '>') {
+            tag = false;
+            continue;
+        }
+        if (!tag) out.push_back(c);
+    }
+    return out;
+}
+
 inline int typoTolerance(size_t length) {
     if (length <= 3) return 0;
     if (length <= 5) return 1;

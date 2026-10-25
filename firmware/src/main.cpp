@@ -26,6 +26,7 @@
 #include "platform/WkProbe.h"
 #include "platform/OutboxStore.h"
 #include "platform/WkClient.h"
+#include "platform/WkLessons.h"
 #include "platform/WkReview.h"
 #include "wk/AnswerChecker.h"
 #include "wk/Outbox.h"
@@ -96,10 +97,15 @@ std::string gMeaningInput;
 std::string gDirectReading;  // test/serial reading input, bypasses the romaji IME
 kk::RomajiIme gIme;
 std::vector<kk::OutboxItem> gOutbox;
+kk::LessonBatch gLessonBatch;
+bool gLessonActive = false;
+size_t gLessonIndex = 0;
+size_t gLessonPage = 0;
 
 void localHm(uint32_t epoch, char* out, size_t n);
 void draw();
 void drawLoading(const char* title, const char* subtitle);
+void drawLesson();
 
 lgfx::LovyanGFX& target() {
     if (gCanvas) return *gCanvas;
@@ -792,8 +798,219 @@ bool reviewKey(const KeyEvent& e) {
     return true;
 }
 
+const kk::Subject* lessonSubjectById(uint32_t id) {
+    for (const kk::Subject& s : gLessonBatch.subjects)
+        if (s.id == id) return &s;
+    return nullptr;
+}
+
+const kk::Subject* currentLessonSubject() {
+    if (!gLessonActive || gLessonIndex >= gLessonBatch.assignments.size()) return nullptr;
+    return lessonSubjectById(gLessonBatch.assignments[gLessonIndex].subjectId);
+}
+
+std::vector<std::string> wrapLines(lgfx::LovyanGFX& d, const std::string& text, int width) {
+    d.setTextFont(0);
+    d.setTextSize(1);
+    std::vector<std::string> lines;
+    std::string cur;
+    size_t i = 0;
+    while (i < text.size()) {
+        while (i < text.size() && text[i] == ' ') ++i;
+        size_t j = i;
+        while (j < text.size() && text[j] != ' ') ++j;
+        if (j == i) break;
+        const std::string word = text.substr(i, j - i);
+        const std::string cand = cur.empty() ? word : cur + " " + word;
+        if (!cur.empty() && d.textWidth(cand.c_str()) > width) {
+            lines.push_back(cur);
+            cur = word;
+        } else {
+            cur = cand;
+        }
+        i = j;
+    }
+    if (!cur.empty()) lines.push_back(cur);
+    if (lines.empty()) lines.emplace_back();
+    return lines;
+}
+
+void drawLesson() {
+    if (!gDisp) return;
+    const kk::Subject* s = currentLessonSubject();
+    if (!s) return;
+    auto& d = target();
+    d.startWrite();
+    d.fillScreen(kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(kDim, kBg);
+    d.drawString("LESSON", 6, 3);
+    d.setTextFont(0);
+    d.setTextDatum(lgfx::top_right);
+    char pos[20];
+    snprintf(pos, sizeof pos, "%u/%u", static_cast<unsigned>(gLessonIndex + 1),
+             static_cast<unsigned>(gLessonBatch.assignments.size()));
+    d.drawString(pos, 233, 5);
+    d.setTextDatum(lgfx::top_left);
+
+    d.fillRect(4, 20, 74, 60, kSurface);
+    d.drawRect(4, 20, 74, 60, kLine);
+    d.setFont(&fonts::efontJA_16);
+    d.setTextSize(1);
+    const int base = d.textWidth(s->characters.c_str());
+    int scale = 3;
+    while (scale > 1 && base * scale > 66) --scale;
+    d.setTextSize(scale);
+    d.setTextDatum(lgfx::middle_center);
+    d.setTextColor(kText, kSurface);
+    d.drawString(s->characters.c_str(), 41, 50);
+    d.setTextDatum(lgfx::top_left);
+
+    const char* kind = s->type == kk::SubjectType::Vocabulary ? "VOCAB"
+                       : s->type == kk::SubjectType::Radical ? "RADICAL"
+                                                              : "KANJI";
+    char type[24];
+    snprintf(type, sizeof type, "%s L%d", kind, s->level);
+    d.setTextFont(0);
+    d.setTextSize(1);
+    drawPill(d, 86, 20, type, kDim, kSurfaceHi);
+
+    std::string meaning;
+    for (const kk::Meaning& m : s->meanings)
+        if (m.accepted) {
+            meaning = m.text;
+            break;
+        }
+    if (meaning.empty() && !s->meanings.empty()) meaning = s->meanings[0].text;
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(kText, kBg);
+    while (meaning.size() > 1 && d.textWidth(meaning.c_str()) > 148) meaning.pop_back();
+    d.drawString(meaning.c_str(), 86, 38);
+
+    std::string reading;
+    for (const kk::Reading& r : s->readings)
+        if (r.accepted && r.primary) {
+            reading = r.text;
+            break;
+        }
+    if (reading.empty())
+        for (const kk::Reading& r : s->readings)
+            if (r.accepted) {
+                reading = r.text;
+                break;
+            }
+    if (!reading.empty()) {
+        d.setFont(&fonts::efontJA_16);
+        d.setTextSize(1);
+        d.setTextColor(kReading, kBg);
+        d.drawString(reading.c_str(), 86, 58);
+    }
+
+    std::string mnemonic = s->meaningMnemonic;
+    if (mnemonic.empty()) mnemonic = s->readingMnemonic;
+    if (mnemonic.empty()) mnemonic = s->meaningHint;
+    if (mnemonic.empty()) mnemonic = "No mnemonic cached.";
+    const std::vector<std::string> lines = wrapLines(d, mnemonic, 232);
+    const size_t pages = (lines.size() + 2) / 3;
+    if (gLessonPage >= pages) gLessonPage = pages - 1;
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextColor(kDim, kBg);
+    for (size_t i = 0; i < 3; ++i) {
+        const size_t idx = gLessonPage * 3 + i;
+        if (idx >= lines.size()) break;
+        d.drawString(lines[idx].c_str(), 5, 92 + static_cast<int>(i) * 9);
+    }
+    char page[20];
+    snprintf(page, sizeof page, "p%u/%u", static_cast<unsigned>(gLessonPage + 1),
+             static_cast<unsigned>(pages));
+    d.setTextDatum(lgfx::top_right);
+    d.setTextColor(kFaint, kBg);
+    d.drawString(page, 233, 117);
+    d.setTextDatum(lgfx::top_left);
+
+    d.setTextColor(kFaint, kBg);
+    d.drawString("Space: page  Enter: start  Esc: home", 5, 125);
+    d.endWrite();
+    present();
+}
+
+void startLessons() {
+    if (!gHaveSummary) return;
+    drawLoading("Fetching lessons...", "5 at a time, please wait");
+    releaseCanvas();
+    gLessonBatch = kk::fetchLessonBatch(kk::DevToken::load(), gSummary.lessonSubjectIds(5), 5);
+    ensureCanvas();
+    if (!gLessonBatch.ok) {
+        Serial.printf("[lesson] failed: %s\n", gLessonBatch.error.c_str());
+        drawLoading("No lessons available", gLessonBatch.error.c_str());
+        gShowHome = true;
+        gDirty = true;
+        return;
+    }
+    gLessonActive = true;
+    gShowHome = false;
+    gLessonIndex = 0;
+    gLessonPage = 0;
+    Serial.printf("[lesson] %u assignments, %u subjects\n",
+                  static_cast<unsigned>(gLessonBatch.assignments.size()),
+                  static_cast<unsigned>(gLessonBatch.subjects.size()));
+    gDirty = true;
+}
+
+void startCurrentLesson() {
+    if (!gLessonActive || gLessonIndex >= gLessonBatch.assignments.size()) return;
+    const kk::Assignment& a = gLessonBatch.assignments[gLessonIndex];
+    const kk::Subject* s = lessonSubjectById(a.subjectId);
+    drawLoading("Starting lesson...", s ? s->characters.c_str() : "");
+    const uint32_t now = static_cast<uint32_t>(time(nullptr));
+    releaseCanvas();
+    const bool ok = kk::startAssignment(kk::DevToken::load(), a.id,
+                                        now >= 1700000000u ? now : 0);
+    ensureCanvas();
+    if (ok) {
+        ++gLessonIndex;
+        gLessonPage = 0;
+        if (gLessonIndex >= gLessonBatch.assignments.size()) {
+            gLessonActive = false;
+            gShowHome = true;
+        }
+    }
+    gDirty = true;
+}
+
+void lessonKey(const KeyEvent& e) {
+    if (!e.down) return;
+    if (e.key == Key::Enter) {
+        startCurrentLesson();
+        return;
+    }
+    if (e.key == Key::Esc) {
+        gLessonActive = false;
+        gShowHome = true;
+        gDirty = true;
+        return;
+    }
+    if (e.key == Key::Right || (e.key == Key::Other && tgc::cardputerCharAt(e.x, e.y, false) == ' ')) {
+        ++gLessonPage;
+        gDirty = true;
+    } else if (e.key == Key::Left || e.key == Key::Backspace) {
+        if (gLessonPage > 0) --gLessonPage;
+        gDirty = true;
+    }
+}
+
 void onKey(const KeyEvent& e) {
     updateModifier(e.x, e.y, e.down);
+    if (gLessonActive) {
+        lessonKey(e);
+        return;
+    }
     if (gReviewActive) {
         reviewKey(e);
         return;
@@ -804,6 +1021,12 @@ void onKey(const KeyEvent& e) {
     }
     if (e.down && e.key == Key::Enter && gShowHome && gHaveSummary) {
         startReview();
+        return;
+    }
+    if (e.down && gShowHome && e.key == Key::Other &&
+        (tgc::cardputerCharAt(e.x, e.y, gShift) == 'l' ||
+         tgc::cardputerCharAt(e.x, e.y, gShift) == 'L')) {
+        startLessons();
         return;
     }
     if (e.down && e.key == Key::Tab && gHaveSummary) {
@@ -985,7 +1208,7 @@ void drawHome() {
         d.drawString(line, 8, 117);
     }
     d.setTextColor(kFaint, kBg);
-    d.drawString("Enter: reviews  Tab: debug", 8, 125);
+    d.drawString("Enter: reviews  L: lessons  Tab: debug", 8, 125);
     d.endWrite();
     present();
 }
@@ -997,6 +1220,10 @@ void draw() {
     }
     if (gReviewSummary) {
         drawReviewSummary();
+        return;
+    }
+    if (gLessonActive) {
+        drawLesson();
         return;
     }
     if (gShowHome) {
@@ -1078,7 +1305,7 @@ void draw() {
 }
 
 void drawStatus() {
-    if (!gDisp || gShowHome || gReviewActive || gReviewSummary) return;
+    if (!gDisp || gShowHome || gReviewActive || gReviewSummary || gLessonActive) return;
     // The status line changes on its own (battery/heap), so redraw just it.
     auto& d = target();
     d.startWrite();
@@ -1244,6 +1471,17 @@ void handleSerial() {
             gOutbox.clear();
             saveOutbox();
             Serial.println("[outbox] cleared");
+        } else if (gSerialLine == "l") {
+            if (!kk::DevWifi::connected() && !kk::DevWifi::connect(30000)) {
+                snprintf(gNetLine, sizeof gNetLine, "Lesson: no Wi-Fi");
+            } else {
+                startLessons();
+            }
+        } else if (gSerialLine == "g") {
+            if (gLessonActive) {
+                ++gLessonPage;
+                gDirty = true;
+            }
         } else if (gSerialLine == "v") {
             if (!kk::DevWifi::connected() && !kk::DevWifi::connect(30000)) {
                 snprintf(gNetLine, sizeof gNetLine, "Review: no Wi-Fi");
@@ -1251,12 +1489,20 @@ void handleSerial() {
                 startReview();
             }
         } else if (gSerialLine == "e") {
-            if (gReviewActive) {
+            if (gLessonActive) {
+                startCurrentLesson();
+            } else if (gReviewActive) {
                 if (gFeedback) advanceFeedback();
                 else checkCurrent();
             }
         } else if (gSerialLine == "q") {
-            if (gReviewActive) endReview();
+            if (gLessonActive) {
+                gLessonActive = false;
+                gShowHome = true;
+                gDirty = true;
+            } else if (gReviewActive) {
+                endReview();
+            }
         } else if (gSerialLine.startsWith("y ")) {
             if (gReviewActive && !gFeedback) {
                 const String text = gSerialLine.substring(2);
@@ -1304,7 +1550,7 @@ void handleSerial() {
             delay(100);
             ESP.restart();
         } else if (!gSerialLine.isEmpty()) {
-            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear k <token> c=clear h=heap p=picture s=scan r=restart\n");
+            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear k <token> c=clear h=heap p=picture s=scan r=restart\n");
         }
         gSerialLine = "";
         gDirty = true;
@@ -1456,7 +1702,7 @@ void loop() {
         tgc::board::setDisplayOn(false);
         gScreenOff = true;
     }
-    if (!gReviewActive && !gReviewSummary && !gFeedback &&
+    if (!gReviewActive && !gReviewSummary && !gFeedback && !gLessonActive &&
         now - gLastInputAt > 120000 && !tgc::board::externalPower()) {
         Serial.println("[power] idle sleep");
         tgc::board::deepSleep();

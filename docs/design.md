@@ -722,13 +722,13 @@ persistent outbox is in M3).
 
 **Output:** review on the subway and sync when you get out.
 
-### M4 — Lessons
+### M4 — Lessons (in progress)
 
-- Lesson list, card with mnemonic/components.
-- `PUT /assignments/{id}/start`.
-- Optional local practice.
+- Lesson card with meaning/reading, mnemonic paging and
+  `PUT /assignments/{id}/start` (200) is working.
+- Lesson list, components and the local practice quiz remain.
 
-**Output:** full lessons on the device.
+**Output:** complete lessons on the device (card + start already usable).
 
 ### M5 — Polish
 

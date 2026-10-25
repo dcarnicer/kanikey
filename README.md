@@ -7,7 +7,9 @@
 > runs a typed meaning/reading session with `efontJA_16`, and submits completed
 > items with `POST /v2/reviews` (201). A persistent outbox stores each result
 > before sending and retries it after a reboot; the offline path is verified.
-> Dim/blank/deep-sleep and the Home outbox status are in. Lessons and the visual
+> Dim/blank/deep-sleep and the Home outbox status are in. Lessons now fetch five
+> at a time, show meaning/reading + mnemonic pages and start with
+> `PUT /assignments/{id}/start` (200). The lesson list, components and visual
 > pack are next.
 >
 > KaniKey is an **unofficial** third-party app for WaniKani. It is not
