@@ -44,6 +44,24 @@ String DevWifi::savedSsid() {
     return ssid;
 }
 
+bool DevWifi::saveCredentials(const String& ssid, const String& pass) {
+    if (ssid.isEmpty() || ssid.length() > 32) return false;
+    if (!pass.isEmpty()) {
+        if (pass.length() < 8 || pass.length() > 63) return false;
+        for (size_t i = 0; i < pass.length(); ++i) {
+            const char c = pass[i];
+            if (c < 0x20 || c > 0x7E) return false;
+        }
+    }
+    Preferences p;
+    if (!p.begin(kNs, false)) return false;
+    const bool ok = p.putString(kKeySsid, ssid) == ssid.length() &&
+                    p.putString(kKeyPass, pass) == pass.length();
+    p.end();
+    if (ok) Serial.printf("[wifi] saved \"%s\"\n", ssid.c_str());
+    return ok;
+}
+
 bool DevWifi::connect(uint32_t timeoutMs) {
     String ssid, pass;
     if (!load(ssid, pass)) {

@@ -41,6 +41,21 @@ The Cardputer's USB Serial/JTAG should appear as a `usbmodem` port. On macOS,
 `pio device list` shows it; if only Bluetooth/debug ports appear, the board is
 off, the cable is charge-only, or the USB port is not enumerating.
 
+## Serial helper
+
+Use the host helper rather than a raw monitor. On this board, DTR/RTS must be
+deasserted or the USB CDC port stays silent:
+
+```sh
+uv run --with pyserial python3 tools/device.py monitor
+uv run --with pyserial python3 tools/device.py wifi
+uv run --with pyserial python3 tools/device.py token
+```
+
+`wifi` prompts for the SSID and password, sends `w <ssid>|<password>` and never
+prints or stores the password. `token` prompts for the WaniKani token, sends
+`k <token>` and runs the authenticated `/user` probe.
+
 ## Serial commands
 
 | Key | Action |

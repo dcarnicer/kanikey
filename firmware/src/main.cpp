@@ -289,6 +289,22 @@ void handleSerial() {
                 snprintf(gNetLine, sizeof gNetLine, "NET: %s", kk::DevWifi::ip().c_str());
             else
                 snprintf(gNetLine, sizeof gNetLine, "NET: join failed");
+        } else if (gSerialLine.startsWith("w ")) {
+            String rest = gSerialLine.substring(2);
+            const int sep = rest.indexOf('|');
+            if (sep < 0) {
+                Serial.println("[wifi] use: w <ssid>|<password>");
+            } else {
+                const String ssid = rest.substring(0, sep);
+                const String pass = rest.substring(sep + 1);
+                if (!kk::DevWifi::saveCredentials(ssid, pass)) {
+                    Serial.println("[wifi] not saved (bad SSID or password length)");
+                } else if (kk::DevWifi::connect(20000)) {
+                    snprintf(gNetLine, sizeof gNetLine, "NET: %s", kk::DevWifi::ip().c_str());
+                } else {
+                    snprintf(gNetLine, sizeof gNetLine, "NET: join failed");
+                }
+            }
         } else if (gSerialLine == "t") {
             if (!kk::DevWifi::connected() && !kk::DevWifi::connect(20000)) {
                 snprintf(gNetLine, sizeof gNetLine, "API: no Wi-Fi");
@@ -342,7 +358,7 @@ void handleSerial() {
             delay(100);
             ESP.restart();
         } else if (!gSerialLine.isEmpty()) {
-            Serial.printf("[kk] commands: w=wifi t=tls u=user k <token> c=clear h=heap s=scan r=restart\n");
+            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user k <token> c=clear h=heap s=scan r=restart\n");
         }
         gSerialLine = "";
         gDirty = true;
@@ -373,10 +389,13 @@ void setup() {
 
     gSdOk = mountSd();
     gDirty = true;
+    Serial.println("[kk] first draw");
     draw();
+    Serial.println("[kk] first draw done");
     gDirty = false;
     gLastDrawMs = millis();
 
+    Serial.printf("[wifi] saved credentials: %s\n", kk::DevWifi::hasSaved() ? "yes" : "no");
     if (kk::DevWifi::hasSaved()) {
         snprintf(gNetLine, sizeof gNetLine, "NET: joining %s",
                  kk::DevWifi::savedSsid().c_str());
@@ -432,5 +451,11 @@ void loop() {
         Serial.println("[key] G0 held");
     }
 
+    static uint32_t lastBeat = 0;
+    if (now - lastBeat > 5000) {
+        lastBeat = now;
+        Serial.printf("[kk] alive heap=%u\n",
+                      static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
+    }
     delay(4);
 }
