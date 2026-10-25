@@ -285,7 +285,7 @@ void handleSerial() {
         if (gSerialLine == "w") {
             snprintf(gNetLine, sizeof gNetLine, "NET: joining...");
             gDirty = true;
-            if (kk::DevWifi::connect(20000))
+            if (kk::DevWifi::connect(30000))
                 snprintf(gNetLine, sizeof gNetLine, "NET: %s", kk::DevWifi::ip().c_str());
             else
                 snprintf(gNetLine, sizeof gNetLine, "NET: join failed");
@@ -299,20 +299,20 @@ void handleSerial() {
                 const String pass = rest.substring(sep + 1);
                 if (!kk::DevWifi::saveCredentials(ssid, pass)) {
                     Serial.println("[wifi] not saved (bad SSID or password length)");
-                } else if (kk::DevWifi::connect(20000)) {
+                } else if (kk::DevWifi::connect(30000)) {
                     snprintf(gNetLine, sizeof gNetLine, "NET: %s", kk::DevWifi::ip().c_str());
                 } else {
                     snprintf(gNetLine, sizeof gNetLine, "NET: join failed");
                 }
             }
         } else if (gSerialLine == "t") {
-            if (!kk::DevWifi::connected() && !kk::DevWifi::connect(20000)) {
+            if (!kk::DevWifi::connected() && !kk::DevWifi::connect(30000)) {
                 snprintf(gNetLine, sizeof gNetLine, "API: no Wi-Fi");
             } else {
                 runProbe();
             }
         } else if (gSerialLine == "u") {
-            if (!kk::DevWifi::connected() && !kk::DevWifi::connect(20000)) {
+            if (!kk::DevWifi::connected() && !kk::DevWifi::connect(30000)) {
                 snprintf(gNetLine, sizeof gNetLine, "API: no Wi-Fi");
             } else {
                 runProbe();
@@ -322,7 +322,7 @@ void handleSerial() {
             token.trim();
             if (kk::DevToken::save(token)) {
                 Serial.printf("[auth] token saved (%u chars)\n", static_cast<unsigned>(token.length()));
-                if (!kk::DevWifi::connected() && !kk::DevWifi::connect(20000)) {
+                if (!kk::DevWifi::connected() && !kk::DevWifi::connect(30000)) {
                     snprintf(gNetLine, sizeof gNetLine, "API: no Wi-Fi");
                 } else {
                     runProbe();
@@ -400,7 +400,7 @@ void setup() {
         snprintf(gNetLine, sizeof gNetLine, "NET: joining %s",
                  kk::DevWifi::savedSsid().c_str());
         drawStatus();
-        if (kk::DevWifi::connect(15000)) {
+        if (kk::DevWifi::connect(30000)) {
             snprintf(gNetLine, sizeof gNetLine, "NET: %s", kk::DevWifi::ip().c_str());
             drawStatus();
             runProbe();

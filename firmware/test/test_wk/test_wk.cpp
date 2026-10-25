@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include "ui/KeyInput.h"
 #include "wk/AnswerChecker.h"
 #include "wk/ReviewQueue.h"
 #include "wk/RomajiIme.h"
@@ -289,6 +290,48 @@ static void test_session_skip() {
     TEST_ASSERT_EQUAL(0, q.completedCount());
 }
 
+
+// ---------------------------------------------------------------- key map
+static uint8_t codeAt(int x, int y) {
+    const int r = x / 2;
+    const int c = y + (x % 2 ? 4 : 0);
+    return static_cast<uint8_t>(1 + r * 10 + c);
+}
+
+static void test_cardputer_characters() {
+    TEST_ASSERT_EQUAL_CHAR('a', tgc::cardputerCharAt(2, 2, false));
+    TEST_ASSERT_EQUAL_CHAR('A', tgc::cardputerCharAt(2, 2, true));
+    TEST_ASSERT_EQUAL_CHAR(';', tgc::cardputerCharAt(11, 2, false));
+    TEST_ASSERT_EQUAL_CHAR(':', tgc::cardputerCharAt(11, 2, true));
+    TEST_ASSERT_EQUAL_CHAR(',', tgc::cardputerCharAt(10, 3, false));
+    TEST_ASSERT_EQUAL_CHAR('<', tgc::cardputerCharAt(10, 3, true));
+    TEST_ASSERT_EQUAL_CHAR(' ', tgc::cardputerCharAt(13, 3, false));
+    TEST_ASSERT_EQUAL_CHAR(0, tgc::cardputerCharAt(0, 2, false));   // fn
+    TEST_ASSERT_EQUAL_CHAR(0, tgc::cardputerCharAt(13, 2, false));  // enter
+}
+
+static void test_cardputer_modifiers() {
+    TEST_ASSERT_EQUAL(tgc::Modifier::Shift, tgc::cardputerModifierAt(1, 2));
+    TEST_ASSERT_EQUAL(tgc::Modifier::Fn, tgc::cardputerModifierAt(0, 2));
+    TEST_ASSERT_EQUAL(tgc::Modifier::Ctrl, tgc::cardputerModifierAt(0, 3));
+    TEST_ASSERT_EQUAL(tgc::Modifier::Opt, tgc::cardputerModifierAt(1, 3));
+    TEST_ASSERT_EQUAL(tgc::Modifier::Alt, tgc::cardputerModifierAt(2, 3));
+    TEST_ASSERT_EQUAL(tgc::Modifier::None, tgc::cardputerModifierAt(2, 2));
+}
+
+static void test_cardputer_event_fields() {
+    tgc::KeyEvent e;
+    TEST_ASSERT_TRUE(tgc::cardputerAdvEvent(static_cast<uint8_t>(0x80 | codeAt(2, 2)), &e));
+    TEST_ASSERT_TRUE(e.down);
+    TEST_ASSERT_EQUAL(2, e.x);
+    TEST_ASSERT_EQUAL(2, e.y);
+    TEST_ASSERT_EQUAL(codeAt(2, 2), e.code);
+    TEST_ASSERT_EQUAL(tgc::Key::Other, e.key);
+    TEST_ASSERT_TRUE(tgc::cardputerAdvEvent(static_cast<uint8_t>(codeAt(11, 2)), &e));
+    TEST_ASSERT_FALSE(e.down);
+    TEST_ASSERT_EQUAL(tgc::Key::Up, e.key);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_romaji_common_words);
@@ -309,5 +352,8 @@ int main(int, char**) {
     RUN_TEST(test_session_radical_only_meaning);
     RUN_TEST(test_session_filters_and_limit);
     RUN_TEST(test_session_skip);
+    RUN_TEST(test_cardputer_characters);
+    RUN_TEST(test_cardputer_modifiers);
+    RUN_TEST(test_cardputer_event_fields);
     return UNITY_END();
 }

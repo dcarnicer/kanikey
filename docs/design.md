@@ -1,8 +1,9 @@
 # KaniKey — product design and architecture
 
-> **Status:** design approved, 2026-10-25. Firmware bring-up is in progress:
-> the first Cardputer ADV build checks the display, keyboard, microSD, heap and
-> a TLS probe against `api.wanikani.com`. The WaniKani client is next.
+> **Status:** design approved, 2026-10-25. Firmware M0 is verified on hardware:
+> display, keyboard controller, microSD, Wi-Fi and an authenticated
+> `GET /v2/user` returning 200. The WaniKani data sync and Home screen are next.
+> Measurements: [hardware.md](hardware.md).
 >
 > **Working name:** KaniKey. It's provisional; the design doesn't depend on it.
 >
@@ -654,19 +655,22 @@ prototype, with a `logNetHeap()` on every connection.
 
 ## 16. Roadmap
 
-### M0 — Design (now)
+### M0 — Design and bring-up (done 2026-10-25)
 
 - This document, UX, API, reuse, and mockups.
-- Review open decisions.
-- Memory/TLS prototype on the Cardputer with a `GET /user`.
+- Decisions accepted.
+- M0 firmware on the Cardputer: display, keyboard controller, microSD, Wi-Fi,
+  TLS and an authenticated `GET /user` (200).
 
-**Output:** accepted decisions and a repository skeleton.
+**Output:** accepted decisions, a repository skeleton and the first hardware
+measurements ([hardware.md](hardware.md)).
 
-### M1 — Skeleton and Home
+### M1 — Home and data (in progress)
 
-- Pruned Tangocho fork; compiles for Cardputer.
+- Tangocho modules integrated; compiles for Cardputer.
 - HAL, display, keyboard, SD, sleep.
-- Wi-Fi/token/time setup; `GET /user` + `/summary`.
+- Wi-Fi/token setup (dev path done); time and the production portal next.
+- `GET /user` done; `/summary`, assignments and subjects next.
 - Home with real data and cache.
 
 **Output:** you turn it on, configure it, and see “28 reviews” from your account.

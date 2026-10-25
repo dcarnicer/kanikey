@@ -14,7 +14,8 @@ First hardware milestone for the M5Stack Cardputer ADV.
   token a `200` also prints the username and level.
 - Measures internal heap before and after the TLS client.
 
-It does not sync WaniKani data yet.
+It does not sync WaniKani data yet. Hardware measurements are in
+[docs/hardware.md](../docs/hardware.md).
 
 The token is a development convenience. Production KaniKey will use the setup
 portal and the same NVS storage, with the token masked on screen and never

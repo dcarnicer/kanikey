@@ -2,9 +2,10 @@
 
 **A pocket-sized review terminal for WaniKani, built for the M5Stack Cardputer ADV.**
 
-> **Status: design approved; firmware bring-up in progress (2026-10-25).** The
-> first Cardputer ADV build checks the display, keyboard, microSD, heap and a
-> TLS probe against `api.wanikani.com`. The full WaniKani client is next.
+> **Status: firmware M0 verified on hardware (2026-10-25).** The Cardputer ADV
+> runs the first build: display, keyboard controller, microSD, Wi-Fi and an
+> authenticated `GET /v2/user` returning 200. The WaniKani data sync and Home
+> screen are next.
 >
 > KaniKey is an **unofficial** third-party app for WaniKani. It is not
 > affiliated with, endorsed by or sponsored by WaniKani or Tofugu LLC. WaniKani
@@ -81,6 +82,7 @@ already solved and tested on hardware in
 | [docs/reuse-tangocho.md](docs/reuse-tangocho.md) | What is reused from Tangocho and how it is ported |
 | [docs/setup.md](docs/setup.md) | Token, visual pack, first boot and troubleshooting |
 | [docs/decisions.md](docs/decisions.md) | Short log of accepted decisions |
+| [docs/hardware.md](docs/hardware.md) | Measured Cardputer ADV results (heap, SD, Wi-Fi, TLS) |
 | [docs/screens/](docs/screens/) | 240×135 mockups (individual at 4×; contact sheet at 2×) |
 | [firmware/README.md](firmware/README.md) | Current build, flash and serial commands |
 
