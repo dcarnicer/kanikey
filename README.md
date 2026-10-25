@@ -2,11 +2,11 @@
 
 **A pocket-sized review terminal for WaniKani, built for the M5Stack Cardputer ADV.**
 
-> **Status: firmware M1 in progress (2026-10-25).** The Cardputer ADV runs the
-> first build with display, keyboard controller, microSD, Wi-Fi, SNTP and
-> authenticated `/user` + `/summary` calls. The Home screen shows the live due
-> reviews, lessons, next review and sync time. The first review screen is next,
-> using M5GFX's Japanese font as a bring-up fallback until the visual pack lands.
+> **Status: firmware M1 review loop working (2026-10-25).** The Cardputer ADV
+> shows a live Home from `/user` + `/summary`, fetches a 20-item due batch,
+> runs a typed meaning/reading session with `efontJA_16`, and submits completed
+> items with `POST /v2/reviews` (201). The outbox, lessons and the visual pack
+> are next.
 >
 > KaniKey is an **unofficial** third-party app for WaniKani. It is not
 > affiliated with, endorsed by or sponsored by WaniKani or Tofugu LLC. WaniKani

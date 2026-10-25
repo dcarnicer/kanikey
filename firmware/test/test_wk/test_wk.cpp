@@ -4,7 +4,9 @@
 
 #include "ui/KeyInput.h"
 #include "wk/AnswerChecker.h"
+#include "wk/Assignment.h"
 #include "wk/Json.h"
+#include "wk/SubjectParser.h"
 #include "wk/Summary.h"
 #include "wk/Time.h"
 #include "wk/User.h"
@@ -418,6 +420,78 @@ static void test_summary_parse_and_counts() {
     TEST_ASSERT_EQUAL_UINT32(next, s.nextReviewAt(now));
 }
 
+
+// ---------------------------------------------------------------- API records
+static void test_assignment_parse() {
+    JsonParser p;
+    JsonValue v;
+    const char* text =
+        "{\"data\":["
+        "{\"id\":101,\"object\":\"assignment\",\"data\":{\"subject_id\":10,"
+        "\"subject_type\":\"kanji\",\"srs_stage\":3,"
+        "\"available_at\":\"2026-10-25T14:00:00Z\",\"hidden\":false}},"
+        "{\"id\":102,\"object\":\"assignment\",\"data\":{\"subject_id\":11,"
+        "\"subject_type\":\"radical\",\"srs_stage\":1,"
+        "\"available_at\":\"2026-10-25T15:00:00Z\",\"hidden\":true}}]}";
+    TEST_ASSERT_TRUE(p.parse(text, &v));
+    const std::vector<Assignment> as = parseAssignments(v);
+    TEST_ASSERT_EQUAL(2, as.size());
+    TEST_ASSERT_EQUAL_UINT32(101, as[0].id);
+    TEST_ASSERT_EQUAL_UINT32(10, as[0].subjectId);
+    TEST_ASSERT_EQUAL(SubjectType::Kanji, as[0].type);
+    TEST_ASSERT_EQUAL(3, as[0].srsStage);
+    TEST_ASSERT_TRUE(as[0].availableAt > 0);
+    TEST_ASSERT_TRUE(as[1].hidden);
+    TEST_ASSERT_EQUAL(SubjectType::Radical, as[1].type);
+}
+
+static void test_subject_parse() {
+    JsonParser p;
+    JsonValue v;
+    const char* text =
+        "{\"data\":["
+        "{\"id\":10,\"object\":\"kanji\",\"data\":{\"level\":5,\"characters\":\"食\","
+        "\"meanings\":[{\"meaning\":\"eat\",\"primary\":true,\"accepted_answer\":true}],"
+        "\"readings\":[{\"reading\":\"た.べる\",\"primary\":false,"
+        "\"accepted_answer\":true,\"type\":\"kunyomi\"}],"
+        "\"auxiliary_meanings\":[{\"meaning\":\"food\",\"type\":\"blacklist\"}]}},"
+        "{\"id\":11,\"object\":\"radical\",\"data\":{\"level\":1,\"characters\":null,"
+        "\"meanings\":[{\"meaning\":\"ground\",\"primary\":true,\"accepted_answer\":true}]}}]}";
+    TEST_ASSERT_TRUE(p.parse(text, &v));
+    const std::vector<Subject> ss = parseSubjects(v);
+    TEST_ASSERT_EQUAL(2, ss.size());
+    TEST_ASSERT_EQUAL(SubjectType::Kanji, ss[0].type);
+    TEST_ASSERT_EQUAL_STRING("食", ss[0].characters.c_str());
+    TEST_ASSERT_EQUAL(1, ss[0].meanings.size());
+    TEST_ASSERT_EQUAL(1, ss[0].readings.size());
+    TEST_ASSERT_EQUAL(ReadingType::Kunyomi, ss[0].readings[0].type);
+    TEST_ASSERT_EQUAL(1, ss[0].blacklist.size());
+    TEST_ASSERT_EQUAL(SubjectType::Radical, ss[1].type);
+    TEST_ASSERT_TRUE(ss[1].characters.empty());
+}
+
+static void test_summary_subject_ids() {
+    JsonParser p;
+    JsonValue v;
+    const char* text =
+        "{\"data\":{"
+        "\"lessons\":[{\"available_at\":\"2026-10-25T12:00:00Z\",\"subject_ids\":[1,2,3]}],"
+        "\"reviews\":["
+        "{\"available_at\":\"2026-10-25T12:00:00Z\",\"subject_ids\":[10,11]},"
+        "{\"available_at\":\"2026-10-25T13:00:00Z\",\"subject_ids\":[12]}]}}";
+    TEST_ASSERT_TRUE(p.parse(text, &v));
+    Summary s;
+    TEST_ASSERT_TRUE(parseSummary(v, &s));
+    uint32_t now = 0;
+    TEST_ASSERT_TRUE(parseIso8601("2026-10-25T12:30:00Z", &now));
+    const std::vector<uint32_t> due = s.dueSubjectIds(now, 10);
+    TEST_ASSERT_EQUAL(2, due.size());
+    TEST_ASSERT_EQUAL_UINT32(10, due[0]);
+    TEST_ASSERT_EQUAL_UINT32(11, due[1]);
+    const std::vector<uint32_t> lessons = s.lessonSubjectIds(10);
+    TEST_ASSERT_EQUAL(3, lessons.size());
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_romaji_common_words);
@@ -446,5 +520,8 @@ int main(int, char**) {
     RUN_TEST(test_iso8601_round_trip);
     RUN_TEST(test_user_parse);
     RUN_TEST(test_summary_parse_and_counts);
+    RUN_TEST(test_assignment_parse);
+    RUN_TEST(test_subject_parse);
+    RUN_TEST(test_summary_subject_ids);
     return UNITY_END();
 }

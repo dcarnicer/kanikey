@@ -1,9 +1,9 @@
 # KaniKey — product design and architecture
 
-> **Status:** design approved, 2026-10-25. Firmware M1 is in progress: display,
-> keyboard controller, microSD, Wi-Fi, SNTP, authenticated `/user` + `/summary`
-> and a live Home screen. The review session is next. Measurements:
-> [hardware.md](hardware.md).
+> **Status:** design approved, 2026-10-25. Firmware M1 is working: display,
+> keyboard controller, microSD, Wi-Fi, SNTP, authenticated `/user` + `/summary`,
+> live Home, a 20-item due batch and a typed review session that submits with
+> `POST /v2/reviews` (201). Measurements: [hardware.md](hardware.md).
 >
 > **Working name:** KaniKey. It's provisional; the design doesn't depend on it.
 >
@@ -690,24 +690,26 @@ parser lands. Full log: [hardware.md](hardware.md).
 **Output:** accepted decisions, a repository skeleton and the first hardware
 measurements ([hardware.md](hardware.md)).
 
-### M1 — Home and data (in progress)
+### M1 — Home and data (done 2026-10-25)
 
 - Tangocho modules integrated; compiles for Cardputer.
 - HAL, display, keyboard, SD, sleep.
-- Wi-Fi/token setup (dev path done); time and the production portal next.
-- `GET /user` done; `/summary`, assignments and subjects next.
-- Home with real data and cache.
+- Wi-Fi/token setup (dev path); SNTP time.
+- `/user`, `/summary`, assignments and subjects.
+- Home with real data and a 20-item due batch.
 
-**Output:** you turn it on, configure it, and see “28 reviews” from your account.
+**Output:** you turn it on, configure it, and see your due reviews from your
+account; Enter fetches the batch.
 
-### M2 — Visual pack and online review
+### M2 — Visual pack and online review (in progress)
 
-- `kanikey-glyphs` generator and reading the pack from the SD.
-- Sync of assignments + subjects for pending reviews.
-- Review screen, IME, answer checker, feedback.
-- `POST /reviews` and session summary.
+- Review screen, IME, answer checker and feedback work with the `efontJA_16`
+  bring-up fallback.
+- `POST /reviews` submits completed items (201) and the session advances.
+- Missing: the persistent outbox, the SD visual pack and the final renderer.
 
-**Output:** a full review session against WaniKani.
+**Output:** a full review session against WaniKani (already usable; outbox
+still missing).
 
 ### M3 — Offline and queue
 

@@ -23,8 +23,8 @@ App: display, keyboard controller, microSD, heap report, Wi-Fi, TLS
 
 | | |
 |---|---|
-| Flash used | 1,632,217 B of 1,835,008 B (88.9%) |
-| Static RAM | 50,204 B of 327,680 B (15.3%) |
+| Flash used | 1,672,585 B of 1,835,008 B (91.1%) |
+| Static RAM | 51,428 B of 327,680 B (15.7%) |
 
 ### Heap
 
@@ -108,8 +108,25 @@ E (221) esp_core_dump_flash: No core dump partition found!
 - The APB callback warning comes from the M5Unified/SD bring-up path and does
   not affect the run.
 
+### Review session (M1)
+
+- `/v2/assignments?subject_ids=...` for 20 summary IDs: 9.8 KB, ~2 s.
+- Subjects fetched in four batches of five: 12.7–17.4 KB each, ~1.9–2.4 s.
+- The canvas is released before the batch and before each review POST; this is
+  required: with the canvas allocated, the largest free block dropped to
+  ~20 KB and the TLS handshake failed with `SSL - Memory allocation failed`.
+- With the canvas released, the batch and the POST fit. After the 20 subjects,
+  the retained batch + canvas leaves ~171 KB free (largest ~19–40 KB).
+- The typed review screen uses `efontJA_16`; a vocabulary prompt is drawn at
+  2× (32 px), a single kanji at 3× (48 px).
+- `POST /v2/reviews` returns **201** with the updated resources; the client
+  accepts any 2xx. One completed item was submitted and the session moved on.
+- The app still lacks a persistent outbox: if the immediate POST fails, that
+  review is lost. This is the next reliability item.
+
 ### Next
 
-- Assignments + subjects cache.
-- Real review session screen with the typed answer flow.
-- Canvas + renderer, then measure the real UI budget.
+- Persistent outbox and retry/reconciliation.
+- Lessons.
+- Visual pack (replace the efont fallback).
+- Real renderer/UI font instead of the M5GFX text calls.

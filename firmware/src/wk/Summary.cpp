@@ -1,5 +1,7 @@
 #include "wk/Summary.h"
 
+#include <utility>
+
 #include "wk/Time.h"
 
 namespace kk {
@@ -18,8 +20,11 @@ bool parseBuckets(const JsonValue* arr, std::vector<SummaryBucket>* out) {
         if (const JsonValue* ids = item.find("subject_ids"); ids && ids->isArray()) {
             const size_t n = ids->size();
             b.count = static_cast<uint16_t>(n > 0xFFFF ? 0xFFFF : n);
+            b.subjectIds.reserve(n);
+            for (const JsonValue& id : ids->array)
+                if (id.isNumber()) b.subjectIds.push_back(static_cast<uint32_t>(id.number));
         }
-        out->push_back(b);
+        out->push_back(std::move(b));
     }
     return true;
 }
@@ -49,6 +54,28 @@ uint32_t Summary::nextReviewAt(uint32_t now) const {
         if (best == 0 || b.availableAt < best) best = b.availableAt;
     }
     return best;
+}
+
+std::vector<uint32_t> Summary::dueSubjectIds(uint32_t now, size_t limit) const {
+    std::vector<uint32_t> out;
+    for (const SummaryBucket& b : reviews) {
+        if (b.availableAt != 0 && b.availableAt > now) continue;
+        for (uint32_t id : b.subjectIds) {
+            if (out.size() >= limit) return out;
+            out.push_back(id);
+        }
+    }
+    return out;
+}
+
+std::vector<uint32_t> Summary::lessonSubjectIds(size_t limit) const {
+    std::vector<uint32_t> out;
+    for (const SummaryBucket& b : lessons)
+        for (uint32_t id : b.subjectIds) {
+            if (out.size() >= limit) return out;
+            out.push_back(id);
+        }
+    return out;
 }
 
 bool parseSummary(const JsonValue& root, Summary* out) {

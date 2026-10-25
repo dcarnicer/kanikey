@@ -23,6 +23,11 @@
 #include "platform/DevToken.h"
 #include "platform/DevWifi.h"
 #include "platform/WkProbe.h"
+#include "platform/WkClient.h"
+#include "platform/WkReview.h"
+#include "wk/AnswerChecker.h"
+#include "wk/ReviewQueue.h"
+#include "wk/RomajiIme.h"
 #include "wk/Time.h"
 
 namespace {
@@ -32,12 +37,19 @@ using tgc::KeyEvent;
 
 constexpr uint16_t kBg = 0x0000;
 constexpr uint16_t kSurface = 0x18E4;
+constexpr uint16_t kSurfaceHi = 0x2967;
 constexpr uint16_t kLine = 0x3A0A;
 constexpr uint16_t kText = 0xFFFF;
 constexpr uint16_t kDim = 0xA577;
 constexpr uint16_t kFaint = 0x636F;
 constexpr uint16_t kBrand = 0xFB0B;  // #FF7A59, RGB565
 constexpr uint16_t kOk = 0x5EF1;
+constexpr uint16_t kOkBg = 0x0183;
+constexpr uint16_t kAccent = 0x2B1B;
+constexpr uint16_t kAccentHi = 0x7D5F;
+constexpr uint16_t kReading = 0x6EF9;
+constexpr uint16_t kErr = 0xC945;
+constexpr uint16_t kErrBg = 0x3882;
 constexpr uint16_t kWarn = 0xFE26;
 
 lgfx::LGFX_Device* gDisp = nullptr;
@@ -62,7 +74,24 @@ uint32_t gSyncedAt = 0;
 char gNextReview[12] = "--:--";
 char gSyncClock[12] = "--:--";
 
+kk::ReviewBatch gBatch;
+kk::ReviewQueue gQueue;
+bool gReviewActive = false;
+bool gReviewSummary = false;
+bool gFeedback = false;
+bool gNeedsSubmit = false;
+bool gFeedbackCompleted = false;
+unsigned gSubmitFailures = 0;
+kk::AnswerCheck gCheck;
+kk::ReviewPart gFeedbackPart = kk::ReviewPart::None;
+uint32_t gFeedbackSubjectId = 0;
+std::string gFeedbackInput;
+kk::SessionItem gCompletedItem;
+std::string gMeaningInput;
+kk::RomajiIme gIme;
+
 void localHm(uint32_t epoch, char* out, size_t n);
+void draw();
 
 lgfx::LovyanGFX& target() {
     if (gCanvas) return *gCanvas;
@@ -70,6 +99,29 @@ lgfx::LovyanGFX& target() {
 }
 void present() {
     if (gCanvas && gDisp) gCanvas->pushSprite(0, 0);
+}
+
+bool ensureCanvas() {
+    if (gCanvas || !gDisp) return gCanvas != nullptr;
+    gCanvas = new lgfx::LGFX_Sprite(gDisp);
+    gCanvas->setColorDepth(16);
+    if (!gCanvas->createSprite(gDisp->width(), gDisp->height())) {
+        Serial.println("[kk] canvas allocation failed; drawing directly");
+        delete gCanvas;
+        gCanvas = nullptr;
+        return false;
+    }
+    return true;
+}
+
+void releaseCanvas() {
+    if (!gCanvas) return;
+    delete gCanvas;
+    gCanvas = nullptr;
+    Serial.printf("[kk] canvas released, heap %u largest %u\n",
+                  static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+                  static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL |
+                                                                         MALLOC_CAP_8BIT)));
 }
 
 bool gShift = false;
@@ -174,8 +226,437 @@ void runSummary() {
     gDirty = true;
 }
 
+bool runBatch() {
+    if (!gHaveSummary) {
+        Serial.println("[review] no summary yet");
+        return false;
+    }
+    const uint32_t now = static_cast<uint32_t>(time(nullptr));
+    const std::vector<uint32_t> ids = gSummary.dueSubjectIds(now, 20);
+    Serial.printf("[review] %u due subject ids\n", static_cast<unsigned>(ids.size()));
+    releaseCanvas();
+    kk::ReviewBatch batch = kk::fetchReviewBatch(kk::DevToken::load(), ids, now, 20);
+    ensureCanvas();
+    if (!batch.ok) {
+        Serial.printf("[review] batch failed: %s\n", batch.error.c_str());
+        snprintf(gNetLine, sizeof gNetLine, "Batch: %s", batch.error.c_str());
+        gBatch = kk::ReviewBatch{};
+        gDirty = true;
+        return false;
+    }
+    Serial.printf("[review] %u assignments, %u subjects\n",
+                  static_cast<unsigned>(batch.assignments.size()),
+                  static_cast<unsigned>(batch.subjects.size()));
+    for (size_t i = 0; i < batch.subjects.size() && i < 5; ++i) {
+        const kk::Subject& s = batch.subjects[i];
+        Serial.printf("[review] %u %s %s\n", static_cast<unsigned>(s.id), s.characters.c_str(),
+                      s.meanings.empty() ? "?" : s.meanings[0].text.c_str());
+    }
+    snprintf(gNetLine, sizeof gNetLine, "Batch: %ua %us",
+             static_cast<unsigned>(batch.assignments.size()),
+             static_cast<unsigned>(batch.subjects.size()));
+    gBatch = std::move(batch);
+    gDirty = true;
+    return true;
+}
+
+const kk::Subject* subjectById(uint32_t id) {
+    for (const kk::Subject& s : gBatch.subjects)
+        if (s.id == id) return &s;
+    return nullptr;
+}
+
+std::string correctAnswer(const kk::Subject& s, kk::ReviewPart part) {
+    if (part == kk::ReviewPart::Reading) {
+        for (const kk::Reading& r : s.readings)
+            if (r.accepted) return r.text;
+        if (!s.readings.empty()) return s.readings[0].text;
+        return "-";
+    }
+    for (const kk::Meaning& m : s.meanings)
+        if (m.accepted) return m.text;
+    if (!s.meanings.empty()) return s.meanings[0].text;
+    return "-";
+}
+
+void clearReviewInput() {
+    gMeaningInput.clear();
+    gIme.clear();
+}
+
+void drawPill(lgfx::LovyanGFX& d, int x, int y, const char* text, uint16_t fg, uint16_t bg) {
+    d.setTextFont(0);
+    d.setTextSize(1);
+    const int w = d.textWidth(text) + 8;
+    d.fillRect(x, y, w, 13, bg);
+    d.setTextColor(fg, bg);
+    d.drawString(text, x + 4, y + 2);
+}
+
+void drawWrapped(lgfx::LovyanGFX& d, const std::string& text, int x, int y, int w, int maxLines,
+                 uint16_t fg, uint16_t bg) {
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextColor(fg, bg);
+    size_t start = 0;
+    for (int line = 0; line < maxLines && start < text.size(); ++line) {
+        size_t end = text.size();
+        while (end > start && d.textWidth(text.substr(start, end - start).c_str()) > w) --end;
+        if (end < text.size()) {
+            const size_t sp = text.rfind(' ', end);
+            if (sp != std::string::npos && sp > start) end = sp;
+        }
+        d.drawString(text.substr(start, end - start).c_str(), x, y + line * 8);
+        start = end;
+        while (start < text.size() && text[start] == ' ') ++start;
+    }
+}
+
+void drawReview() {
+    if (!gDisp) return;
+    const kk::SessionItem* item = gQueue.current();
+    const kk::Subject* s = gFeedback ? subjectById(gFeedbackSubjectId)
+                                     : (item ? subjectById(item->subjectId) : nullptr);
+    if (!s) return;
+    const kk::ReviewPart part = gFeedback ? gFeedbackPart : gQueue.part();
+
+    auto& d = target();
+    d.startWrite();
+    d.fillScreen(kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(kDim, kBg);
+    d.drawString("REVIEWS", 6, 3);
+    const int total = static_cast<int>(gQueue.completedCount() + gQueue.remaining());
+    int pos = static_cast<int>(gQueue.completedCount()) + 1;
+    if (gFeedback && gFeedbackCompleted) pos = static_cast<int>(gQueue.completedCount());
+    if (pos > total) pos = total;
+    char right[24];
+    snprintf(right, sizeof right, "%d/%d", pos, total);
+    d.setTextFont(0);
+    d.setTextDatum(lgfx::top_right);
+    d.drawString(right, 233, 5);
+    d.setTextDatum(lgfx::top_left);
+    d.fillRect(0, 14, 240, 2, kSurfaceHi);
+    if (total > 0) d.fillRect(0, 14, 240 * (pos - 1) / total, 2, kAccentHi);
+
+    d.fillRect(4, 20, 88, 88, kSurface);
+    d.drawRect(4, 20, 88, 88, kLine);
+    d.setFont(&fonts::efontJA_16);
+    d.setTextSize(1);
+    const int base = d.textWidth(s->characters.c_str());
+    int scale = 3;
+    while (scale > 1 && base * scale > 80) --scale;
+    d.setTextSize(scale);
+    d.setTextDatum(lgfx::middle_center);
+    d.setTextColor(kText, kSurface);
+    d.drawString(s->characters.c_str(), 48, 56);
+    d.setTextDatum(lgfx::top_left);
+    char type[24];
+    const char* kindName = s->type == kk::SubjectType::Vocabulary ? "VOCAB"
+                           : s->type == kk::SubjectType::Radical ? "RADICAL"
+                                                                  : "KANJI";
+    snprintf(type, sizeof type, "%s L%d", kindName, s->level);
+    d.setTextFont(0);
+    d.setTextSize(1);
+    drawPill(d, 48 - (d.textWidth(type) + 8) / 2, 92, type, kDim, kSurfaceHi);
+
+    if (!gFeedback) {
+        const bool meaning = part == kk::ReviewPart::Meaning;
+        drawPill(d, 100, 20, meaning ? "MEANING" : "READING",
+                 meaning ? kAccentHi : kReading, kSurfaceHi);
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(kDim, kBg);
+        d.drawString(meaning ? "Type the meaning" : "Type the reading", 100, 38);
+
+        d.fillRect(100, 52, 136, 32, kSurfaceHi);
+        d.drawRect(100, 52, 136, 32, kLine);
+        std::string shown = meaning ? gMeaningInput : gIme.text();
+        if (meaning) {
+            d.setTextFont(1);
+            d.setTextSize(1);
+        } else {
+            d.setFont(&fonts::efontJA_16);
+            d.setTextSize(1);
+        }
+        if (shown.empty()) {
+            d.setTextColor(kFaint, kSurfaceHi);
+            d.drawString(meaning ? "answer" : "kana", 106, 60);
+        } else {
+            while (shown.size() > 1 && d.textWidth(shown.c_str()) > 128)
+                shown.erase(0, 1);
+            d.setTextColor(kText, kSurfaceHi);
+            d.drawString(shown.c_str(), 106, 60);
+        }
+        const int caret = 106 + (shown.empty() ? 0 : d.textWidth(shown.c_str()));
+        if (caret < 232) d.fillRect(caret, 58, 2, 16, kAccent);
+
+        if (!meaning) {
+            d.setTextFont(0);
+            d.setTextSize(1);
+            d.setTextColor(kFaint, kBg);
+            std::string raw = "romaji: " + gIme.raw();
+            d.drawString(raw.c_str(), 100, 88);
+        }
+    } else {
+        const bool ok = gCheck.status == kk::AnswerStatus::Correct;
+        const bool warn = gCheck.status == kk::AnswerStatus::Warning;
+        drawPill(d, 100, 20, ok ? "CORRECT" : warn ? "CHECK" : "NOT QUITE",
+                 ok ? kOk : warn ? kWarn : kErr, ok ? kOkBg : warn ? kSurfaceHi : kErrBg);
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(kFaint, kBg);
+        d.drawString("You typed", 100, 38);
+        const bool japanese = part == kk::ReviewPart::Reading;
+        if (japanese) {
+            d.setFont(&fonts::efontJA_16);
+            d.setTextSize(1);
+        } else {
+            d.setTextFont(1);
+            d.setTextSize(1);
+        }
+        d.setTextColor(kDim, kBg);
+        std::string typed = gFeedbackInput;
+        while (typed.size() > 1 && d.textWidth(typed.c_str()) > 136) typed.erase(0, 1);
+        d.drawString(typed.empty() ? "-" : typed.c_str(), 100, 47);
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(kFaint, kBg);
+        d.drawString("Answer", 100, 65);
+        if (japanese) {
+            d.setFont(&fonts::efontJA_16);
+            d.setTextSize(1);
+        } else {
+            d.setTextFont(1);
+            d.setTextSize(1);
+        }
+        d.setTextColor(ok ? kOk : warn ? kWarn : kErr, kBg);
+        std::string answer = correctAnswer(*s, part);
+        if (!japanese) {
+            if (d.textWidth(answer.c_str()) > 136) d.setTextFont(0);
+            while (answer.size() > 1 && d.textWidth(answer.c_str()) > 136) answer.pop_back();
+            if (answer.size() < correctAnswer(*s, part).size()) answer += "...";
+        }
+        d.drawString(answer.c_str(), 100, 74);
+        if (gCheck.status != kk::AnswerStatus::Correct)
+            drawWrapped(d, gCheck.message, 100, 92, 136, 2, kFaint, kBg);
+    }
+
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextColor(kFaint, kBg);
+    d.drawString(gFeedback ? "Enter: next" : "Enter: check", 6, 125);
+    d.setTextDatum(lgfx::top_right);
+    d.drawString("Esc: quit", 233, 125);
+    d.setTextDatum(lgfx::top_left);
+    d.endWrite();
+    present();
+}
+
+void drawReviewSummary() {
+    if (!gDisp) return;
+    auto& d = target();
+    d.startWrite();
+    d.fillScreen(kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(kDim, kBg);
+    d.drawString("SESSION", 6, 3);
+    d.setTextFont(2);
+    d.setTextSize(2);
+    d.setTextColor(kText, kBg);
+    char n[20];
+    snprintf(n, sizeof n, "%u", static_cast<unsigned>(gQueue.completedCount()));
+    d.drawString(n, 8, 30);
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextColor(kDim, kBg);
+    d.drawString("REVIEWS", 8, 66);
+    unsigned mistakes = 0;
+    for (const kk::SessionItem& it : gQueue.completed())
+        mistakes += it.incorrectMeaning + it.incorrectReading;
+    char m[40];
+    snprintf(m, sizeof m, "%u mistakes", mistakes);
+    d.drawString(m, 8, 84);
+    if (gSubmitFailures)
+        d.setTextColor(kErr, kBg);
+    else
+        d.setTextColor(kFaint, kBg);
+    snprintf(m, sizeof m, "%u not saved", static_cast<unsigned>(gSubmitFailures));
+    d.drawString(gSubmitFailures ? m : "All reviews sent", 8, 98);
+    d.setTextColor(kFaint, kBg);
+    d.drawString("Enter: home", 8, 125);
+    d.endWrite();
+    present();
+}
+
+void submitReview(const kk::SessionItem& item) {
+    const String token = kk::DevToken::load();
+    const std::string created = kk::formatIso8601(static_cast<uint32_t>(time(nullptr)));
+    String body = "{\"review\":{\"assignment_id\":";
+    body += String(static_cast<unsigned long>(item.assignmentId));
+    body += ",\"incorrect_meaning_answers\":";
+    body += String(static_cast<unsigned>(item.incorrectMeaning));
+    body += ",\"incorrect_reading_answers\":";
+    body += String(static_cast<unsigned>(item.incorrectReading));
+    body += ",\"created_at\":\"";
+    body += created.c_str();
+    body += "\"}}";
+    releaseCanvas();
+    const kk::WkResponse r = kk::wkPost("/v2/reviews", token, body, 4096);
+    ensureCanvas();
+    Serial.printf("[review] submit %u -> %d\n", static_cast<unsigned>(item.assignmentId),
+                  r.httpCode);
+    if (r.httpCode < 200 || r.httpCode >= 300) ++gSubmitFailures;
+}
+
+void checkCurrent() {
+    const kk::SessionItem* item = gQueue.current();
+    if (!item) return;
+    const kk::Subject* s = subjectById(item->subjectId);
+    if (!s) return;
+    const bool meaning = gQueue.part() == kk::ReviewPart::Meaning;
+    const std::string input = meaning ? gMeaningInput : gIme.text();
+    if (input.empty()) return;
+    gFeedbackSubjectId = item->subjectId;
+    gFeedbackPart = gQueue.part();
+    gFeedbackInput = input;
+    gCheck = kk::checkAnswer(*s, meaning ? kk::AnswerKind::Meaning : kk::AnswerKind::Reading,
+                             input, true);
+    gFeedback = true;
+    gFeedbackCompleted = false;
+    if (gCheck.status != kk::AnswerStatus::Warning) {
+        const kk::AnswerOutcome o = gQueue.answer(gCheck.status);
+        if (o.completed) {
+            gCompletedItem = gQueue.completed().back();
+            gNeedsSubmit = true;
+            gFeedbackCompleted = true;
+        }
+    }
+    gDirty = true;
+}
+
+void advanceFeedback() {
+    if (gCheck.status == kk::AnswerStatus::Warning) {
+        clearReviewInput();
+        gFeedback = false;
+        gDirty = true;
+        return;
+    }
+    if (gNeedsSubmit) {
+        submitReview(gCompletedItem);
+        gNeedsSubmit = false;
+    }
+    gFeedback = false;
+    gFeedbackCompleted = false;
+    clearReviewInput();
+    if (gQueue.empty()) {
+        gReviewActive = false;
+        gReviewSummary = true;
+    }
+    gDirty = true;
+}
+
+void endReview() {
+    if (gNeedsSubmit) {
+        submitReview(gCompletedItem);
+        gNeedsSubmit = false;
+    }
+    gReviewActive = false;
+    gReviewSummary = false;
+    gShowHome = true;
+    gFeedback = false;
+    gFeedbackCompleted = false;
+    gBatch = kk::ReviewBatch{};
+    gQueue = kk::ReviewQueue{};
+    gDirty = true;
+}
+
+void startReview() {
+    if (!gHaveSummary) return;
+    if (gBatch.assignments.empty() && !runBatch()) return;
+    std::vector<kk::Assignment> due;
+    for (const kk::Assignment& a : gBatch.assignments) {
+        const kk::Subject* s = subjectById(a.subjectId);
+        if (s && !s->characters.empty()) due.push_back(a);
+    }
+    gQueue.build(due, gBatch.subjects, static_cast<uint32_t>(time(nullptr)), 20);
+    if (gQueue.empty()) {
+        Serial.println("[review] no reviewable items");
+        return;
+    }
+    gReviewActive = true;
+    gReviewSummary = false;
+    gShowHome = false;
+    gFeedback = false;
+    gFeedbackCompleted = false;
+    gNeedsSubmit = false;
+    gSubmitFailures = 0;
+    clearReviewInput();
+    Serial.printf("[review] session with %u items\n", static_cast<unsigned>(gQueue.remaining()));
+    for (size_t i = 0; i < gQueue.queue().size() && i < 5; ++i) {
+        const kk::SessionItem& it = gQueue.queue()[i];
+        const kk::Subject* s = subjectById(it.subjectId);
+        Serial.printf("[review] queue %u %s\n", static_cast<unsigned>(it.subjectId),
+                      s ? s->characters.c_str() : "?");
+    }
+    gDirty = true;
+}
+
+bool reviewKey(const KeyEvent& e) {
+    if (!e.down) return false;
+    if (gFeedback) {
+        if (e.key == Key::Enter) advanceFeedback();
+        else if (e.key == Key::Esc) endReview();
+        return true;
+    }
+    if (e.key == Key::Enter) {
+        checkCurrent();
+        return true;
+    }
+    if (e.key == Key::Esc) {
+        endReview();
+        return true;
+    }
+    if (e.key == Key::Backspace) {
+        if (gQueue.part() == kk::ReviewPart::Meaning) {
+            if (!gMeaningInput.empty()) gMeaningInput.pop_back();
+        } else {
+            gIme.backspace();
+        }
+        gDirty = true;
+        return true;
+    }
+    const char c = tgc::cardputerCharAt(e.x, e.y, gShift);
+    if (c) {
+        if (gQueue.part() == kk::ReviewPart::Meaning)
+            gMeaningInput.push_back(c);
+        else
+            gIme.feed(c);
+        gDirty = true;
+    }
+    return true;
+}
+
 void onKey(const KeyEvent& e) {
     updateModifier(e.x, e.y, e.down);
+    if (gReviewActive) {
+        reviewKey(e);
+        return;
+    }
+    if (gReviewSummary) {
+        if (e.down && (e.key == Key::Enter || e.key == Key::Esc)) endReview();
+        return;
+    }
+    if (e.down && e.key == Key::Enter && gShowHome && gHaveSummary) {
+        startReview();
+        return;
+    }
     if (e.down && e.key == Key::Tab && gHaveSummary) {
         gShowHome = !gShowHome;
         gDirty = true;
@@ -322,6 +803,14 @@ void drawHome() {
 }
 
 void draw() {
+    if (gReviewActive) {
+        drawReview();
+        return;
+    }
+    if (gReviewSummary) {
+        drawReviewSummary();
+        return;
+    }
     if (gShowHome) {
         drawHome();
         return;
@@ -401,7 +890,7 @@ void draw() {
 }
 
 void drawStatus() {
-    if (!gDisp || gShowHome) return;
+    if (!gDisp || gShowHome || gReviewActive || gReviewSummary) return;
     // The status line changes on its own (battery/heap), so redraw just it.
     auto& d = target();
     d.startWrite();
@@ -526,6 +1015,36 @@ void handleSerial() {
             kk::DevToken::clear();
             Serial.println("[auth] token cleared");
             snprintf(gNetLine, sizeof gNetLine, "API: token cleared");
+        } else if (gSerialLine == "v") {
+            if (!kk::DevWifi::connected() && !kk::DevWifi::connect(30000)) {
+                snprintf(gNetLine, sizeof gNetLine, "Review: no Wi-Fi");
+            } else {
+                startReview();
+            }
+        } else if (gSerialLine == "e") {
+            if (gReviewActive) {
+                if (gFeedback) advanceFeedback();
+                else checkCurrent();
+            }
+        } else if (gSerialLine == "q") {
+            if (gReviewActive) endReview();
+        } else if (gSerialLine.startsWith("y ")) {
+            if (gReviewActive && !gFeedback) {
+                const String text = gSerialLine.substring(2);
+                for (size_t i = 0; i < text.length(); ++i) {
+                    if (gQueue.part() == kk::ReviewPart::Meaning)
+                        gMeaningInput.push_back(text[i]);
+                    else
+                        gIme.feed(text[i]);
+                }
+                gDirty = true;
+            }
+        } else if (gSerialLine == "b") {
+            if (!kk::DevWifi::connected() && !kk::DevWifi::connect(30000)) {
+                snprintf(gNetLine, sizeof gNetLine, "Batch: no Wi-Fi");
+            } else {
+                runBatch();
+            }
         } else if (gSerialLine == "m") {
             if (!kk::DevWifi::connected() && !kk::DevWifi::connect(30000)) {
                 snprintf(gNetLine, sizeof gNetLine, "Summary: no Wi-Fi");
@@ -558,7 +1077,7 @@ void handleSerial() {
             delay(100);
             ESP.restart();
         } else if (!gSerialLine.isEmpty()) {
-            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary k <token> c=clear h=heap p=picture s=scan r=restart\n");
+            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review y<text> e=enter q=quit k <token> c=clear h=heap p=picture s=scan r=restart\n");
         }
         gSerialLine = "";
         gDirty = true;
@@ -576,13 +1095,7 @@ void setup() {
     gDisp->setRotation(1);
     gDisp->setBrightness(128);
 
-    gCanvas = new lgfx::LGFX_Sprite(gDisp);
-    gCanvas->setColorDepth(16);
-    if (!gCanvas->createSprite(gDisp->width(), gDisp->height())) {
-        Serial.println("[kk] canvas allocation failed; drawing directly");
-        delete gCanvas;
-        gCanvas = nullptr;
-    }
+    ensureCanvas();
 
     Serial.printf("\n[kk] KaniKey M0\n");
     Serial.printf("[kk] canvas: %s (%u bytes)\n", gCanvas ? "ok" : "none",

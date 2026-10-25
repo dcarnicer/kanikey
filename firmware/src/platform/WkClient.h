@@ -19,5 +19,7 @@ struct WkResponse {
 // `path` starts with /v2/. `maxBodyBytes` bounds the String body.
 WkResponse wkGet(const String& path, const String& token, size_t maxBodyBytes,
                  uint32_t timeoutMs = 20000);
+WkResponse wkPost(const String& path, const String& token, const String& body,
+                  size_t maxBodyBytes, uint32_t timeoutMs = 20000);
 
 }  // namespace kk

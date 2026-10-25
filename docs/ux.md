@@ -326,6 +326,12 @@ Home ──L──► Lessons ──Enter──► Lesson card
   visible. It doesn't wrap to two lines so as not to change the height.
 - Holding G0 opens `Pause` (Continue / End session / Settings).
 
+**M1 implementation note.** The live build uses `efontJA_16` at 2× (32 px) for
+vocabulary and 3× (48 px) for a single kanji; the 64 px prompt and radical
+bitmaps arrive with the visual pack. The bottom bar says `Enter check` /
+`Esc quit`; the Pause menu and `Tab: details` are later. The screen is already
+driven by the same review queue and answer checker as the final design.
+
 ### 5.5 Feedback
 
 ![Correct feedback](screens/review-correct.png)

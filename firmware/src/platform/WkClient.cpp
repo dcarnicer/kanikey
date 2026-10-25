@@ -17,8 +17,9 @@ void logHeap(const char* when) {
 }
 }  // namespace
 
-WkResponse wkGet(const String& path, const String& token, size_t maxBodyBytes,
-                 uint32_t timeoutMs) {
+namespace {
+WkResponse request(const String& method, const String& path, const String& token,
+                    const String& body, size_t maxBodyBytes, uint32_t timeoutMs) {
     WkResponse r;
     logHeap("before");
     const uint32_t t0 = millis();
@@ -39,7 +40,8 @@ WkResponse wkGet(const String& path, const String& token, size_t maxBodyBytes,
     }
     r.connected = true;
 
-    client.print("GET ");
+    client.print(method);
+    client.print(" ");
     client.print(path);
     client.print(" HTTP/1.0\r\n"
                  "Host: api.wanikani.com\r\n"
@@ -47,12 +49,19 @@ WkResponse wkGet(const String& path, const String& token, size_t maxBodyBytes,
                  "Wanikani-Revision: 20170710\r\n"
                  "Accept: application/json\r\n"
                  "Connection: close\r\n");
+    if (method == "POST") {
+        client.print("Content-Type: application/json\r\n");
+        client.print("Content-Length: ");
+        client.print(body.length());
+        client.print("\r\n");
+    }
     if (!token.isEmpty()) {
         client.print("Authorization: Bearer ");
         client.print(token);
         client.print("\r\n");
     }
     client.print("\r\n");
+    if (!body.isEmpty()) client.print(body);
 
     r.statusLine = client.readStringUntil('\n');
     r.statusLine.trim();
@@ -90,6 +99,17 @@ WkResponse wkGet(const String& path, const String& token, size_t maxBodyBytes,
     client.stop();
     logHeap("after");
     return r;
+}
+}  // namespace
+
+WkResponse wkGet(const String& path, const String& token, size_t maxBodyBytes,
+                 uint32_t timeoutMs) {
+    return request("GET", path, token, String(), maxBodyBytes, timeoutMs);
+}
+
+WkResponse wkPost(const String& path, const String& token, const String& body,
+                  size_t maxBodyBytes, uint32_t timeoutMs) {
+    return request("POST", path, token, body, maxBodyBytes, timeoutMs);
 }
 
 }  // namespace kk

@@ -14,8 +14,9 @@ First hardware milestone for the M5Stack Cardputer ADV.
   next review and last sync.
 - Measures internal heap before and after each TLS request.
 
-It does not sync WaniKani data yet. The Home screen shows live `/user` and
-`/summary` data. Hardware measurements are in
+The Home screen shows live `/user` and `/summary` data. Enter fetches a
+20-item due batch, runs a typed meaning/reading session and submits completed
+items with `POST /v2/reviews`. Hardware measurements are in
 [docs/hardware.md](../docs/hardware.md).
 
 M1 uses M5GFX's `efontJA_16` as a temporary kanji source; the final visual pack
@@ -85,6 +86,11 @@ prints or stores the password. `token` prompts for the WaniKani token, sends
 | `c` | Clear the saved token |
 | `s` | Scan Wi-Fi networks (when not connected) |
 | `h` | Print free/largest/minimum internal heap |
+| `b` | Fetch a 20-item review batch (logs only) |
+| `v` | Fetch (if needed) and start a review session |
+| `y <text>` | Type text into the current answer (test helper) |
+| `e` | Check the answer or advance after feedback |
+| `q` | Quit the review session |
 | `r` | Restart |
 
 ## Wi-Fi for this milestone
