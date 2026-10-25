@@ -19,9 +19,9 @@ String idList(const std::vector<uint32_t>& ids, size_t begin, size_t end) {
     return s;
 }
 
-bool parseJson(const String& body, JsonValue* out) {
+bool parseJson(std::string_view body, JsonValue* out) {
     JsonParser p;
-    return p.parse(std::string_view(body.c_str(), body.length()), out);
+    return p.parse(body, out);
 }
 }  // namespace
 
@@ -35,7 +35,7 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
     const size_t want = std::min(limit, dueSubjectIds.size());
     String path = "/v2/assignments?subject_ids=" + idList(dueSubjectIds, 0, want);
     Serial.printf("[review] assignments for %u subjects\n", static_cast<unsigned>(want));
-    const WkResponse ar = wkGet(path, token, 32768, 12000);
+    const WkResponse ar = wkGetRetry(path, token, 32768, 12000);
     if (ar.httpCode != 200) {
         batch.error = "assignments HTTP " + String(ar.httpCode);
         return batch;
@@ -66,13 +66,18 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
     for (size_t begin = 0; begin < ids.size(); begin += kSubjectBatch) {
         const size_t end = std::min(ids.size(), begin + kSubjectBatch);
         String sp = "/v2/subjects?ids=" + idList(ids, begin, end);
-        const WkResponse sr = wkGet(sp, token, 32768, 12000);
+        const WkResponse sr = wkGetRetry(sp, token, 32768, 12000);
         if (sr.httpCode != 200) {
             batch.error = "subjects HTTP " + String(sr.httpCode);
             return batch;
         }
         JsonValue sv;
         if (!parseJson(sr.body, &sv)) {
+            const size_t n = sr.body.size();
+            Serial.printf("[review] subjects JSON failed: len=%u trunc=%d\n",
+                          static_cast<unsigned>(n), sr.truncated ? 1 : 0);
+            Serial.printf("[review] head: %.*s\n", static_cast<int>(std::min<size_t>(n, 80)),
+                          sr.body.data());
             batch.error = "subjects JSON";
             return batch;
         }

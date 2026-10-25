@@ -10,3 +10,6 @@ secrets.h
 
 # Live captures
 tools/screenshots/out/
+
+# Generated WaniKani-derived packs (personal; not committed)
+dist/

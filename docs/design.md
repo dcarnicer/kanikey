@@ -420,39 +420,39 @@ The Cardputer has no PSRAM and the app slot is ~1.75 MB. A full CJK font doesn't
 fit; rasterizing on the device is possible but expensive. On the other hand,
 WaniKani content can't be distributed with the firmware.
 
-### 11.2 Proposed decision: visual pack on the microSD
+### 11.2 Visual pack on the microSD (implemented)
 
-A small desktop program, `kanikey-glyphs`, generates a `glyphs.kgp` file for the
-card:
+`tools/glyph-pack/build.py` generates a `glyphs.kgp` file for the card:
 
-1. It requests the subjects up to `subscription.max_level_granted` from the API
-   (60 on a paid account, 3 on a free one) using the user's token.
-2. It collects all unique characters from kanji, vocabulary, and kana.
-3. It renders each character with **Noto Sans JP** (OFL) at 64, 40, and 20 px,
+1. With a token it requests the subjects up to
+   `subscription.max_level_granted` and collects every character and radical
+   URL. Without a token it can use Tangocho's local WaniKani kanji cache
+   (`--tangocho`), which covers all 2,026 WaniKani kanji.
+2. It adds kana and the punctuation seen in WaniKani vocabulary (`ー々〜・〇`).
+3. It renders each character with **Noto Sans JP** (OFL) at 64, 32 and 20 px,
    in 4bpp with RLE.
-4. It downloads the radicals' SVG images and rasterizes them locally at 96 px
-   (4bpp or 1bpp).
-5. It writes an index sorted by codepoint / `subject_id` and the pack to the
-   card.
+4. With a token it downloads the radicals' SVG images and rasterizes them at
+   96 px into 16-byte radical entries. The tokenless cache pack has no radical
+   images.
+5. It writes `KKGP` v1: a 32-byte header, 20-byte glyph entries sorted by
+   `(codepoint, size)`, 16-byte radical entries, then the RLE payloads.
 
-The pack isn't committed or redistributed: it's generated with the user's token,
-on their computer, and stays on their card. The firmware only knows how to read
-the format.
+The pack isn't committed or redistributed: it's generated locally and stays on
+the card. The firmware binary only knows the format.
 
-**Estimated size:** ~2,200 unique kanji + kana + ~500 radicals.
+**Measured:** 2,207 characters / 6,621 glyphs / 2,895,555 B for the tokenless
+full pack. The test pack (203 characters, 609 glyphs) is 189,805 B. Both fit
+easily on a FAT32 microSD. The card is a v1 requirement for Japanese text;
+without the pack, the item can't be drawn.
 
-| Part | Approximate size |
-|---|---|
-| 64 px 4bpp glyphs | 4–5 MB |
-| 40 px 4bpp glyphs | 1.5–2 MB |
-| 20 px 4bpp glyphs | 0.5–0.7 MB |
-| 96 px radicals | 0.5–1 MB |
-| Indexes and headers | < 0.2 MB |
-| **Total** | **7–9 MB** (with RLE, less) |
+The firmware reads `/kanikey/glyphs.kgp` with `platform/GlyphPack`:
+binary-search entries, seek to one payload, decode 4bpp RLE with a 128-byte
+read-ahead buffer, and alpha-blend into the canvas. There is a 16-entry glyph
+cache; the pack is never loaded whole.
 
-It fits easily on any FAT32 microSD. The card is a v1 requirement: without the
-visual pack, the item can't be drawn. The app says so clearly and offers a “sync
-only” mode in the meantime.
+**Upload:** a one-shot Wi-Fi HTTP server (`S`, port 8080) plus
+`tools/device.py push` writes the 2.9 MB pack reliably with `curl -T`. The USB
+`up` command writes 8 KiB ACKed chunks and is kept for small files.
 
 ### 11.3 Why not other options
 
@@ -469,11 +469,10 @@ future, a generator in the phone's browser could be added so no computer is
 needed, or on-device rasterization for missing characters.
 
 **Bring-up fallback (M1).** M5GFX ships `efontJA_16`, a 16 px Japanese bitmap
-font with ~10,800 glyphs. Referencing it adds ~468 KB of flash and gives the
-first review screen a real kanji prompt (scaled 2–3×) without waiting for the
-visual-pack tool. It is not the final answer: the pack gives 64 px glyphs,
-radical images and a smaller flash footprint. The fallback is removed once the
-pack path is ready.
+font with ~10,800 glyphs. Referencing it adds ~468 KB of flash. It is now only
+the fallback for characters missing from the pack, principally radicals. The
+fallback is removed once radical images render and a “visual pack missing”
+screen exists.
 
 ### 11.4 Rendering
 
@@ -487,11 +486,13 @@ public:
 };
 ```
 
-- UI glyphs: `UiFont.h` (Latin + kana) generated as in Tangocho.
-- Kanji/vocabulary: `GlyphSource` from the SD, with a small cache (16 KB).
-- Radicals: 1bpp/4bpp bitmap, drawn in white on black.
-- Meaning text: UiFont; Japanese text: glyphs from the pack.
+- Implemented: `platform/GlyphPack` reads the SD pack, caches 16 entries and
+  draws 4bpp glyphs with alpha blending.
+- UI text: M5GFX bitmap fonts.
+- Meaning text: bitmap fonts; Japanese text: glyphs from the pack.
 - Text is composed character by character for vocabulary words.
+- Radicals: the format has 16-byte radical entries; drawing them is the next
+  renderer step.
 
 ---
 
@@ -527,16 +528,16 @@ Summary; details are in [api-sync.md](api-sync.md).
 
 | Usage | Estimate |
 |---|---|
-| Canvas 240×135×2 | 64.8 KB |
+| Canvas 240×135×1 (RGB332) | 32.4 KB |
 | Loop stack | 16 KB |
 | TLS (sync only) | ~50 KB |
-| Streaming JSON parser | 8 KB |
+| Static response body buffer (BSS) | 32 KB |
 | Subject record being built | 8 KB |
-| Glyph cache | 16 KB |
+| Glyph entry cache | < 1 KB |
 | UI, strings, lists | ~20 KB |
-| **Peak during sync** | **~183 KB** |
+| **Peak during sync** | **~125 KB** |
 | **Free heap target during sync** | **> 35 KB** |
-| **Free heap target during review** | **> 80 KB** |
+| **Free heap target during review** | **> 35 KB** |
 
 Tangocho measured ~210 KB free at boot on the Cardputer and ~60 KB at the worst
 point of a TLS handshake with the canvas and a pack open. KaniKey doesn't open
@@ -556,30 +557,30 @@ prototype, with a `logNetHeap()` on every connection.
 
 ### 13.3 Screen performance
 
-- Full frame: 64.8 KB; at 40 MHz SPI ≈ 13 ms push.
+- Full frame: 32,400 B (8-bit RGB332). A 64,800 B 16-bit canvas exists but does
+  not survive the subject-fetch heap fragmentation.
 - New item: full frame.
-- Typing: only the answer field region (partial push).
-- Caret: blinks every 500 ms, 2×20 px region.
-- No animations that block input. Review must respond to the keyboard in under
-  50 ms.
+- Typing: full frame in this build; partial pushes are a later optimization.
+- No animations that block input. Review must respond to the keyboard quickly;
+  the 64 px prompt is a few thousand blended pixels and is not a bottleneck.
 
 ### 13.4 Measured with the canvas
 
-The Home build allocates the 64.8 KB canvas and uses `efontJA_16` (flash only).
-Internal heap in bytes:
+Internal heap in bytes after the static response buffer and the 8-bit canvas:
 
 | Point | Free | Largest | Minimum free |
 |---|---:|---:|---:|
-| After boot, before SD | 256,136 | 225,268 | — |
-| After SD mount | 240,768 | 208,884 | — |
-| Before TLS | 186,808 | 176,116 | 182,080 |
-| After `/user` | 183,096 | 106,484 | 109,208 |
-| After `/summary` | 178,720 | 106,484 | 109,184 |
-| Idle after sync | ~186,300 | — | — |
+| After boot | 225,464 | 188,404 | — |
+| After SD mount | 208,044 | 180,212 | — |
+| Before TLS `/user` | 148,476 | 139,252 | 143,796 |
+| After `/user` | 145,492 | 73,716 | 73,132 |
+| After `/summary` | 145,292 | 65,524 | 73,132 |
+| Idle after sync | ~146,800 | — | — |
 
-The 178.7 KB free / 106.5 KB largest after `/summary` is above the 80 KB target,
-but leaves room for only a small subject batch until the streaming subject
-parser lands. Full log: [hardware.md](hardware.md).
+During review fetches the canvas is released and restored around each TLS
+request. After 20 subjects the free heap is ~134 KB and the largest block
+~35 KB, which is enough for the 32.4 KB canvas but not for 64.8 KB. Full log:
+[hardware.md](hardware.md).
 
 ---
 
@@ -701,15 +702,14 @@ measurements ([hardware.md](hardware.md)).
 **Output:** you turn it on, configure it, and see your due reviews from your
 account; Enter fetches the batch.
 
-### M2 — Visual pack and online review (in progress)
+### M2 — Visual pack and online review (done)
 
-- Review screen, IME, answer checker and feedback work with the `efontJA_16`
-  bring-up fallback.
+- Review screen, IME, answer checker and feedback work.
 - `POST /reviews` submits completed items (201) and the session advances.
-- Missing: the persistent outbox, the SD visual pack and the final renderer.
+- The SD visual pack draws 64/32/20 px Japanese text; the efont fallback is
+  only for missing characters.
 
-**Output:** a full review session against WaniKani (already usable; the
-persistent outbox is in M3).
+**Output:** a full review session against WaniKani with real Japanese glyphs.
 
 ### M3 — Offline and queue (mostly done)
 

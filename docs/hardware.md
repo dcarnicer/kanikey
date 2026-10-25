@@ -23,8 +23,8 @@ App: display, keyboard controller, microSD, heap report, Wi-Fi, TLS
 
 | | |
 |---|---|
-| Flash used | 1,727,105 B of 1,835,008 B (94.1%) |
-| Static RAM | 51,720 B of 327,680 B (15.8%) |
+| Flash used | 1,740,389 B of 1,835,008 B (94.8%) |
+| Static RAM | 93,208 B of 327,680 B (28.4%) |
 
 ### Heap
 
@@ -32,18 +32,22 @@ All values are internal heap, bytes.
 
 | Point | Free | Largest | Minimum free |
 |---|---:|---:|---:|
-| After boot, before SD | 256,136 | 225,268 | — |
-| After SD mount | 240,768 | 208,884 | — |
-| Before TLS | 186,808 | 176,116 | 182,080 |
-| After TLS `/user` | 183,096 | 106,484 | 109,208 |
-| After `/summary` | 178,720 | 106,484 | 109,184 |
-| Idle after sync | ~186,300 | — | — |
+| After boot (32.4 KB canvas, static buffers) | 225,464 | 188,404 | — |
+| After SD mount | 208,044 | 180,212 | — |
+| Before TLS `/user` | 148,476 | 139,252 | 143,796 |
+| After `/user` | 145,492 | 69,620 | 73,116 |
+| After `/summary` | 145,488 | 65,524 | 70,880 |
+| Idle after sync | ~146,800 | — | — |
 
-The 64.8 KB full-screen canvas is now allocated. It costs the expected ~65 KB
-and leaves 178.7 KB free / 106.5 KB largest after `/summary`. That is above the
-design target of 80 KB free in a review, but the subject cache and the answer
-engine still have to fit; batches of subjects must stay small until the
-streaming subject parser exists.
+The canvas is 8-bit RGB332 and costs 32,400 B. A 16-bit canvas (64,800 B) is
+released for TLS and cannot be reallocated after the subject batches: the
+largest free block falls to 28–63 KB after 5–20 subjects. The 8-bit canvas
+always reallocate successfully. During a review fetch the canvas is freed only
+for each TLS request and restored before the response is parsed.
+
+Static RAM includes a 32 KiB response buffer in `WkClient`, an 8 KiB serial
+upload buffer and a 16 KiB USB receive ring. Keeping response bodies out of the
+heap is what leaves the canvas block intact across requests.
 
 TLS cost in this build is small in free bytes (about 3 KB) but it lowers the
 largest block by ~70 KB because mbedTLS allocates and frees handshake buffers.
@@ -73,12 +77,12 @@ later allocation.
 - After the summary parses, the Home screen shows the level, username, due
   reviews, lessons, next review and last sync time.
 - `Tab` toggles the keyboard/debug screen.
-- The debug screen renders a test kanji with M5GFX's `efontJA_16`; that font
-  adds ~468 KB of flash and leaves ~203 KB for the review UI. It is a bring-up
-  fallback, not the final glyph-pack path.
+- The debug screen renders a test kanji from the SD pack, with
+  `efontJA_16` as the fallback. That font still adds ~468 KB of flash and is
+  removed once radical images exist.
 - The Home layout was rebalanced after a live screenshot: 16 px brand, 32 px
   counters, 8 px labels, 12 px lower rows. `tools/shot.py` reads the 240×135
-  canvas over USB and writes a PNG.
+  RGB332 canvas over USB and writes a PNG.
 - A physical key-press pass still needs to be recorded here.
 
 ### Keyboard
@@ -117,8 +121,8 @@ E (221) esp_core_dump_flash: No core dump partition found!
   ~20 KB and the TLS handshake failed with `SSL - Memory allocation failed`.
 - With the canvas released, the batch and the POST fit. After the 20 subjects,
   the retained batch + canvas leaves ~171 KB free (largest ~19–40 KB).
-- The typed review screen uses `efontJA_16`; a vocabulary prompt is drawn at
-  2× (32 px), a single kanji at 3× (48 px).
+- Review prompts are drawn from the SD visual pack at 64 px; readings use
+  32 px and feedback uses 20 px. `efontJA_16` remains only as a fallback.
 - `POST /v2/reviews` returns **201** with the updated resources; the client
   accepts any 2xx. One completed item was submitted and the session moved on.
 - The app still lacks a persistent outbox: if the immediate POST fails, that
@@ -142,8 +146,8 @@ E (221) esp_core_dump_flash: No core dump partition found!
   That reconciliation has unit-level coverage but not a hardware timeout test.
 - Rejected records stay until a user-facing way to dismiss them exists; for
   now the dev command `z` clears the outbox.
-- Flash headroom is now ~107 KB; the efont fallback is the next thing to
-  replace when the visual pack lands.
+- Flash headroom is now ~92 KB; the efont fallback still costs ~468 KB and is
+  the next thing to replace once radical images exist.
 - Home shows `Outbox: N pending` or `N need attention` below the sync time.
 - Power: dim after 30 s, blank after 60 s, deep sleep after 2 min only when no
   review is active and the device is on battery. A key wakes the panel; the
@@ -154,17 +158,43 @@ E (221) esp_core_dump_flash: No core dump partition found!
 - `/v2/assignments?subject_ids=...` for 5 lesson IDs: ~2.3 KB.
 - Subjects fetched in batches of 3 and 2, with mnemonics/components: ~9.2 KB and
   ~5.7 KB.
-- The lesson card uses `efontJA_16` for the prompt, 3 wrapped mnemonic lines,
-  paging and `PUT /v2/assignments/{id}/start` -> **200**.
+- The lesson card uses the SD pack for the 64 px prompt and 32 px reading, 3
+  wrapped mnemonic lines, paging and `PUT /v2/assignments/{id}/start` ->
+  **200**.
 - The summary DOM was replaced by a small streaming parser: the 568-id summary
   tree had caused an intermittent `std::bad_alloc` (`operator new` in
   `JsonParser::array`). The new parser keeps counts and at most 20 IDs per
   bucket. Two consecutive boots and a lesson start have been clean.
 - Still missing: a lesson list, components on the card, and a lesson quiz.
 
+### Visual pack on microSD (M5)
+
+- Path: `/kanikey/glyphs.kgp`, format `KKGP` v1: 32-byte header, 20-byte glyph
+  entries sorted by `(codepoint, size)`, 4bpp RLE payload, optional 16-byte
+  radical entries.
+- Full pack: 2,207 characters / 6,621 glyphs at 64/32/20 px / 2,895,555 B, made
+  from Tangocho's local WaniKani kanji cache (2,026 kanji + kana + `々〜・〇`).
+  It contains no radical images.
+- Boot: `[pack] 6621 glyphs, 64/32/20 px`; lookups binary-search the entry table
+  and decode one glyph at a time. The pack is not loaded into RAM.
+- The 64 px review/lesson prompt, 32 px reading and 20 px feedback are drawn
+  from the pack. `efontJA_16` is only the fallback for missing characters.
+- Review screenshot: 思う and おもう rendered from the pack; lesson screenshot:
+  欠点 / けってん with the mnemonic.
+
+Live captures are kept out of the repository because they contain the user's
+WaniKani subjects and mnemonics.
+- The canvas is 8-bit RGB332 (32,400 B); `tools/shot.py` decodes the `#shot`
+  dump. The `#shot` mode field says `rgb332`.
+- Upload: `S` starts a one-shot HTTP server on port 8080 and
+  `tools/device.py push` writes the file with `curl -T`; 2.9 MB transferred
+  reliably. The USB `up` path uses 8 KiB ACKed chunks and is a fallback.
+- Still missing: radical images (the pack has radical entry support but no
+  renderer), a “visual pack missing” screen, and removing `efontJA_16`.
+
 ### Next
 
+- Radical images and the lesson list/components.
 - Ways to dismiss rejected outbox items.
-- Lesson list and components.
-- Visual pack (replace the efont fallback).
+- Remove the efont fallback once radicals render.
 - Real renderer/UI font instead of the M5GFX text calls.

@@ -2,15 +2,17 @@
 
 **A pocket-sized review terminal for WaniKani, built for the M5Stack Cardputer ADV.**
 
-> **Status: firmware M1 review loop working (2026-10-25).** The Cardputer ADV
+> **Status: firmware preview — SD visual pack (2026-10-25).** The Cardputer ADV
 > shows a live Home from `/user` + `/summary`, fetches a 20-item due batch,
-> runs a typed meaning/reading session with `efontJA_16`, and submits completed
-> items with `POST /v2/reviews` (201). A persistent outbox stores each result
-> before sending and retries it after a reboot; the offline path is verified.
-> Dim/blank/deep-sleep and the Home outbox status are in. Lessons now fetch five
-> at a time, show meaning/reading + mnemonic pages and start with
-> `PUT /assignments/{id}/start` (200). The lesson list, components and visual
-> pack are next.
+> runs a typed meaning/reading session and submits completed items with
+> `POST /v2/reviews` (201). A persistent outbox makes reviews survive a reboot
+> and offline sessions. Lessons fetch five at a time, show meaning/reading and
+> mnemonic pages, and start with `PUT /assignments/{id}/start` (200).
+> Japanese prompts and readings now come from the microSD visual pack at
+> 64/32/20 px: 6,621 glyphs in 2.9 MB, generated locally from the WaniKani kanji
+> cache. No WaniKani content is in the repository. `efontJA_16` remains only as
+> a fallback for radicals. Radical images, the lesson list/components and
+> dismissing rejected outbox items are next.
 >
 > KaniKey is an **unofficial** third-party app for WaniKani. It is not
 > affiliated with, endorsed by or sponsored by WaniKani or Tofugu LLC. WaniKani

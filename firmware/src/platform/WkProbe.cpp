@@ -9,9 +9,9 @@
 namespace kk {
 
 namespace {
-bool parseBody(const String& body, JsonValue* out) {
+bool parseBody(std::string_view body, JsonValue* out) {
     JsonParser p;
-    return p.parse(std::string_view(body.c_str(), body.length()), out);
+    return p.parse(body, out);
 }
 }  // namespace
 
@@ -46,8 +46,7 @@ SummaryProbeResult probeWaniKaniSummary(const String& token) {
     r.ms = http.ms;
     r.bytes = http.bytes;
     if (http.httpCode == 200) {
-        r.parsed = parseSummaryText(std::string_view(http.body.c_str(), http.body.length()),
-                                    &r.summary);
+        r.parsed = parseSummaryText(http.body, &r.summary);
         if (r.parsed)
             Serial.printf("[summary] %u reviews, %u lessons, next %s\n",
                           static_cast<unsigned>(r.summary.totalReviews()),

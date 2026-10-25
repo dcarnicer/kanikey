@@ -18,11 +18,13 @@
 #include <esp_system.h>
 #include <time.h>
 
+#include <algorithm>
 #include <cstring>
 
 #include "board/Board.h"
 #include "platform/DevToken.h"
 #include "platform/DevWifi.h"
+#include "platform/GlyphPack.h"
 #include "platform/WkProbe.h"
 #include "platform/OutboxStore.h"
 #include "platform/WkClient.h"
@@ -33,6 +35,7 @@
 #include "wk/ReviewQueue.h"
 #include "wk/RomajiIme.h"
 #include "wk/Time.h"
+#include "wk/Utf8.h"
 
 namespace {
 
@@ -40,18 +43,18 @@ using tgc::Key;
 using tgc::KeyEvent;
 
 constexpr uint16_t kBg = 0x0000;
-constexpr uint16_t kSurface = 0x18E4;
-constexpr uint16_t kSurfaceHi = 0x2967;
-constexpr uint16_t kLine = 0x3A0A;
+constexpr uint16_t kSurface = 0x0108;   // 8-bit: very dark teal-slate
+constexpr uint16_t kSurfaceHi = 0x2128; // 8-bit: dark navy
+constexpr uint16_t kLine = 0x2208;      // 8-bit: muted teal line
 constexpr uint16_t kText = 0xFFFF;
 constexpr uint16_t kDim = 0xA577;
 constexpr uint16_t kFaint = 0x636F;
-constexpr uint16_t kBrand = 0xFB0B;  // #FF7A59, RGB565
+constexpr uint16_t kBrand = 0xE308;  // #FF7A59, 8-bit coral
 constexpr uint16_t kOk = 0x5EF1;
 constexpr uint16_t kOkBg = 0x0183;
 constexpr uint16_t kAccent = 0x2B1B;
 constexpr uint16_t kAccentHi = 0x7D5F;
-constexpr uint16_t kReading = 0x6EF9;
+constexpr uint16_t kReading = 0x2D14;
 constexpr uint16_t kErr = 0xC945;
 constexpr uint16_t kErrBg = 0x3882;
 constexpr uint16_t kWarn = 0xFE26;
@@ -98,6 +101,9 @@ std::string gDirectReading;  // test/serial reading input, bypasses the romaji I
 kk::RomajiIme gIme;
 std::vector<kk::OutboxItem> gOutbox;
 kk::LessonBatch gLessonBatch;
+kk::GlyphPack gPack;
+WiFiServer gAssetServer(8080);
+bool gAssetServerActive = false;
 bool gLessonActive = false;
 size_t gLessonIndex = 0;
 size_t gLessonPage = 0;
@@ -117,25 +123,37 @@ void present() {
 
 bool ensureCanvas() {
     if (gCanvas || !gDisp) return gCanvas != nullptr;
-    gCanvas = new lgfx::LGFX_Sprite(gDisp);
-    gCanvas->setColorDepth(16);
-    if (!gCanvas->createSprite(gDisp->width(), gDisp->height())) {
-        Serial.println("[kk] canvas allocation failed; drawing directly");
+    for (int attempt = 0; attempt < 4; ++attempt) {
+        gCanvas = new lgfx::LGFX_Sprite(gDisp);
+        gCanvas->setColorDepth(lgfx::rgb332_1Byte);
+        if (gCanvas->createSprite(gDisp->width(), gDisp->height())) return true;
+        Serial.printf("[kk] canvas attempt %d failed, heap %u largest %u\n", attempt + 1,
+                      static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+                      static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL |
+                                                                             MALLOC_CAP_8BIT)));
         delete gCanvas;
         gCanvas = nullptr;
-        return false;
+        if (attempt < 3) delay(120);
     }
-    return true;
+    Serial.println("[kk] drawing directly");
+    return false;
 }
 
 void releaseCanvas() {
     if (!gCanvas) return;
     delete gCanvas;
     gCanvas = nullptr;
-    Serial.printf("[kk] canvas released, heap %u largest %u\n",
-                  static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
-                  static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL |
-                                                                         MALLOC_CAP_8BIT)));
+}
+
+// TLS needs one large block; give it the canvas only for the request and take
+// it back before the response is parsed, so the frame buffer never fragments
+// the heap while subjects are being decoded.
+bool gFreeCanvasForRequest = false;
+void requestBefore() {
+    if (gFreeCanvasForRequest) releaseCanvas();
+}
+void requestAfter() {
+    if (gFreeCanvasForRequest) ensureCanvas();
 }
 
 bool gShift = false;
@@ -248,9 +266,9 @@ bool runBatch() {
     const uint32_t now = static_cast<uint32_t>(time(nullptr));
     const std::vector<uint32_t> ids = gSummary.dueSubjectIds(now, 20);
     Serial.printf("[review] %u due subject ids\n", static_cast<unsigned>(ids.size()));
-    releaseCanvas();
+    gFreeCanvasForRequest = true;
     kk::ReviewBatch batch = kk::fetchReviewBatch(kk::DevToken::load(), ids, now, 20);
-    ensureCanvas();
+    gFreeCanvasForRequest = false;
     if (!batch.ok) {
         Serial.printf("[review] batch failed: %s\n", batch.error.c_str());
         snprintf(gNetLine, sizeof gNetLine, "Batch: %s", batch.error.c_str());
@@ -345,6 +363,16 @@ void drawWrapped(lgfx::LovyanGFX& d, const std::string& text, int x, int y, int 
     }
 }
 
+void trimFrontToWidth(lgfx::LovyanGFX& d, std::string& text, int maxWidth) {
+    while (text.size() > 1 && d.textWidth(text.c_str()) > maxWidth) {
+        const char* p = text.c_str();
+        kk::utf8Next(&p);
+        const size_t n = static_cast<size_t>(p - text.c_str());
+        if (n == 0 || n >= text.size()) break;
+        text.erase(0, n);
+    }
+}
+
 void drawReview() {
     if (!gDisp) return;
     const kk::SessionItem* item = gQueue.current();
@@ -378,16 +406,19 @@ void drawReview() {
 
     d.fillRect(4, 20, 88, 88, kSurface);
     d.drawRect(4, 20, 88, 88, kLine);
-    d.setFont(&fonts::efontJA_16);
-    d.setTextSize(1);
-    const int base = d.textWidth(s->characters.c_str());
-    int scale = 3;
-    while (scale > 1 && base * scale > 80) --scale;
-    d.setTextSize(scale);
-    d.setTextDatum(lgfx::middle_center);
-    d.setTextColor(kText, kSurface);
-    d.drawString(s->characters.c_str(), 48, 56);
-    d.setTextDatum(lgfx::top_left);
+    if (!gPack.drawTextCentered(d, s->characters, 64, 48, 56, 78, 80, kText, kSurface,
+                                kk::ClipRect{6, 22, 90, 106})) {
+        d.setFont(&fonts::efontJA_16);
+        d.setTextSize(1);
+        const int base = d.textWidth(s->characters.c_str());
+        int scale = 3;
+        while (scale > 1 && base * scale > 80) --scale;
+        d.setTextSize(scale);
+        d.setTextDatum(lgfx::middle_center);
+        d.setTextColor(kText, kSurface);
+        d.drawString(s->characters.c_str(), 48, 56);
+        d.setTextDatum(lgfx::top_left);
+    }
     char type[24];
     const char* kindName = s->type == kk::SubjectType::Vocabulary ? "VOCAB"
                            : s->type == kk::SubjectType::Radical ? "RADICAL"
@@ -410,23 +441,29 @@ void drawReview() {
         d.drawRect(100, 52, 136, 32, kLine);
         std::string shown = meaning ? gMeaningInput
                                      : (!gDirectReading.empty() ? gDirectReading : gIme.text());
-        if (meaning) {
+        int caret = 106;
+        if (shown.empty()) {
             d.setTextFont(1);
             d.setTextSize(1);
-        } else {
-            d.setFont(&fonts::efontJA_16);
-            d.setTextSize(1);
-        }
-        if (shown.empty()) {
             d.setTextColor(kFaint, kSurfaceHi);
             d.drawString(meaning ? "answer" : "kana", 106, 60);
+        } else if (!meaning &&
+                   gPack.drawTextRight(d, shown, 230, 80, 32, kText, kSurfaceHi,
+                                       kk::ClipRect{102, 54, 234, 86})) {
+            caret = 230;
         } else {
-            while (shown.size() > 1 && d.textWidth(shown.c_str()) > 128)
-                shown.erase(0, 1);
+            if (meaning) {
+                d.setTextFont(1);
+                d.setTextSize(1);
+            } else {
+                d.setFont(&fonts::efontJA_16);
+                d.setTextSize(1);
+            }
+            trimFrontToWidth(d, shown, 128);
             d.setTextColor(kText, kSurfaceHi);
             d.drawString(shown.c_str(), 106, 60);
+            caret = 106 + d.textWidth(shown.c_str());
         }
-        const int caret = 106 + (shown.empty() ? 0 : d.textWidth(shown.c_str()));
         if (caret < 232) d.fillRect(caret, 58, 2, 16, kAccent);
 
         if (!meaning) {
@@ -446,36 +483,54 @@ void drawReview() {
         d.setTextColor(kFaint, kBg);
         d.drawString("You typed", 100, 38);
         const bool japanese = part == kk::ReviewPart::Reading;
-        if (japanese) {
-            d.setFont(&fonts::efontJA_16);
-            d.setTextSize(1);
-        } else {
-            d.setTextFont(1);
-            d.setTextSize(1);
-        }
-        d.setTextColor(kDim, kBg);
         std::string typed = gFeedbackInput;
-        while (typed.size() > 1 && d.textWidth(typed.c_str()) > 136) typed.erase(0, 1);
-        d.drawString(typed.empty() ? "-" : typed.c_str(), 100, 47);
+        bool typedDrawn = false;
+        if (japanese && !typed.empty())
+            typedDrawn = gPack.drawTextFit(d, typed, 100, 64, 20, 136, kDim, kBg,
+                                           kk::ClipRect{100, 44, 236, 68}) != 0;
+        if (!typedDrawn) {
+            if (japanese) {
+                d.setFont(&fonts::efontJA_16);
+            } else {
+                d.setTextFont(1);
+            }
+            d.setTextSize(1);
+            d.setTextColor(kDim, kBg);
+            if (japanese) {
+                trimFrontToWidth(d, typed, 136);
+            } else {
+                while (typed.size() > 1 && d.textWidth(typed.c_str()) > 136)
+                    typed.erase(0, 1);
+            }
+            d.drawString(typed.empty() ? "-" : typed.c_str(), 100, 47);
+        }
         d.setTextFont(0);
         d.setTextSize(1);
         d.setTextColor(kFaint, kBg);
         d.drawString("Answer", 100, 65);
-        if (japanese) {
-            d.setFont(&fonts::efontJA_16);
-            d.setTextSize(1);
-        } else {
-            d.setTextFont(1);
-            d.setTextSize(1);
-        }
-        d.setTextColor(ok ? kOk : warn ? kWarn : kErr, kBg);
         std::string answer = correctAnswer(*s, part);
-        if (!japanese) {
-            if (d.textWidth(answer.c_str()) > 136) d.setTextFont(0);
-            while (answer.size() > 1 && d.textWidth(answer.c_str()) > 136) answer.pop_back();
-            if (answer.size() < correctAnswer(*s, part).size()) answer += "...";
+        bool answerDrawn = false;
+        if (japanese)
+            answerDrawn = gPack.drawTextFit(d, answer, 100, 90, 20, 136,
+                                            ok ? kOk : warn ? kWarn : kErr, kBg,
+                                            kk::ClipRect{100, 70, 236, 94}) != 0;
+        if (!answerDrawn) {
+            if (japanese) {
+                d.setFont(&fonts::efontJA_16);
+            } else {
+                d.setTextFont(1);
+            }
+            d.setTextSize(1);
+            d.setTextColor(ok ? kOk : warn ? kWarn : kErr, kBg);
+            if (japanese) {
+                trimFrontToWidth(d, answer, 136);
+            } else {
+                if (d.textWidth(answer.c_str()) > 136) d.setTextFont(0);
+                while (answer.size() > 1 && d.textWidth(answer.c_str()) > 136) answer.pop_back();
+                if (answer.size() < correctAnswer(*s, part).size()) answer += "...";
+            }
+            d.drawString(answer.c_str(), 100, 74);
         }
-        d.drawString(answer.c_str(), 100, 74);
         if (gCheck.status != kk::AnswerStatus::Correct)
             drawWrapped(d, gCheck.message, 100, 92, 136, 2, kFaint, kBg);
     }
@@ -550,7 +605,7 @@ bool reconcileOutboxItem(kk::OutboxItem& item) {
     }
     kk::JsonParser p;
     kk::JsonValue v;
-    if (!p.parse(std::string_view(r.body.c_str(), r.body.length()), &v)) return false;
+    if (!p.parse(r.body, &v)) return false;
     const std::vector<kk::Assignment> as = kk::parseAssignments(v);
     for (const kk::Assignment& a : as) {
         if (a.id != item.assignmentId) continue;
@@ -597,9 +652,9 @@ bool sendOutboxItem(uint32_t seq) {
     }
     body += "}}";
 
-    releaseCanvas();
+    gFreeCanvasForRequest = true;
     const kk::WkResponse r = kk::wkPost("/v2/reviews", kk::DevToken::load(), body, 4096);
-    ensureCanvas();
+    gFreeCanvasForRequest = false;
 
     item = kk::outboxFind(gOutbox, seq);
     if (!item) return true;
@@ -858,18 +913,21 @@ void drawLesson() {
     d.drawString(pos, 233, 5);
     d.setTextDatum(lgfx::top_left);
 
-    d.fillRect(4, 20, 74, 60, kSurface);
-    d.drawRect(4, 20, 74, 60, kLine);
-    d.setFont(&fonts::efontJA_16);
-    d.setTextSize(1);
-    const int base = d.textWidth(s->characters.c_str());
-    int scale = 3;
-    while (scale > 1 && base * scale > 66) --scale;
-    d.setTextSize(scale);
-    d.setTextDatum(lgfx::middle_center);
-    d.setTextColor(kText, kSurface);
-    d.drawString(s->characters.c_str(), 41, 50);
-    d.setTextDatum(lgfx::top_left);
+    d.fillRect(4, 20, 74, 64, kSurface);
+    d.drawRect(4, 20, 74, 64, kLine);
+    if (!gPack.drawTextCentered(d, s->characters, 64, 41, 52, 70, 62, kText, kSurface,
+                                kk::ClipRect{6, 22, 76, 82})) {
+        d.setFont(&fonts::efontJA_16);
+        d.setTextSize(1);
+        const int base = d.textWidth(s->characters.c_str());
+        int scale = 3;
+        while (scale > 1 && base * scale > 66) --scale;
+        d.setTextSize(scale);
+        d.setTextDatum(lgfx::middle_center);
+        d.setTextColor(kText, kSurface);
+        d.drawString(s->characters.c_str(), 41, 52);
+        d.setTextDatum(lgfx::top_left);
+    }
 
     const char* kind = s->type == kk::SubjectType::Vocabulary ? "VOCAB"
                        : s->type == kk::SubjectType::Radical ? "RADICAL"
@@ -906,10 +964,13 @@ void drawLesson() {
                 break;
             }
     if (!reading.empty()) {
-        d.setFont(&fonts::efontJA_16);
-        d.setTextSize(1);
-        d.setTextColor(kReading, kBg);
-        d.drawString(reading.c_str(), 86, 58);
+        if (!gPack.drawTextFit(d, reading, 86, 80, 32, 148, kReading, kBg,
+                               kk::ClipRect{86, 50, 236, 88})) {
+            d.setFont(&fonts::efontJA_16);
+            d.setTextSize(1);
+            d.setTextColor(kReading, kBg);
+            d.drawString(reading.c_str(), 86, 58);
+        }
     }
 
     std::string mnemonic = s->meaningMnemonic;
@@ -944,9 +1005,9 @@ void drawLesson() {
 void startLessons() {
     if (!gHaveSummary) return;
     drawLoading("Fetching lessons...", "5 at a time, please wait");
-    releaseCanvas();
+    gFreeCanvasForRequest = true;
     gLessonBatch = kk::fetchLessonBatch(kk::DevToken::load(), gSummary.lessonSubjectIds(5), 5);
-    ensureCanvas();
+    gFreeCanvasForRequest = false;
     if (!gLessonBatch.ok) {
         Serial.printf("[lesson] failed: %s\n", gLessonBatch.error.c_str());
         drawLoading("No lessons available", gLessonBatch.error.c_str());
@@ -970,10 +1031,10 @@ void startCurrentLesson() {
     const kk::Subject* s = lessonSubjectById(a.subjectId);
     drawLoading("Starting lesson...", s ? s->characters.c_str() : "");
     const uint32_t now = static_cast<uint32_t>(time(nullptr));
-    releaseCanvas();
+    gFreeCanvasForRequest = true;
     const bool ok = kk::startAssignment(kk::DevToken::load(), a.id,
                                         now >= 1700000000u ? now : 0);
-    ensureCanvas();
+    gFreeCanvasForRequest = false;
     if (ok) {
         if (gLessons > 0) --gLessons;
         ++gLessonIndex;
@@ -1298,10 +1359,12 @@ void draw() {
         d.setTextDatum(lgfx::top_left);
     }
 
-    d.setFont(&fonts::efontJA_16);
-    d.setTextColor(kText, kBg);
-    d.drawString("食", 200, 100);
-
+    if (!gPack.drawTextCentered(d, "食", 32, 216, 100, 42, 42, kText, kBg,
+                                kk::ClipRect{190, 82, 238, 118})) {
+        d.setFont(&fonts::efontJA_16);
+        d.setTextColor(kText, kBg);
+        d.drawString("食", 200, 100);
+    }
     d.endWrite();
     present();
 }
@@ -1361,23 +1424,230 @@ void dumpCanvas() {
     static char line[16 + 4 * 240 + 2];
     const int w = gCanvas->width();
     const int h = gCanvas->height();
-    // The sprite buffer stores RGB565 big-endian; dump the bytes as they are,
-    // exactly like Tangocho's screenshot remote.
+    // The sprite buffer is RGB332 (one byte per pixel); dump it raw.
+    const bool rgb332 = gCanvas->getColorDepth() == lgfx::rgb332_1Byte;
     const uint8_t* px = static_cast<const uint8_t*>(gCanvas->getBuffer());
-    Serial.printf("\n#shot %d %d on\n", w, h);
+    Serial.printf("\n#shot %d %d %s\n", w, h, rgb332 ? "rgb332" : "rgb565");
     for (int y = 0; y < h; ++y) {
         int n = snprintf(line, sizeof line, "#r %d ", y);
         for (int x = 0; x < w; ++x) {
-            const uint8_t* p = px + (static_cast<size_t>(y) * w + x) * 2;
-            line[n++] = kHex[p[0] >> 4];
-            line[n++] = kHex[p[0] & 15];
-            line[n++] = kHex[p[1] >> 4];
-            line[n++] = kHex[p[1] & 15];
+            if (rgb332) {
+                const uint8_t v = px[static_cast<size_t>(y) * w + x];
+                line[n++] = kHex[v >> 4];
+                line[n++] = kHex[v & 15];
+            } else {
+                const uint8_t* p = px + (static_cast<size_t>(y) * w + x) * 2;
+                line[n++] = kHex[p[0] >> 4];
+                line[n++] = kHex[p[0] & 15];
+                line[n++] = kHex[p[1] >> 4];
+                line[n++] = kHex[p[1] & 15];
+            }
         }
         line[n++] = '\n';
         Serial.write(reinterpret_cast<const uint8_t*>(line), n);
     }
     Serial.print("#end\n");
+}
+
+void assetRespond(WiFiClient& client, int code, const char* reason) {
+    client.printf("HTTP/1.1 %d %s\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", code,
+                  reason);
+    client.flush();
+    delay(20);
+    client.stop();
+}
+
+void stopAssetServer() {
+    gAssetServerActive = false;
+    gAssetServer.end();
+    gDirty = true;
+}
+
+void serviceAssetServer() {
+    if (!gAssetServerActive) return;
+    WiFiClient client = gAssetServer.available();
+    if (!client) return;
+    client.setTimeout(10);
+    client.setNoDelay(true);
+
+    String request = client.readStringUntil('\n');
+    request.trim();
+    Serial.printf("[asset] request %s\n", request.c_str());
+    const int sp1 = request.indexOf(' ');
+    const int sp2 = sp1 < 0 ? -1 : request.indexOf(' ', sp1 + 1);
+    if (sp1 < 0 || sp2 < 0) {
+        assetRespond(client, 400, "Bad Request");
+        stopAssetServer();
+        return;
+    }
+    const String method = request.substring(0, sp1);
+    const String path = request.substring(sp1 + 1, sp2);
+    int contentLength = -1;
+    const uint32_t headerStart = millis();
+    while (millis() - headerStart < 10000) {
+        String line = client.readStringUntil('\n');
+        if (line == "\r" || line.isEmpty()) break;
+        if (line.startsWith("Content-Length:")) contentLength = line.substring(15).toInt();
+    }
+    if (method != "PUT" || !path.startsWith("/kanikey/") || path.indexOf("..") >= 0 ||
+        path.length() > 60 || contentLength <= 0 || contentLength > 32 * 1024 * 1024) {
+        Serial.printf("[asset] rejected %s %d\n", method.c_str(), contentLength);
+        assetRespond(client, 400, "Bad Request");
+        stopAssetServer();
+        return;
+    }
+    const int slash = path.lastIndexOf('/');
+    if (slash > 0) {
+        const String dir = path.substring(0, slash);
+        if (!SD.exists(dir)) SD.mkdir(dir);
+    }
+    const bool isPack = path == "/kanikey/glyphs.kgp";
+    if (isPack) gPack.close();
+    if (SD.exists(path)) SD.remove(path);
+    File f = SD.open(path, FILE_WRITE);
+    if (!f) {
+        Serial.printf("[asset] cannot open %s\n", path.c_str());
+        assetRespond(client, 500, "Cannot Open");
+        stopAssetServer();
+        return;
+    }
+
+    drawLoading("Wi-Fi upload", path.c_str());
+    Serial.printf("[asset] writing %s (%d bytes)\n", path.c_str(), contentLength);
+    uint8_t buf[1024];
+    uint32_t got = 0;
+    uint32_t lastData = millis();
+    while (got < static_cast<uint32_t>(contentLength)) {
+        const int avail = client.available();
+        if (avail > 0) {
+            const size_t take = std::min<size_t>(
+                sizeof buf, std::min<size_t>(static_cast<size_t>(avail),
+                                            contentLength - static_cast<int>(got)));
+            const int n = client.read(buf, take);
+            if (n > 0) {
+                f.write(buf, n);
+                got += static_cast<uint32_t>(n);
+                lastData = millis();
+                continue;
+            }
+        }
+        if (!client.connected() && !client.available()) break;
+        if (millis() - lastData > 10000) break;
+        delay(1);
+    }
+    f.close();
+    if (got != static_cast<uint32_t>(contentLength)) SD.remove(path);
+    Serial.printf("[asset] done %u/%d\n", got, contentLength);
+    if (got == static_cast<uint32_t>(contentLength))
+        assetRespond(client, 201, "Created");
+    else
+        assetRespond(client, 500, "Short Body");
+
+    if (isPack && got == static_cast<uint32_t>(contentLength)) {
+        gPack.open(SD, "/kanikey/glyphs.kgp");
+        Serial.printf("[pack] %s\n", gPack.statusLine());
+    }
+    stopAssetServer();
+}
+
+void startAssetServer() {
+    if (gReviewActive || gLessonActive) {
+        Serial.println("[asset] finish the review/lesson first");
+        return;
+    }
+    if (!kk::DevWifi::connected() && !kk::DevWifi::connect(30000)) {
+        Serial.println("[asset] no Wi-Fi");
+        return;
+    }
+    gAssetServer.begin();
+    gAssetServer.setNoDelay(true);
+    gAssetServerActive = true;
+    char url[64];
+    snprintf(url, sizeof url, "http://%s:8080", kk::DevWifi::ip().c_str());
+    drawLoading("Asset server", url);
+    Serial.printf("[asset] ready %s\n", url);
+}
+
+void uploadSdFile(const String& line) {
+    // up <bytes> <path>: the host sends the raw bytes right after the ack.
+    const int sep = line.indexOf(' ', 3);
+    if (sep < 0) {
+        Serial.println("[up] use: up <bytes> <path>");
+        return;
+    }
+    const long requested = line.substring(3, sep).toInt();
+    String path = line.substring(sep + 1);
+    path.trim();
+    const uint32_t size = requested > 0 ? static_cast<uint32_t>(requested) : 0;
+    if (!gSdOk || size == 0 || size > 32u * 1024u * 1024u || !path.startsWith("/") ||
+        path.indexOf("..") >= 0 || path.length() > 60) {
+        Serial.println("[up] bad size, path or SD");
+        return;
+    }
+
+    const int slash = path.lastIndexOf('/');
+    if (slash > 0) {
+        const String dir = path.substring(0, slash);
+        if (!SD.exists(dir)) SD.mkdir(dir);
+    }
+    const bool isPack = path == "/kanikey/glyphs.kgp";
+    if (isPack) gPack.close();
+    if (SD.exists(path)) SD.remove(path);
+    File f = SD.open(path, FILE_WRITE);
+    if (!f) {
+        Serial.printf("[up] cannot open %s\n", path.c_str());
+        return;
+    }
+
+    drawLoading("Writing SD...", path.c_str());
+    Serial.printf("[up] ready %s %u\n", path.c_str(), static_cast<unsigned>(size));
+    static uint8_t buf[8192];
+    uint32_t got = 0;
+    uint32_t lastLog = millis();
+    while (got < size) {
+        const size_t want = std::min<size_t>(sizeof buf, size - got);
+        size_t have = 0;
+        uint32_t lastByte = millis();
+        while (have < want) {
+            const int available = Serial.available();
+            if (available > 0) {
+                const size_t take =
+                    std::min<size_t>(static_cast<size_t>(available), want - have);
+                const size_t n = Serial.readBytes(buf + have, take);
+                if (n) {
+                    have += n;
+                    lastByte = millis();
+                    continue;
+                }
+            }
+            if (millis() - lastByte > 5000) break;
+            delay(1);
+        }
+        if (have == 0) {
+            Serial.println("[up] timeout");
+            break;
+        }
+        f.write(buf, have);
+        got += have;
+        Serial.printf("[up] ack %u\n", static_cast<unsigned>(got));
+        if (millis() - lastLog > 1000) {
+            lastLog = millis();
+            Serial.printf("[up] %u/%u\n", static_cast<unsigned>(got),
+                          static_cast<unsigned>(size));
+        }
+        if (have < want) break;
+    }
+    f.close();
+    if (got != size) SD.remove(path);
+    Serial.printf("[up] done %u/%u\n", static_cast<unsigned>(got),
+                  static_cast<unsigned>(size));
+    if (isPack && got == size) {
+        if (gPack.open(SD, "/kanikey/glyphs.kgp"))
+            Serial.printf("[pack] %s\n", gPack.statusLine());
+        else
+            Serial.printf("[pack] %s\n", gPack.statusLine());
+    }
+    gDirty = true;
 }
 
 void handleSerial() {
@@ -1393,7 +1663,9 @@ void handleSerial() {
             continue;
         }
         gSerialLine.trim();
-        if (gSerialLine == "w") {
+        if (gSerialLine.startsWith("up ")) {
+            uploadSdFile(gSerialLine);
+        } else if (gSerialLine == "w") {
             snprintf(gNetLine, sizeof gNetLine, "NET: joining...");
             gDirty = true;
             if (kk::DevWifi::connect(30000))
@@ -1534,6 +1806,10 @@ void handleSerial() {
                           static_cast<unsigned>(heap_caps_get_largest_free_block(
                               MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
                           static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL)));
+        } else if (gSerialLine == "i") {
+            Serial.printf("[pack] %s\n", gPack.statusLine());
+        } else if (gSerialLine == "S") {
+            startAssetServer();
         } else if (gSerialLine == "s") {
             if (kk::DevWifi::connected()) {
                 Serial.println("[wifi] disconnect first");
@@ -1552,7 +1828,7 @@ void handleSerial() {
             delay(100);
             ESP.restart();
         } else if (!gSerialLine.isEmpty()) {
-            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear k <token> c=clear h=heap p=picture s=scan r=restart\n");
+            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload\n");
         }
         gSerialLine = "";
         gDirty = true;
@@ -1562,6 +1838,7 @@ void handleSerial() {
 }  // namespace
 
 void setup() {
+    Serial.setRxBufferSize(16384);
     Serial.begin(115200);
     delay(250);
 
@@ -1571,10 +1848,12 @@ void setup() {
     gDisp->setBrightness(128);
 
     ensureCanvas();
+    kk::wkSetRequestHooks(requestBefore, requestAfter);
 
     Serial.printf("\n[kk] KaniKey M0\n");
-    Serial.printf("[kk] canvas: %s (%u bytes)\n", gCanvas ? "ok" : "none",
-                  static_cast<unsigned>(gDisp->width() * gDisp->height() * 2));
+    Serial.printf("[kk] canvas: %s (%u bytes, %d bpp)\n", gCanvas ? "ok" : "none",
+                  static_cast<unsigned>(gCanvas ? gCanvas->bufferLength() : 0),
+                  static_cast<int>(gCanvas ? gCanvas->getColorDepth() : 0));
     Serial.printf("[kk] board: %s\n", tgc::board::name());
     Serial.printf("[kk] flash: %u MB, PSRAM: %u MB\n",
                   static_cast<unsigned>(ESP.getFlashChipSize() / (1024 * 1024)),
@@ -1594,6 +1873,10 @@ void setup() {
     }
 
     gSdOk = mountSd();
+    if (gSdOk) {
+        gPack.open(SD, "/kanikey/glyphs.kgp");
+        Serial.printf("[pack] %s\n", gPack.statusLine());
+    }
     gLastInputAt = millis();
     gDirty = true;
     Serial.println("[kk] first draw");
@@ -1635,6 +1918,7 @@ void setup() {
 void loop() {
     tgc::board::update();
     handleSerial();
+    serviceAssetServer();
 
     const uint32_t now = millis();
     if (gScreenOff) {
@@ -1704,7 +1988,7 @@ void loop() {
         tgc::board::setDisplayOn(false);
         gScreenOff = true;
     }
-    if (!gReviewActive && !gReviewSummary && !gFeedback && !gLessonActive &&
+    if (!gReviewActive && !gReviewSummary && !gFeedback && !gLessonActive && !gAssetServerActive &&
         now - gLastInputAt > 120000 && !tgc::board::externalPower()) {
         Serial.println("[power] idle sleep");
         tgc::board::deepSleep();

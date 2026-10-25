@@ -331,11 +331,13 @@ Home ──L──► Lessons ──Enter──► Lesson card
   2 min when no review is active and it is on battery. On a blank panel the
   first key only wakes it.
 
-**M1 implementation note.** The live build uses `efontJA_16` at 2× (32 px) for
-vocabulary and 3× (48 px) for a single kanji; the 64 px prompt and radical
-bitmaps arrive with the visual pack. The bottom bar says `Enter check` /
-`Esc quit`; the Pause menu and `Tab: details` are later. The screen is already
-driven by the same review queue and answer checker as the final design.
+**Implementation note (M5).** The live build draws the 64 px prompt, 32 px
+reading and 20 px feedback from the SD visual pack. Vocabulary words composed
+of several characters are laid out from individual glyphs. Radicals with no
+glyph in the pack still fall back to `efontJA_16`. The bottom bar says
+`Enter check` / `Esc quit`; the Pause menu and `Tab: details` are later. The
+screen is driven by the same review queue and answer checker as the final
+design.
 
 ### 5.5 Feedback
 

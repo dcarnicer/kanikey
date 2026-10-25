@@ -5,6 +5,57 @@ date, decision, why and what it implies.
 
 ---
 
+## 2026-10-25 — Japanese glyphs come from the SD, not flash
+
+**Decision:** review and lesson Japanese text is drawn from
+`/kanikey/glyphs.kgp`, a `KKGP` v1 pack with 4bpp RLE glyphs at 64/32/20 px.
+The pack is generated locally from the WaniKani API or Tangocho's WaniKani
+kanji cache and is never committed.
+
+**Why:** the app slot is ~1.75 MB and `efontJA_16` costs ~468 KB; the card has
+30 GB. A 64 px glyph is also much better than a scaled 16 px font.
+
+**Implications:** the SD card is required for Japanese in v1. Missing glyphs
+(radicals today) fall back to `efontJA_16`; removing the font needs radical
+images and a “visual pack missing” screen. The full tokenless pack is 2.9 MB
+for 6,621 glyphs.
+
+---
+
+## 2026-10-25 — 8-bit canvas, static response buffer
+
+**Decision:** the canvas is 8-bit RGB332 (32,400 B), and `WkClient` reads
+response bodies into a 32 KiB static buffer. During a review fetch the canvas
+is freed only for each TLS request and restored before the body is parsed.
+
+**Why:** a 16-bit canvas is 64,800 B. After 5–20 subject batches the largest
+free block falls to 28–63 KB, so the 16-bit canvas cannot be reallocated; the
+8-bit canvas always can. Keeping bodies out of the heap stops them from
+splitting the canvas block.
+
+**Implications:** the UI is 8-bit color; the theme colors still read correctly,
+and `tools/shot.py` decodes RGB332. Static RAM is ~28% (32 KiB body, 8 KiB
+upload buffer, 16 KiB USB RX). A streaming subject parser is still the right
+long-term fix for fragmentation.
+
+---
+
+## 2026-10-25 — Wi-Fi asset upload, USB as fallback
+
+**Decision:** a one-shot HTTP server on port 8080 (`S`) accepts a `PUT` under
+`/kanikey/`; `tools/device.py push` runs `curl -T`. The USB `up` command writes
+8 KiB chunks and waits for an ACK per chunk.
+
+**Why:** moving a 2.9 MB pack over the USB serial link dropped bytes and was
+slow; TCP over Wi-Fi completed the same file in seconds. USB remains useful for
+small files and when Wi-Fi is unavailable.
+
+**Implications:** the server is a development tool, not a production feature:
+it listens only when explicitly started, accepts only `/kanikey/` paths and is
+unauthenticated on the LAN.
+
+---
+
 ## 2026-10-25 — KaniKey is a companion, not a substitute
 
 **Decision:** KaniKey syncs with WaniKani and shows reviews/lessons. The

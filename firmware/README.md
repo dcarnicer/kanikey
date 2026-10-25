@@ -13,6 +13,10 @@ First hardware milestone for the M5Stack Cardputer ADV.
 - With a token, the Home screen shows the account level, due reviews, lessons,
   next review and last sync.
 - Measures internal heap before and after each TLS request.
+- Draws Japanese prompts and readings from the microSD visual pack
+  (`/kanikey/glyphs.kgp`); the first full pack has 6,621 glyphs at 64/32/20 px.
+- Writes the pack to the card over the USB serial link or a one-shot Wi-Fi
+  upload server.
 
 The Home screen shows live `/user` and `/summary` data. Enter fetches a
 20-item due batch, runs a typed meaning/reading session and submits completed
@@ -22,9 +26,44 @@ The panel dims after 30 s, blanks after 60 s and deep-sleeps after 2 min when
 no review is active. Hardware measurements are in
 [docs/hardware.md](../docs/hardware.md).
 
-M1 uses M5GFX's `efontJA_16` as a temporary kanji source; the final visual pack
-is still the plan. The font reference adds ~468 KB of flash and keeps the app
-at 88.6% of its slot.
+The full-screen canvas is **8-bit RGB332** (32,400 B). A 16-bit canvas is
+64,800 B and could not be reallocated after the subject batches fragmented the
+heap; 8 bits always reallocate. `efontJA_16` is now only the fallback for
+characters missing from the pack (principally radicals). The font reference
+still costs ~468 KB of flash; removing it needs radical images and a
+"visual pack missing" screen.
+
+## Visual pack
+
+Run these from the repository root. Generate the full kanji/kana pack locally
+(the generated file is ignored by git; it is not WaniKani content shipped with
+the app):
+
+```sh
+uv run --with pillow python3 tools/glyph-pack/build.py \
+    --tangocho --out dist/glyphs-full.kgp
+```
+
+Write it to the card. The Wi-Fi path is the reliable one for multi-megabyte
+files:
+
+```sh
+uv run --with pyserial python3 tools/device.py push \
+    dist/glyphs-full.kgp /kanikey/glyphs.kgp
+```
+
+`push` opens the serial port, waits for Home, sends `S` to start a one-shot
+HTTP server on port 8080 and runs `curl -T`. For a small file the USB path
+also works:
+
+```sh
+uv run --with pyserial python3 tools/device.py upload \
+    dist/glyphs-test.kgp /kanikey/glyphs.kgp
+```
+
+The serial uploader uses 8 KiB chunks with an ACK per chunk. It is useful for
+small files but was not reliable enough for the 2.9 MB full pack; use `push`
+for that.
 
 The token is a development convenience. Production KaniKey will use the setup
 portal and the same NVS storage, with the token masked on screen and never
@@ -53,7 +92,7 @@ off, the cable is charge-only, or the USB port is not enumerating.
 
 ## Live screenshots
 
-The firmware's `p` command dumps the 240×135 canvas as RGB565 rows. Capture it
+The firmware's `p` command dumps the 240×135 canvas as RGB332 bytes. Capture it
 and save a PNG:
 
 ```sh
@@ -89,6 +128,9 @@ prints or stores the password. `token` prompts for the WaniKani token, sends
 | `c` | Clear the saved token |
 | `s` | Scan Wi-Fi networks (when not connected) |
 | `h` | Print free/largest/minimum internal heap |
+| `i` | Print the visual pack status |
+| `S` | Start the one-shot Wi-Fi asset upload server |
+| `up <bytes> <path>` | Write a file to the card over USB (8 KiB ACKed chunks) |
 | `d` | Disconnect Wi-Fi (test offline) |
 | `o` | Print the outbox |
 | `f` | Reconnect and flush the outbox |

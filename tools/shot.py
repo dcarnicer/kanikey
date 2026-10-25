@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Capture the KaniKey canvas over USB as a PNG.
 
-The firmware's `p` command dumps the full 240x135 RGB565 canvas using the same
-`#shot` / `#r` lines as Tangocho's screenshot remote. This script opens the
-port, waits for the Home screen (the board may reset when the port opens),
-sends `p`, parses the dump and writes a PNG.
+The firmware's `p` command dumps the full 240x135 canvas using the same
+`#shot` / `#r` lines as Tangocho's screenshot remote. The canvas is 8-bit
+RGB332 (LovyanGFX's `rgb332_1Byte` sprite layout). This script opens the port,
+waits for the Home screen (the board may reset when the port opens), sends `p`,
+parses the dump and writes a PNG.
 
     uv run --with pyserial --with pillow python3 tools/shot.py
     uv run --with pyserial --with pillow python3 tools/shot.py --out /tmp/kk.png
@@ -21,7 +22,7 @@ import serial
 from PIL import Image
 
 DEFAULT_PORT = "/dev/cu.usbmodem1101"
-SHOT_RE = re.compile(r"#shot (\d+) (\d+)")
+SHOT_RE = re.compile(r"#shot (\d+) (\d+)(?: (\w+))?")
 ROW_RE = re.compile(r"#r (\d+) ([0-9a-f]+)$")
 
 
@@ -35,12 +36,14 @@ def rgb565_table() -> list[bytes]:
 
 def parse_shot(text: str, table: list[bytes]) -> Image.Image:
     width = height = 0
+    mode = "rgb565"
     rows: dict[int, str] = {}
     for line in text.splitlines():
         if line.startswith("#shot "):
             m = SHOT_RE.match(line)
             if m:
                 width, height = int(m.group(1)), int(m.group(2))
+                mode = m.group(3) or "rgb565"
                 rows.clear()
         elif line.startswith("#r "):
             m = ROW_RE.match(line)
@@ -51,9 +54,17 @@ def parse_shot(text: str, table: list[bytes]) -> Image.Image:
     pixels = bytearray()
     for y in range(height):
         raw = bytes.fromhex(rows[y])
-        pixels += b"".join(
-            table[(raw[i] << 8) | raw[i + 1]] for i in range(0, 2 * width, 2)
-        )
+        if mode == "rgb332":
+            # RGB332 byte: r in bits 5-7, g in 2-4, b in 0-1.
+            for v in raw[:width]:
+                pixels += bytes(
+                    (((v >> 5) & 7) * 255 // 7, ((v >> 2) & 7) * 255 // 7,
+                     (v & 3) * 255 // 3)
+                )
+        else:
+            pixels += b"".join(
+                table[(raw[i] << 8) | raw[i + 1]] for i in range(0, 2 * width, 2)
+            )
     return Image.frombytes("RGB", (width, height), bytes(pixels))
 
 
@@ -81,7 +92,7 @@ def capture(port: str, timeout: float = 60.0) -> Image.Image:
                 else:
                     shot_buf += chunk
                 # Device log lines (also the lines before the dump) to stderr.
-                if b"#shot" not in chunk:
+                if b"#shot" not in chunk and b"#r " not in chunk and b"#end" not in chunk:
                     for line in chunk.decode("utf-8", "replace").splitlines():
                         if line.strip():
                             print(f"| {line}", file=sys.stderr)
