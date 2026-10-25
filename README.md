@@ -82,6 +82,9 @@ está resuelta y probada en hardware en
 | [docs/decisions.md](docs/decisions.md) | Registro corto de decisiones propuestas |
 | [docs/screens/](docs/screens/) | Mockups a 240×135 (individuales a 4×; contact sheet a 2×) |
 
+Los documentos están en español; el código y los comentarios irán en inglés,
+como en Tangocho, para que el proyecto se pueda publicar.
+
 Los mockups se regeneran con:
 
 ```sh
