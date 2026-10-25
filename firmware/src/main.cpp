@@ -14,6 +14,7 @@
 #include <SPI.h>
 #include <WiFi.h>
 #include <esp_heap_caps.h>
+#include <LittleFS.h>
 #include <esp_system.h>
 #include <time.h>
 
@@ -23,9 +24,11 @@
 #include "platform/DevToken.h"
 #include "platform/DevWifi.h"
 #include "platform/WkProbe.h"
+#include "platform/OutboxStore.h"
 #include "platform/WkClient.h"
 #include "platform/WkReview.h"
 #include "wk/AnswerChecker.h"
+#include "wk/Outbox.h"
 #include "wk/ReviewQueue.h"
 #include "wk/RomajiIme.h"
 #include "wk/Time.h"
@@ -81,7 +84,6 @@ bool gReviewSummary = false;
 bool gFeedback = false;
 bool gNeedsSubmit = false;
 bool gFeedbackCompleted = false;
-unsigned gSubmitFailures = 0;
 kk::AnswerCheck gCheck;
 kk::ReviewPart gFeedbackPart = kk::ReviewPart::None;
 uint32_t gFeedbackSubjectId = 0;
@@ -89,6 +91,7 @@ std::string gFeedbackInput;
 kk::SessionItem gCompletedItem;
 std::string gMeaningInput;
 kk::RomajiIme gIme;
+std::vector<kk::OutboxItem> gOutbox;
 
 void localHm(uint32_t epoch, char* out, size_t n);
 void draw();
@@ -248,10 +251,28 @@ bool runBatch() {
     Serial.printf("[review] %u assignments, %u subjects\n",
                   static_cast<unsigned>(batch.assignments.size()),
                   static_cast<unsigned>(batch.subjects.size()));
-    for (size_t i = 0; i < batch.subjects.size() && i < 5; ++i) {
-        const kk::Subject& s = batch.subjects[i];
-        Serial.printf("[review] %u %s %s\n", static_cast<unsigned>(s.id), s.characters.c_str(),
-                      s.meanings.empty() ? "?" : s.meanings[0].text.c_str());
+    for (const kk::Subject& s : batch.subjects) {
+        std::string meaning;
+        for (const kk::Meaning& m : s.meanings)
+            if (m.accepted) {
+                meaning = m.text;
+                break;
+            }
+        if (meaning.empty() && !s.meanings.empty()) meaning = s.meanings[0].text;
+        std::string reading;
+        for (const kk::Reading& r : s.readings)
+            if (r.accepted && r.primary) {
+                reading = r.text;
+                break;
+            }
+        if (reading.empty())
+            for (const kk::Reading& r : s.readings)
+                if (r.accepted) {
+                    reading = r.text;
+                    break;
+                }
+        Serial.printf("[review] sub %u %s m=%s r=%s\n", static_cast<unsigned>(s.id),
+                      s.characters.c_str(), meaning.c_str(), reading.c_str());
     }
     snprintf(gNetLine, sizeof gNetLine, "Batch: %ua %us",
              static_cast<unsigned>(batch.assignments.size()),
@@ -484,36 +505,145 @@ void drawReviewSummary() {
     char m[40];
     snprintf(m, sizeof m, "%u mistakes", mistakes);
     d.drawString(m, 8, 84);
-    if (gSubmitFailures)
-        d.setTextColor(kErr, kBg);
+    const size_t pending = kk::outboxPendingCount(gOutbox);
+    const size_t rejected = kk::outboxRejectedCount(gOutbox);
+    if (rejected)
+        snprintf(m, sizeof m, "%u need attention", static_cast<unsigned>(rejected));
+    else if (pending)
+        snprintf(m, sizeof m, "%u pending", static_cast<unsigned>(pending));
     else
-        d.setTextColor(kFaint, kBg);
-    snprintf(m, sizeof m, "%u not saved", static_cast<unsigned>(gSubmitFailures));
-    d.drawString(gSubmitFailures ? m : "All reviews sent", 8, 98);
+        snprintf(m, sizeof m, "All reviews sent");
+    d.setTextColor(rejected ? kErr : pending ? kWarn : kFaint, kBg);
+    d.drawString(m, 8, 98);
     d.setTextColor(kFaint, kBg);
     d.drawString("Enter: home", 8, 125);
     d.endWrite();
     present();
 }
 
-void submitReview(const kk::SessionItem& item) {
+void saveOutbox() {
+    if (!kk::outboxSave(gOutbox)) Serial.println("[outbox] save failed");
+}
+
+bool reconcileOutboxItem(kk::OutboxItem& item) {
+    if (item.createdAt == 0) return false;
     const String token = kk::DevToken::load();
-    const std::string created = kk::formatIso8601(static_cast<uint32_t>(time(nullptr)));
+    String path = "/v2/assignments?ids=";
+    path += String(static_cast<unsigned long>(item.assignmentId));
+    const kk::WkResponse r = kk::wkGet(path, token, 4096, 12000);
+    if (r.httpCode != 200) {
+        Serial.printf("[outbox] reconcile %u -> HTTP %d\n",
+                      static_cast<unsigned>(item.assignmentId), r.httpCode);
+        return false;
+    }
+    kk::JsonParser p;
+    kk::JsonValue v;
+    if (!p.parse(std::string_view(r.body.c_str(), r.body.length()), &v)) return false;
+    const std::vector<kk::Assignment> as = kk::parseAssignments(v);
+    for (const kk::Assignment& a : as) {
+        if (a.id != item.assignmentId) continue;
+        if (a.dataUpdatedAt > item.createdAt && a.availableAt > item.createdAt) {
+            kk::outboxRemove(gOutbox, item.seq);
+            saveOutbox();
+            Serial.printf("[outbox] %u was already accepted\n",
+                          static_cast<unsigned>(item.assignmentId));
+            return true;
+        }
+        break;
+    }
+    return false;
+}
+
+bool sendOutboxItem(uint32_t seq) {
+    kk::OutboxItem* item = kk::outboxFind(gOutbox, seq);
+    if (!item) return true;
+    if (item->state == kk::OutboxState::Rejected) return false;
+    if (item->state == kk::OutboxState::Sending ||
+        item->state == kk::OutboxState::Ambiguous) {
+        if (reconcileOutboxItem(*item)) return true;
+        item = kk::outboxFind(gOutbox, seq);
+        if (!item) return true;
+        item->state = kk::OutboxState::Pending;
+        saveOutbox();
+    }
+
+    item->state = kk::OutboxState::Sending;
+    if (item->attempts < 255) ++item->attempts;
+    saveOutbox();
+
     String body = "{\"review\":{\"assignment_id\":";
-    body += String(static_cast<unsigned long>(item.assignmentId));
+    body += String(static_cast<unsigned long>(item->assignmentId));
     body += ",\"incorrect_meaning_answers\":";
-    body += String(static_cast<unsigned>(item.incorrectMeaning));
+    body += String(static_cast<unsigned>(item->incorrectMeaning));
     body += ",\"incorrect_reading_answers\":";
-    body += String(static_cast<unsigned>(item.incorrectReading));
-    body += ",\"created_at\":\"";
-    body += created.c_str();
-    body += "\"}}";
+    body += String(static_cast<unsigned>(item->incorrectReading));
+    if (item->createdAt) {
+        const std::string created = kk::formatIso8601(item->createdAt);
+        body += ",\"created_at\":\"";
+        body += created.c_str();
+        body += "\"";
+    }
+    body += "}}";
+
     releaseCanvas();
-    const kk::WkResponse r = kk::wkPost("/v2/reviews", token, body, 4096);
+    const kk::WkResponse r = kk::wkPost("/v2/reviews", kk::DevToken::load(), body, 4096);
     ensureCanvas();
-    Serial.printf("[review] submit %u -> %d\n", static_cast<unsigned>(item.assignmentId),
-                  r.httpCode);
-    if (r.httpCode < 200 || r.httpCode >= 300) ++gSubmitFailures;
+
+    item = kk::outboxFind(gOutbox, seq);
+    if (!item) return true;
+    if (r.httpCode >= 200 && r.httpCode < 300) {
+        kk::outboxRemove(gOutbox, seq);
+        saveOutbox();
+        Serial.printf("[outbox] sent assignment %u (%d)\n",
+                      static_cast<unsigned>(item->assignmentId), r.httpCode);
+        return true;
+    }
+    if (!r.connected)
+        item->state = kk::OutboxState::Pending;  // never reached the server
+    else if (r.httpCode == 0 || r.httpCode >= 500)
+        item->state = kk::OutboxState::Ambiguous;  // may have been accepted
+    else if (r.httpCode == 401 || r.httpCode == 403 || r.httpCode == 429)
+        item->state = kk::OutboxState::Pending;
+    else
+        item->state = kk::OutboxState::Rejected;
+    saveOutbox();
+    Serial.printf("[outbox] assignment %u -> HTTP %d, state %u\n",
+                  static_cast<unsigned>(item->assignmentId), r.httpCode,
+                  static_cast<unsigned>(item->state));
+    return false;
+}
+
+void queueReview(const kk::SessionItem& item) {
+    uint32_t created = static_cast<uint32_t>(time(nullptr));
+    if (created < 1700000000u) created = 0;  // clock not trusted; let the server stamp it
+    const uint32_t seq = kk::outboxAdd(gOutbox, item.assignmentId, item.subjectId,
+                                       item.incorrectMeaning, item.incorrectReading, created);
+    if (!seq) {
+        Serial.println("[outbox] full; review not queued");
+        return;
+    }
+    saveOutbox();
+    Serial.printf("[outbox] queued seq %u assignment %u\n", static_cast<unsigned>(seq),
+                  static_cast<unsigned>(item.assignmentId));
+    sendOutboxItem(seq);
+}
+
+void flushOutbox() {
+    if (gOutbox.empty()) return;
+    Serial.printf("[outbox] flushing %u\n", static_cast<unsigned>(gOutbox.size()));
+    std::vector<uint32_t> seqs;
+    for (const kk::OutboxItem& it : gOutbox)
+        if (it.state != kk::OutboxState::Rejected) seqs.push_back(it.seq);
+    for (uint32_t seq : seqs) {
+        if (!sendOutboxItem(seq)) {
+            const kk::OutboxItem* it = kk::outboxFind(gOutbox, seq);
+            if (!it || it->state == kk::OutboxState::Rejected) continue;
+            break;
+        }
+    }
+    Serial.printf("[outbox] %u pending, %u rejected\n",
+                  static_cast<unsigned>(kk::outboxPendingCount(gOutbox)),
+                  static_cast<unsigned>(kk::outboxRejectedCount(gOutbox)));
 }
 
 void checkCurrent() {
@@ -550,7 +680,7 @@ void advanceFeedback() {
         return;
     }
     if (gNeedsSubmit) {
-        submitReview(gCompletedItem);
+        queueReview(gCompletedItem);
         gNeedsSubmit = false;
     }
     gFeedback = false;
@@ -565,7 +695,7 @@ void advanceFeedback() {
 
 void endReview() {
     if (gNeedsSubmit) {
-        submitReview(gCompletedItem);
+        queueReview(gCompletedItem);
         gNeedsSubmit = false;
     }
     gReviewActive = false;
@@ -582,6 +712,7 @@ void startReview() {
     if (!gHaveSummary) return;
     if (gBatch.assignments.empty()) {
         drawLoading("Fetching reviews...", "20 due items, please wait");
+        flushOutbox();
         if (!runBatch()) {
             drawLoading("Could not load reviews", gNetLine);
             return;
@@ -604,7 +735,6 @@ void startReview() {
     gFeedback = false;
     gFeedbackCompleted = false;
     gNeedsSubmit = false;
-    gSubmitFailures = 0;
     clearReviewInput();
     Serial.printf("[review] session with %u items\n", static_cast<unsigned>(gQueue.remaining()));
     for (size_t i = 0; i < gQueue.queue().size() && i < 5; ++i) {
@@ -1048,6 +1178,34 @@ void handleSerial() {
             kk::DevToken::clear();
             Serial.println("[auth] token cleared");
             snprintf(gNetLine, sizeof gNetLine, "API: token cleared");
+        } else if (gSerialLine == "d") {
+            kk::DevWifi::disconnect();
+            snprintf(gNetLine, sizeof gNetLine, "NET: off");
+            Serial.println("[wifi] disconnected");
+        } else if (gSerialLine == "o") {
+            Serial.printf("[outbox] %u items\n", static_cast<unsigned>(gOutbox.size()));
+            for (const kk::OutboxItem& it : gOutbox)
+                Serial.printf("[outbox] seq %u assignment %u state %u attempts %u\n",
+                              static_cast<unsigned>(it.seq),
+                              static_cast<unsigned>(it.assignmentId),
+                              static_cast<unsigned>(it.state), static_cast<unsigned>(it.attempts));
+        } else if (gSerialLine == "f") {
+            if (!kk::DevWifi::connected() && !kk::DevWifi::connect(30000)) {
+                snprintf(gNetLine, sizeof gNetLine, "Outbox: no Wi-Fi");
+            } else {
+                flushOutbox();
+            }
+        } else if (gSerialLine == "x") {
+            const uint32_t seq = kk::outboxAdd(gOutbox, 999999999, 1, 0, 0,
+                                               static_cast<uint32_t>(time(nullptr)));
+            if (seq) {
+                saveOutbox();
+                Serial.printf("[outbox] synthetic seq %u queued\n", static_cast<unsigned>(seq));
+            }
+        } else if (gSerialLine == "z") {
+            gOutbox.clear();
+            saveOutbox();
+            Serial.println("[outbox] cleared");
         } else if (gSerialLine == "v") {
             if (!kk::DevWifi::connected() && !kk::DevWifi::connect(30000)) {
                 snprintf(gNetLine, sizeof gNetLine, "Review: no Wi-Fi");
@@ -1110,7 +1268,7 @@ void handleSerial() {
             delay(100);
             ESP.restart();
         } else if (!gSerialLine.isEmpty()) {
-            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review y<text> e=enter q=quit k <token> c=clear h=heap p=picture s=scan r=restart\n");
+            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear k <token> c=clear h=heap p=picture s=scan r=restart\n");
         }
         gSerialLine = "";
         gDirty = true;
@@ -1143,6 +1301,14 @@ void setup() {
                                                                          MALLOC_CAP_8BIT)));
     Serial.printf("[kk] keyboard: %s\n", tgc::board::hasKeyboard() ? "yes" : "no");
 
+    if (!LittleFS.begin(true)) {
+        Serial.println("[kk] LittleFS mount failed");
+    } else {
+        kk::outboxLoad(gOutbox);
+        Serial.printf("[outbox] pending %u\n",
+                      static_cast<unsigned>(kk::outboxPendingCount(gOutbox)));
+    }
+
     gSdOk = mountSd();
     gDirty = true;
     Serial.println("[kk] first draw");
@@ -1167,6 +1333,7 @@ void setup() {
             const uint32_t utc = static_cast<uint32_t>(time(nullptr));
             Serial.printf("[time] %s: %u\n", utc >= 1700000000 ? "synced" : "not synced",
                           static_cast<unsigned>(utc));
+            flushOutbox();
             runProbe();
             runSummary();
         } else {

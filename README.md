@@ -5,8 +5,9 @@
 > **Status: firmware M1 review loop working (2026-10-25).** The Cardputer ADV
 > shows a live Home from `/user` + `/summary`, fetches a 20-item due batch,
 > runs a typed meaning/reading session with `efontJA_16`, and submits completed
-> items with `POST /v2/reviews` (201). The outbox, lessons and the visual pack
-> are next.
+> items with `POST /v2/reviews` (201). A persistent outbox now stores each result
+> before sending and retries it after a reboot. Lessons and the visual pack are
+> next.
 >
 > KaniKey is an **unofficial** third-party app for WaniKani. It is not
 > affiliated with, endorsed by or sponsored by WaniKani or Tofugu LLC. WaniKani

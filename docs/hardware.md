@@ -23,8 +23,8 @@ App: display, keyboard controller, microSD, heap report, Wi-Fi, TLS
 
 | | |
 |---|---|
-| Flash used | 1,672,585 B of 1,835,008 B (91.1%) |
-| Static RAM | 51,428 B of 327,680 B (15.7%) |
+| Flash used | 1,709,441 B of 1,835,008 B (93.2%) |
+| Static RAM | 51,468 B of 327,680 B (15.7%) |
 
 ### Heap
 
@@ -124,9 +124,29 @@ E (221) esp_core_dump_flash: No core dump partition found!
 - The app still lacks a persistent outbox: if the immediate POST fails, that
   review is lost. This is the next reliability item.
 
+### Persistent outbox (M3 start)
+
+- Completed reviews are written to `/state/outbox.bin` **before** the POST.
+- File format: `KKOB` header (version 1, count, CRC-32) + 24-byte records;
+  atomic `.tmp` write and a `.bak` copy.
+- A real review: queued (`seq 1`), canvas released for TLS, `POST /reviews`
+  returned **201**, record removed, `o` showed an empty outbox.
+- A synthetic review (assignment `999999999`): queued, survived a reboot
+  (`loaded 1 pending`), flushed on the next boot, got **422**, stayed in the
+  file as `Rejected` (`need attention`), and was cleared manually.
+- The offline path (Wi-Fi off, complete a real review, reboot, reconnect) is
+  the same code path but still needs an end-to-end hardware run.
+- Ambiguous requests (timeout/5xx after the request was sent) are marked
+  `Ambiguous` and reconciled with `GET /assignments?ids=...` before retrying.
+  That reconciliation has unit-level coverage but not a hardware timeout test.
+- Rejected records stay until a user-facing way to dismiss them exists; for
+  now the dev command `z` clears the outbox.
+- Flash headroom is now ~126 KB; the efont fallback is the next thing to
+  replace when the visual pack lands.
+
 ### Next
 
-- Persistent outbox and retry/reconciliation.
+- Offline end-to-end test and a way to dismiss rejected outbox items.
 - Lessons.
 - Visual pack (replace the efont fallback).
 - Real renderer/UI font instead of the M5GFX text calls.

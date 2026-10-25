@@ -16,7 +16,8 @@ First hardware milestone for the M5Stack Cardputer ADV.
 
 The Home screen shows live `/user` and `/summary` data. Enter fetches a
 20-item due batch, runs a typed meaning/reading session and submits completed
-items with `POST /v2/reviews`. Hardware measurements are in
+items with `POST /v2/reviews`. Results are persisted in `/state/outbox.bin`
+before the request and retried after a reboot. Hardware measurements are in
 [docs/hardware.md](../docs/hardware.md).
 
 M1 uses M5GFX's `efontJA_16` as a temporary kanji source; the final visual pack
@@ -86,6 +87,11 @@ prints or stores the password. `token` prompts for the WaniKani token, sends
 | `c` | Clear the saved token |
 | `s` | Scan Wi-Fi networks (when not connected) |
 | `h` | Print free/largest/minimum internal heap |
+| `d` | Disconnect Wi-Fi (test offline) |
+| `o` | Print the outbox |
+| `f` | Reconnect and flush the outbox |
+| `x` | Queue a synthetic review (test persistence) |
+| `z` | Clear the outbox (test only) |
 | `b` | Fetch a 20-item review batch (logs only) |
 | `v` | Fetch (if needed) and start a review session |
 | `y <text>` | Type text into the current answer (test helper) |

@@ -708,12 +708,15 @@ account; Enter fetches the batch.
 - `POST /reviews` submits completed items (201) and the session advances.
 - Missing: the persistent outbox, the SD visual pack and the final renderer.
 
-**Output:** a full review session against WaniKani (already usable; outbox
-still missing).
+**Output:** a full review session against WaniKani (already usable; the
+persistent outbox is in M3).
 
-### M3 — Offline and queue
+### M3 — Offline and queue (in progress)
 
-- Persistent outbox, reconciliation, retries, rate limit.
+- Persistent outbox with CRC, `.bak` recovery, retries and ambiguous-request
+  reconciliation: implemented and tested with a real 201 and a synthetic 422.
+- Offline end-to-end test, user-facing rejected-item dismissal and rate-limit
+  handling remain.
 - Boot without network, subject cache, “offline” state.
 - Sync screen with progress.
 

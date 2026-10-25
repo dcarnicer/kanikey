@@ -32,6 +32,8 @@ std::vector<Assignment> parseAssignments(const JsonValue& root) {
             parseIso8601(at->string, &a.availableAt);
         if (const JsonValue* h = d->find("hidden"); h && h->type == JsonType::Bool)
             a.hidden = h->boolean;
+        if (const JsonValue* upd = item.find("data_updated_at"); upd && upd->isString())
+            parseIso8601(upd->string, &a.dataUpdatedAt);
         if (a.id && a.subjectId) out.push_back(a);
     }
     return out;

@@ -5,6 +5,8 @@
 #include "ui/KeyInput.h"
 #include "wk/AnswerChecker.h"
 #include "wk/Assignment.h"
+#include "wk/Crc32.h"
+#include "wk/Outbox.h"
 #include "wk/Json.h"
 #include "wk/SubjectParser.h"
 #include "wk/Summary.h"
@@ -492,6 +494,33 @@ static void test_summary_subject_ids() {
     TEST_ASSERT_EQUAL(3, lessons.size());
 }
 
+
+// ---------------------------------------------------------------- outbox
+static void test_crc32_known_vector() {
+    const char* s = "123456789";
+    TEST_ASSERT_EQUAL_UINT32(0xCBF43926u,
+                             crc32(reinterpret_cast<const uint8_t*>(s), 9));
+}
+
+static void test_outbox_model() {
+    std::vector<OutboxItem> box;
+    const uint32_t a = outboxAdd(box, 101, 10, 1, 0, 1700000000);
+    const uint32_t b = outboxAdd(box, 102, 11, 0, 2, 1700000001);
+    TEST_ASSERT_EQUAL_UINT32(1, a);
+    TEST_ASSERT_EQUAL_UINT32(2, b);
+    TEST_ASSERT_EQUAL(2, box.size());
+    TEST_ASSERT_EQUAL(2, outboxPendingCount(box));
+    TEST_ASSERT_NOT_NULL(outboxFind(box, 1));
+    TEST_ASSERT_NULL(outboxFind(box, 3));
+    box[0].state = OutboxState::Rejected;
+    TEST_ASSERT_EQUAL(1, outboxRejectedCount(box));
+    TEST_ASSERT_EQUAL(1, outboxPendingCount(box));
+    TEST_ASSERT_TRUE(outboxRemove(box, 1));
+    TEST_ASSERT_FALSE(outboxRemove(box, 1));
+    TEST_ASSERT_EQUAL(1, box.size());
+    TEST_ASSERT_EQUAL_UINT32(3, outboxAdd(box, 103, 12, 0, 0, 0));
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_romaji_common_words);
@@ -523,5 +552,7 @@ int main(int, char**) {
     RUN_TEST(test_assignment_parse);
     RUN_TEST(test_subject_parse);
     RUN_TEST(test_summary_subject_ids);
+    RUN_TEST(test_crc32_known_vector);
+    RUN_TEST(test_outbox_model);
     return UNITY_END();
 }
