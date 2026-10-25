@@ -545,8 +545,8 @@ prototype, with a `logNetHeap()` on every connection.
 
 ### 13.2 Rules
 
-- **Never** a full JSON document in RAM. The parser reads in chunks and emits
-  one subject at a time.
+- **Never** a full subject page in RAM. `/user` and `/summary` use a small DOM;
+  subject pages will use a streaming parser that emits one subject at a time.
 - **Never** a CJK font in RAM. Glyphs from the SD, with a small cache.
 - **Never** download all subjects on first boot. Fetch only the IDs that are
   needed (reviews/lessons) and grow the cache.
@@ -562,6 +562,24 @@ prototype, with a `logNetHeap()` on every connection.
 - Caret: blinks every 500 ms, 2×20 px region.
 - No animations that block input. Review must respond to the keyboard in under
   50 ms.
+
+### 13.4 Measured with the canvas
+
+The Home build allocates the 64.8 KB canvas and uses `efontJA_16` (flash only).
+Internal heap in bytes:
+
+| Point | Free | Largest | Minimum free |
+|---|---:|---:|---:|
+| After boot, before SD | 256,136 | 225,268 | — |
+| After SD mount | 240,768 | 208,884 | — |
+| Before TLS | 186,808 | 176,116 | 182,080 |
+| After `/user` | 183,096 | 106,484 | 109,208 |
+| After `/summary` | 178,720 | 106,484 | 109,184 |
+| Idle after sync | ~186,300 | — | — |
+
+The 178.7 KB free / 106.5 KB largest after `/summary` is above the 80 KB target,
+but leaves room for only a small subject batch until the streaming subject
+parser lands. Full log: [hardware.md](hardware.md).
 
 ---
 

@@ -85,6 +85,7 @@ already solved and tested on hardware in
 | [docs/decisions.md](docs/decisions.md) | Short log of accepted decisions |
 | [docs/hardware.md](docs/hardware.md) | Measured Cardputer ADV results (heap, SD, Wi-Fi, TLS) |
 | [docs/screens/](docs/screens/) | 240×135 mockups (individual at 4×; contact sheet at 2×) |
+| `tools/shot.py` | Live canvas capture over USB (not committed; `tools/screenshots/out/`) |
 | [firmware/README.md](firmware/README.md) | Current build, flash and serial commands |
 
 The documents, code comments and UI strings are in English, as in Tangocho, so

@@ -286,14 +286,13 @@ Home ──L──► Lessons ──Enter──► Lesson card
 
 ![Home](screens/home.png)
 
-- Header: `KaniKey` (brand), Wi-Fi, battery.
-- `LEVEL 12` in gold and the username next to it.
-- Large number of reviews (`28`) and `REVIEWS DUE`.
-- Lessons (`5`) and `LESSONS`.
-- `Next review 18:00 · in 42 min`.
-- SRS distribution bar: apprentice, guru, master, enlightened, burned, with
-  small counts.
-- Hint bar: `Enter reviews`, `L lessons`, `S sync`.
+- Header: `KaniKey` (16 px brand), battery.
+- `LEVEL 12` in gold and the username next to it (12 px).
+- Due reviews (`28`) at 32 px and the `REVIEWS DUE` label at 8 px.
+- Lessons (`5`) at 32 px and `LESSONS` at 8 px.
+- `Next review 18:00` and `Synced 14:47`, with right-aligned values (12 px).
+- Hint: `Tab: debug` (8 px). The SRS distribution bar and the `Enter reviews`
+  hint arrive with the review session.
 - States:
   - **Sync:** `Syncing…` with spinner and progress in the header.
   - **Offline:** line in `warn`: `Offline · 18 cached · 4 to sync`.

@@ -41,6 +41,7 @@ constexpr uint16_t kOk = 0x5EF1;
 constexpr uint16_t kWarn = 0xFE26;
 
 lgfx::LGFX_Device* gDisp = nullptr;
+lgfx::LGFX_Sprite* gCanvas = nullptr;
 bool gDirty = true;
 uint32_t gLastStatusMs = 0;
 uint32_t gLastDrawMs = 0;
@@ -62,6 +63,14 @@ char gNextReview[12] = "--:--";
 char gSyncClock[12] = "--:--";
 
 void localHm(uint32_t epoch, char* out, size_t n);
+
+lgfx::LovyanGFX& target() {
+    if (gCanvas) return *gCanvas;
+    return *gDisp;
+}
+void present() {
+    if (gCanvas && gDisp) gCanvas->pushSprite(0, 0);
+}
 
 bool gShift = false;
 bool gFn = false;
@@ -245,14 +254,14 @@ void drawHome() {
         logged = true;
         Serial.println("[kk] home drawn");
     }
-    auto& d = *gDisp;
+    auto& d = target();
     d.startWrite();
     d.fillScreen(kBg);
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
 
     d.setTextFont(2);
-    d.setTextSize(2);
+    d.setTextSize(1);
     d.setTextColor(kBrand, kBg);
     d.drawString("KaniKey", 6, 2);
 
@@ -263,52 +272,53 @@ void drawHome() {
     else
         snprintf(right, sizeof right, "USB");
     d.setTextFont(1);
-    d.setTextSize(1);
     d.setTextColor(bat >= 0 && bat < 20 ? kWarn : kDim, kBg);
     d.setTextDatum(lgfx::top_right);
-    d.drawString(right, 233, 7);
+    d.drawString(right, 233, 5);
 
     d.setTextDatum(lgfx::top_left);
     d.setTextColor(GOLD, kBg);
     char lvl[16];
     snprintf(lvl, sizeof lvl, "LEVEL %d", gHaveUser ? gUser.level : 0);
-    d.drawString(lvl, 7, 22);
+    d.drawString(lvl, 7, 21);
     d.setTextColor(kDim, kBg);
-    d.drawString(gHaveUser ? gUser.username.c_str() : "not signed in", 80, 22);
-
-    d.setTextFont(2);
-    d.setTextSize(3);
-    d.setTextColor(kText, kBg);
-    char due[16];
-    snprintf(due, sizeof due, "%u", static_cast<unsigned>(gDueReviews));
-    d.drawString(due, 8, 34);
-    d.setTextFont(1);
-    d.setTextColor(kDim, kBg);
-    d.drawString("REVIEWS DUE", 8, 78);
+    d.drawString(gHaveUser ? gUser.username.c_str() : "not signed in", 80, 21);
 
     d.setTextFont(2);
     d.setTextSize(2);
     d.setTextColor(kText, kBg);
+    char due[16];
+    snprintf(due, sizeof due, "%u", static_cast<unsigned>(gDueReviews));
+    d.drawString(due, 8, 36);
     char lessons[16];
     snprintf(lessons, sizeof lessons, "%u", static_cast<unsigned>(gLessons));
-    d.drawString(lessons, 164, 42);
-    d.setTextFont(1);
-    d.setTextColor(kDim, kBg);
-    d.drawString("LESSONS", 164, 78);
+    d.drawString(lessons, 164, 36);
 
-    d.setTextFont(1);
+    d.setTextFont(0);
+    d.setTextSize(1);
     d.setTextColor(kDim, kBg);
-    char next[40];
-    snprintf(next, sizeof next, "Next review  %s", gNextReview);
-    d.drawString(next, 8, 94);
-    char sync[40];
-    snprintf(sync, sizeof sync, "Synced       %s", gSyncClock);
-    d.setTextColor(kFaint, kBg);
-    d.drawString(sync, 8, 108);
+    d.drawString("REVIEWS DUE", 8, 73);
+    d.drawString("LESSONS", 164, 73);
 
+    d.drawFastHLine(4, 85, 232, kLine);
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(kDim, kBg);
+    d.drawString("Next review", 8, 91);
+    d.drawString("Synced", 8, 105);
+    d.setTextDatum(lgfx::top_right);
+    d.setTextColor(kText, kBg);
+    d.drawString(gNextReview, 232, 91);
     d.setTextColor(kFaint, kBg);
-    d.drawString("Tab: debug screen", 8, 125);
+    d.drawString(gSyncClock, 232, 105);
+    d.setTextDatum(lgfx::top_left);
+
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextColor(kFaint, kBg);
+    d.drawString("Tab: debug", 8, 125);
     d.endWrite();
+    present();
 }
 
 void draw() {
@@ -317,7 +327,7 @@ void draw() {
         return;
     }
     if (!gDisp) return;
-    auto& d = *gDisp;
+    auto& d = target();
     d.startWrite();
     d.fillScreen(kBg);
 
@@ -387,12 +397,13 @@ void draw() {
     d.drawString("食", 200, 100);
 
     d.endWrite();
+    present();
 }
 
 void drawStatus() {
     if (!gDisp || gShowHome) return;
     // The status line changes on its own (battery/heap), so redraw just it.
-    auto& d = *gDisp;
+    auto& d = target();
     d.startWrite();
     d.setTextDatum(top_left);
     d.setTextFont(0);
@@ -424,6 +435,34 @@ void drawStatus() {
     d.drawString(right, 233, 7);
     d.setTextDatum(lgfx::top_left);
     d.endWrite();
+}
+
+void dumpCanvas() {
+    if (!gCanvas) {
+        Serial.println("#shot 0 0 none");
+        return;
+    }
+    static const char kHex[] = "0123456789abcdef";
+    static char line[16 + 4 * 240 + 2];
+    const int w = gCanvas->width();
+    const int h = gCanvas->height();
+    // The sprite buffer stores RGB565 big-endian; dump the bytes as they are,
+    // exactly like Tangocho's screenshot remote.
+    const uint8_t* px = static_cast<const uint8_t*>(gCanvas->getBuffer());
+    Serial.printf("\n#shot %d %d on\n", w, h);
+    for (int y = 0; y < h; ++y) {
+        int n = snprintf(line, sizeof line, "#r %d ", y);
+        for (int x = 0; x < w; ++x) {
+            const uint8_t* p = px + (static_cast<size_t>(y) * w + x) * 2;
+            line[n++] = kHex[p[0] >> 4];
+            line[n++] = kHex[p[0] & 15];
+            line[n++] = kHex[p[1] >> 4];
+            line[n++] = kHex[p[1] & 15];
+        }
+        line[n++] = '\n';
+        Serial.write(reinterpret_cast<const uint8_t*>(line), n);
+    }
+    Serial.print("#end\n");
 }
 
 void handleSerial() {
@@ -493,6 +532,8 @@ void handleSerial() {
             } else {
                 runSummary();
             }
+        } else if (gSerialLine == "p") {
+            dumpCanvas();
         } else if (gSerialLine == "h") {
             Serial.printf("[heap] free %u, largest %u, min %u\n",
                           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
@@ -517,7 +558,7 @@ void handleSerial() {
             delay(100);
             ESP.restart();
         } else if (!gSerialLine.isEmpty()) {
-            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary k <token> c=clear h=heap s=scan r=restart\n");
+            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary k <token> c=clear h=heap p=picture s=scan r=restart\n");
         }
         gSerialLine = "";
         gDirty = true;
@@ -535,7 +576,17 @@ void setup() {
     gDisp->setRotation(1);
     gDisp->setBrightness(128);
 
+    gCanvas = new lgfx::LGFX_Sprite(gDisp);
+    gCanvas->setColorDepth(16);
+    if (!gCanvas->createSprite(gDisp->width(), gDisp->height())) {
+        Serial.println("[kk] canvas allocation failed; drawing directly");
+        delete gCanvas;
+        gCanvas = nullptr;
+    }
+
     Serial.printf("\n[kk] KaniKey M0\n");
+    Serial.printf("[kk] canvas: %s (%u bytes)\n", gCanvas ? "ok" : "none",
+                  static_cast<unsigned>(gDisp->width() * gDisp->height() * 2));
     Serial.printf("[kk] board: %s\n", tgc::board::name());
     Serial.printf("[kk] flash: %u MB, PSRAM: %u MB\n",
                   static_cast<unsigned>(ESP.getFlashChipSize() / (1024 * 1024)),

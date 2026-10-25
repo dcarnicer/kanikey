@@ -47,6 +47,18 @@ The Cardputer's USB Serial/JTAG should appear as a `usbmodem` port. On macOS,
 `pio device list` shows it; if only Bluetooth/debug ports appear, the board is
 off, the cable is charge-only, or the USB port is not enumerating.
 
+## Live screenshots
+
+The firmware's `p` command dumps the 240×135 canvas as RGB565 rows. Capture it
+and save a PNG:
+
+```sh
+uv run --with pyserial --with pillow python3 tools/shot.py --out tools/screenshots/out/home.png
+```
+
+The board may reset when the port opens; the script waits for the Home screen
+before asking for the dump.
+
 ## Serial helper
 
 Use the host helper rather than a raw monitor. On this board, DTR/RTS must be

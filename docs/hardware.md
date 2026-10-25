@@ -23,7 +23,7 @@ App: display, keyboard controller, microSD, heap report, Wi-Fi, TLS
 
 | | |
 |---|---|
-| Flash used | 1,626,569 B of 1,835,008 B (88.6%) |
+| Flash used | 1,632,217 B of 1,835,008 B (88.9%) |
 | Static RAM | 50,204 B of 327,680 B (15.3%) |
 
 ### Heap
@@ -32,17 +32,18 @@ All values are internal heap, bytes.
 
 | Point | Free | Largest | Minimum free |
 |---|---:|---:|---:|
-| After boot, before SD | 322,548 | 286,708 | — |
-| After SD mount | 307,084 | 270,324 | — |
-| Before TLS | 253,772 | 241,652 | 248,676 |
-| After TLS `/user` | 249,428 | 217,076 | 173,640 |
-| After `/summary` | 245,056 | 180,212 | 173,640 |
-| Idle after sync | ~252,600 | — | — |
+| After boot, before SD | 256,136 | 225,268 | — |
+| After SD mount | 240,768 | 208,884 | — |
+| Before TLS | 186,808 | 176,116 | 182,080 |
+| After TLS `/user` | 183,096 | 106,484 | 109,208 |
+| After `/summary` | 178,720 | 106,484 | 109,184 |
+| Idle after sync | ~186,300 | — | — |
 
-The current M0 draws directly to the panel and does **not** allocate the
-planned 64.8 KB full-screen canvas. With the canvas, expect roughly 186 KB free
-after TLS and ~107 KB largest. That is still above the design target, but the
-real number must be measured again when the canvas and the glyph cache exist.
+The 64.8 KB full-screen canvas is now allocated. It costs the expected ~65 KB
+and leaves 178.7 KB free / 106.5 KB largest after `/summary`. That is above the
+design target of 80 KB free in a review, but the subject cache and the answer
+engine still have to fit; batches of subjects must stay small until the
+streaming subject parser exists.
 
 TLS cost in this build is small in free bytes (about 3 KB) but it lowers the
 largest block by ~70 KB because mbedTLS allocates and frees handshake buffers.
@@ -73,8 +74,11 @@ later allocation.
   reviews, lessons, next review and last sync time.
 - `Tab` toggles the keyboard/debug screen.
 - The debug screen renders a test kanji with M5GFX's `efontJA_16`; that font
-  adds ~468 KB of flash and leaves ~208 KB for the review UI. It is a bring-up
+  adds ~468 KB of flash and leaves ~203 KB for the review UI. It is a bring-up
   fallback, not the final glyph-pack path.
+- The Home layout was rebalanced after a live screenshot: 16 px brand, 32 px
+  counters, 8 px labels, 12 px lower rows. `tools/shot.py` reads the 240×135
+  canvas over USB and writes a PNG.
 - A physical key-press pass still needs to be recorded here.
 
 ### Keyboard

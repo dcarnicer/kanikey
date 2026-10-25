@@ -7,3 +7,6 @@ __pycache__/
 .pio/
 firmware/.pio/
 secrets.h
+
+# Live captures
+tools/screenshots/out/
