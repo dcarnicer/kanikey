@@ -9,11 +9,16 @@ First hardware milestone for the M5Stack Cardputer ADV.
 - Shows every key event on screen and over serial: TCA8418 code, grid position,
   action and character on the main/Shift layer.
 - If Tangocho already saved Wi-Fi credentials in NVS namespace `net`, joins that
-  network and runs a TLS `GET /v2/user` against `api.wanikani.com` without a
-  token. A `401` proves DNS, TLS, the certificate chain and the endpoint.
+  network and runs a TLS `GET /v2/user` against `api.wanikani.com`. Without a
+  token a `401` proves DNS, TLS, the certificate chain and the endpoint; with a
+  token a `200` also prints the username and level.
 - Measures internal heap before and after the TLS client.
 
 It does not sync WaniKani data yet.
+
+The token is a development convenience. Production KaniKey will use the setup
+portal and the same NVS storage, with the token masked on screen and never
+logged.
 
 ## Build
 
@@ -41,7 +46,10 @@ off, the cable is charge-only, or the USB port is not enumerating.
 | Key | Action |
 |---|---|
 | `w` | Join the saved Wi-Fi network |
-| `t` | Join if needed, then run the TLS probe |
+| `t` | Join if needed, then run the TLS probe (with the saved token, if any) |
+| `u` | Run the authenticated `GET /user` probe |
+| `k <token>` | Save a token in NVS and probe `/user` |
+| `c` | Clear the saved token |
 | `s` | Scan Wi-Fi networks (when not connected) |
 | `h` | Print free/largest/minimum internal heap |
 | `r` | Restart |

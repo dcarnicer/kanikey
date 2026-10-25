@@ -40,7 +40,7 @@ syncs with the user's account. The SRS still lives in WaniKani.
 - Home screen with pending reviews/lessons, next review time and the breakdown by
   SRS stage.
 - Settings, Wi-Fi, time, OTA and clear error states.
-- UI in English first (WaniKani meanings are in English); Spanish later.
+- UI in English (WaniKani meanings are in English).
 
 ## What it won't do (for now)
 

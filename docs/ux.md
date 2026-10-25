@@ -450,8 +450,7 @@ Error screens never show stack traces, URLs with a token, or JSON.
 - **Keyboard:** everything can be done without touching the screen; there are
   no gestures.
 - **Movement:** only the caret and progress; no animations that block.
-- **Language:** English first; Spanish later. Meanings/readings are always
-  WaniKani's (English).
+- **Language:** English. Meanings/readings are always WaniKani's (English).
 - **Long text:** it paginates; the font is never reduced below 9 px.
 
 ---

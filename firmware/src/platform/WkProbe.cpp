@@ -3,6 +3,9 @@
 #include <WiFiClientSecure.h>
 #include <esp_heap_caps.h>
 
+#include <cstdlib>
+#include <cstring>
+
 #include "platform/RootCerts.h"
 
 namespace kk {
@@ -17,7 +20,7 @@ void logHeap(const char* when) {
 }
 }  // namespace
 
-WkProbeResult probeWaniKaniUser() {
+WkProbeResult probeWaniKaniUser(const String& token) {
     WkProbeResult r;
     logHeap("before");
     const uint32_t t0 = millis();
@@ -44,8 +47,13 @@ WkProbeResult probeWaniKaniUser() {
                  "User-Agent: KaniKey/0.1 (unofficial WaniKani client)\r\n"
                  "Wanikani-Revision: 20170710\r\n"
                  "Accept: application/json\r\n"
-                 "Connection: close\r\n"
-                 "\r\n");
+                 "Connection: close\r\n");
+    if (!token.isEmpty()) {
+        client.print("Authorization: Bearer ");
+        client.print(token);
+        client.print("\r\n");
+    }
+    client.print("\r\n");
 
     r.statusLine = client.readStringUntil('\n');
     r.statusLine.trim();
@@ -61,7 +69,7 @@ WkProbeResult probeWaniKaniUser() {
         if (line == "\r" || line.isEmpty()) break;
         if (millis() - t0 > 20000) break;
     }
-    char body[161];
+    char body[513];
     size_t n = 0;
     while (client.available() && n < sizeof body - 1 && millis() - t0 < 20000) {
         body[n++] = static_cast<char>(client.read());
@@ -72,7 +80,17 @@ WkProbeResult probeWaniKaniUser() {
     r.ms = millis() - t0;
     Serial.printf("[tls] %s after %u ms, %u bytes, tlsError %d\n", r.statusLine.c_str(),
                   static_cast<unsigned>(r.ms), static_cast<unsigned>(r.bytes), r.tlsError);
-    if (n) Serial.printf("[tls] body: %.160s\n", body);
+    if (n) Serial.printf("[tls] body: %.320s\n", body);
+    if (r.httpCode == 200) {
+        const char* u = strstr(body, "\"username\":\"");
+        if (u) {
+            u += 12;
+            const char* e = strchr(u, '"');
+            if (e) r.username = String(u).substring(0, static_cast<unsigned>(e - u));
+        }
+        const char* l = strstr(body, "\"level\":");
+        if (l) r.level = atoi(l + 8);
+    }
     client.stop();
     logHeap("after");
     return r;

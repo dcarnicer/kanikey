@@ -97,17 +97,17 @@ but the lessons screen is postponed.
 
 ---
 
-## 2026-10-25 — UI in English first
+## 2026-10-25 — English-only UI
 
-**Decision:** interface texts are written in English first; Spanish
-comes later. Meanings/readings are WaniKani's (English).
+**Decision:** interface texts, documentation, code and comments are in English.
+There is no localization in v1. Meanings/readings are WaniKani's (English).
 
-**Why:** WaniKani is a mostly English-speaking community and the project
-can be published. The author is a Spanish speaker, so Spanish is a high priority,
-but it does not block the MVP.
+**Why:** the project is meant to be published and WaniKani content is English;
+one language keeps the 240×135 UI and the string budget simple.
 
-**Implications:** bilingual `UiStrings` from the design, as in Tangocho; do not hardcode
-texts in the screens.
+**Implications:** `UiStrings` still centralizes every on-device string, but only
+the English table is built. Localization can be added later if wanted, but it is
+not planned.
 
 ---
 

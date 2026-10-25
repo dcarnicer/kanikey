@@ -14,8 +14,13 @@ struct WkProbeResult {
     uint32_t ms = 0;
     size_t bytes = 0;
     String statusLine;
+    String username;
+    int level = 0;
 };
 
-WkProbeResult probeWaniKaniUser();
+// With an empty token the request has no Authorization header, so a 401 still
+// proves DNS, TLS and the endpoint. With a token, a 200 also proves the token
+// and returns username/level when they can be extracted.
+WkProbeResult probeWaniKaniUser(const String& token = String());
 
 }  // namespace kk

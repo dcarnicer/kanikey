@@ -19,6 +19,7 @@
 #include <cstring>
 
 #include "board/Board.h"
+#include "platform/DevToken.h"
 #include "platform/DevWifi.h"
 #include "platform/WkProbe.h"
 
@@ -88,6 +89,23 @@ void updateModifier(uint8_t x, uint8_t y, bool down) {
         case tgc::Modifier::Alt: gAlt = down; break;
         case tgc::Modifier::None: break;
     }
+}
+
+void runProbe() {
+    const String token = kk::DevToken::load();
+    snprintf(gNetLine, sizeof gNetLine, "API: probing...");
+    gDirty = true;
+    const kk::WkProbeResult r = kk::probeWaniKaniUser(token);
+    if (r.connected) {
+        if (r.httpCode == 200 && !r.username.isEmpty())
+            snprintf(gNetLine, sizeof gNetLine, "API: 200 %s L%d", r.username.c_str(), r.level);
+        else
+            snprintf(gNetLine, sizeof gNetLine, "API: %d  TLS %ums", r.httpCode,
+                     static_cast<unsigned>(r.ms));
+    } else {
+        snprintf(gNetLine, sizeof gNetLine, "API: TLS failed (%d)", r.tlsError);
+    }
+    gDirty = true;
 }
 
 void onKey(const KeyEvent& e) {
@@ -272,18 +290,34 @@ void handleSerial() {
             else
                 snprintf(gNetLine, sizeof gNetLine, "NET: join failed");
         } else if (gSerialLine == "t") {
-            snprintf(gNetLine, sizeof gNetLine, "API: probing...");
-            gDirty = true;
             if (!kk::DevWifi::connected() && !kk::DevWifi::connect(20000)) {
                 snprintf(gNetLine, sizeof gNetLine, "API: no Wi-Fi");
             } else {
-                const kk::WkProbeResult r = kk::probeWaniKaniUser();
-                if (r.connected)
-                    snprintf(gNetLine, sizeof gNetLine, "API: %d  TLS %ums", r.httpCode,
-                             static_cast<unsigned>(r.ms));
-                else
-                    snprintf(gNetLine, sizeof gNetLine, "API: TLS failed (%d)", r.tlsError);
+                runProbe();
             }
+        } else if (gSerialLine == "u") {
+            if (!kk::DevWifi::connected() && !kk::DevWifi::connect(20000)) {
+                snprintf(gNetLine, sizeof gNetLine, "API: no Wi-Fi");
+            } else {
+                runProbe();
+            }
+        } else if (gSerialLine.startsWith("k ")) {
+            String token = gSerialLine.substring(2);
+            token.trim();
+            if (kk::DevToken::save(token)) {
+                Serial.printf("[auth] token saved (%u chars)\n", static_cast<unsigned>(token.length()));
+                if (!kk::DevWifi::connected() && !kk::DevWifi::connect(20000)) {
+                    snprintf(gNetLine, sizeof gNetLine, "API: no Wi-Fi");
+                } else {
+                    runProbe();
+                }
+            } else {
+                Serial.println("[auth] token not saved (empty or too long)");
+            }
+        } else if (gSerialLine == "c") {
+            kk::DevToken::clear();
+            Serial.println("[auth] token cleared");
+            snprintf(gNetLine, sizeof gNetLine, "API: token cleared");
         } else if (gSerialLine == "h") {
             Serial.printf("[heap] free %u, largest %u, min %u\n",
                           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
@@ -308,7 +342,7 @@ void handleSerial() {
             delay(100);
             ESP.restart();
         } else if (!gSerialLine.isEmpty()) {
-            Serial.printf("[kk] commands: w=wifi t=tls h=heap s=scan r=restart\n");
+            Serial.printf("[kk] commands: w=wifi t=tls u=user k <token> c=clear h=heap s=scan r=restart\n");
         }
         gSerialLine = "";
         gDirty = true;
@@ -350,13 +384,7 @@ void setup() {
         if (kk::DevWifi::connect(15000)) {
             snprintf(gNetLine, sizeof gNetLine, "NET: %s", kk::DevWifi::ip().c_str());
             drawStatus();
-            const kk::WkProbeResult r = kk::probeWaniKaniUser();
-            if (r.connected)
-                snprintf(gNetLine, sizeof gNetLine, "API: %d  TLS %ums", r.httpCode,
-                         static_cast<unsigned>(r.ms));
-            else
-                snprintf(gNetLine, sizeof gNetLine, "API: TLS failed (%d)", r.tlsError);
-            gDirty = true;
+            runProbe();
         } else {
             snprintf(gNetLine, sizeof gNetLine, "NET: join failed");
             gDirty = true;

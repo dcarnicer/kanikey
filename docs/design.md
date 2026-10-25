@@ -110,7 +110,7 @@ doing something else.
 **A. Daily review with network**
 
 1. Turn on the Cardputer (or wake it from sleep).
-2. KaniKey shows 28 reviews and 5 lessons; it syncs in the background if it has
+2. KaniKey shows 28 reviews and 5 lessons; it syncs in the background if it's
    been more than 15 minutes.
 3. `Enter` → session. Type the meaning, then the reading.
 4. When each item is completed, it is sent to WaniKani. If that fails, it is
@@ -170,7 +170,6 @@ doing something else.
 - Session statistics and accuracy.
 - OTA with an HTTPS manifest and SHA-256 (reusing Tangocho).
 - Sync screen with progress and cancel.
-- Spanish UI (answers remain in English).
 
 ### 5.3 Later
 
@@ -699,7 +698,7 @@ prototype, with a `logNetHeap()` on every connection.
 
 ### M5 — Polish
 
-- Statistics, full settings, Spanish, OTA, About.
+- Statistics, full settings, OTA, About.
 - Accessibility, contrast, error texts.
 - Screenshots and user documentation.
 
@@ -739,7 +738,7 @@ prototype, with a `logNetHeap()` on every connection.
 | 3 | Visual pack | Python generator + SD | Best quality/memory; no content in the repo |
 | 4 | Offline | Enabled by default | It's the point of the device; with reconciliation |
 | 5 | Lessons | Phase 2 | The MVP is already big; solid reviews first |
-| 6 | UI language | English first, Spanish later | WaniKani is in English; the author is a Spanish speaker |
+| 6 | UI language | English only | The project is English; WaniKani content is English |
 | 7 | Correction | Strict + warnings | Faithful to WaniKani; warnings prevent frustration |
 | 8 | Session size | 20 by default, “all” optional | Short sessions on a small device |
 | 9 | SD required | Yes in v1 | No glyphs, no review; it's said clearly |
