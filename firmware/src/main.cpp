@@ -63,6 +63,9 @@ uint32_t gLastDrawMs = 0;
 
 bool gSdOk = false;
 char gSdLine[48] = "SD: not mounted";
+uint32_t gLastInputAt = 0;
+bool gDimmed = false;
+bool gScreenOff = false;
 char gNetLine[48] = "NET: not tested";
 String gSerialLine;
 
@@ -90,6 +93,7 @@ uint32_t gFeedbackSubjectId = 0;
 std::string gFeedbackInput;
 kk::SessionItem gCompletedItem;
 std::string gMeaningInput;
+std::string gDirectReading;  // test/serial reading input, bypasses the romaji IME
 kk::RomajiIme gIme;
 std::vector<kk::OutboxItem> gOutbox;
 
@@ -303,6 +307,7 @@ std::string correctAnswer(const kk::Subject& s, kk::ReviewPart part) {
 
 void clearReviewInput() {
     gMeaningInput.clear();
+    gDirectReading.clear();
     gIme.clear();
 }
 
@@ -397,7 +402,8 @@ void drawReview() {
 
         d.fillRect(100, 52, 136, 32, kSurfaceHi);
         d.drawRect(100, 52, 136, 32, kLine);
-        std::string shown = meaning ? gMeaningInput : gIme.text();
+        std::string shown = meaning ? gMeaningInput
+                                     : (!gDirectReading.empty() ? gDirectReading : gIme.text());
         if (meaning) {
             d.setTextFont(1);
             d.setTextSize(1);
@@ -652,7 +658,8 @@ void checkCurrent() {
     const kk::Subject* s = subjectById(item->subjectId);
     if (!s) return;
     const bool meaning = gQueue.part() == kk::ReviewPart::Meaning;
-    const std::string input = meaning ? gMeaningInput : gIme.text();
+    const std::string input = meaning ? gMeaningInput
+                                     : (!gDirectReading.empty() ? gDirectReading : gIme.text());
     if (input.empty()) return;
     gFeedbackSubjectId = item->subjectId;
     gFeedbackPart = gQueue.part();
@@ -764,6 +771,8 @@ bool reviewKey(const KeyEvent& e) {
     if (e.key == Key::Backspace) {
         if (gQueue.part() == kk::ReviewPart::Meaning) {
             if (!gMeaningInput.empty()) gMeaningInput.pop_back();
+        } else if (!gDirectReading.empty()) {
+            gDirectReading.pop_back();
         } else {
             gIme.backspace();
         }
@@ -772,10 +781,12 @@ bool reviewKey(const KeyEvent& e) {
     }
     const char c = tgc::cardputerCharAt(e.x, e.y, gShift);
     if (c) {
-        if (gQueue.part() == kk::ReviewPart::Meaning)
+        if (gQueue.part() == kk::ReviewPart::Meaning) {
             gMeaningInput.push_back(c);
-        else
+        } else {
+            gDirectReading.clear();
             gIme.feed(c);
+        }
         gDirty = true;
     }
     return true;
@@ -959,6 +970,20 @@ void drawHome() {
 
     d.setTextFont(0);
     d.setTextSize(1);
+    const size_t pending = kk::outboxPendingCount(gOutbox);
+    const size_t rejected = kk::outboxRejectedCount(gOutbox);
+    if (rejected) {
+        char line[40];
+        snprintf(line, sizeof line, "Outbox: %u need attention",
+                 static_cast<unsigned>(rejected));
+        d.setTextColor(kErr, kBg);
+        d.drawString(line, 8, 117);
+    } else if (pending) {
+        char line[40];
+        snprintf(line, sizeof line, "Outbox: %u pending", static_cast<unsigned>(pending));
+        d.setTextColor(kWarn, kBg);
+        d.drawString(line, 8, 117);
+    }
     d.setTextColor(kFaint, kBg);
     d.drawString("Enter: reviews  Tab: debug", 8, 125);
     d.endWrite();
@@ -1089,6 +1114,15 @@ void drawStatus() {
     d.endWrite();
 }
 
+void wakeScreen() {
+    if (!gDimmed && !gScreenOff) return;
+    tgc::board::setDisplayOn(true);
+    tgc::board::setBrightness(128);
+    gDimmed = false;
+    gScreenOff = false;
+    gDirty = true;
+}
+
 void dumpCanvas() {
     if (!gCanvas) {
         Serial.println("#shot 0 0 none");
@@ -1118,6 +1152,10 @@ void dumpCanvas() {
 }
 
 void handleSerial() {
+    if (Serial.available()) {
+        gLastInputAt = millis();
+        wakeScreen();
+    }
     while (Serial.available()) {
         const char c = static_cast<char>(Serial.read());
         if (c == '\r') continue;
@@ -1222,12 +1260,10 @@ void handleSerial() {
         } else if (gSerialLine.startsWith("y ")) {
             if (gReviewActive && !gFeedback) {
                 const String text = gSerialLine.substring(2);
-                for (size_t i = 0; i < text.length(); ++i) {
-                    if (gQueue.part() == kk::ReviewPart::Meaning)
-                        gMeaningInput.push_back(text[i]);
-                    else
-                        gIme.feed(text[i]);
-                }
+                if (gQueue.part() == kk::ReviewPart::Meaning)
+                    gMeaningInput += text.c_str();
+                else
+                    gDirectReading += text.c_str();
                 gDirty = true;
             }
         } else if (gSerialLine == "b") {
@@ -1310,6 +1346,7 @@ void setup() {
     }
 
     gSdOk = mountSd();
+    gLastInputAt = millis();
     gDirty = true;
     Serial.println("[kk] first draw");
     draw();
@@ -1351,8 +1388,37 @@ void loop() {
     tgc::board::update();
     handleSerial();
 
+    const uint32_t now = millis();
+    if (gScreenOff) {
+        bool wake = false;
+        KeyEvent ignored;
+        while (tgc::board::nextKeyEvent(&ignored)) wake = true;
+        if (tgc::board::wasPressed(tgc::board::Button::Select) ||
+            tgc::board::wasHeld(tgc::board::Button::Select))
+            wake = true;
+        if (wake) {
+            gLastInputAt = now;
+            wakeScreen();
+        } else {
+            delay(10);
+            return;
+        }
+    }
+
+    if (gDimmed && (tgc::board::wasPressed(tgc::board::Button::Select) ||
+                     tgc::board::wasHeld(tgc::board::Button::Select))) {
+        gLastInputAt = now;
+        wakeScreen();
+    }
+
+    bool firstKey = true;
     KeyEvent e;
     while (tgc::board::nextKeyEvent(&e)) {
+        gLastInputAt = now;
+        if (firstKey) {
+            firstKey = false;
+            if (gDimmed) wakeScreen();
+        }
         if (e.key == Key::None) {
             // The TCA8418 lost events: treat every key as released.
             gShift = gFn = gCtrl = gOpt = gAlt = false;
@@ -1363,7 +1429,6 @@ void loop() {
         onKey(e);
     }
 
-    const uint32_t now = millis();
     if (gDirty && now - gLastDrawMs >= 16) {
         draw();
         gDirty = false;
@@ -1381,6 +1446,20 @@ void loop() {
     }
     if (tgc::board::wasHeld(tgc::board::Button::Select)) {
         Serial.println("[key] G0 held");
+    }
+
+    if (!gDimmed && now - gLastInputAt > 30000) {
+        tgc::board::setBrightness(20);
+        gDimmed = true;
+    }
+    if (!gScreenOff && now - gLastInputAt > 60000) {
+        tgc::board::setDisplayOn(false);
+        gScreenOff = true;
+    }
+    if (!gReviewActive && !gReviewSummary && !gFeedback &&
+        now - gLastInputAt > 120000 && !tgc::board::externalPower()) {
+        Serial.println("[power] idle sleep");
+        tgc::board::deepSleep();
     }
 
     static uint32_t lastBeat = 0;

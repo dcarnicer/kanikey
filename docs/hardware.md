@@ -23,8 +23,8 @@ App: display, keyboard controller, microSD, heap report, Wi-Fi, TLS
 
 | | |
 |---|---|
-| Flash used | 1,709,441 B of 1,835,008 B (93.2%) |
-| Static RAM | 51,468 B of 327,680 B (15.7%) |
+| Flash used | 1,717,673 B of 1,835,008 B (93.6%) |
+| Static RAM | 51,664 B of 327,680 B (15.8%) |
 
 ### Heap
 
@@ -134,15 +134,20 @@ E (221) esp_core_dump_flash: No core dump partition found!
 - A synthetic review (assignment `999999999`): queued, survived a reboot
   (`loaded 1 pending`), flushed on the next boot, got **422**, stayed in the
   file as `Rejected` (`need attention`), and was cleared manually.
-- The offline path (Wi-Fi off, complete a real review, reboot, reconnect) is
-  the same code path but still needs an end-to-end hardware run.
+- **Offline end to end passed:** Wi-Fi off, a real review completed, outbox
+  `Pending`; reboot loaded 1 pending, flushed it, `POST /reviews` returned 201,
+  and the outbox was empty. This is the key reliability path.
 - Ambiguous requests (timeout/5xx after the request was sent) are marked
   `Ambiguous` and reconciled with `GET /assignments?ids=...` before retrying.
   That reconciliation has unit-level coverage but not a hardware timeout test.
 - Rejected records stay until a user-facing way to dismiss them exists; for
   now the dev command `z` clears the outbox.
-- Flash headroom is now ~126 KB; the efont fallback is the next thing to
+- Flash headroom is now ~117 KB; the efont fallback is the next thing to
   replace when the visual pack lands.
+- Home shows `Outbox: N pending` or `N need attention` below the sync time.
+- Power: dim after 30 s, blank after 60 s, deep sleep after 2 min only when no
+  review is active and the device is on battery. A key wakes the panel; the
+  first key on a blank screen only wakes it.
 
 ### Next
 

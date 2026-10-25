@@ -711,14 +711,14 @@ account; Enter fetches the batch.
 **Output:** a full review session against WaniKani (already usable; the
 persistent outbox is in M3).
 
-### M3 — Offline and queue (in progress)
+### M3 — Offline and queue (mostly done)
 
 - Persistent outbox with CRC, `.bak` recovery, retries and ambiguous-request
-  reconciliation: implemented and tested with a real 201 and a synthetic 422.
-- Offline end-to-end test, user-facing rejected-item dismissal and rate-limit
-  handling remain.
-- Boot without network, subject cache, “offline” state.
-- Sync screen with progress.
+  reconciliation: implemented and tested with a real 201, a synthetic 422 and
+  the full offline path (Wi-Fi off → review → reboot → 201).
+- Home shows pending/attention counts; power management dims/blanks/sleeps.
+- User-facing rejected-item dismissal and rate-limit handling remain.
+- Boot without network and the sync screen remain.
 
 **Output:** review on the subway and sync when you get out.
 

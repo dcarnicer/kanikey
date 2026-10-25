@@ -291,8 +291,10 @@ Home ──L──► Lessons ──Enter──► Lesson card
 - Due reviews (`28`) at 32 px and the `REVIEWS DUE` label at 8 px.
 - Lessons (`5`) at 32 px and `LESSONS` at 8 px.
 - `Next review 18:00` and `Synced 14:47`, with right-aligned values (12 px).
-- Hint: `Tab: debug` (8 px). The SRS distribution bar and the `Enter reviews`
-  hint arrive with the review session.
+- If the outbox is not empty, `Outbox: N pending` in amber or
+  `N need attention` in red at 8 px.
+- Hint: `Enter: reviews  Tab: debug` (8 px). The SRS distribution bar arrives
+  with a later revision.
 - States:
   - **Sync:** `Syncing…` with spinner and progress in the header.
   - **Offline:** line in `warn`: `Offline · 18 cached · 4 to sync`.
@@ -325,6 +327,9 @@ Home ──L──► Lessons ──Enter──► Lesson card
 - If the answer is long, the text scrolls horizontally; the caret stays
   visible. It doesn't wrap to two lines so as not to change the height.
 - Holding G0 opens `Pause` (Continue / End session / Settings).
+- Idle: the panel dims at 30 s, blanks at 60 s and the device deep-sleeps at
+  2 min when no review is active and it is on battery. On a blank panel the
+  first key only wakes it.
 
 **M1 implementation note.** The live build uses `efontJA_16` at 2× (32 px) for
 vocabulary and 3× (48 px) for a single kanji; the 64 px prompt and radical

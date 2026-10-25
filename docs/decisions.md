@@ -122,6 +122,20 @@ not planned.
 
 ---
 
+## 2026-10-25 — Idle dim, blank, then deep sleep
+
+**Decision:** the panel dims after 30 s, blanks after 60 s and the device
+deep-sleeps after 2 min when idle. Deep sleep is skipped while a review is
+active and on external power; the outbox is already saved to LittleFS.
+
+**Why:** a pocket device must not drain its battery on the Home screen, but a
+review session must not disappear just because the user is thinking.
+
+**Implications:** the first key on a blank panel only wakes it. On wake from
+deep sleep the device boots and syncs again; the outbox retries pending reviews.
+
+---
+
 ## 2026-10-25 — Strict checking with warnings
 
 **Decision:** WaniKani's exact answers are accepted (including user

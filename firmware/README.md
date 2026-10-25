@@ -17,7 +17,9 @@ First hardware milestone for the M5Stack Cardputer ADV.
 The Home screen shows live `/user` and `/summary` data. Enter fetches a
 20-item due batch, runs a typed meaning/reading session and submits completed
 items with `POST /v2/reviews`. Results are persisted in `/state/outbox.bin`
-before the request and retried after a reboot. Hardware measurements are in
+before the request and retried after a reboot. The offline path is verified.
+The panel dims after 30 s, blanks after 60 s and deep-sleeps after 2 min when
+no review is active. Hardware measurements are in
 [docs/hardware.md](../docs/hardware.md).
 
 M1 uses M5GFX's `efontJA_16` as a temporary kanji source; the final visual pack
