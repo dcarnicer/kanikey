@@ -35,7 +35,7 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
     const size_t want = std::min(limit, dueSubjectIds.size());
     String path = "/v2/assignments?subject_ids=" + idList(dueSubjectIds, 0, want);
     Serial.printf("[review] assignments for %u subjects\n", static_cast<unsigned>(want));
-    const WkResponse ar = wkGet(path, token, 32768);
+    const WkResponse ar = wkGet(path, token, 32768, 12000);
     if (ar.httpCode != 200) {
         batch.error = "assignments HTTP " + String(ar.httpCode);
         return batch;
@@ -66,7 +66,7 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
     for (size_t begin = 0; begin < ids.size(); begin += kSubjectBatch) {
         const size_t end = std::min(ids.size(), begin + kSubjectBatch);
         String sp = "/v2/subjects?ids=" + idList(ids, begin, end);
-        const WkResponse sr = wkGet(sp, token, 32768);
+        const WkResponse sr = wkGet(sp, token, 32768, 12000);
         if (sr.httpCode != 200) {
             batch.error = "subjects HTTP " + String(sr.httpCode);
             return batch;

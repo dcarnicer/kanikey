@@ -92,6 +92,7 @@ kk::RomajiIme gIme;
 
 void localHm(uint32_t epoch, char* out, size_t n);
 void draw();
+void drawLoading(const char* title, const char* subtitle);
 
 lgfx::LovyanGFX& target() {
     if (gCanvas) return *gCanvas;
@@ -579,7 +580,14 @@ void endReview() {
 
 void startReview() {
     if (!gHaveSummary) return;
-    if (gBatch.assignments.empty() && !runBatch()) return;
+    if (gBatch.assignments.empty()) {
+        drawLoading("Fetching reviews...", "20 due items, please wait");
+        if (!runBatch()) {
+            drawLoading("Could not load reviews", gNetLine);
+            return;
+        }
+    }
+    drawLoading("Starting session...", "");
     std::vector<kk::Assignment> due;
     for (const kk::Assignment& a : gBatch.assignments) {
         const kk::Subject* s = subjectById(a.subjectId);
@@ -728,6 +736,31 @@ void localHm(uint32_t epoch, char* out, size_t n) {
     snprintf(out, n, "%02d:%02d", tm.tm_hour, tm.tm_min);
 }
 
+void drawLoading(const char* title, const char* subtitle) {
+    if (!gDisp) return;
+    auto& d = target();
+    d.startWrite();
+    d.fillScreen(kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+    d.setTextFont(2);
+    d.setTextSize(1);
+    d.setTextColor(kBrand, kBg);
+    d.drawString("KaniKey", 6, 2);
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(kText, kBg);
+    d.drawString(title, 8, 56);
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextColor(kDim, kBg);
+    d.drawString(subtitle, 8, 76);
+    d.setTextColor(kFaint, kBg);
+    d.drawString("The first request can take a few seconds", 8, 98);
+    d.endWrite();
+    present();
+}
+
 void drawHome() {
     if (!gDisp) return;
     static bool logged = false;
@@ -797,7 +830,7 @@ void drawHome() {
     d.setTextFont(0);
     d.setTextSize(1);
     d.setTextColor(kFaint, kBg);
-    d.drawString("Tab: debug", 8, 125);
+    d.drawString("Enter: reviews  Tab: debug", 8, 125);
     d.endWrite();
     present();
 }
