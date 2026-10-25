@@ -680,6 +680,7 @@ void checkCurrent() {
             gCompletedItem = gQueue.completed().back();
             gNeedsSubmit = true;
             gFeedbackCompleted = true;
+            if (gDueReviews > 0) --gDueReviews;
         }
     }
     gDirty = true;
@@ -974,6 +975,7 @@ void startCurrentLesson() {
                                         now >= 1700000000u ? now : 0);
     ensureCanvas();
     if (ok) {
+        if (gLessons > 0) --gLessons;
         ++gLessonIndex;
         gLessonPage = 0;
         if (gLessonIndex >= gLessonBatch.assignments.size()) {
