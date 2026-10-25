@@ -80,7 +80,7 @@ está resuelta y probada en hardware en
 | [docs/reuse-tangocho.md](docs/reuse-tangocho.md) | Qué se reutiliza de Tangocho y cómo se porta |
 | [docs/setup.md](docs/setup.md) | Token, pack visual, primer arranque y problemas |
 | [docs/decisions.md](docs/decisions.md) | Registro corto de decisiones propuestas |
-| [docs/screens/](docs/screens/) | Mockups generados a 240×135 (4×) |
+| [docs/screens/](docs/screens/) | Mockups a 240×135 (individuales a 4×; contact sheet a 2×) |
 
 Los mockups se regeneran con:
 

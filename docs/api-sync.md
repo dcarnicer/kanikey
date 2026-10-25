@@ -290,7 +290,8 @@ session_start:
   - si hay red y last_sync > 15 min: sync
   - due = assignments con stage 1..8, available_at <= now, hidden=false
   - filtrar los que ya están en outbox
-  - ordenar/shuffle estable; congelar la lista
+  - ordenar según reviews_presentation_order (shuffled por defecto; si es
+    lower_levels_first, respetarlo) y congelar la lista
   - para cada subject_id sin sujeto: sync de subjects (si hay red)
   - si falta un sujeto: no ofrecer el ítem; mostrar aviso
 

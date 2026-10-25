@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Render the KaniKey design mockups at the Cardputer ADV's 240x135 panel.
 
-The geometry and type sizes are the 1x design values; every PNG is a
-nearest-neighbour 4x upscale so the pixel grid stays honest. The UI font is
-Noto Sans JP, the same family Tangocho pre-renders for its firmware; the
-kanji/radical shapes here stand in for the device's glyph pack.
+The geometry and type sizes are the 1x design values; the individual PNGs are
+nearest-neighbour 4x upscales and the contact sheet is 2x, so the pixel grid
+stays honest. The UI font is Noto Sans JP, the same family Tangocho pre-renders
+for its firmware; the kanji/radical shapes here stand in for the device's glyph
+pack.
 
     python3 tools/mockups/render.py
 

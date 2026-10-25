@@ -1,8 +1,8 @@
 # KaniKey — UX, teclado y pantallas
 
-> Diseño, 2026-10-25. Los mockups están a 240×135 y se muestran a 4×. La
-> geometría y los tamaños de texto son los de 1×; el upscale es nearest-neighbour
-> para no mentir sobre la rejilla de píxeles.
+> Diseño, 2026-10-25. Los mockups están a 240×135: los individuales se muestran
+> a 4× y el contact sheet a 2×. La geometría y los tamaños de texto son los de
+> 1×; el upscale es nearest-neighbour para no mentir sobre la rejilla de píxeles.
 
 ![Pantallas](screens/overview.png)
 
@@ -162,7 +162,8 @@ campo está activo.
 
 - Se repiten solo Backspace y las flechas (400 ms de retardo, 120 ms de rate).
 - Las letras no se repiten: evita respuestas accidentales por mantener pulsado.
-- Shift, Ctrl, Opt y Alt se rastrean como estado; no generan carácter.
+- Shift, Ctrl, Opt y Alt se rastrean como estado; por sí mismos no generan
+  carácter (Shift cambia la capa del siguiente).
 - Si el TCA8418 pierde eventos (overflow), se suelta todo y se muestra un aviso
   discreto; nunca se queda una tecla “pegada”.
 

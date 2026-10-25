@@ -102,6 +102,11 @@ mantenerlo ahora.
 - **El catálogo de mazos y su portal.** No hay mazos; hay una cuenta.
 - **La imagen única StickS3+Cardputer.** Añade ramas y pruebas; la v1 es solo
   Cardputer.
+- **El importador de WaniKani de `tools/pack-builder`.** Solo descarga kanji
+  desbloqueados y construye un `.tgc` estático; no trae asignaciones,
+  vocabulario, radicales, repasos ni lecciones. Sirve como referencia para el
+  manejo del token, la paginación y los campos de `subjects`, pero el motor de
+  sincronización de KaniKey es nuevo.
 
 ---
 
