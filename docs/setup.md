@@ -1,53 +1,53 @@
-# KaniKey — puesta en marcha (diseño)
+# KaniKey — setup (design)
 
-> Este documento describe cómo se configurará KaniKey cuando exista el
-> firmware. Las herramientas y comandos son parte del diseño, todavía no están
-> implementados.
+> This document describes how KaniKey will be configured once the firmware
+> exists. The tools and commands are part of the design and are not yet
+> implemented.
 
 ---
 
-## 1. Lo que hace falta
+## 1. What you need
 
 - M5Stack Cardputer ADV.
-- Tarjeta microSD **FAT32** (exFAT no vale; el framework de Arduino-ESP32 no lo
-  soporta).
-- Cuenta de WaniKani y un **token personal** con permisos de lectura de
-  assignments, subjects, study materials, user y summary, y de creación de
-  reviews.
-- Un ordenador con Python 3.11+ y [`uv`](https://docs.astral.sh/uv/) para
-  generar el pack visual la primera vez.
-- Fuente **Noto Sans JP** (OFL); el generador la descarga o acepta una ruta
-  local.
+- **FAT32** microSD card (exFAT won't work; the Arduino-ESP32 framework doesn't
+  support it).
+- WaniKani account and a **personal token** with read permissions for
+  assignments, subjects, study materials, user and summary, and create
+  permission for reviews.
+- A computer with Python 3.11+ and [`uv`](https://docs.astral.sh/uv/) to
+  generate the visual pack the first time.
+- **Noto Sans JP** font (OFL); the generator downloads it or accepts a local
+  path.
 
-La tarjeta es necesaria para los glifos. Sin pack visual se puede sincronizar,
-pero no repasar kanji/vocabulario.
-
----
-
-## 2. Crear el token de WaniKani
-
-1. Entra en WaniKani → **Settings → API Tokens**.
-2. Crea un token nuevo. Nombre sugerido: `KaniKey Cardputer`.
-3. Marca los permisos:
-   - Assignments: lectura.
-   - Subjects: lectura.
-   - Study materials: lectura.
-   - User: lectura.
-   - Summary: lectura.
-   - Reviews: creación.
-   - (Fase 2: review statistics y reviews, lectura.)
-4. Copia el token. No lo pegues en un chat ni lo commitees.
-
-Se puede revocar en cualquier momento. KaniKey lo guarda en NVS y lo muestra
-enmascarado.
+The card is required for the glyphs. Without a visual pack you can sync,
+but not review kanji/vocabulary.
 
 ---
 
-## 3. Generar el pack visual
+## 2. Creating the WaniKani token
 
-El pack contiene los glifos de los caracteres que aparecen en los sujetos a los
-que tu cuenta tiene acceso, y los radicales rasterizados. Se genera en local con
-tu token; no se sube a ningún servidor.
+1. Go to WaniKani → **Settings → API Tokens**.
+2. Create a new token. Suggested name: `KaniKey Cardputer`.
+3. Check the permissions:
+   - Assignments: read.
+   - Subjects: read.
+   - Study materials: read.
+   - User: read.
+   - Summary: read.
+   - Reviews: create.
+   - (Phase 2: review statistics and reviews, read.)
+4. Copy the token. Don't paste it into a chat or commit it.
+
+It can be revoked at any time. KaniKey stores it in NVS and shows it
+masked.
+
+---
+
+## 3. Generating the visual pack
+
+The pack contains the glyphs for the characters that appear in the subjects
+your account has access to, plus the rasterized radicals. It is generated
+locally with your token; it is not uploaded to any server.
 
 ```sh
 cd tools/glyph-pack
@@ -56,81 +56,81 @@ uv run kanikey-glyphs build \
   --out /Volumes/KANIKEY/kanikey/glyphs.kgp
 ```
 
-Qué hace:
+What it does:
 
-1. `GET /user` para leer `level` y `subscription.max_level_granted`.
-2. `GET /subjects` por niveles permitidos (hasta 60 si la suscripción lo permite).
-3. Reúne los caracteres únicos de kanji, vocabulario y kana.
-4. Renderiza cada carácter con Noto Sans JP a 64, 40 y 20 px, 4bpp + RLE.
-5. Descarga las imágenes SVG de los radicales y las rasteriza a 96 px.
-6. Escribe el índice y el pack.
+1. `GET /user` to read `level` and `subscription.max_level_granted`.
+2. `GET /subjects` by allowed levels (up to 60 if the subscription allows it).
+3. Collects the unique characters from kanji, vocabulary and kana.
+4. Renders each character with Noto Sans JP at 64, 40 and 20 px, 4bpp + RLE.
+5. Downloads the SVG images for the radicals and rasterizes them at 96 px.
+6. Writes the index and the pack.
 
-Opciones previstas:
+Planned options:
 
 ```sh
---max-level N       # limitar el pack a un nivel (por defecto, el permitido)
---font PATH         # otra fuente OFL
---no-radicals       # solo glifos (para pruebas)
---check             # comparar un pack con los sujetos actuales y listar faltantes
+--max-level N       # limit the pack to one level (default: the allowed one)
+--font PATH         # another OFL font
+--no-radicals       # glyphs only (for testing)
+--check             # compare a pack against current subjects and list missing ones
 ```
 
-Tamaño orientativo: 7–9 MB. En una tarjeta de 8 GB o más no es problema.
+Approximate size: 7–9 MB. On an 8 GB card or larger it's not a problem.
 
-### 3.1 Copiar a la tarjeta
+### 3.1 Copying to the card
 
 ```
 /kanikey/glyphs.kgp
 ```
 
-La tarjeta debe estar en FAT32. Si el sistema no la monta, formatea con FAT32
-(no exFAT).
+The card must be FAT32. If the system doesn't mount it, format it as FAT32
+(not exFAT).
 
 ---
 
-## 4. Primer arranque
+## 4. First boot
 
-1. Inserta la tarjeta y enciende la Cardputer.
-2. Si no hay Wi-Fi configurada, KaniKey levanta una red WPA2 temporal
-   `KaniKey-XXXX` con una clave en pantalla.
-3. En el móvil, conéctate a esa red y abre la URL que muestra la pantalla
-   (normalmente `http://192.168.4.1/`).
-4. El portal pide:
-   - SSID y contraseña de tu Wi-Fi de casa.
-   - Token de WaniKani (se valida con `GET /user`).
-   - Hora (la del navegador).
-5. Al guardar, la Cardputer se conecta a tu Wi-Fi, sincroniza y cierra el
+1. Insert the card and turn on the Cardputer.
+2. If no Wi-Fi is configured, KaniKey brings up a temporary WPA2 network
+   `KaniKey-XXXX` with a key on screen.
+3. On your phone, connect to that network and open the URL shown on the screen
+   (usually `http://192.168.4.1/`).
+4. The portal asks for:
+   - SSID and password for your home Wi-Fi.
+   - WaniKani token (validated with `GET /user`).
+   - Time (from the browser).
+5. On save, the Cardputer connects to your Wi-Fi, syncs and closes the
    portal.
-6. Comprueba el pack visual. Si falta o está incompleto:
+6. Check the visual pack. If it is missing or incomplete:
    `Visual pack missing · Copy glyphs.kgp to /kanikey/`.
-7. Vuelve al home. Deberías ver tus repasos y lecciones.
+7. Go back to the home screen. You should see your reviews and lessons.
 
 ---
 
-## 5. Uso diario
+## 5. Daily use
 
-- Enciende; si hace más de 15 minutos de la última sync, sincroniza.
-- `Enter` → repasos.
-- Escribe el significado; `Enter`.
-- Escribe la lectura en romaji; el campo muestra kana; `Enter`.
-- Si fallas, lee la respuesta correcta y pulsa `Enter`; el ítem vuelve luego.
-- Al terminar, resumen. `Enter` para volver al home.
-- `L` → lecciones (fase 2).
-- `S` → sincronizar.
-- `Tab` → ajustes desde el home.
+- Turn it on; if it has been more than 15 minutes since the last sync, it syncs.
+- `Enter` → reviews.
+- Type the meaning; `Enter`.
+- Type the reading in romaji; the field shows kana; `Enter`.
+- If you get it wrong, read the correct answer and press `Enter`; the item comes back later.
+- When you finish, a summary. `Enter` to return to the home screen.
+- `L` → lessons (phase 2).
+- `S` → sync.
+- `Tab` → settings from the home screen.
 
 ---
 
-## 6. Actualizar el pack visual
+## 6. Updating the visual pack
 
-Hay que regenerarlo si:
+You must regenerate it if:
 
-- Subes de nivel y aparecen kanji nuevos (si el pack se generó solo hasta el
-  nivel actual).
-- Pasas de cuenta gratuita a suscripción (más niveles permitidos).
-- Cambias de fuente o de tamaño de glifo.
+- You level up and new kanji appear (if the pack was generated only up to the
+  current level).
+- You go from a free account to a subscription (more levels allowed).
+- You change the font or the glyph size.
 
-Con el pack generado hasta `max_level_granted`, los cambios de nivel no deberían
-requerir regenerarlo. Aun así, `--check` lista los caracteres que faltan:
+With the pack generated up to `max_level_granted`, level changes should not
+require regenerating it. Even so, `--check` lists the missing characters:
 
 ```sh
 uv run kanikey-glyphs check \
@@ -138,38 +138,38 @@ uv run kanikey-glyphs check \
   --token "$WANIKANI_TOKEN"
 ```
 
-Si faltan pocos, se puede regenerar solo el pack parcial con `--ids` (previsto).
+If only a few are missing, you can regenerate just the partial pack with `--ids` (planned).
 
 ---
 
-## 7. Problemas frecuentes
+## 7. Common problems
 
-| Síntoma | Causa probable | Solución |
+| Symptom | Probable cause | Solution |
 |---|---|---|
-| `No SD card` | Tarjeta ausente o no FAT32 | Inserta/formatea en FAT32 |
-| `Visual pack missing` | No está `/kanikey/glyphs.kgp` | Copia el pack |
-| `Visual pack is missing 休` | Pack antiguo o generado con otro nivel | Regenera con `--check` |
-| `Token rejected` (401) | Token revocado o mal copiado | Crea uno nuevo y actualízalo |
-| `Missing API permissions` (403) | Faltan permisos | Edita el token en WaniKani |
-| `Offline` | Sin Wi-Fi o DNS | Revisa la red; el repaso offline sigue |
-| `WaniKani is busy` (429) | Rate limit | Espera; KaniKey reintenta |
-| `Clock not set` | Sin SNTP y sin hora del portal | Conéctate una vez o ajusta la hora |
-| `Review already changed` (422) | El ítem se repasó en otro sitio | KaniKey reconcilia y refresca |
+| `No SD card` | Card missing or not FAT32 | Insert/format as FAT32 |
+| `Visual pack missing` | `/kanikey/glyphs.kgp` is not there | Copy the pack |
+| `Visual pack is missing 休` | Old pack or generated with another level | Regenerate with `--check` |
+| `Token rejected` (401) | Token revoked or copied wrong | Create a new one and update it |
+| `Missing API permissions` (403) | Missing permissions | Edit the token in WaniKani |
+| `Offline` | No Wi-Fi or DNS | Check the network; offline review continues |
+| `WaniKani is busy` (429) | Rate limit | Wait; KaniKey retries |
+| `Clock not set` | No SNTP and no portal time | Connect once or set the time |
+| `Review already changed` (422) | The item was reviewed elsewhere | KaniKey reconciles and refreshes |
 
 ---
 
-## 8. Privacidad
+## 8. Privacy
 
-- El token se queda en la Cardputer (NVS). No se envía a ningún servidor de
-  KaniKey.
-- El pack visual se genera en tu ordenador y se queda en tu tarjeta.
-- No hay telemetría.
-- Al cerrar sesión se borran token, asignaciones y outbox (con confirmación).
+- The token stays on the Cardputer (NVS). It is not sent to any KaniKey
+  server.
+- The visual pack is generated on your computer and stays on your card.
+- There is no telemetry.
+- Logging out deletes the token, assignments and outbox (with confirmation).
 
 ---
 
-## 9. Futuro
+## 9. Future
 
-- Generador de pack en el navegador del móvil, sin ordenador.
-- Rasterizado en el dispositivo para caracteres que falten.
-- Audio de pronunciación y orden de trazos.
+- Pack generator in the phone's browser, without a computer.
+- On-device rasterization for missing characters.
+- Pronunciation audio and stroke order.

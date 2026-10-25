@@ -1,108 +1,107 @@
-# KaniKey — UX, teclado y pantallas
+# KaniKey — UX, keyboard and screens
 
-> Diseño, 2026-10-25. Los mockups están a 240×135: los individuales se muestran
-> a 4× y el contact sheet a 2×. La geometría y los tamaños de texto son los de
-> 1×; el upscale es nearest-neighbour para no mentir sobre la rejilla de píxeles.
+> Design, 2026-10-25. Mockups are at 240×135: individual ones are shown at 4×
+> and the contact sheet at 2×. Geometry and text sizes are the 1× ones; the
+> upscale is nearest-neighbour so as not to misrepresent the pixel grid.
 
-![Pantallas](screens/overview.png)
-
----
-
-## 1. Principios
-
-1. **El teclado es la interfaz.** Escribir una respuesta no es un modo raro: es
-   la acción principal. El resto de la app se navega con flechas y Enter.
-2. **Un foco por pantalla.** En el repaso, el ítem y la respuesta. En el inicio,
-   los repasos. En la lección, el mnemónico. Nada compite.
-3. **La barra inferior siempre dice qué hacen las teclas.** No hay atajos
-   invisibles. Si una tecla cambia de significado, la barra cambia.
-4. **Color + forma + palabra.** Correcto no es solo verde; lleva ✓ y la palabra
-   `CORRECT`. Incorrecto no es solo rojo; lleva ✗ y `NOT QUITE`.
-5. **Offline se dice.** Un icono, una palabra y un número: `Offline · 18 cached ·
-   4 to sync`. Nunca un error genérico.
-6. **Textos cortos.** La pantalla es de 240×135; las frases largas se parten en
-   varias líneas o se van a una pantalla de detalle.
+![Screens](screens/overview.png)
 
 ---
 
-## 2. Lenguaje visual
+## 1. Principles
 
-### 2.1 Paleta
+1. **The keyboard is the interface.** Typing an answer isn't an odd mode: it's
+   the main action. The rest of the app is navigated with arrows and Enter.
+2. **One focus per screen.** In the review, the item and the answer. On home,
+   the reviews. In the lesson, the mnemonic. Nothing competes.
+3. **The bottom bar always says what the keys do.** There are no invisible
+   shortcuts. If a key changes meaning, the bar changes.
+4. **Color + shape + word.** Correct isn't just green; it has ✓ and the word
+   `CORRECT`. Incorrect isn't just red; it has ✗ and `NOT QUITE`.
+5. **Offline is stated.** An icon, a word and a number: `Offline · 18 cached ·
+   4 to sync`. Never a generic error.
+6. **Short texts.** The screen is 240×135; long sentences wrap onto several
+   lines or move to a detail screen.
 
-| Token | Hex | Uso |
+---
+
+## 2. Visual language
+
+### 2.1 Palette
+
+| Token | Hex | Use |
 |---|---|---|
-| `bg` | `#0B0D10` | Fondo |
-| `surface` | `#151A22` | Paneles, filas, tarjetas |
-| `surface-hi` | `#202733` | Campo de respuesta, pills, pistas |
-| `line` | `#33404F` | Bordes de 1 px, separadores |
-| `text` | `#F4F7FB` | Texto principal, kanji |
-| `text-dim` | `#9BA8BA` | Texto secundario, etiquetas |
-| `text-faint` | `#647184` | Metadatos, ayudas |
-| `accent` | `#6C8CFF` | Foco, progreso, `MEANING` |
-| `accent-hi` | `#9DB2FF` | Acento sobre negro |
-| `brand` | `#FF7A59` | Marca, logotipo, detalles |
-| `reading` | `#5EEAD4` | Lecturas, modo `READING` |
-| `ok` | `#6EE7A8` | Acierto |
-| `ok-bg` | `#123326` | Fondo de acierto |
-| `err` | `#FF6B6B` | Fallo |
-| `err-bg` | `#351A1C` | Fondo de fallo |
-| `warn` | `#FBBF24` | Avisos, offline, batería baja |
-| `gold` | `#F5C451` | Nivel |
+| `bg` | `#0B0D10` | Background |
+| `surface` | `#151A22` | Panels, rows, cards |
+| `surface-hi` | `#202733` | Answer field, pills, hints |
+| `line` | `#33404F` | 1 px borders, separators |
+| `text` | `#F4F7FB` | Main text, kanji |
+| `text-dim` | `#9BA8BA` | Secondary text, labels |
+| `text-faint` | `#647184` | Metadata, help |
+| `accent` | `#6C8CFF` | Focus, progress, `MEANING` |
+| `accent-hi` | `#9DB2FF` | Accent on black |
+| `brand` | `#FF7A59` | Brand, logo, details |
+| `reading` | `#5EEAD4` | Readings, `READING` mode |
+| `ok` | `#6EE7A8` | Correct |
+| `ok-bg` | `#123326` | Correct background |
+| `err` | `#FF6B6B` | Wrong |
+| `err-bg` | `#351A1C` | Wrong background |
+| `warn` | `#FBBF24` | Warnings, offline, low battery |
+| `gold` | `#F5C451` | Level |
 
-La paleta es propia: negro cálido, índigo y coral. No se copian los colores,
-ilustraciones ni componentes de WaniKani.
+The palette is its own: warm black, indigo and coral. WaniKani's colors,
+illustrations and components are not copied.
 
-### 2.2 Tipografía
+### 2.2 Typography
 
-| Rol | Tamaño | Uso |
+| Role | Size | Use |
 |---|---|---|
-| Display | 32 px | Números grandes: repasos, precisión, tiempo |
-| Prompt | 64 / 48 / 32 px | Kanji, radical, palabra de vocabulario |
-| Answer | 20 px | Respuesta escrita, significado/lectura |
-| Title | 18 px | Título de lección, significado principal |
-| Body | 14 px | Frases, mnemonics, valores |
-| Caption | 10 px | Etiquetas, cabecera, pills |
-| Micro | 9 px | Metadatos que no son esenciales |
+| Display | 32 px | Big numbers: reviews, accuracy, time |
+| Prompt | 64 / 48 / 32 px | Kanji, radical, vocabulary word |
+| Answer | 20 px | Written answer, meaning/reading |
+| Title | 18 px | Lesson title, main meaning |
+| Body | 14 px | Sentences, mnemonics, values |
+| Caption | 10 px | Labels, header, pills |
+| Micro | 9 px | Metadata that isn't essential |
 
-La UI usa **Noto Sans JP** (OFL) para latín y kana; los kanji/vocabulario salen
-del pack visual. En el firmware, la fuente de UI se pre-renderiza como en
-Tangocho (`UiFont.h`), así que no hay rasterizado en el dispositivo.
+The UI uses **Noto Sans JP** (OFL) for Latin and kana; kanji/vocabulary come
+from the visual pack. In the firmware, the UI font is pre-rendered as in
+Tangocho (`UiFont.h`), so there's no rasterization on the device.
 
-### 2.3 Rejilla
+### 2.3 Grid
 
-- Unidad base: 4 px.
-- Márgenes: 4 px.
-- Cabecera: 16 px (título + progreso de 2 px o línea de 1 px).
-- Barra de pistas: 12 px.
-- Pills: 13 px de alto.
-- Campo de respuesta: 32 px de alto.
-- Filas de lista: 18–20 px.
-- Esquinas rectas; sin sombras; bordes de 1 px.
+- Base unit: 4 px.
+- Margins: 4 px.
+- Header: 16 px (title + 2 px progress or a 1 px line).
+- Hint bar: 12 px.
+- Pills: 13 px high.
+- Answer field: 32 px high.
+- List rows: 18–20 px.
+- Square corners; no shadows; 1 px borders.
 
-### 2.4 Componentes
+### 2.4 Components
 
-- **Header:** título o marca a la izquierda; icono de Wi-Fi, batería y un valor a
-  la derecha; barra de progreso de 2 px abajo en el repaso.
-- **Pill:** etiqueta corta en mayúsculas (`MEANING`, `READING`, `CORRECT`,
-  `KANJI · L5`) con fondo `surface-hi` y color semántico.
-- **Input:** rectángulo `surface-hi` con borde `line`; texto de 20 px; caret de
-  2 px en `accent`; borde de 2 px en `accent` cuando el teclado está en modo
-  texto.
-- **Keycap:** cuadrado de 11 px con borde; la tecla en 8 px; la acción al lado
-  en 9–10 px.
-- **Progress:** barra de 2–3 px; track `surface-hi`, relleno `accent`.
-- **Feedback:** pill + icono + palabra; nunca solo color.
-- **List row:** fondo `surface`, foco `accent`, etiqueta 10 px, valor 9 px,
+- **Header:** title or brand on the left; Wi-Fi icon, battery and a value on
+  the right; 2 px progress bar at the bottom in the review.
+- **Pill:** short uppercase label (`MEANING`, `READING`, `CORRECT`,
+  `KANJI · L5`) with a `surface-hi` background and semantic color.
+- **Input:** `surface-hi` rectangle with a `line` border; 20 px text; 2 px
+  caret in `accent`; 2 px `accent` border when the keyboard is in text mode.
+- **Keycap:** 11 px square with a border; the key in 8 px; the action next to
+  it in 9–10 px.
+- **Progress:** 2–3 px bar; `surface-hi` track, `accent` fill.
+- **Feedback:** pill + icon + word; never color alone.
+- **List row:** `surface` background, `accent` focus, 10 px label, 9 px value,
   chevron.
 
 ---
 
-## 3. Teclado
+## 3. Keyboard
 
-### 3.1 Mapa físico
+### 3.1 Physical map
 
-La Cardputer ADV tiene 4 filas × 14 teclas. La capa principal es US; Shift da
-mayúsculas y símbolos; Fn da función.
+The Cardputer ADV has 4 rows × 14 keys. The main layer is US; Shift gives
+uppercase and symbols; Fn gives function.
 
 ```
   `  1  2  3  4  5  6  7  8  9  0  -  =  del
@@ -111,10 +110,10 @@ mayúsculas y símbolos; Fn da función.
  ctrl opt alt z  x  c  v  b  n  m  ,  .  /  space
 ```
 
-| Tecla | Capa normal | Shift | Fn |
+| Key | Normal layer | Shift | Fn |
 |---|---|---|---|
 | `` ` `` | `` ` `` | `~` | `Esc` |
-| `1`–`0` | dígitos | `!@#$%^&*()` | `F1`–`F10` |
+| `1`–`0` | digits | `!@#$%^&*()` | `F1`–`F10` |
 | `-` / `=` | `-` / `=` | `_` / `+` | `F11` / `F12` |
 | `del` | Backspace | Backspace | Delete |
 | `;` | `;` | `:` | `↑` |
@@ -122,343 +121,349 @@ mayúsculas y símbolos; Fn da función.
 | `.` | `.` | `>` | `↓` |
 | `/` | `/` | `?` | `→` |
 | `'` | `'` | `"` | — |
-| `[` `]` `\` | literales | `{ } |` | — |
+| `[` `]` `\` | literals | `{ } |` | — |
 
-### 3.2 Dos modos
+### 3.2 Two modes
 
-| Modo | Cuándo | Qué hacen `; , . /` | Qué hacen las letras |
+| Mode | When | What `; , . /` do | What the letters do |
 |---|---|---|---|
-| **Navegación** | Menús, home, feedback, lecciones | Flechas (sin Fn) | Atajos (`R`, `L`, `S`) |
-| **Texto** | Campo de respuesta activo | Caracteres `; , . /` | Se escriben |
+| **Navigation** | Menus, home, feedback, lessons | Arrows (without Fn) | Shortcuts (`R`, `L`, `S`) |
+| **Text** | Answer field active | Characters `; , . /` | They type |
 
-En modo texto, las flechas siguen disponibles con `Fn + ; , . /`. El campo se
-marca con borde `accent` y caret; la barra inferior cambia a
+In text mode, the arrows are still available with `Fn + ; , . /`. The field is
+marked with an `accent` border and caret; the bottom bar changes to
 `Enter check · Esc pause · Tab hint`.
 
-Al terminar una respuesta (Enter) o cancelar (Esc), se vuelve a navegación. No
-hay que pulsar un botón para “entrar” en el campo: al abrir una pregunta, el
-campo está activo.
+When an answer ends (Enter) or is cancelled (Esc), it returns to navigation.
+There's no need to press a button to “enter” the field: when a question opens,
+the field is active.
 
-### 3.3 Atajos globales
+### 3.3 Global shortcuts
 
-| Tecla | Acción |
+| Key | Action |
 |---|---|
-| `Enter` | Comprobar respuesta / continuar / abrir |
-| `Esc` | Volver / cancelar / pausar sesión |
-| `Tab` | Detalle del ítem / pista; en menús, ajustes |
-| `↑` `↓` | Mover foco; en texto, `Fn` + flechas |
-| `←` `→` | Página anterior/siguiente en lecciones |
-| `Space` | Página siguiente en lecciones; espacio en texto |
-| `R` | Repasos (home) |
-| `L` | Lecciones (home) |
-| `S` | Sincronizar (home) |
-| `Ctrl+S` | Sincronizar desde cualquier menú |
-| `G0` | Atrás / pausa (mantener en el repaso abre el menú de sesión) |
+| `Enter` | Check answer / continue / open |
+| `Esc` | Back / cancel / pause session |
+| `Tab` | Item detail / hint; in menus, settings |
+| `↑` `↓` | Move focus; in text, `Fn` + arrows |
+| `←` `→` | Previous/next page in lessons |
+| `Space` | Next page in lessons; space in text |
+| `R` | Reviews (home) |
+| `L` | Lessons (home) |
+| `S` | Sync (home) |
+| `Ctrl+S` | Sync from any menu |
+| `G0` | Back / pause (holding it in the review opens the session menu) |
 
-`Tab` en el repaso no abre ajustes: abre la ficha del ítem. Para ajustes, `Esc`
-→ menú de sesión → Settings, o `Tab` desde el home.
+`Tab` in the review doesn't open settings: it opens the item card. For
+settings, `Esc` → session menu → Settings, or `Tab` from home.
 
-### 3.4 Repetición y modificadores
+### 3.4 Repeat and modifiers
 
-- Se repiten solo Backspace y las flechas (400 ms de retardo, 120 ms de rate).
-- Las letras no se repiten: evita respuestas accidentales por mantener pulsado.
-- Shift, Ctrl, Opt y Alt se rastrean como estado; por sí mismos no generan
-  carácter (Shift cambia la capa del siguiente).
-- Si el TCA8418 pierde eventos (overflow), se suelta todo y se muestra un aviso
-  discreto; nunca se queda una tecla “pegada”.
+- Only Backspace and the arrows repeat (400 ms delay, 120 ms rate).
+- Letters don't repeat: this avoids accidental answers from holding a key down.
+- Shift, Ctrl, Opt and Alt are tracked as state; on their own they don't
+  produce a character (Shift changes the layer of the next one).
+- If the TCA8418 loses events (overflow), everything is released and a discreet
+  notice is shown; a key never gets “stuck”.
 
 ---
 
-## 4. Flujos
+## 4. Flows
 
-### 4.1 Primera configuración
+### 4.1 First setup
 
 ```
 Boot
- └─ ¿Wi-Fi guardada? ──no──► Setup
-                              ├─ 1. Red WPA2 temporal + QR/URL
-                              ├─ 2. Portal: Wi-Fi + token
-                              ├─ 3. GET /user: usuario/nivel
-                              ├─ 4. Hora (NTP o navegador)
-                              ├─ 5. Primer sync (summary/assignments)
-                              └─ 6. ¿Pack visual? ──no──► instrucciones SD
+ └─ Wi-Fi saved? ──no──► Setup
+                          ├─ 1. Temporary WPA2 network + QR/URL
+                          ├─ 2. Portal: Wi-Fi + token
+                          ├─ 3. GET /user: user/level
+                          ├─ 4. Time (NTP or browser)
+                          ├─ 5. First sync (summary/assignments)
+                          └─ 6. Visual pack? ──no──► SD instructions
 ```
 
-- El portal se abre solo durante el setup y se cierra al terminar.
-- La red temporal usa WPA2 con una clave aleatoria de 8–10 caracteres visible en
-  pantalla. No es una red abierta.
-- El token se pega en el portal; se valida con `GET /user` antes de guardarlo.
-- Si el usuario cancela, el aparato queda en “Setup pendiente” y no sincroniza.
+- The portal opens only during setup and closes when it finishes.
+- The temporary network uses WPA2 with a random 8–10 character key visible on
+  screen. It's not an open network.
+- The token is pasted in the portal; it's validated with `GET /user` before
+  saving.
+- If the user cancels, the device stays in “Setup pending” and doesn't sync.
 
-### 4.2 Repaso diario
+### 4.2 Daily review
 
 ```
-Home ──Enter──► Sync (si toca) ──► Review
-                                   ├─ Meaning: escribe, Enter
+Home ──Enter──► Sync (if due) ──► Review
+                                   ├─ Meaning: type, Enter
                                    ├─ Reading: romaji→kana, Enter
-                                   ├─ acierto: feedback breve, Enter
-                                   ├─ fallo: feedback + reencolar
-                                   └─ completado: POST /reviews
-                                         ├─ ok: actualiza asignación
-                                         └─ sin red: outbox
+                                   ├─ correct: brief feedback, Enter
+                                   ├─ wrong: feedback + requeue
+                                   └─ completed: POST /reviews
+                                         ├─ ok: updates assignment
+                                         └─ no network: outbox
                                    ──► Summary
 ```
 
-- La sesión se congela al empezar: los ítems que se añadan después no aparecen
-  hasta la siguiente.
-- Si el usuario sale, se guarda la posición y la outbox; al volver, retoma.
-- El orden es aleatorio estable por sesión, mezclando tipos; los ítems con
-  fallo vuelven 3–5 posiciones después.
+- The session freezes when it starts: items added later don't appear until the
+  next one.
+- If the user exits, the position and the outbox are saved; on return, it
+  resumes.
+- The order is stable-random per session, mixing types; items answered wrong
+  come back 3–5 positions later.
 
 ### 4.3 Offline
 
 ```
-Home (Offline) ──► Review con caché ──► completados a outbox
+Home (Offline) ──► Review with cache ──► completed to outbox
                                          │
-                                    al volver red
+                                    when network returns
                                          │
-                                    Sync outbox (1 a 1)
+                                    Sync outbox (1 by 1)
 ```
 
-- La home muestra `Offline · 18 cached · 4 to sync`.
-- Si un ítem no tiene sujeto cacheado, no se ofrece; se dice
+- Home shows `Offline · 18 cached · 4 to sync`.
+- If an item has no cached subject, it isn't offered; it says
   `1 item needs a connection`.
-- Al volver la red, se envía la outbox antes de pedir asignaciones nuevas.
+- When the network returns, the outbox is sent before requesting new
+  assignments.
 
-### 4.4 Lecciones
+### 4.4 Lessons
 
 ```
 Home ──L──► Lessons ──Enter──► Lesson card
-                               ├─ Space: siguiente página
-                               ├─ ←→: páginas
-                               ├─ Tab: componentes/notas
+                               ├─ Space: next page
+                               ├─ ←→: pages
+                               ├─ Tab: components/notes
                                └─ Enter: Start lesson
                                      └─ PUT /assignments/{id}/start
 ```
 
-- La ficha muestra significado(s), lectura(s), mnemónico y componentes.
-- “Start lesson” requiere red en la v1. Si no hay, se puede estudiar la ficha
-  pero el botón queda deshabilitado con `Needs connection`.
-- Tras empezar, la asignación pasa a la cola de repaso con la etapa 1.
+- The card shows meaning(s), reading(s), mnemonic and components.
+- “Start lesson” requires a network in v1. Without one, the card can be studied
+  but the button is disabled with `Needs connection`.
+- After starting, the assignment moves to the review queue at stage 1.
 
-### 4.5 Conflictos y errores
+### 4.5 Conflicts and errors
 
-| Situación | Qué ve el usuario | Qué hace la app |
+| Situation | What the user sees | What the app does |
 |---|---|---|
-| Token inválido (401) | `Token rejected` + `Update token` | Abre setup de token |
-| Sin permiso (403) | `Missing API permissions` | Lista los scopes necesarios |
-| Rate limit (429) | `WaniKani is busy · retrying in 42s` | Backoff con `RateLimit-Reset` |
-| Sin red | `Offline` + caché | Sigue con la caché |
-| 422 al enviar | `Review already changed` | Reconciliación y refresco |
-| SD fuera | `Insert the SD card` | Pausa la sesión |
-| Glifo ausente | `Visual pack is missing 休` | Bloquea el ítem y explica |
-| Hora no fiable | `Clock not set` | Pide sync; si no, `created_at` se omite |
+| Invalid token (401) | `Token rejected` + `Update token` | Opens token setup |
+| No permission (403) | `Missing API permissions` | Lists the required scopes |
+| Rate limit (429) | `WaniKani is busy · retrying in 42s` | Backoff with `RateLimit-Reset` |
+| No network | `Offline` + cache | Continues with the cache |
+| 422 on submit | `Review already changed` | Reconciliation and refresh |
+| SD removed | `Insert the SD card` | Pauses the session |
+| Missing glyph | `Visual pack is missing 休` | Blocks the item and explains |
+| Unreliable clock | `Clock not set` | Requests sync; if not, `created_at` is omitted |
 
 ---
 
-## 5. Pantallas
+## 5. Screens
 
 ### 5.1 Boot
 
-- Fondo negro, `KaniKey` en coral, barra de progreso fina.
-- Estados: `Mounting SD…`, `Reading cache…`, `Wi-Fi…`, `Syncing…`.
-- Si falla algo crítico, una sola frase y una acción:
+- Black background, `KaniKey` in coral, thin progress bar.
+- States: `Mounting SD…`, `Reading cache…`, `Wi-Fi…`, `Syncing…`.
+- If something critical fails, a single sentence and an action:
   - `No SD card · Insert a FAT32 card` / `Enter retry`.
   - `Visual pack missing · See docs/setup.md`.
-- No muestra logs técnicos.
+- It doesn't show technical logs.
 
 ### 5.2 Setup
 
-- Cabecera `WELCOME`.
-- `KaniKey` grande, subtítulo `an unofficial WaniKani companion`.
-- Pasos: `Wi-Fi`, `API token`, `Clock`, `First sync`, con el actual marcado.
-- En el paso 1: lista de redes, `Enter` elegir, texto para la contraseña.
-- En el paso 2: URL del portal y clave de la red temporal; el móvil hace el
-  resto. También se puede pegar el token con el teclado.
-- En el paso 4: barra de progreso y `Cancel`.
-- En el paso 5: si falta el pack visual, una pantalla con:
-  `Copy glyphs.kgp to /kanikey/ on the SD card` y `Enter: check again`.
+- Header `WELCOME`.
+- Large `KaniKey`, subtitle `an unofficial WaniKani companion`.
+- Steps: `Wi-Fi`, `API token`, `Clock`, `First sync`, with the current one
+  marked.
+- In step 1: list of networks, `Enter` to choose, text for the password.
+- In step 2: portal URL and temporary network key; the phone does the rest.
+  The token can also be pasted with the keyboard.
+- In step 4: progress bar and `Cancel`.
+- In step 5: if the visual pack is missing, a screen with:
+  `Copy glyphs.kgp to /kanikey/ on the SD card` and `Enter: check again`.
 
 ### 5.3 Home
 
 ![Home](screens/home.png)
 
-- Cabecera: `KaniKey` (marca), Wi-Fi, batería.
-- `LEVEL 12` en oro y el nombre de usuario al lado.
-- Número grande de repasos (`28`) y `REVIEWS DUE`.
-- Lecciones (`5`) y `LESSONS`.
+- Header: `KaniKey` (brand), Wi-Fi, battery.
+- `LEVEL 12` in gold and the username next to it.
+- Large number of reviews (`28`) and `REVIEWS DUE`.
+- Lessons (`5`) and `LESSONS`.
 - `Next review 18:00 · in 42 min`.
-- Barra de distribución SRS: aprendiz, guru, master, enlightened, burned, con
-  conteos pequeños.
-- Barra de pistas: `Enter reviews`, `L lessons`, `S sync`.
-- Estados:
-  - **Sync:** `Syncing…` con spinner y progreso en la cabecera.
-  - **Offline:** línea en `warn`: `Offline · 18 cached · 4 to sync`.
-  - **Vacío:** `All caught up` + `Next review 18:00`; `Enter` abre el detalle de
-    la previsión.
+- SRS distribution bar: apprentice, guru, master, enlightened, burned, with
+  small counts.
+- Hint bar: `Enter reviews`, `L lessons`, `S sync`.
+- States:
+  - **Sync:** `Syncing…` with spinner and progress in the header.
+  - **Offline:** line in `warn`: `Offline · 18 cached · 4 to sync`.
+  - **Empty:** `All caught up` + `Next review 18:00`; `Enter` opens the
+    forecast detail.
   - **Error:** `Can't reach WaniKani` + `Enter retry` / `S sync`.
-- No se muestran menús laterales ni tarjetas que tapen los números.
+- No side menus or cards covering the numbers are shown.
 
 ### 5.4 Review
 
-![Repaso de significado](screens/review-meaning.png)
-![Repaso de lectura](screens/review-reading.png)
+![Meaning review](screens/review-meaning.png)
+![Reading review](screens/review-reading.png)
 
-- Cabecera `REVIEWS`, `12/48`, batería; barra de progreso de 2 px.
-- Panel izquierdo de 88×88:
-  - Kanji/radical de 64 px centrado.
-  - Pill `KANJI · L5` o `RADICAL · L3` debajo.
-  - Vocabulario: la palabra se ajusta a 48/32/20 px para caber; si no cabe, se
-    parte en dos líneas.
-  - Radical sin Unicode: bitmap del pack visual.
-- Panel derecho:
-  - Pill `MEANING` (índigo) o `READING` (teal).
-  - Instrucción: `Type the meaning` / `Type the reading`.
-  - Campo de 32 px con la respuesta; caret.
-  - En lectura, debajo: `romaji: tabe` en gris; el campo muestra `たべ`.
-  - `Tab: details` en la esquina inferior.
-- Barra: `Enter check`, `Esc pause`.
-- El campo está activo desde que aparece la pregunta. No hay que pulsar nada.
-- Si la respuesta es larga, el texto se desplaza horizontalmente; el caret queda
-  visible. No se parte en dos líneas para no cambiar la altura.
-- El botón G0 mantiene: abre `Pause` (Continue / End session / Settings).
+- Header `REVIEWS`, `12/48`, battery; 2 px progress bar.
+- Left panel 88×88:
+  - 64 px kanji/radical, centered.
+  - Pill `KANJI · L5` or `RADICAL · L3` below.
+  - Vocabulary: the word scales to 48/32/20 px to fit; if it doesn't fit, it
+    splits into two lines.
+  - Radical without Unicode: bitmap from the visual pack.
+- Right panel:
+  - Pill `MEANING` (indigo) or `READING` (teal).
+  - Instruction: `Type the meaning` / `Type the reading`.
+  - 32 px field with the answer; caret.
+  - In reading, below: `romaji: tabe` in gray; the field shows `たべ`.
+  - `Tab: details` in the bottom corner.
+- Bar: `Enter check`, `Esc pause`.
+- The field is active as soon as the question appears. Nothing needs to be
+  pressed.
+- If the answer is long, the text scrolls horizontally; the caret stays
+  visible. It doesn't wrap to two lines so as not to change the height.
+- Holding G0 opens `Pause` (Continue / End session / Settings).
 
 ### 5.5 Feedback
 
-![Feedback correcto](screens/review-correct.png)
-![Feedback incorrecto](screens/review-wrong.png)
+![Correct feedback](screens/review-correct.png)
+![Incorrect feedback](screens/review-wrong.png)
 
-- El panel izquierdo no cambia; el derecho se convierte en feedback.
-- Acierto:
-  - Pill `CORRECT` en verde + ✓.
-  - `You typed` y la respuesta en gris.
-  - `Meaning` / `Reading` con la respuesta correcta en verde/teal.
+- The left panel doesn't change; the right one turns into feedback.
+- Correct:
+  - `CORRECT` pill in green + ✓.
+  - `You typed` and the answer in gray.
+  - `Meaning` / `Reading` with the correct answer in green/teal.
   - `Enter next`, `Tab details`.
-- Fallo:
-  - Pill `NOT QUITE` en rojo + ✗.
-  - `You typed` y la respuesta del usuario.
-  - `Correct` con la respuesta correcta.
+- Wrong:
+  - `NOT QUITE` pill in red + ✗.
+  - `You typed` and the user's answer.
+  - `Correct` with the correct answer.
   - `Comes back later in this session`.
-- El feedback no dura un tiempo fijo: espera a `Enter` (o a que el usuario
-  empiece a escribir la siguiente, si se habilita auto-avance).
-- `Tab` abre la ficha completa: significados, lecturas, mnemónico y componentes.
+- Feedback doesn't last a fixed time: it waits for `Enter` (or for the user to
+  start typing the next one, if auto-advance is enabled).
+- `Tab` opens the full card: meanings, readings, mnemonic and components.
 
 ### 5.6 Item detail
 
-- Cabecera `ITEM` con tipo y nivel.
-- Carácter/radical a la izquierda; significados y lecturas a la derecha.
-- Páginas con `←` `→` o `Space`:
-  1. Significados + lecturas.
-  2. Mnemónico de significado.
-  3. Mnemónico de lectura.
-  4. Componentes (radicales/kanji) con sus significados.
-- Si el mnemónico no está cacheado: `Mnemonic not available offline`.
-- `Esc` vuelve al repaso sin perder la respuesta escrita.
+- Header `ITEM` with type and level.
+- Character/radical on the left; meanings and readings on the right.
+- Pages with `←` `→` or `Space`:
+  1. Meanings + readings.
+  2. Meaning mnemonic.
+  3. Reading mnemonic.
+  4. Components (radicals/kanji) with their meanings.
+- If the mnemonic isn't cached: `Mnemonic not available offline`.
+- `Esc` returns to the review without losing the written answer.
 
 ### 5.7 Session summary
 
-![Resumen](screens/summary.png)
+![Summary](screens/summary.png)
 
 - `SESSION`.
-- Tres columnas: repasos, precisión, tiempo.
-- `8 items moved up` (o `No stage changes`).
-- `Next review 18:00` y, si toca, `All caught up for now`.
-- Si hay outbox: `4 reviews waiting to sync` en `warn`.
+- Three columns: reviews, accuracy, time.
+- `8 items moved up` (or `No stage changes`).
+- `Next review 18:00` and, if applicable, `All caught up for now`.
+- If there's an outbox: `4 reviews waiting to sync` in `warn`.
 - `Enter done`, `R review more`.
 
 ### 5.8 Lessons
 
-- `LESSONS` con lista de ítems disponibles: carácter, tipo, nivel, significado
-  principal.
-- `↑↓` mueve, `Enter` abre, `Esc` vuelve.
-- Cada fila: `休 · KANJI · L5 · rest`.
-- Si no hay lecciones: `No lessons right now` + `Next unlock at level 13`.
-- La lista se ordena por nivel y `lesson_position`.
+- `LESSONS` with a list of available items: character, type, level, main
+  meaning.
+- `↑↓` moves, `Enter` opens, `Esc` goes back.
+- Each row: `休 · KANJI · L5 · rest`.
+- If there are no lessons: `No lessons right now` + `Next unlock at level 13`.
+- The list is sorted by level and `lesson_position`.
 
 ### 5.9 Lesson card
 
-![Lección](screens/lesson.png)
+![Lesson](screens/lesson.png)
 
-- Cabecera `LESSON`, `2/5`, progreso.
-- Panel izquierdo: carácter/radical de 48 px.
-- Derecha: pill `KANJI · L5`, significado principal en 20 px, lecturas en teal
-  de 14 px, `person + tree` en gris.
-- Mnemónico en un panel de 3 líneas y 10 px; `Space` pasa de página.
-- `p1/3` en la esquina.
-- `Enter start` / `Needs connection` si no hay red.
-- Al empezar, animación breve de progreso y vuelta a la lista.
+- Header `LESSON`, `2/5`, progress.
+- Left panel: 48 px character/radical.
+- Right: pill `KANJI · L5`, main meaning in 20 px, readings in teal at 14 px,
+  `person + tree` in gray.
+- Mnemonic in a 3-line, 10 px panel; `Space` turns the page.
+- `p1/3` in the corner.
+- `Enter start` / `Needs connection` if there's no network.
+- On start, a brief progress animation and back to the list.
 
 ### 5.10 Sync
 
 ![Sync](screens/sync.png)
 
-- Lista de pasos: Account, Summary, Reviews, Subjects, Outbox.
-- Cada fila: nombre, valor y estado (✓, spinner, reloj, ✗).
-- Barra de progreso y `Fetching subjects… 64/128`.
-- `Esc cancel`; si se cancela, lo ya descargado se conserva.
-- Al terminar: `Synced · 2 min ago` y vuelve a Home.
-- Si un paso falla, se queda en `warn` con `Retry` y no bloquea los demás.
+- List of steps: Account, Summary, Reviews, Subjects, Outbox.
+- Each row: name, value and status (✓, spinner, clock, ✗).
+- Progress bar and `Fetching subjects… 64/128`.
+- `Esc cancel`; if cancelled, what's already downloaded is kept.
+- When done: `Synced · 2 min ago` and back to Home.
+- If a step fails, it stays in `warn` with `Retry` and doesn't block the others.
 
 ### 5.11 Settings
 
-![Ajustes](screens/settings.png)
+![Settings](screens/settings.png)
 
-- Filas: Account, Study, Sync, Device, About.
-- Account: usuario, nivel, token enmascarado, `Sign out`.
+- Rows: Account, Study, Sync, Device, About.
+- Account: user, level, masked token, `Sign out`.
 - Study: `Meaning first` / `Reading first`, `Auto-advance`, `Session size`,
   `Strict answers`.
 - Sync: `Sync on boot`, `Sync now`, `Last sync`, `Clear cache`.
 - Device: `Brightness`, `Sleep after`, `Wi-Fi`, `Time`, `Firmware`.
-- About: versión, licencias, atribuciones, disclaimer, heap y última sync.
-- `↑↓` mueve, `Enter` abre, `Esc` vuelve.
+- About: version, licenses, attributions, disclaimer, heap and last sync.
+- `↑↓` moves, `Enter` opens, `Esc` goes back.
 
-### 5.12 Stats (fase 2)
+### 5.12 Stats (phase 2)
 
-- Nivel actual y progreso del nivel.
-- Distribución SRS con barras y conteos.
-- Precisión de la sesión y global (si se cachea).
-- Racha y repasos de los últimos 7 días.
-- `Esc` vuelve.
+- Current level and level progress.
+- SRS distribution with bars and counts.
+- Session and global accuracy (if cached).
+- Streak and reviews from the last 7 days.
+- `Esc` goes back.
 
-### 5.13 Errores y vacíos
+### 5.13 Errors and empty states
 
-- **Sin configurar:** `Welcome to KaniKey` + `Enter setup`.
-- **Sin SD:** `No SD card` + `Insert a FAT32 card` + `Enter retry`.
-- **Pack visual:** `Visual pack missing` + `Copy glyphs.kgp` + `Enter check`.
-- **Sin red:** `Offline` + `Using cached data` + `S sync`.
+- **Not configured:** `Welcome to KaniKey` + `Enter setup`.
+- **No SD:** `No SD card` + `Insert a FAT32 card` + `Enter retry`.
+- **Visual pack:** `Visual pack missing` + `Copy glyphs.kgp` + `Enter check`.
+- **No network:** `Offline` + `Using cached data` + `S sync`.
 - **Token:** `Token rejected` + `Update token`.
-- **Servidor:** `WaniKani is not answering` + `Enter retry`.
-- **Todo al día:** `All caught up` + `Next review 18:00`.
-- **Sesión vacía:** `No reviews due` + `Next review 18:00` + `L lessons`.
+- **Server:** `WaniKani is not answering` + `Enter retry`.
+- **All up to date:** `All caught up` + `Next review 18:00`.
+- **Empty session:** `No reviews due` + `Next review 18:00` + `L lessons`.
 
-Las pantallas de error nunca muestran stack traces, URLs con token ni JSON.
-
----
-
-## 6. Accesibilidad
-
-- **Contraste:** texto principal sobre fondo > 15:1; texto secundario > 7:1;
-  los colores semánticos se acompañan de ✓/✗ y palabra.
-- **Daltonismo:** verde y rojo no son la única señal; la forma (pill + icono) y
-  el texto cambian.
-- **Tamaño:** mínimo 9 px para metadatos no esenciales; 10 px para cualquier cosa
-  que haya que leer; 20 px para la respuesta.
-- **Teclado:** todo se puede hacer sin tocar la pantalla; no hay gestos.
-- **Movimiento:** solo el caret y el progreso; nada de animaciones que bloqueen.
-- **Idioma:** inglés primero; español después. Los significados/lecturas son
-  siempre los de WaniKani (inglés).
-- **Texto largo:** se pagina; no se reduce la fuente por debajo de 9 px.
+Error screens never show stack traces, URLs with a token, or JSON.
 
 ---
 
-## 7. Copy y tono
+## 6. Accessibility
 
-- Corto, directo, sin jerga de WaniKani.
-- “Correct” / “Not quite”, no “¡Bien hecho!” ni “Has fallado”.
+- **Contrast:** main text on background > 15:1; secondary text > 7:1;
+  semantic colors are accompanied by ✓/✗ and a word.
+- **Color blindness:** green and red aren't the only signal; the shape (pill +
+  icon) and the text change.
+- **Size:** minimum 9 px for non-essential metadata; 10 px for anything that
+  has to be read; 20 px for the answer.
+- **Keyboard:** everything can be done without touching the screen; there are
+  no gestures.
+- **Movement:** only the caret and progress; no animations that block.
+- **Language:** English first; Spanish later. Meanings/readings are always
+  WaniKani's (English).
+- **Long text:** it paginates; the font is never reduced below 9 px.
+
+---
+
+## 7. Copy and tone
+
+- Short, direct, without WaniKani jargon.
+- “Correct” / “Not quite”, not “Well done!” or “You got it wrong”.
 - “Reviews”, “Lessons”, “Meaning”, “Reading”, “Item”, “Session”.
-- “Offline · 18 cached · 4 to sync”, no “Error de red”.
-- “Comes back later in this session”, no “Incorrecto. Se repetirá”.
-- Disclaimer en Setup y About:
+- “Offline · 18 cached · 4 to sync”, not “Network error”.
+- “Comes back later in this session”, not “Incorrect. It will be repeated”.
+- Disclaimer in Setup and About:
   `KaniKey is an unofficial third-party app for WaniKani. Not affiliated with
   WaniKani or Tofugu LLC.`
 
@@ -466,21 +471,21 @@ Las pantallas de error nunca muestran stack traces, URLs con token ni JSON.
 
 ## 8. Mockups
 
-| Archivo | Pantalla |
+| File | Screen |
 |---|---|
-| `screens/home.png` | Home con repasos, lecciones y distribución SRS |
-| `screens/review-meaning.png` | Pregunta de significado |
-| `screens/review-reading.png` | Pregunta de lectura con romaji |
-| `screens/review-correct.png` | Feedback correcto |
-| `screens/review-wrong.png` | Feedback incorrecto |
-| `screens/lesson.png` | Ficha de lección |
-| `screens/summary.png` | Resumen de sesión |
-| `screens/sync.png` | Sincronización |
-| `screens/settings.png` | Ajustes |
-| `screens/setup.png` | Primer arranque |
-| `screens/overview.png` | Contacto de todas |
+| `screens/home.png` | Home with reviews, lessons and SRS distribution |
+| `screens/review-meaning.png` | Meaning question |
+| `screens/review-reading.png` | Reading question with romaji |
+| `screens/review-correct.png` | Correct feedback |
+| `screens/review-wrong.png` | Incorrect feedback |
+| `screens/lesson.png` | Lesson card |
+| `screens/summary.png` | Session summary |
+| `screens/sync.png` | Synchronization |
+| `screens/settings.png` | Settings |
+| `screens/setup.png` | First boot |
+| `screens/overview.png` | Contact sheet of all |
 
-Para regenerarlos:
+To regenerate them:
 
 ```sh
 python3 tools/mockups/render.py

@@ -1,43 +1,43 @@
-# KaniKey — API, caché y sincronización
+# KaniKey — API, cache and synchronization
 
-> Diseño, 2026-10-25. Este documento es el contrato entre el firmware y la API
-> de WaniKani, y entre el firmware y el almacenamiento local.
-
----
-
-## 1. Principios
-
-1. **WaniKani es la fuente de verdad.** KaniKey no reprograma repasos ni inventa
-   etapas SRS. Solo cachea, muestra y envía.
-2. **La caché es explícita.** Cada dato tiene un sitio, una vida útil y una regla
-   de invalidación. Nada de “lo que haya en RAM”.
-3. **La outbox es sagrada.** Un repaso completado se escribe en disco antes de
-   que la pantalla avance. Un corte de luz no puede perderlo.
-4. **Un fallo de red no es un fallo del repaso.** Se encola y se dice.
-5. **Nunca un JSON completo en RAM.** La API devuelve páginas de hasta 1.000
-   sujetos; se leen en streaming y se escriben a disco.
-6. **Nada de contenido de WaniKani en el repositorio.** Los fixtures de test son
-   mínimos, escritos a mano y atribuidos.
+> Design, 2026-10-25. This document is the contract between the firmware and the
+> WaniKani API, and between the firmware and local storage.
 
 ---
 
-## 2. La API v2 en una página
+## 1. Principles
 
-| Concepto | Valor |
+1. **WaniKani is the source of truth.** KaniKey does not reschedule reviews or
+   invent SRS stages. It only caches, displays and sends.
+2. **The cache is explicit.** Every piece of data has a place, a lifetime and an
+   invalidation rule. No such thing as “whatever is in RAM”.
+3. **The outbox is sacred.** A completed review is written to disk before the
+   screen advances. A power cut cannot lose it.
+4. **A network failure is not a review failure.** It gets queued and reported.
+5. **Never a full JSON in RAM.** The API returns pages of up to 1,000 subjects;
+   they are read as a stream and written to disk.
+6. **No WaniKani content in the repository.** Test fixtures are minimal,
+   hand-written and attributed.
+
+---
+
+## 2. The v2 API in one page
+
+| Concept | Value |
 |---|---|
 | Base | `https://api.wanikani.com/v2/` |
-| Revisión | Cabecera `Wanikani-Revision: 20170710` |
+| Revision | `Wanikani-Revision: 20170710` header |
 | Auth | `Authorization: Bearer <token>` |
-| Formato | JSON; colecciones con `data`, `pages`, `total_count` |
-| Paginación | `page_after_id` / `page_before_id`; 500 por página (1.000 en subjects/reviews) |
-| Filtros | `updated_after`, `ids`, `levels`, `subject_ids`, `immediately_available_for_*` |
-| Rate limit | 60 peticiones/minuto; cabeceras `RateLimit-*` |
-| Condicional | `If-None-Match` / `If-Modified-Since`; 304 sin cuerpo |
-| Errores | 401, 403, 404, 409, 422, 429, 5xx; cuerpo `{error, code}` |
-| Suscripción | `max_level_granted` (3 o 60); respetarlo siempre |
-| Marca | El producto no se llama WaniKani; UI propia; sin arte oficial |
+| Format | JSON; collections with `data`, `pages`, `total_count` |
+| Pagination | `page_after_id` / `page_before_id`; 500 per page (1,000 for subjects/reviews) |
+| Filters | `updated_after`, `ids`, `levels`, `subject_ids`, `immediately_available_for_*` |
+| Rate limit | 60 requests/minute; `RateLimit-*` headers |
+| Conditional | `If-None-Match` / `If-Modified-Since`; 304 with no body |
+| Errors | 401, 403, 404, 409, 422, 429, 5xx; body `{error, code}` |
+| Subscription | `max_level_granted` (3 or 60); always respect it |
+| Brand | The product is not called WaniKani; own UI; no official art |
 
-### 2.1 Colecciones y recursos
+### 2.1 Collections and resources
 
 ```
 {
@@ -50,39 +50,39 @@
 }
 ```
 
-Un recurso es `{id, object, url, data_updated_at, data}`.
+A resource is `{id, object, url, data_updated_at, data}`.
 
-### 2.2 Fechas
+### 2.2 Dates
 
-ISO 8601 en UTC, con microsegundos y `Z`. KaniKey solo necesita segundos.
-`available_at`, `started_at`, `passed_at`, `burned_at`, `created_at` pueden ser
+ISO 8601 in UTC, with microseconds and `Z`. KaniKey only needs seconds.
+`available_at`, `started_at`, `passed_at`, `burned_at`, `created_at` may be
 `null`.
 
 ---
 
-## 3. Endpoints usados
+## 3. Endpoints used
 
-| Método | Endpoint | Para qué | Frecuencia |
+| Method | Endpoint | What for | Frequency |
 |---|---|---|---|
-| GET | `/user` | Usuario, nivel, suscripción, preferencias | Boot / 1 día |
-| GET | `/summary` | Repasos/lecciones por hora, `next_reviews_at` | 30–60 min |
-| GET | `/assignments` | Etapas, `available_at`, IDs de asignación | Cada sync |
-| GET | `/subjects` | Significados, lecturas, componentes, mnemónicos | Al faltar IDs |
-| GET | `/study_materials` | Sinónimos del usuario | Cada sync |
-| POST | `/reviews` | Enviar un repaso completado | Por ítem |
-| PUT | `/assignments/{id}/start` | Empezar una lección | Por lección |
+| GET | `/user` | User, level, subscription, preferences | Boot / 1 day |
+| GET | `/summary` | Reviews/lessons per hour, `next_reviews_at` | 30–60 min |
+| GET | `/assignments` | Stages, `available_at`, assignment IDs | Every sync |
+| GET | `/subjects` | Meanings, readings, components, mnemonics | When IDs are missing |
+| GET | `/study_materials` | User synonyms | Every sync |
+| POST | `/reviews` | Send a completed review | Per item |
+| PUT | `/assignments/{id}/start` | Start a lesson | Per lesson |
 
-Opcionales para la fase 2:
+Optional for phase 2:
 
-| Método | Endpoint | Para qué |
+| Method | Endpoint | What for |
 |---|---|---|
-| GET | `/review_statistics` | Precisión por sujeto |
-| GET | `/reviews` | Historial, racha, heatmap |
-| GET | `/level_progressions` | Progreso de nivel |
+| GET | `/review_statistics` | Accuracy per subject |
+| GET | `/reviews` | History, streak, heatmap |
+| GET | `/level_progressions` | Level progress |
 
 ### 3.1 `/user`
 
-Campos que se guardan:
+Fields that are stored:
 
 - `data.username`, `data.level`
 - `data.subscription.active`, `type`, `max_level_granted`, `period_ends_at`
@@ -91,7 +91,7 @@ Campos que se guardan:
   `lower_levels_first`)
 - `data.preferences.reviews_display_srs_indicator`
 
-`data.current_vacation_started_at` se muestra como aviso si no es `null`.
+`data.current_vacation_started_at` is shown as a notice if it is not `null`.
 
 ### 3.2 `/summary`
 
@@ -101,26 +101,26 @@ data.reviews[]: { available_at, subject_ids[] }
 data.next_reviews_at
 ```
 
-- Es un informe, no una colección.
-- Los buckets son horarios. Para la home, se suman los `subject_ids` de los
-  buckets con `available_at <= now`.
-- La suma no sustituye a las asignaciones para repasar: solo da el contador.
-- Se cachea 30–60 min; después de una sesión se ajusta localmente o se refresca.
+- It is a report, not a collection.
+- The buckets are hourly. For the home screen, the `subject_ids` of buckets
+  with `available_at <= now` are added up.
+- The sum does not replace assignments for reviewing: it only gives the counter.
+- It is cached for 30–60 min; after a session it is adjusted locally or refreshed.
 
 ### 3.3 `/assignments`
 
-Filtros que se usan:
+Filters that are used:
 
-| Filtro | Uso |
+| Filter | Use |
 |---|---|
-| `immediately_available_for_review=true` | Cola de repaso |
-| `immediately_available_for_lessons=true` | Lecciones |
-| `updated_after=<ISO>` | Cambios desde el último sync |
-| `hidden=false` | Excluir ocultos |
-| `subject_ids=...` | Refrescar asignaciones concretas |
-| `levels=...` | Limitar a niveles permitidos |
+| `immediately_available_for_review=true` | Review queue |
+| `immediately_available_for_lessons=true` | Lessons |
+| `updated_after=<ISO>` | Changes since the last sync |
+| `hidden=false` | Exclude hidden |
+| `subject_ids=...` | Refresh specific assignments |
+| `levels=...` | Limit to allowed levels |
 
-Campos:
+Fields:
 
 ```
 id, subject_id, subject_type, srs_stage,
@@ -128,53 +128,53 @@ unlocked_at, started_at, passed_at, burned_at,
 available_at, resurrected_at, hidden, data_updated_at
 ```
 
-- `srs_stage` 0 = lección; 1–8 = repaso; 9 = burned.
-- `available_at` puede ser `null` (no programado).
-- `hidden=true` no se muestra ni se repasa.
-- `subject_type` puede ser `radical`, `kanji`, `vocabulary`, `kana_vocabulary`.
-- Para la cola: `srs_stage >= 1`, `available_at <= now`, `hidden=false`.
-- Para lecciones: `srs_stage == 0`, `started_at == null`, `hidden=false`,
+- `srs_stage` 0 = lesson; 1–8 = review; 9 = burned.
+- `available_at` may be `null` (not scheduled).
+- `hidden=true` is neither shown nor reviewed.
+- `subject_type` may be `radical`, `kanji`, `vocabulary`, `kana_vocabulary`.
+- For the queue: `srs_stage >= 1`, `available_at <= now`, `hidden=false`.
+- For lessons: `srs_stage == 0`, `started_at == null`, `hidden=false`,
   `unlocked_at != null`.
 
 ### 3.4 `/subjects`
 
-Filtros: `ids=...`, `types=...`, `levels=...`, `updated_after=...`.
+Filters: `ids=...`, `types=...`, `levels=...`, `updated_after=...`.
 
-Campos comunes:
+Common fields:
 
 ```
 id, object (radical|kanji|vocabulary|kana_vocabulary),
-data.level, data.characters (puede ser null en radicales),
+data.level, data.characters (may be null for radicals),
 data.meanings[] { meaning, primary, accepted_answer },
 data.auxiliary_meanings[] { meaning, type: whitelist|blacklist },
 data.lesson_position, data.meaning_mnemonic, data.reading_mnemonic,
 data.meaning_hint, data.reading_hint,
 data.component_subject_ids[], data.amalgamation_subject_ids[],
 data.visually_similar_subject_ids[],
-data.character_images[] (solo radicales; SVG),
-data.parts_of_speech[] (vocabulario),
-data.context_sentences[] (vocabulario, fase 2),
-data.pronunciation_audios[] (vocabulario, fase 2),
+data.character_images[] (radicals only; SVG),
+data.parts_of_speech[] (vocabulary),
+data.context_sentences[] (vocabulary, phase 2),
+data.pronunciation_audios[] (vocabulary, phase 2),
 data.readings[] { reading, primary, accepted_answer, type }
 ```
 
-- `type` de lectura: `onyomi`, `kunyomi`, `nanori` (kanji); en vocabulario suele
-  faltar.
-- `characters` de un radical puede ser `null`: hay que dibujar la imagen.
-- Los mnemónicos llevan markup `<radical>`, `<kanji>`, `<vocabulary>`,
-  `<meaning>`, `<reading>`; se limpia al mostrar.
-- No se guardan `document_url`, `slug`, `created_at`, `hidden_at` ni
-  `spaced_repetition_system_id` en la v1 (no hacen falta).
+- Reading `type`: `onyomi`, `kunyomi`, `nanori` (kanji); in vocabulary it is
+  usually missing.
+- A radical's `characters` may be `null`: the image has to be drawn.
+- Mnemonics carry `<radical>`, `<kanji>`, `<vocabulary>`, `<meaning>`,
+  `<reading>` markup; it is stripped when displaying.
+- `document_url`, `slug`, `created_at`, `hidden_at` and
+  `spaced_repetition_system_id` are not stored in v1 (they are not needed).
 
 ### 3.5 `/study_materials`
 
-Campos: `subject_id`, `meaning_note`, `reading_note`, `meaning_synonyms[]`,
-`hidden`. Se usan los sinónimos como respuestas correctas. Se piden solo para
-los sujetos en caché, por `subject_ids` o `updated_after`.
+Fields: `subject_id`, `meaning_note`, `reading_note`, `meaning_synonyms[]`,
+`hidden`. The synonyms are used as correct answers. They are requested only for
+subjects in the cache, by `subject_ids` or `updated_after`.
 
 ### 3.6 `POST /reviews`
 
-Cuerpo:
+Body:
 
 ```json
 {
@@ -187,302 +187,303 @@ Cuerpo:
 }
 ```
 
-- `incorrect_*` son obligatorios y pueden ser 0.
-- `created_at` es opcional; si se omite, el servidor usa la hora de la petición.
-- Debe ser pasado y posterior a `assignment.available_at`.
-- La respuesta trae `resources_updated.assignment` y
-  `resources_updated.review_statistic`; se aplican al estado local.
-- No hay clave de idempotencia. Ver §6.
+- `incorrect_*` are required and may be 0.
+- `created_at` is optional; if omitted, the server uses the request time.
+- It must be in the past and later than `assignment.available_at`.
+- The response carries `resources_updated.assignment` and
+  `resources_updated.review_statistic`; they are applied to the local state.
+- There is no idempotency key. See §6.
 
 ### 3.7 `PUT /assignments/{id}/start`
 
-Cuerpo:
+Body:
 
 ```json
 { "assignment": { "started_at": "2026-10-25T08:42:13Z" } }
 ```
 
-- `started_at` es opcional; por defecto, ahora.
-- Requiere `srs_stage == 0`, `started_at == null`, `unlocked_at != null` y nivel
-  permitido.
-- Devuelve la asignación con `srs_stage = 1` y `available_at`.
+- `started_at` is optional; it defaults to now.
+- It requires `srs_stage == 0`, `started_at == null`, `unlocked_at != null` and an
+  allowed level.
+- It returns the assignment with `srs_stage = 1` and `available_at`.
 
 ---
 
-## 4. Token y permisos
+## 4. Token and permissions
 
-- Token personal de WaniKani; nunca usuario/contraseña.
-- Permisos necesarios (el portal de WaniKani los agrupa por recurso):
-  - Lectura de **assignments**.
-  - Lectura de **subjects**.
-  - Lectura de **study materials**.
-  - Lectura de **user** y **summary**.
-  - Creación de **reviews**.
-  - (Fase 2: lectura de **review statistics** y **reviews**.)
-- Se guarda en NVS; se muestra enmascarado; se borra al cerrar sesión.
-- Se valida con `GET /user` antes de guardarlo.
-- Si el token no tiene permisos, `403`; se muestra qué falta y se ofrece
-  actualizarlo.
-- Si el token se revoca, `401`; se ofrece volver al setup.
+- Personal WaniKani token; never username/password.
+- Required permissions (the WaniKani portal groups them by resource):
+  - Read **assignments**.
+  - Read **subjects**.
+  - Read **study materials**.
+  - Read **user** and **summary**.
+  - Create **reviews**.
+  - (Phase 2: read **review statistics** and **reviews**.)
+- It is stored in NVS; it is shown masked; it is deleted on logout.
+- It is validated with `GET /user` before storing it.
+- If the token lacks permissions, `403`; what is missing is shown and updating it
+  is offered.
+- If the token is revoked, `401`; returning to setup is offered.
 
 ---
 
-## 5. Modelo de sincronización
+## 5. Synchronization model
 
-### 5.1 Estados
+### 5.1 States
 
-| Estado | Qué significa | Qué muestra la UI |
+| State | What it means | What the UI shows |
 |---|---|---|
-| `cold` | Sin caché o sin token | Setup / primera sync |
-| `warm` | Caché y token, red disponible | Home normal |
-| `syncing` | Peticiones en curso | Progreso |
-| `offline` | Sin red, con caché | `Offline · N cached · M to sync` |
-| `stale` | Caché vieja (más de 24 h) | Aviso `Last sync 1d ago` |
+| `cold` | No cache or no token | Setup / first sync |
+| `warm` | Cache and token, network available | Normal home |
+| `syncing` | Requests in progress | Progress |
+| `offline` | No network, with cache | `Offline · N cached · M to sync` |
+| `stale` | Old cache (more than 24 h) | `Last sync 1d ago` notice |
 | `auth_error` | 401/403 | `Token rejected` / `Missing permissions` |
-| `server_error` | 5xx persistente | `WaniKani is not answering` |
+| `server_error` | Persistent 5xx | `WaniKani is not answering` |
 
-### 5.2 Sync completa (cold)
+### 5.2 Full sync (cold)
 
 ```
-1. Asegurar hora (SNTP o portal)
-2. GET /user                     → usuario, nivel, max_level_granted
-3. GET /summary                  → contadores
+1. Ensure time (SNTP or portal)
+2. GET /user                     → user, level, max_level_granted
+3. GET /summary                  → counters
 4. GET /assignments?hidden=false&levels=1..max_level_granted
-                                 → todas las asignaciones (paginado)
-5. Recolectar subject_ids de las asignaciones relevantes
-6. GET /subjects?ids=...         → en lotes de 100
-7. GET /study_materials          → sinónimos
-8. Guardar meta y ETags
+                                 → all assignments (paginated)
+5. Collect subject_ids of the relevant assignments
+6. GET /subjects?ids=...         → in batches of 100
+7. GET /study_materials          → synonyms
+8. Save meta and ETags
 ```
 
-- La caché inicial puede ser grande (hasta ~10.000 asignaciones). Se guarda en
-  LittleFS; los sujetos solo de los IDs relevantes (repasos/lecciones), no todos.
-- Si el usuario quiere caché completa offline, un ajuste “Download all subjects”
-  recorre todas las asignaciones y guarda los sujetos en la SD.
-- `GET /assignments?hidden=false` puede ser varias páginas; se escribe según
-  llegan.
+- The initial cache may be large (up to ~10,000 assignments). It is stored in
+  LittleFS; subjects only for the relevant IDs (reviews/lessons), not all of them.
+- If the user wants a full offline cache, a “Download all subjects” setting
+  walks all assignments and stores the subjects on the SD card.
+- `GET /assignments?hidden=false` may be several pages; it is written as pages
+  arrive.
 
-### 5.3 Sync caliente
+### 5.3 Warm sync
 
 ```
-1. Si hay outbox: flush (ver §6)
+1. If there is an outbox: flush (see §6)
 2. GET /user (ETag)
 3. GET /summary (TTL 30 min)
 4. GET /assignments?updated_after=<last_sync>
 5. GET /assignments?immediately_available_for_review=true
 6. GET /assignments?immediately_available_for_lessons=true
-7. Para IDs nuevos: GET /subjects?ids=...
+7. For new IDs: GET /subjects?ids=...
 8. GET /study_materials?updated_after=<last_sync>
-9. Guardar meta
+9. Save meta
 ```
 
-- El orden importa: la outbox primero, para que las asignaciones que devuelve el
-  servidor ya reflejen los repasos enviados.
-- Si el flush falla por red, se pasa a offline y no se piden asignaciones.
-- Si el flush falla por 422, se reconcilia el ítem y se sigue.
-- `updated_after` puede devolver cambios de asignaciones que no están en la cola
-  (porque se repasaron en otro dispositivo); se aplican.
+- Order matters: the outbox first, so that the assignments returned by the
+  server already reflect the reviews that were sent.
+- If the flush fails due to network, it switches to offline and no assignments
+  are requested.
+- If the flush fails with 422, the item is reconciled and it continues.
+- `updated_after` may return changes to assignments that are not in the queue
+  (because they were reviewed on another device); they are applied.
 
-### 5.4 Sesión de repaso
+### 5.4 Review session
 
 ```
 session_start:
-  - si hay red y last_sync > 15 min: sync
-  - due = assignments con stage 1..8, available_at <= now, hidden=false
-  - filtrar los que ya están en outbox
-  - ordenar según reviews_presentation_order (shuffled por defecto; si es
-    lower_levels_first, respetarlo) y congelar la lista
-  - para cada subject_id sin sujeto: sync de subjects (si hay red)
-  - si falta un sujeto: no ofrecer el ítem; mostrar aviso
+  - if there is network and last_sync > 15 min: sync
+  - due = assignments with stage 1..8, available_at <= now, hidden=false
+  - filter out those already in the outbox
+  - sort according to reviews_presentation_order (shuffled by default; if it is
+    lower_levels_first, respect it) and freeze the list
+  - for each subject_id without a subject: subjects sync (if there is network)
+  - if a subject is missing: do not offer the item; show a notice
 
 item_complete:
-  - escribir outbox (assignment_id, counts, created_at, subject_id)
-  - si hay red: intentar POST inmediato
-      - ok: aplicar assignment, borrar de outbox
-      - 429/5xx/timeout: dejar pending
-  - si no hay red: dejar pending
-  - avanzar
+  - write outbox (assignment_id, counts, created_at, subject_id)
+  - if there is network: try an immediate POST
+      - ok: apply assignment, delete from outbox
+      - 429/5xx/timeout: leave pending
+  - if there is no network: leave pending
+  - advance
 ```
 
-- La lista de sesión no cambia si el servidor añade repasos mientras tanto.
-- Los ítems completados se quitan de la cola local aunque el POST quede pending.
-- Al final, el resumen muestra `N waiting to sync` si queda outbox.
+- The session list does not change if the server adds reviews in the meantime.
+- Completed items are removed from the local queue even if the POST remains
+  pending.
+- At the end, the summary shows `N waiting to sync` if an outbox remains.
 
-### 5.5 Después de sincronizar
+### 5.5 After syncing
 
-- `summary` se refresca; los contadores locales se recalculan.
-- Si el servidor devuelve asignaciones nuevas, la home muestra `N new reviews`.
-- Si un ítem de la outbox fue rechazado (422), se elimina, se refresca la
-  asignación y se muestra `1 review could not be saved`.
-- Si el token caduca, se conserva la outbox y se pide reautenticación.
+- `summary` is refreshed; local counters are recalculated.
+- If the server returns new assignments, the home screen shows `N new reviews`.
+- If an outbox item was rejected (422), it is deleted, the assignment is
+  refreshed and `1 review could not be saved` is shown.
+- If the token expires, the outbox is kept and reauthentication is requested.
 
 ---
 
-## 6. Outbox y envíos ambiguos
+## 6. Outbox and ambiguous sends
 
-### 6.1 Registro
+### 6.1 Record
 
 ```
-seq              u32   monotónico local
+seq              u32   local monotonic
 assignment_id    u32
 subject_id       u32
 incorrect_meaning u16
 incorrect_reading u16
-created_at       u32   epoch UTC; 0 = omitir
+created_at       u32   UTC epoch; 0 = omit
 state            u8    pending | sending | ambiguous | rejected
 attempts         u8
 crc32            u32
 ```
 
-- Se escribe en LittleFS con `temp + rename` y una copia `.bak`.
-- `sending` se marca antes del POST; si hay un corte, al arrancar se trata como
-  `ambiguous`, no como `pending` a ciegas.
-- `rejected` se conserva hasta que el usuario lo vea; luego se borra.
+- It is written to LittleFS with `temp + rename` and a `.bak` copy.
+- `sending` is marked before the POST; if there is a power cut, on startup it is
+  treated as `ambiguous`, not blindly as `pending`.
+- `rejected` is kept until the user sees it; then it is deleted.
 
 ### 6.2 Flush
 
-1. Ordenar por `seq`.
-2. Para cada `pending`:
+1. Sort by `seq`.
+2. For each `pending`:
    - POST.
-   - 200: aplicar `resources_updated.assignment`; borrar.
-   - 401/403: parar y pedir auth.
-   - 422/409: marcar `rejected`; reconciliar.
-   - 429: esperar `RateLimit-Reset`; reintentar.
-   - 5xx/timeout: marcar `ambiguous`; parar el flush (no seguir con los
-     siguientes para no crear un lío).
-3. Los `ambiguous` se resuelven antes de reintentar:
+   - 200: apply `resources_updated.assignment`; delete.
+   - 401/403: stop and request auth.
+   - 422/409: mark `rejected`; reconcile.
+   - 429: wait for `RateLimit-Reset`; retry.
+   - 5xx/timeout: mark `ambiguous`; stop the flush (do not continue with the
+     following ones to avoid creating a mess).
+3. `ambiguous` ones are resolved before retrying:
    - `GET /assignments/{assignment_id}`.
-   - Si `data_updated_at` es posterior a nuestro `created_at` y la etapa SRS
-     cambió, asumir que el repaso llegó; borrar.
-   - Si la asignación sigue con la misma etapa y `available_at` anterior a
-     `created_at`, el POST no llegó; volver a `pending`.
-   - Si no se puede decidir, mostrar `Needs attention` y no duplicar.
+   - If `data_updated_at` is later than our `created_at` and the SRS stage
+     changed, assume the review arrived; delete.
+   - If the assignment still has the same stage and `available_at` earlier than
+     `created_at`, the POST did not arrive; set it back to `pending`.
+   - If it cannot be decided, show `Needs attention` and do not duplicate.
 
-### 6.3 Por qué no reintentar a ciegas
+### 6.3 Why not retry blindly
 
-La API no acepta una clave de idempotencia. Un timeout después de que el servidor
-procesara el repaso produce un duplicado si se reenvía. Duplicar un repaso altera
-la etapa SRS y las estadísticas del usuario. Preferimos dejar el ítem en
-`ambiguous` y reconciliar antes que arriesgar.
+The API does not accept an idempotency key. A timeout after the server has
+processed the review produces a duplicate if it is resent. Duplicating a review
+alters the SRS stage and the user's statistics. We prefer to leave the item as
+`ambiguous` and reconcile rather than risk it.
 
-### 6.4 Limitaciones
+### 6.4 Limitations
 
-- La reconciliación es heurística: otro dispositivo podría haber repasado el
-  mismo ítem en la misma ventana.
-- Si el usuario repasa en KaniKey y en la web a la vez, puede haber conflictos.
-  La UI avisa y prioriza no duplicar.
-- La outbox no se sincroniza entre dispositivos.
+- Reconciliation is heuristic: another device could have reviewed the same item
+  in the same window.
+- If the user reviews in KaniKey and on the web at the same time, there may be
+  conflicts. The UI warns and prioritizes not duplicating.
+- The outbox is not synchronized between devices.
 
 ---
 
-## 7. Caché
+## 7. Cache
 
-| Dato | Dónde | Vida | Invalidación |
+| Data | Where | Lifetime | Invalidation |
 |---|---|---|---|
-| Token, Wi-Fi, ajustes | NVS | Hasta logout | Acción del usuario |
-| `user` | LittleFS | 1 día | Sync / 401 |
-| `summary` | LittleFS | 30–60 min | Sync / tras sesión |
-| Assignments | LittleFS | Hasta sync | `updated_after`, respuesta de review |
-| Subjects | microSD | Inmutable por ID | `data_updated_at` si se refresca |
-| Study materials | LittleFS | Hasta sync | `updated_after` |
-| Pack visual | microSD | Hasta regenerar | Versión del builder / caracteres nuevos |
-| Stats locales | LittleFS | Persistente | Reset manual |
+| Token, Wi-Fi, settings | NVS | Until logout | User action |
+| `user` | LittleFS | 1 day | Sync / 401 |
+| `summary` | LittleFS | 30–60 min | Sync / after session |
+| Assignments | LittleFS | Until sync | `updated_after`, review response |
+| Subjects | microSD | Immutable by ID | `data_updated_at` if refreshed |
+| Study materials | LittleFS | Until sync | `updated_after` |
+| Visual pack | microSD | Until regenerated | Builder version / new characters |
+| Local stats | LittleFS | Persistent | Manual reset |
 
-### 7.1 Tamaños
+### 7.1 Sizes
 
-- Assignments: ~10.000 × 32 B ≈ 320 KB; cabe en LittleFS.
-- Outbox: 100 × 32 B ≈ 3,2 KB.
-- Subjects: ~300 B de media + mnemónicos; ~20 MB si se cachean todos; por eso
-  viven en la SD y se piden por ID.
-- Pack visual: 7–9 MB; SD.
+- Assignments: ~10,000 × 32 B ≈ 320 KB; fits in LittleFS.
+- Outbox: 100 × 32 B ≈ 3.2 KB.
+- Subjects: ~300 B on average + mnemonics; ~20 MB if all are cached; that is why
+  they live on the SD card and are requested by ID.
+- Visual pack: 7–9 MB; SD card.
 
-### 7.2 Escritura atómica
+### 7.2 Atomic writes
 
-- Escribir `.tmp`, `fsync`/`close`, renombrar sobre el destino.
-- Mantener `.bak` de assignments y outbox.
-- Al arrancar, si el principal falla CRC, usar `.bak` y avisar.
-- Nunca borrar la outbox antes de que el POST esté confirmado.
+- Write `.tmp`, `fsync`/`close`, rename over the destination.
+- Keep a `.bak` of assignments and outbox.
+- On startup, if the main file fails CRC, use `.bak` and warn.
+- Never delete the outbox before the POST is confirmed.
 
 ---
 
-## 8. Parser JSON en streaming
+## 8. Streaming JSON parser
 
-La API devuelve páginas de hasta 1.000 sujetos; un DOM de ArduinoJson no cabe.
-Diseño:
+The API returns pages of up to 1,000 subjects; an ArduinoJson DOM does not fit.
+Design:
 
 ```
 HTTPClient / WiFiClientSecure
         │ bytes
         ▼
-JsonStream (buffer 4 KB)
-        │ eventos: object_start, key, string, number, bool, null, array_start...
+JsonStream (4 KB buffer)
+        │ events: object_start, key, string, number, bool, null, array_start...
         ▼
 SubjectSink / AssignmentSink / UserSink / SummarySink
-        │ registros
+        │ records
         ▼
-store (LittleFS o SD)
+store (LittleFS or SD)
 ```
 
-- Parser propio, sin dependencias, con una pila de contextos de profundidad
-  máxima 8.
-- Decodifica escapes `\uXXXX` (incluidos pares surrogados) a UTF-8.
-- Los strings largos (mnemónicos) se escriben directamente al registro; no se
-  copian a un `std::string` global.
-- Un objeto de sujeto se construye en una estructura fija de ~8 KB; si un
-  mnemónico excede el budget, se guarda truncado con un flag.
-- Si el parser falla, se descarta la página, se reintenta una vez y se muestra
-  `Bad response from WaniKani`.
-- Tests nativos con fixtures y fuzzing.
+- Own parser, no dependencies, with a context stack of maximum depth 8.
+- Decodes `\uXXXX` escapes (including surrogate pairs) to UTF-8.
+- Long strings (mnemonics) are written directly to the record; they are not
+  copied to a global `std::string`.
+- A subject object is built in a fixed ~8 KB structure; if a mnemonic exceeds the
+  budget, it is stored truncated with a flag.
+- If the parser fails, the page is discarded, it is retried once and
+  `Bad response from WaniKani` is shown.
+- Native tests with fixtures and fuzzing.
 
-Alternativa descartada: descargar el JSON a la SD y parsearlo después con un DOM.
-Sigue necesitando un DOM y duplica el almacenamiento temporal.
-
----
-
-## 9. Tiempo
-
-- La API usa UTC. La UI muestra hora local.
-- La Cardputer no tiene RTC con batería; la hora se aprende por:
-  1. SNTP al conectar.
-  2. `POST /time` del portal de setup (hora del navegador).
-  3. Última hora conocida guardada en NVS.
-- `clock_trusted` solo es true si la hora se sincronizó en este arranque o si
-  hay una hora guardada con menos de X horas y no ha habido corte.
-- Repaso offline:
-  - Si `clock_trusted`: `created_at` = hora de finalización.
-  - Si no: `created_at = 0`, se omite; el servidor usará la hora del envío.
-- Al enviar un `created_at`, comprobar que es posterior a `available_at`; si no,
-  omitirlo.
-- Zona horaria: se guarda un offset/POSIX TZ para mostrar; no afecta a la API.
+Rejected alternative: download the JSON to the SD card and parse it afterwards
+with a DOM. It still needs a DOM and duplicates temporary storage.
 
 ---
 
-## 10. Errores, reintentos y rate limit
+## 9. Time
 
-| Código | Significado | Acción |
+- The API uses UTC. The UI shows local time.
+- The Cardputer has no battery-backed RTC; time is learned by:
+  1. SNTP when connecting.
+  2. `POST /time` from the setup portal (browser time).
+  3. Last known time stored in NVS.
+- `clock_trusted` is only true if the time was synchronized in this boot or if
+  there is a stored time less than X hours old and there has been no power cut.
+- Offline review:
+  - If `clock_trusted`: `created_at` = completion time.
+  - If not: `created_at = 0`, it is omitted; the server will use the send time.
+- When sending a `created_at`, check that it is later than `available_at`; if
+  not, omit it.
+- Time zone: an offset/POSIX TZ is stored for display; it does not affect the API.
+
+---
+
+## 10. Errors, retries and rate limit
+
+| Code | Meaning | Action |
 |---|---|---|
-| 200 | OK | Aplicar |
-| 304 | No modificado | Usar caché |
-| 401 | Token inválido | Parar, pedir token |
-| 403 | Sin permisos / suscripción | Parar, explicar |
-| 404 | Recurso no existe | Descartar, refrescar |
-| 409 | Conflicto | Reconciliar |
-| 422 | Validación | Reconciliar, no reintentar |
-| 429 | Rate limit | Esperar `RateLimit-Reset` |
-| 5xx | Servidor | Reintentar con backoff |
-| timeout / DNS / TLS | Red | 2 reintentos, luego offline |
+| 200 | OK | Apply |
+| 304 | Not modified | Use cache |
+| 401 | Invalid token | Stop, request token |
+| 403 | No permissions / subscription | Stop, explain |
+| 404 | Resource does not exist | Discard, refresh |
+| 409 | Conflict | Reconcile |
+| 422 | Validation | Reconcile, do not retry |
+| 429 | Rate limit | Wait for `RateLimit-Reset` |
+| 5xx | Server | Retry with backoff |
+| timeout / DNS / TLS | Network | 2 retries, then offline |
 
-- Backoff: 1 s, 2 s, 4 s, 8 s, con jitter; máximo 60 s.
-- 429: usar `RateLimit-Reset` (epoch) si está; si no, 60 s.
-- Presupuesto: una sync normal < 30 s; una cold < 2 min.
-- No se hacen peticiones en paralelo. Una a una.
-- La radio se apaga al terminar.
+- Backoff: 1 s, 2 s, 4 s, 8 s, with jitter; maximum 60 s.
+- 429: use `RateLimit-Reset` (epoch) if present; otherwise 60 s.
+- Budget: a normal sync < 30 s; a cold one < 2 min.
+- No requests are made in parallel. One at a time.
+- The radio is turned off when done.
 
 ---
 
-## 11. Formato de almacenamiento
+## 11. Storage format
 
-### 11.1 Sujeto
+### 11.1 Subject
 
 ```
 SubjectRecord (fixed)
@@ -495,7 +496,7 @@ SubjectRecord (fixed)
   reading_count     u8
   component_count   u16
   similar_count     u16
-  chars_off         u32   offset al pool
+  chars_off         u32   offset into the pool
   meanings_off      u32
   readings_off      u32
   auxiliary_off     u32
@@ -506,10 +507,10 @@ SubjectRecord (fixed)
   data_updated_at   u32
 ```
 
-Pool de strings: longitud `u16` + UTF-8, alineado a 2 bytes. Las listas son
-`count` + `count` referencias de 8 bytes (`offset`, flags/tipo).
+String pool: length `u16` + UTF-8, aligned to 2 bytes. Lists are
+`count` + `count` 8-byte references (`offset`, flags/type).
 
-### 11.2 Asignación
+### 11.2 Assignment
 
 ```
 AssignmentRecord (fixed, 32 B)
@@ -524,12 +525,12 @@ AssignmentRecord (fixed, 32 B)
   data_updated_at   u32
 ```
 
-Se guardan ordenadas por `subject_id`; se reescribe el archivo en cada sync
-(320 KB es rápido en LittleFS).
+They are stored sorted by `subject_id`; the file is rewritten on every sync
+(320 KB is fast on LittleFS).
 
 ### 11.3 Outbox
 
-Ver §6.1. Archivo append-only; se compacta al vaciar.
+See §6.1. Append-only file; it is compacted when emptied.
 
 ### 11.4 Meta
 
@@ -537,53 +538,53 @@ Ver §6.1. Archivo append-only; se compacta al vaciar.
 magic "KKM1", version u16
 user_id, username, level, max_level_granted
 last_user_sync, last_summary_sync, last_assignment_sync, last_outbox_flush
-etag_user, etag_summary (hash o string corto)
+etag_user, etag_summary (hash or short string)
 clock_trusted, last_known_utc
 schema_version
 ```
 
-### 11.5 Estadísticas locales
+### 11.5 Local statistics
 
-Contadores de sesión y lifetime: repasos, aciertos, fallos por tipo, tiempo,
-etapa inicial/final. Se pueden reconstruir parcialmente; no son la fuente de
-verdad.
+Session and lifetime counters: reviews, correct, incorrect by type, time,
+initial/final stage. They can be partially rebuilt; they are not the source of
+truth.
 
 ---
 
-## 12. Fixtures y pruebas
+## 12. Fixtures and tests
 
-Fixtures mínimos, escritos a mano, con atribución:
+Minimal fixtures, hand-written, with attribution:
 
-- `user.json`: nivel, suscripción, preferencias.
-- `summary.json`: buckets de repasos/lecciones.
+- `user.json`: level, subscription, preferences.
+- `summary.json`: review/lesson buckets.
 - `assignments.json`: radical, kanji, vocab, kana; stage 0/1/9; hidden.
-- `subjects.json`: radical con `characters: null`, kanji con on/kun/nanori,
-  vocab con contexto/audio, kana vocab.
-- `study_materials.json`: sinónimos.
+- `subjects.json`: radical with `characters: null`, kanji with on/kun/nanori,
+  vocab with context/audio, kana vocab.
+- `study_materials.json`: synonyms.
 - `review_ok.json`: `resources_updated.assignment`.
 - `errors.json`: 401, 403, 422, 429.
 
-Pruebas:
+Tests:
 
-- Parseo de cada fixture al modelo y vuelta al formato binario.
-- Páginas encadenadas con `next_url`.
-- `updated_after` y ETag/304.
-- Outbox: ok, 429, timeout, 422, corte a mitad, `.bak`.
-- Reconciliación: asignación actualizada, no actualizada, ambigua.
-- Reloj: `created_at` válido, anterior a `available_at`, no fiable.
-- Rate limit: respeta `Reset`.
+- Parsing each fixture into the model and back to the binary format.
+- Chained pages with `next_url`.
+- `updated_after` and ETag/304.
+- Outbox: ok, 429, timeout, 422, cut mid-write, `.bak`.
+- Reconciliation: assignment updated, not updated, ambiguous.
+- Clock: valid `created_at`, earlier than `available_at`, unreliable.
+- Rate limit: respects `Reset`.
 
 ---
 
-## 13. Decisiones abiertas
+## 13. Open decisions
 
-| # | Decisión | Recomendación |
+| # | Decision | Recommendation |
 |---|---|---|
-| 1 | ¿Guardar todos los sujetos o solo los de la cola? | Solo los de la cola; “download all” opcional |
-| 2 | ¿Mnemónicos en la caché base? | Sí, para lecciones offline; truncar si hace falta |
-| 3 | ¿`updated_after` o full sync? | Delta con `updated_after`; full en cold |
-| 4 | ¿Reintentar POST ambiguo? | No; reconciliar primero |
-| 5 | ¿Enviar `created_at` offline? | Solo si el reloj es fiable; si no, omitir |
-| 6 | ¿Lecciones offline? | Fase 2; v1 requiere red para `start` |
-| 7 | ¿Sinónimos de usuario? | Sí, `study_materials`; se muestran en el detalle |
-| 8 | ¿Guardar audio/contexto? | Fase 2; no en la v1 |
+| 1 | Store all subjects or only the ones in the queue? | Only the ones in the queue; optional “download all” |
+| 2 | Mnemonics in the base cache? | Yes, for offline lessons; truncate if needed |
+| 3 | `updated_after` or full sync? | Delta with `updated_after`; full on cold |
+| 4 | Retry an ambiguous POST? | No; reconcile first |
+| 5 | Send `created_at` offline? | Only if the clock is reliable; otherwise omit |
+| 6 | Offline lessons? | Phase 2; v1 requires network for `start` |
+| 7 | User synonyms? | Yes, `study_materials`; shown in the detail view |
+| 8 | Store audio/context? | Phase 2; not in v1 |

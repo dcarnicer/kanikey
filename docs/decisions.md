@@ -1,212 +1,214 @@
-# Decisiones
+# Decisions
 
-Registro corto de decisiones de diseño. Estado: **propuesta** hasta que el
-mantenedor las acepte. Formato: fecha, decisión, por qué y qué implica.
-
----
-
-## 2026-10-25 — KaniKey es un compañero, no un sustituto
-
-**Decisión:** KaniKey sincroniza con WaniKani y muestra repasos/lecciones. El
-SRS, las asignaciones y el progreso siguen en WaniKani.
-
-**Por qué:** llevar dos schedulers crea divergencia y duplica el trabajo. El
-valor está en el aparato y en la escritura, no en reimplementar WaniKani.
-
-**Implica:** no hay FSRS para los repasos; no se inventan intervalos; la API es
-la fuente de verdad.
+Short log of design decisions. Status: **accepted** (2026-10-25). Format:
+date, decision, why and what it implies.
 
 ---
 
-## 2026-10-25 — Respuesta escrita, no test de opción múltiple
+## 2026-10-25 — KaniKey is a companion, not a substitute
 
-**Decisión:** el usuario escribe significado y lectura. No hay cuatro opciones en
-el flujo principal.
+**Decision:** KaniKey syncs with WaniKani and shows reviews/lessons. The
+SRS, assignments and progress stay in WaniKani.
 
-**Por qué:** es el corazón de WaniKani y la razón de usar un teclado. Un test de
-opciones convertiría KaniKey en un Tangocho peor.
+**Why:** running two schedulers creates divergence and duplicates work. The
+value is in the device and in the writing, not in reimplementing WaniKani.
 
-**Implica:** IME romaji→kana, answer checker, edición de texto y teclado en dos
-modos. Un “modo test” puede llegar después como accesibilidad.
-
----
-
-## 2026-10-25 — Offline por defecto, con outbox
-
-**Decisión:** se puede repasar sin red; los repasos completados se guardan en una
-outbox persistente y se envían al volver la conexión.
-
-**Por qué:** es la gracia de un aparato de bolsillo. Kakehashi demuestra que se
-puede hacer sin bloquear la sesión.
-
-**Implica:** escribir antes de avanzar, reconciliar envíos ambiguos y mostrar el
-estado pendiente con honestidad. La API no tiene idempotencia; hay que tener
-cuidado con los timeouts.
+**Implications:** there is no FSRS for reviews; intervals are not invented; the API is
+the source of truth.
 
 ---
 
-## 2026-10-25 — Solo Cardputer ADV en la v1
+## 2026-10-25 — Written answer, not a multiple-choice test
 
-**Decisión:** el firmware se optimiza y se prueba solo para la Cardputer ADV.
+**Decision:** the user types the meaning and reading. There are no four options in
+the main flow.
 
-**Por qué:** el teclado es el producto; las otras placas cambian el layout y las
-pruebas. Tangocho ya mantiene varias.
+**Why:** it is the heart of WaniKani and the reason to use a keyboard. A multiple-choice
+test would turn KaniKey into a worse Tangocho.
 
-**Implica:** se puede conservar el HAL de otras placas en el fork, pero no se
-promete soporte. El layout es 240×135 horizontal.
-
----
-
-## 2026-10-25 — Fork podado de Tangocho
-
-**Decisión:** KaniKey empieza como fork de Tangocho en v0.7.0, conserva HAL,
-render, UI base, Wi-Fi, SD, OTA y tests, y tira packs/quiz/SRS/catálogo.
-
-**Por qué:** el hardware ya está resuelto y probado; reescribirlo es la parte
-cara y aburrida.
-
-**Implica:** mantener el aviso MIT, un remoto `upstream` y una poda agresiva.
-Si los dos proyectos crecen, extraer un `cardputer-kit` más adelante.
+**Implications:** romaji→kana IME, answer checker, text editing and keyboard in two
+modes. A "test mode" may come later as accessibility.
 
 ---
 
-## 2026-10-25 — Pack visual en la microSD
+## 2026-10-25 — Offline by default, with an outbox
 
-**Decisión:** los glifos de kanji/vocabulario y los radicales se generan en el
-ordenador con `kanikey-glyphs` y se guardan en `/kanikey/glyphs.kgp` en la SD.
+**Decision:** you can review without a network; completed reviews are saved in a
+persistent outbox and sent when the connection returns.
 
-**Por qué:** una fuente CJK no cabe en flash; rasterizar en el dispositivo gasta
-RAM y es más código. El pack da calidad y mantiene el firmware simple.
+**Why:** that is the appeal of a pocket device. Kakehashi shows it can be done
+without blocking the session.
 
-**Implica:** la SD es necesaria para repasar. El pack se genera con el token del
-usuario y no se redistribuye. Si falta un glifo, se bloquea el ítem con un aviso.
-
----
-
-## 2026-10-25 — Lecciones en la fase 2
-
-**Decisión:** el MVP se centra en repasos. Las lecciones llegan después.
-
-**Por qué:** el repaso ya obliga a API, caché, IME, answer checker, outbox y
-pantallas. Añadir lecciones y mnemónicos al mismo tiempo multiplica el alcance.
-
-**Implica:** la home puede mostrar el contador de lecciones desde el principio,
-pero la pantalla de lecciones se pospone.
+**Implications:** write before advancing, reconcile ambiguous submissions and show
+pending status honestly. The API has no idempotency; you have to be careful
+with timeouts.
 
 ---
 
-## 2026-10-25 — UI en inglés primero
+## 2026-10-25 — Cardputer ADV only in v1
 
-**Decisión:** los textos de la interfaz se escriben primero en inglés; el español
-llega después. Los significados/lecturas son los de WaniKani (inglés).
+**Decision:** the firmware is optimized and tested only for the Cardputer ADV.
 
-**Por qué:** WaniKani es una comunidad mayoritariamente inglesa y el proyecto
-puede publicarse. El autor es hispanohablante, así que el español es prioridad
-alta, pero no bloquea el MVP.
+**Why:** the keyboard is the product; other boards change the layout and the
+tests. Tangocho already maintains several.
 
-**Implica:** `UiStrings` bilingüe desde el diseño, como en Tangocho; no hardcodear
-textos en las pantallas.
+**Implications:** the HAL for other boards can be kept in the fork, but support
+is not promised. The layout is 240×135 landscape.
 
 ---
 
-## 2026-10-25 — Corrección estricta con avisos
+## 2026-10-25 — Pruned fork of Tangocho
 
-**Decisión:** se aceptan las respuestas exactas de WaniKani (incluidos sinónimos
-del usuario y whitelist). Las lecturas válidas no primarias, el okurigana
-incorrecto y el error de `n` muestran un aviso y permiten reintentar, sin contar
-como fallo automáticamente.
+**Decision:** KaniKey starts as a fork of Tangocho at v0.7.0, keeps HAL,
+render, base UI, Wi-Fi, SD, OTA and tests, and drops packs/quiz/SRS/catalog.
 
-**Por qué:** es fiel a WaniKani y evita castigar conocimientos válidos por una
-tecla. Un ajuste “strict” puede contar el aviso como fallo.
+**Why:** the hardware is already solved and tested; rewriting it is the expensive
+and boring part.
 
-**Implica:** el answer checker devuelve un resultado con tipo (`Precise`,
-`Imprecise`, `Warning`, `Incorrect`) y la UI decide.
-
----
-
-## 2026-10-25 — Sin backend propio
-
-**Decisión:** la Cardputer llama directa a `api.wanikani.com` con el token del
-usuario. No hay servidor de KaniKey.
-
-**Por qué:** menos infraestructura, menos privacidad que ceder y menos latencia.
-La API permite CORS y tokens personales.
-
-**Implica:** TLS, rate limit y streaming JSON en el dispositivo. El portal de
-setup es local y temporal.
+**Implications:** keep the MIT notice, an `upstream` remote and an aggressive prune.
+If both projects grow, extract a `cardputer-kit` later. The first milestone uses
+a source copy of `board/`, `ui/KeyInput.h` and `platform/RootCerts.h` rather than
+a full-history fork; that is an implementation detail, not a change of direction.
 
 ---
 
-## 2026-10-25 — Portal de setup WPA2 y temporal
+## 2026-10-25 — Visual pack on the microSD
 
-**Decisión:** el portal de configuración se sirve en una red WPA2 propia, con una
-clave aleatoria en pantalla, y se apaga al terminar. No se sirve en la red de
-casa.
+**Decision:** kanji/vocabulary glyphs and radicals are generated on the
+computer with `kanikey-glyphs` and stored in `/kanikey/glyphs.kgp` on the SD.
 
-**Por qué:** el token no debe viajar por una red abierta. No hace falta un portal
-permanente porque la sincronización la hace el aparato.
+**Why:** a CJK font does not fit in flash; rasterizing on the device wastes
+RAM and is more code. The pack gives quality and keeps the firmware simple.
 
-**Implica:** el usuario configura desde el móvil una vez; después todo se hace
-con el teclado. El portal se reabre solo si se pide.
-
----
-
-## 2026-10-25 — Nada de contenido de WaniKani en el repositorio
-
-**Decisión:** no se commitean significados, lecturas, mnemónicos, imágenes de
-radicales, audio ni frases de contexto. Los fixtures de test son mínimos,
-escritos a mano y atribuidos.
-
-**Por qué:** los términos de WaniKani y el respeto al trabajo de Tofugu. El pack
-visual se genera con el token del usuario.
-
-**Implica:** el repo se puede publicar sin material de WaniKani; el setup
-incluye generar/copiar el pack.
+**Implications:** the SD is required to review. The pack is generated with the user's
+token and is not redistributed. If a glyph is missing, the item is blocked with a warning.
 
 ---
 
-## 2026-10-25 — Sesiones de 20 por defecto
+## 2026-10-25 — Lessons in phase 2
 
-**Decisión:** la sesión de repaso toma 20 ítems por defecto; “todas” es una
-opción.
+**Decision:** the MVP focuses on reviews. Lessons come later.
 
-**Por qué:** en un aparato pequeño, una sesión de 200 ítems es una trampa. 20 es
-una unidad manejable y se puede repetir.
+**Why:** reviews already require API, cache, IME, answer checker, outbox and
+screens. Adding lessons and mnemonics at the same time multiplies the scope.
 
-**Implica:** el resumen ofrece “review more”; la cola se congela por sesión.
-
----
-
-## 2026-10-25 — Nombre de trabajo KaniKey
-
-**Decisión:** el proyecto se llama KaniKey mientras no haya uno mejor.
-
-**Por qué:** *kani* + *key*, corto, evoca teclado y kanji, y no incluye
-“WaniKani” en el nombre del producto (regla de marca).
-
-**Implica:** el nombre se puede cambiar antes de publicar; los documentos y el
-namespace pueden seguir usando `kanikey`.
+**Implications:** the home screen can show the lesson counter from the start,
+but the lessons screen is postponed.
 
 ---
 
-## 2026-10-25 — Licencia MIT (propuesta)
+## 2026-10-25 — UI in English first
 
-**Decisión:** el código se publicaría con MIT, como Tangocho y Kakehashi.
+**Decision:** interface texts are written in English first; Spanish
+comes later. Meanings/readings are WaniKani's (English).
 
-**Por qué:** compatibilidad con el fork y con las ideas copiadas; es lo habitual
-en este tipo de proyecto.
+**Why:** WaniKani is a mostly English-speaking community and the project
+can be published. The author is a Spanish speaker, so Spanish is a high priority,
+but it does not block the MVP.
 
-**Implica:** conservar los avisos de Tangocho/Kakehashi y las licencias de las
-fuentes. El contenido de WaniKani no se licencia con el código.
+**Implications:** bilingual `UiStrings` from the design, as in Tangocho; do not hardcode
+texts in the screens.
 
 ---
 
-## 2026-10-25 — Audio y orden de trazos fuera de la v1
+## 2026-10-25 — Strict checking with warnings
 
-**Decisión:** no se implementan en el MVP.
+**Decision:** WaniKani's exact answers are accepted (including user
+synonyms and whitelist). Valid non-primary readings, incorrect okurigana
+and the `n` error show a warning and allow retrying, without counting
+as a failure automatically.
 
-**Por qué:** añaden decodificación de audio, memoria, altavoz y datos extra. El
-repaso escrito ya justifica el aparato.
+**Why:** it is faithful to WaniKani and avoids punishing valid knowledge for a
+keystroke. A "strict" setting can count the warning as a failure.
 
-**Implica:** el diseño deja sitio para ellos (ficha del ítem, ajustes, pack
-visual) pero no los promete.
+**Implications:** the answer checker returns a result with a type (`Precise`,
+`Imprecise`, `Warning`, `Incorrect`) and the UI decides.
+
+---
+
+## 2026-10-25 — No backend of our own
+
+**Decision:** the Cardputer calls `api.wanikani.com` directly with the user's
+token. There is no KaniKey server.
+
+**Why:** less infrastructure, less privacy to give up and less latency.
+The API allows CORS and personal tokens.
+
+**Implications:** TLS, rate limit and streaming JSON on the device. The setup
+portal is local and temporary.
+
+---
+
+## 2026-10-25 — WPA2 and temporary setup portal
+
+**Decision:** the configuration portal is served on its own WPA2 network, with a
+random key on screen, and it shuts down when done. It is not served on the home
+network.
+
+**Why:** the token must not travel over an open network. A permanent portal is not
+needed because the device does the syncing.
+
+**Implications:** the user configures from the phone once; after that everything is done
+with the keyboard. The portal reopens only when requested.
+
+---
+
+## 2026-10-25 — No WaniKani content in the repository
+
+**Decision:** meanings, readings, mnemonics, radical images,
+audio and context sentences are not committed. The test fixtures are minimal,
+hand-written and attributed.
+
+**Why:** WaniKani's terms and respect for Tofugu's work. The visual
+pack is generated with the user's token.
+
+**Implications:** the repo can be published without WaniKani material; setup
+includes generating/copying the pack.
+
+---
+
+## 2026-10-25 — Sessions of 20 by default
+
+**Decision:** a review session takes 20 items by default; "all" is an
+option.
+
+**Why:** on a small device, a 200-item session is a trap. 20 is
+a manageable unit and can be repeated.
+
+**Implications:** the summary offers "review more"; the queue is frozen per session.
+
+---
+
+## 2026-10-25 — Working name KaniKey
+
+**Decision:** the project is called KaniKey until there is a better one.
+
+**Why:** *kani* + *key*, short, evokes keyboard and kanji, and does not include
+"WaniKani" in the product name (brand rule).
+
+**Implications:** the name can change before publishing; the documents and the
+namespace can keep using `kanikey`.
+
+---
+
+## 2026-10-25 — MIT license (proposed)
+
+**Decision:** the code would be published under MIT, like Tangocho and Kakehashi.
+
+**Why:** compatibility with the fork and with the copied ideas; it is the usual
+thing in this kind of project.
+
+**Implications:** keep the Tangocho/Kakehashi notices and the font
+licenses. WaniKani content is not licensed with the code.
+
+---
+
+## 2026-10-25 — Audio and stroke order out of v1
+
+**Decision:** they are not implemented in the MVP.
+
+**Why:** they add audio decoding, memory, speaker and extra data. Written
+review already justifies the device.
+
+**Implications:** the design leaves room for them (item card, settings, visual
+pack) but does not promise them.

@@ -1,112 +1,114 @@
 # KaniKey
 
-**Un terminal de repaso de bolsillo para WaniKani, pensado para la M5Stack Cardputer ADV.**
+**A pocket-sized review terminal for WaniKani, built for the M5Stack Cardputer ADV.**
 
-> **Estado: solo diseño (2026-10-25).** Todavía no hay firmware. Este repositorio
-> guarda la propuesta de producto, UX, arquitectura y sincronización.
+> **Status: design approved; firmware bring-up in progress (2026-10-25).** The
+> first Cardputer ADV build checks the display, keyboard, microSD, heap and a
+> TLS probe against `api.wanikani.com`. The full WaniKani client is next.
 >
-> KaniKey es una aplicación **no oficial** de terceros para WaniKani. No está
-> afiliada, respaldada ni patrocinada por WaniKani ni por Tofugu LLC. WaniKani es
-> una marca registrada de Tofugu LLC.
+> KaniKey is an **unofficial** third-party app for WaniKani. It is not
+> affiliated with, endorsed by or sponsored by WaniKani or Tofugu LLC. WaniKani
+> is a registered trademark of Tofugu LLC.
 
-![Pantallas de KaniKey](docs/screens/overview.png)
+![KaniKey screens](docs/screens/overview.png)
 
-## La idea
+## The idea
 
-WaniKani se repasa escribiendo: significado en inglés y lectura en kana. La
-Cardputer ADV tiene una pantalla de 240×135, Wi-Fi, tarjeta microSD, batería y,
-sobre todo, un teclado real de 56 teclas. Eso la convierte en un aparato mucho
-más natural para WaniKani que un reloj o una consola de dos botones: se abre,
-aparece el repaso pendiente, se escribe la respuesta y se cierra. Sin teléfono,
-sin notificaciones y sin distracciones.
+WaniKani is reviewed by typing: meaning in English and reading in kana. The
+Cardputer ADV has a 240×135 screen, Wi-Fi, a microSD card, a battery and, above
+all, a real 56-key keyboard. That makes it a much more natural device for
+WaniKani than a watch or a two-button console: you open it, the pending review
+appears, you type the answer and close it. No phone, no notifications, no
+distractions.
 
-KaniKey no sustituye a WaniKani: es una **terminal de repaso y lecciones** que
-sincroniza con la cuenta del usuario. El SRS sigue viviendo en WaniKani.
+KaniKey doesn't replace WaniKani: it is a **review and lesson terminal** that
+syncs with the user's account. The SRS still lives in WaniKani.
 
-## Qué hará (MVP)
+## What it will do (MVP)
 
-- Sincronizar el resumen, las asignaciones y los sujetos que tocan.
-- Repasar con **respuesta escrita**: significado y lectura, con conversión de
-  romaji a kana mientras se teclea.
-- Enseñar la respuesta correcta, los significados/lecturas aceptados y una
-  pista breve cuando se falla; el ítem vuelve más tarde en la misma sesión.
-- Enviar cada repaso a WaniKani al completarlo, con los contadores de fallos
-  que pide la API.
-- **Modo offline**: sesiones con la caché local y una cola de repasos pendientes
-  que se sincroniza al volver la red.
-- Lecciones (fase 2): ficha de significado, lecturas, mnemónico y componentes;
-  después, `PUT /assignments/{id}/start`.
-- Pantalla de inicio con repasos/lecciones pendientes, siguiente hora de repaso
-  y distribución por etapas SRS.
-- Ajustes, Wi-Fi, hora, OTA y estados de error claros.
-- UI en inglés primero (los significados de WaniKani son en inglés); español
-  después.
+- Sync the summary, the assignments and the subjects that are due.
+- Review with **typed answers**: meaning and reading, with romaji-to-kana
+  conversion as you type.
+- Show the correct answer, the accepted meanings/readings and a short hint when
+  you get it wrong; the item comes back later in the same session.
+- Send each review to WaniKani as you complete it, with the failure counters the
+  API expects.
+- **Offline mode**: sessions from the local cache and a queue of pending reviews
+  that syncs when the network comes back.
+- Lessons (phase 2): meaning card, readings, mnemonic and components; then
+  `PUT /assignments/{id}/start`.
+- Home screen with pending reviews/lessons, next review time and the breakdown by
+  SRS stage.
+- Settings, Wi-Fi, time, OTA and clear error states.
+- UI in English first (WaniKani meanings are in English); Spanish later.
 
-## Qué no hará (por ahora)
+## What it won't do (for now)
 
-- No es una copia de la web de WaniKani ni de su interfaz.
-- No trae contenido de WaniKani en el repositorio: significados, lecturas,
-  mnemónicos, imágenes de radicales y audio se piden con el token personal del
-  usuario y se guardan solo en su tarjeta.
-- No implementa un SRS local para los repasos: la programación es la de
-  WaniKani. (Un modo de práctica extra con FSRS podría llegar más adelante.)
-- No incluye comunidad, foro, reseñas, notificaciones push ni app de móvil.
-- No soporta otras placas en la v1. El HAL de Tangocho permite añadirlas, pero
-  el diseño se optimiza para la Cardputer ADV.
+- It isn't a copy of the WaniKani website or its interface.
+- It doesn't ship WaniKani content in the repository: meanings, readings,
+  mnemonics, radical images and audio are requested with the user's personal
+  token and stored only on their card.
+- It doesn't implement a local SRS for reviews: scheduling is WaniKani's. (An
+  extra practice mode with FSRS could come later.)
+- It doesn't include a community, forum, app-store reviews, push notifications or
+  a mobile app.
+- It doesn't support other boards in v1. Tangocho's HAL allows adding them, but
+  the design is optimized for the Cardputer ADV.
 
-## Hardware objetivo
+## Target hardware
 
 | | Cardputer ADV |
 |---|---|
-| MCU | ESP32-S3FN8, 8 MB flash, **sin PSRAM** |
-| Pantalla | 1,14" ST7789V2, 240×135, solo horizontal |
-| Teclado | 56 teclas (4×14) tras un TCA8418; G0 aparte |
-| Almacenamiento | microSD FAT32 + LittleFS |
-| Red | Wi-Fi 2,4 GHz |
-| Batería | sí; sueño profundo con despertar por tecla |
-| Audio | codec ES8311 + altavoz (fase posterior) |
+| MCU | ESP32-S3FN8, 8 MB flash, **no PSRAM** |
+| Display | 1.14" ST7789V2, 240×135, landscape only |
+| Keyboard | 56 keys (4×14) behind a TCA8418; G0 separate |
+| Storage | microSD FAT32 + LittleFS |
+| Network | 2.4 GHz Wi-Fi |
+| Battery | yes; deep sleep with wake on keypress |
+| Audio | ES8311 codec + speaker (later phase) |
 
-La parte más difícil —teclado, pantalla, microSD, Wi-Fi/TLS, sueño y OTA— ya
-está resuelta y probada en hardware en
-[Tangocho](https://github.com/dcarnicer/tamagotcho). KaniKey reutiliza esa capa.
+The hardest part —keyboard, display, microSD, Wi-Fi/TLS, sleep and OTA— is
+already solved and tested on hardware in
+[Tangocho](https://github.com/dcarnicer/tamagotcho). KaniKey reuses that layer.
 
-## Documentos
+## Documents
 
-| Documento | Qué contiene |
+| Document | What it contains |
 |---|---|
-| [docs/design.md](docs/design.md) | Producto, alcance, arquitectura, memoria, riesgos y hoja de ruta |
-| [docs/ux.md](docs/ux.md) | Lenguaje visual, teclado, flujos y pantalla a pantalla |
-| [docs/api-sync.md](docs/api-sync.md) | API de WaniKani, caché, cola offline y modelo de datos |
-| [docs/reuse-tangocho.md](docs/reuse-tangocho.md) | Qué se reutiliza de Tangocho y cómo se porta |
-| [docs/setup.md](docs/setup.md) | Token, pack visual, primer arranque y problemas |
-| [docs/decisions.md](docs/decisions.md) | Registro corto de decisiones propuestas |
-| [docs/screens/](docs/screens/) | Mockups a 240×135 (individuales a 4×; contact sheet a 2×) |
+| [docs/design.md](docs/design.md) | Product, scope, architecture, memory, risks and roadmap |
+| [docs/ux.md](docs/ux.md) | Visual language, keyboard, flows and screen by screen |
+| [docs/api-sync.md](docs/api-sync.md) | WaniKani API, cache, offline queue and data model |
+| [docs/reuse-tangocho.md](docs/reuse-tangocho.md) | What is reused from Tangocho and how it is ported |
+| [docs/setup.md](docs/setup.md) | Token, visual pack, first boot and troubleshooting |
+| [docs/decisions.md](docs/decisions.md) | Short log of accepted decisions |
+| [docs/screens/](docs/screens/) | 240×135 mockups (individual at 4×; contact sheet at 2×) |
+| [firmware/README.md](firmware/README.md) | Current build, flash and serial commands |
 
-Los documentos están en español; el código y los comentarios irán en inglés,
-como en Tangocho, para que el proyecto se pueda publicar.
+The documents, code comments and UI strings are in English, as in Tangocho, so
+the project can be published.
 
-Los mockups se regeneran con:
+The mockups are regenerated with:
 
 ```sh
 python3 tools/mockups/render.py
 ```
 
-El script reutiliza por defecto la Noto Sans JP que Tangocho descarga en
-`tools/pack-builder/cache/noto/`. Si está en otra ruta:
+By default the script reuses the Noto Sans JP font that Tangocho downloads into
+`tools/pack-builder/cache/noto/`. If it is somewhere else:
 
 ```sh
-KANIKEY_FONT=/ruta/NotoSansJP-Regular.otf python3 tools/mockups/render.py
+KANIKEY_FONT=/path/NotoSansJP-Regular.otf python3 tools/mockups/render.py
 ```
 
-## Nombre
+## Name
 
-**KaniKey** es un nombre de trabajo: *kani* (cangrejo, como en WaniKani) + *key*
-(tecla). No incluye "WaniKani" en el nombre del producto, como piden las reglas
-de marca de la API. Si el nombre no convence, se puede cambiar antes de publicar;
-lo importante del diseño no depende de él.
+**KaniKey** is a working name: *kani* (crab, as in WaniKani) + *key*. It doesn't
+include "WaniKani" in the product name, as the API's branding rules require. If
+the name doesn't stick, it can be changed before release; what matters in the
+design doesn't depend on it.
 
-## Licencia
+## License
 
-Todavía por decidir. Si se reutiliza código de Tangocho (MIT), KaniKey tendrá que
-incluir su aviso de copyright. La opción natural es MIT para el código y ningún
-contenido de WaniKani en el repositorio.
+Still to be decided. If code from Tangocho (MIT) is reused, KaniKey will have to
+include its copyright notice. The natural choice is MIT for the code and no
+WaniKani content in the repository.

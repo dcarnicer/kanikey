@@ -1,207 +1,212 @@
-# KaniKey — qué reutilizar de Tangocho
+# KaniKey — what to reuse from Tangocho
 
-> Diseño, 2026-10-25. Tangocho se toma como base en
-> `33a28f670b07e6c574d98a9c40550a7aac3bf537` (v0.7.0, 2026-10-24), licencia MIT.
-
----
-
-## 1. Por qué
-
-La Cardputer ADV ya está probada en hardware dentro de Tangocho:
-
-- Pantalla, rotación fija horizontal y back buffer.
-- Teclado TCA8418, eventos, repetición, letras y flechas.
-- microSD FAT32, con sus pines, montaje y extracción en caliente.
-- Wi-Fi, portal, TLS con CAs raíz, OTA y sueño profundo.
-- Render de glifos 4bpp, bitmaps 1bpp, RLE, widgets y fuente de UI.
-- Remote serie para pulsar teclas y leer la pantalla en pruebas.
-
-Eso es exactamente la parte que no aporta valor diferencial a KaniKey y que
-costaría semanas volver a depurar. El producto nuevo es el motor de repaso, la
-API de WaniKani, el IME y las pantallas.
+> Design, 2026-10-25. Tangocho is taken as the base at
+> `33a28f670b07e6c574d98a9c40550a7aac3bf537` (v0.7.0, 2026-10-24), MIT license.
+>
+> **Implementation note (2026-10-25):** the first firmware milestone copies the
+> needed modules (`board/`, `ui/KeyInput.h`, `platform/RootCerts.h`) into this
+> repository instead of forking Tangocho's full history. The rest of the reuse
+> matrix still applies; a full fork remains an option if the two projects need
+> to share hardware fixes.
 
 ---
 
-## 2. Estrategia recomendada: fork podado
+## 1. Why
 
-1. Crear `kanikey` como fork de Tangocho en el commit indicado.
-2. Mantener `upstream` como remoto para poder traer arreglos de hardware.
-3. Podar en una rama `bootstrap`:
-   - fuera `pack/`, `quiz/`, `srs/`, `catalog/`, `portal/` (salvo helpers),
-     `app/` de repaso y mazos;
-   - fuera `tools/pack-builder/` y los packs;
-   - dentro `board/`, `render/`, `ui/`, `platform/`, `tools/screenshots/`,
+The Cardputer ADV is already proven on hardware inside Tangocho:
+
+- Display, fixed landscape rotation and back buffer.
+- TCA8418 keyboard, events, repeat, letters and arrows.
+- microSD FAT32, with its pins, mount and hot removal.
+- Wi-Fi, portal, TLS with root CAs, OTA and deep sleep.
+- 4bpp glyph rendering, 1bpp bitmaps, RLE, widgets and UI font.
+- Serial remote to press keys and read the screen in tests.
+
+That is exactly the part that brings no differential value to KaniKey and that
+would cost weeks to debug again. The new product is the review engine, the
+WaniKani API, the IME and the screens.
+
+---
+
+## 2. Recommended strategy: pruned fork
+
+1. Create `kanikey` as a fork of Tangocho at the given commit.
+2. Keep `upstream` as a remote so hardware fixes can be brought in.
+3. Prune in a `bootstrap` branch:
+   - out `pack/`, `quiz/`, `srs/`, `catalog/`, `portal/` (except helpers),
+     `app/` for reviews and decks;
+   - out `tools/pack-builder/` and the packs;
+   - in `board/`, `render/`, `ui/`, `platform/`, `tools/screenshots/`,
      `tools/ui-font/`.
-4. Renombrar namespace `tgc` → `kk` (o mantener `tgc` durante la transición).
-5. Compilar `cardputer-adv` y ejecutar los tests nativos.
-6. A partir de ahí, construir `wk/`, `store/` y las pantallas nuevas.
+4. Rename the `tgc` namespace → `kk` (or keep `tgc` during the transition).
+5. Build `cardputer-adv` and run the native tests.
+6. From there, build `wk/`, `store/` and the new screens.
 
-No se recomienda una librería compartida desde el día uno: añade versionado,
-submódulos y coordinación entre dos proyectos para un pet project. Si Tangocho y
-KaniKey siguen vivos, extraer un `cardputer-kit` más adelante es más fácil que
-mantenerlo ahora.
+A shared library from day one is not recommended: it adds versioning,
+submodules and coordination between two projects for a pet project. If Tangocho
+and KaniKey stay alive, extracting a `cardputer-kit` later is easier than
+maintaining it now.
 
 ---
 
-## 3. Matriz de reutilización
+## 3. Reuse matrix
 
-| Módulo de Tangocho | Qué hace | Decisión | Cambios para KaniKey |
+| Tangocho module | What it does | Decision | Changes for KaniKey |
 |---|---|---|---|
-| `board/Board.h` | HAL: pantalla, botones, teclado, SD, batería, sueño | **Se queda** | Añadir eventos de texto + modificadores; G0 |
-| `board/BoardCardputerAdv.cpp` | TCA8418, SD, deep sleep, batería | **Se queda** | Extender el mapeo de teclas a caracteres; nada más |
-| `board/BoardM5.cpp` | Imagen única StickS3+Cardputer | **Se tira** | Solo Cardputer en v1 |
-| `render/Renderer` | Glifos 4bpp, texto, caché | **Se adapta** | `GlyphSource` en vez de pack; mismas primitivas |
-| `render/Rle` | Compresión de glifos | **Se queda** | Reutilizar en el pack visual |
-| `render/Widgets` | Header, tiles, rows, pills, barras | **Se adapta** | Nuevos tokens y algún componente (input, feedback) |
-| `render/Blend565`, `GlcdCp437` | Mezcla y mapa CP437 | **Se queda** | Sin cambios |
-| `ui/Theme.h` | Tokens de Tangocho | **Se reescribe** | Paleta y tipografía de KaniKey |
-| `ui/ListView.h` | Foco, ventana, scroll | **Se queda** | Sin cambios |
-| `ui/HintBar.h` | Barra de pistas y keycaps | **Se queda** | Nuevos textos/teclas |
-| `ui/KeyInput.h` | Mapa TCA8418 → acciones | **Se amplía** | Capas normal/Shift/Fn, caracteres, modificadores |
-| `ui/TextLayout.h` | Wrap y paginación | **Se queda** | Reutilizar en mnemónicos |
-| `ui/UiFace.h`, `UiFont.h` | Fuente de UI pre-renderizada | **Se adapta** | Añadir 10/14/20 px y glifos necesarios |
-| `ui/Icons.h` | Iconos 1bpp | **Se adapta** | Check, cross, wifi, sync, SD, llave |
-| `app/Display` | Canvas, present, rotación | **Se queda** | Sin rotación; partial push para el input |
-| `app/ScreenKit` | Header, hints, listas, errores | **Se adapta** | Nuevo layout 240×135 y textos |
-| `app/Input` | Hold, teclado, keyAction | **Se reescribe** | Modo texto vs navegación |
-| `app/Power` | Dim, idle, sleep, batería | **Se queda** | Ajustar tiempos y guardar outbox antes de dormir |
-| `app/Clock` | Fecha/hora, SNTP | **Se adapta** | UTC/ISO 8601, `clock_trusted` |
-| `app/Wifi`, `WifiMenu` | Wi-Fi y portal | **Se adapta** | Portal solo de setup; WPA2 |
-| `app/Net` | Sesiones de red, heap | **Se adapta** | `WkClient` en vez de catálogo de mazos |
-| `app/Firmware` | OTA | **Se queda** | Cambiar manifiesto/URL |
-| `app/Remote` | Remote serie para capturas | **Se queda** | Añadir teclas de texto |
-| `platform/Storage` | LittleFS + SD, rutas | **Se adapta** | Rutas `/kanikey/...`; asignaciones/outbox |
-| `platform/HomeWifi` | Wi-Fi de casa en NVS | **Se queda** | Sin cambios |
-| `platform/NetFetch` | HTTP/TLS, streaming a sink | **Se adapta** | Cliente API con streaming JSON |
-| `platform/WifiPortal` | Portal HTTP | **Se adapta** | Setup: Wi-Fi + token + hora; WPA2 |
-| `platform/Ota` | OTA con manifiesto | **Se queda** | Manifiesto de KaniKey |
-| `platform/RootCerts` | CAs raíz | **Se queda** | Añadir las de WaniKani si faltan |
-| `platform/Psram` | Detección de PSRAM | **Se queda** | Cardputer no tiene; no asumir |
-| `pack/` | Formato `.tgc` | **Se tira** | Solo se reutiliza la idea de tablas + RLE |
-| `quiz/` | Preguntas de opción múltiple | **Se tira** | Respuesta escrita |
-| `srs/` | FSRS local | **Se tira** | WaniKani manda; opcional para práctica extra |
-| `catalog/` | Catálogo de mazos | **Se tira** | No aplica |
-| `portal/` | Lógica del portal de mazos | **Se tira** | El portal de KaniKey es de setup |
-| `tools/screenshots/` | Capturas por serie | **Se queda** | Adaptar escenarios |
-| `tools/ui-font/` | Generador de UiFont | **Se queda** | Añadir tamaños/glifos |
-| `tools/pack-builder/` | KANJIDIC2, packs | **Se tira** | Nuevo `tools/glyph-pack/` |
+| `board/Board.h` | HAL: display, buttons, keyboard, SD, battery, sleep | **Stays** | Add text events + modifiers; G0 |
+| `board/BoardCardputerAdv.cpp` | TCA8418, SD, deep sleep, battery | **Stays** | Extend the key-to-character mapping; nothing else |
+| `board/BoardM5.cpp` | Single StickS3+Cardputer image | **Dropped** | Cardputer only in v1 |
+| `render/Renderer` | 4bpp glyphs, text, cache | **Adapted** | `GlyphSource` instead of pack; same primitives |
+| `render/Rle` | Glyph compression | **Stays** | Reuse in the visual pack |
+| `render/Widgets` | Header, tiles, rows, pills, bars | **Adapted** | New tokens and some component (input, feedback) |
+| `render/Blend565`, `GlcdCp437` | Blending and CP437 map | **Stays** | No changes |
+| `ui/Theme.h` | Tangocho tokens | **Rewritten** | KaniKey palette and typography |
+| `ui/ListView.h` | Focus, window, scroll | **Stays** | No changes |
+| `ui/HintBar.h` | Hint bar and keycaps | **Stays** | New texts/keys |
+| `ui/KeyInput.h` | TCA8418 → actions map | **Extended** | Normal/Shift/Fn layers, characters, modifiers |
+| `ui/TextLayout.h` | Wrap and pagination | **Stays** | Reuse in mnemonics |
+| `ui/UiFace.h`, `UiFont.h` | Pre-rendered UI font | **Adapted** | Add 10/14/20 px and needed glyphs |
+| `ui/Icons.h` | 1bpp icons | **Adapted** | Check, cross, wifi, sync, SD, key |
+| `app/Display` | Canvas, present, rotation | **Stays** | No rotation; partial push for input |
+| `app/ScreenKit` | Header, hints, lists, errors | **Adapted** | New 240×135 layout and texts |
+| `app/Input` | Hold, keyboard, keyAction | **Rewritten** | Text mode vs navigation |
+| `app/Power` | Dim, idle, sleep, battery | **Stays** | Adjust timings and save outbox before sleeping |
+| `app/Clock` | Date/time, SNTP | **Adapted** | UTC/ISO 8601, `clock_trusted` |
+| `app/Wifi`, `WifiMenu` | Wi-Fi and portal | **Adapted** | Setup-only portal; WPA2 |
+| `app/Net` | Network sessions, heap | **Adapted** | `WkClient` instead of deck catalog |
+| `app/Firmware` | OTA | **Stays** | Change manifest/URL |
+| `app/Remote` | Serial remote for screenshots | **Stays** | Add text keys |
+| `platform/Storage` | LittleFS + SD, paths | **Adapted** | `/kanikey/...` paths; assignments/outbox |
+| `platform/HomeWifi` | Home Wi-Fi in NVS | **Stays** | No changes |
+| `platform/NetFetch` | HTTP/TLS, streaming to sink | **Adapted** | API client with JSON streaming |
+| `platform/WifiPortal` | HTTP portal | **Adapted** | Setup: Wi-Fi + token + time; WPA2 |
+| `platform/Ota` | OTA with manifest | **Stays** | KaniKey manifest |
+| `platform/RootCerts` | Root CAs | **Stays** | Add WaniKani's if missing |
+| `platform/Psram` | PSRAM detection | **Stays** | Cardputer doesn't have it; don't assume |
+| `pack/` | `.tgc` format | **Dropped** | Only the idea of tables + RLE is reused |
+| `quiz/` | Multiple-choice questions | **Dropped** | Written answer |
+| `srs/` | Local FSRS | **Dropped** | WaniKani rules; optional for extra practice |
+| `catalog/` | Deck catalog | **Dropped** | Not applicable |
+| `portal/` | Deck portal logic | **Dropped** | KaniKey's portal is for setup |
+| `tools/screenshots/` | Screenshots over serial | **Stays** | Adapt scenarios |
+| `tools/ui-font/` | UiFont generator | **Stays** | Add sizes/glyphs |
+| `tools/pack-builder/` | KANJIDIC2, packs | **Dropped** | New `tools/glyph-pack/` |
 
 ---
 
-## 4. Qué no reutilizar (y por qué)
+## 4. What not to reuse (and why)
 
-- **El formato de pack `.tgc`.** Está pensado para cartas de kanji con
-  significados/lecturas y distractores. WaniKani tiene radicales, vocabulario,
-  kana, mnemónicos, componentes y asignaciones. Forzarlo sería peor que un
-  formato nuevo.
-- **El quiz de opción múltiple.** La gracia de la Cardputer es escribir. Un test
-  de opciones sería una versión peor de Tangocho.
-- **FSRS.** WaniKani ya tiene su SRS; llevar dos schedulers crea divergencia.
-  Si algún día hay “práctica extra”, puede ser un módulo separado que no envíe
-  nada a WaniKani.
-- **El catálogo de mazos y su portal.** No hay mazos; hay una cuenta.
-- **La imagen única StickS3+Cardputer.** Añade ramas y pruebas; la v1 es solo
-  Cardputer.
-- **El importador de WaniKani de `tools/pack-builder`.** Solo descarga kanji
-  desbloqueados y construye un `.tgc` estático; no trae asignaciones,
-  vocabulario, radicales, repasos ni lecciones. Sirve como referencia para el
-  manejo del token, la paginación y los campos de `subjects`, pero el motor de
-  sincronización de KaniKey es nuevo.
+- **The `.tgc` pack format.** It is designed for kanji cards with
+  meanings/readings and distractors. WaniKani has radicals, vocabulary, kana,
+  mnemonics, components and assignments. Forcing it would be worse than a new
+  format.
+- **The multiple-choice quiz.** The charm of the Cardputer is typing. A
+  multiple-choice test would be a worse version of Tangocho.
+- **FSRS.** WaniKani already has its SRS; running two schedulers creates
+  divergence. If there is ever "extra practice", it can be a separate module
+  that sends nothing to WaniKani.
+- **The deck catalog and its portal.** There are no decks; there is an account.
+- **The single StickS3+Cardputer image.** It adds branches and tests; v1 is
+  Cardputer only.
+- **The WaniKani importer in `tools/pack-builder`.** It only downloads unlocked
+  kanji and builds a static `.tgc`; it brings no assignments, vocabulary,
+  radicals, reviews or lessons. It serves as a reference for token handling,
+  pagination and the `subjects` fields, but KaniKey's sync engine is new.
 
 ---
 
-## 5. Lecciones de hardware que ya están pagadas
+## 5. Hardware lessons that are already paid for
 
-Números medidos en Tangocho (Cardputer ADV, sin PSRAM):
+Numbers measured in Tangocho (Cardputer ADV, no PSRAM):
 
-| Cosa | Dato |
+| Item | Data |
 |---|---|
-| Canvas 240×135×2 | 64,8 KB |
-| Heap libre al arrancar | ~210 KB |
-| TLS handshake | ~50 KB; mínimo visto ~60 KB libres con canvas y pack |
-| SD montada | ~13–15 KB de RAM (FatFs, buffers) |
-| Frame completo | 64,8 KB ≈ 13 ms por SPI a 40 MHz |
-| Pines SD | SCK 40, MISO 39, MOSI 14, CS 12; `otherCs` 5 para la Cap LoRa |
-| Teclado | TCA8418 en I²C interno, INT en G11 |
-| Pantalla | rotación 1 fija, teclado debajo |
-| Batería | G10, divisor 1:2 |
-| Sueño | despierta con G0 o cualquier tecla (EXT1 en G11) |
-| Reloj | sin RTC con batería; SNTP o portal |
+| Canvas 240×135×2 | 64.8 KB |
+| Free heap at boot | ~210 KB |
+| TLS handshake | ~50 KB; minimum seen ~60 KB free with canvas and pack |
+| SD mounted | ~13–15 KB of RAM (FatFs, buffers) |
+| Full frame | 64.8 KB ≈ 13 ms over SPI at 40 MHz |
+| SD pins | SCK 40, MISO 39, MOSI 14, CS 12; `otherCs` 5 for the LoRa Cap |
+| Keyboard | TCA8418 on internal I²C, INT on G11 |
+| Display | fixed rotation 1, keyboard underneath |
+| Battery | G10, 1:2 divider |
+| Sleep | wakes on G0 or any key (EXT1 on G11) |
+| Clock | no battery-backed RTC; SNTP or portal |
 
-KaniKey tiene que respetar esas cifras. En particular:
+KaniKey must respect those figures. In particular:
 
-- No abrir un pack de Tangocho; pero el canvas y TLS siguen ahí.
-- El parser JSON y el almacén no pueden parecerse a un DOM.
-- La caché de glifos debe caber en ~16 KB.
-- La sincronización debe liberar caché antes de TLS.
-- El sueño debe guardar la outbox y las asignaciones.
-
----
-
-## 6. Kakehashi como inspiración
-
-Kakehashi es una app iOS/Android de WaniKani, MIT, con una implementación muy
-completa. No se puede reutilizar su código React Native en el firmware, pero sí
-sus decisiones de producto:
-
-- **Respuesta escrita** con conversión de romaji a kana y edición de texto.
-- **Answer checker** con significados aceptados, sinónimos, blacklist/whitelist,
-  lecturas primarias vs válidas, okurigana y avisos de “n” antes de vocal.
-- **Sesión estable:** se congela la lista al empezar; los repasos nuevos no
-  aparecen a mitad.
-- **Guardar antes de avanzar:** el resultado se persiste antes de la siguiente
-  pregunta; la cola se sincroniza después.
-- **Lecciones** con ficha, mnemónico y componentes.
-- **Indicador de etapa SRS** después de completar un ítem.
-- **Estados offline** honestos y reintentos acotados.
-
-Si se copia código concreto (por ejemplo, la tabla de normalización o los tests
-del checker), hay que conservar el aviso MIT de Pedro Ortego. La UI y el arte no
-se copian.
+- Don't open a Tangocho pack; but the canvas and TLS are still there.
+- The JSON parser and the store can't look like a DOM.
+- The glyph cache must fit in ~16 KB.
+- Sync must free the cache before TLS.
+- Sleep must save the outbox and the assignments.
 
 ---
 
-## 7. Licencias y avisos
+## 6. Kakehashi as inspiration
 
-- **Tangocho:** MIT, Copyright (c) 2026 Tamagotcho contributors. El fork debe
-  mantener `LICENSE` y el aviso en los archivos copiados.
-- **Kakehashi:** MIT, Copyright (c) 2026 Pedro Ortego. Añadir aviso si se copia
-  código; si solo se usan ideas, mencionarlo en `THIRD_PARTY.md`.
-- **Noto Sans JP:** SIL OFL 1.1. Incluir la licencia y el aviso al distribuir el
-  pack visual.
-- **KanjiVG:** CC BY-SA 3.0, solo si se añade orden de trazos.
-- **WaniKani:** contenido © Tofugu LLC; no se redistribuye. El pack visual se
-  genera con el token del usuario y se queda en su tarjeta.
+Kakehashi is an iOS/Android WaniKani app, MIT, with a very complete
+implementation. Its React Native code cannot be reused in the firmware, but its
+product decisions can:
+
+- **Written answer** with romaji-to-kana conversion and text editing.
+- **Answer checker** with accepted meanings, synonyms, blacklist/whitelist,
+  primary vs valid readings, okurigana and warnings of "n" before a vowel.
+- **Stable session:** the list is frozen at the start; new reviews do not
+  appear mid-way.
+- **Save before advancing:** the result is persisted before the next
+  question; the queue is synced afterwards.
+- **Lessons** with card, mnemonic and components.
+- **SRS stage indicator** after completing an item.
+- **Honest offline states** and bounded retries.
+
+If specific code is copied (for example, the normalization table or the checker
+tests), Pedro Ortego's MIT notice must be kept. The UI and the art are not
+copied.
 
 ---
 
-## 8. Esfuerzo relativo
+## 7. Licenses and notices
 
-| Bloque | Esfuerzo | Nota |
+- **Tangocho:** MIT, Copyright (c) 2026 Tamagotcho contributors. The fork must
+  keep `LICENSE` and the notice in the copied files.
+- **Kakehashi:** MIT, Copyright (c) 2026 Pedro Ortego. Add a notice if code is
+  copied; if only ideas are used, mention it in `THIRD_PARTY.md`.
+- **Noto Sans JP:** SIL OFL 1.1. Include the license and the notice when
+  distributing the visual pack.
+- **KanjiVG:** CC BY-SA 3.0, only if stroke order is added.
+- **WaniKani:** content © Tofugu LLC; not redistributed. The visual pack is
+  generated with the user's token and stays on their card.
+
+---
+
+## 8. Relative effort
+
+| Block | Effort | Note |
 |---|---|---|
-| Fork + poda + compilar | S | Sobre todo borrar y renombrar |
-| Adaptar render a `GlyphSource` | M | Mantener las primitivas |
-| Teclado con texto/capas | M | TCA8418 ya funciona; falta el mapa de caracteres |
-| `wk/` + `store/` + tests | L | La parte más técnica |
-| `WkClient` + JSON streaming | L | Memoria y TLS |
-| Pantallas de repaso | M | La UX ya está diseñada |
-| Lecciones | M | Texto paginado y `start` |
-| Outbox/reconciliación | M | Cuidado con duplicados |
-| Pack visual (Python) | M | Fuente, SVG, RLE |
-| Pulido/OTA/docs | M | Se puede iterar |
+| Fork + prune + build | S | Mostly deleting and renaming |
+| Adapt render to `GlyphSource` | M | Keep the primitives |
+| Keyboard with text/layers | M | TCA8418 already works; the character map is missing |
+| `wk/` + `store/` + tests | L | The most technical part |
+| `WkClient` + JSON streaming | L | Memory and TLS |
+| Review screens | M | The UX is already designed |
+| Lessons | M | Paginated text and `start` |
+| Outbox/reconciliation | M | Careful with duplicates |
+| Visual pack (Python) | M | Font, SVG, RLE |
+| Polish/OTA/docs | M | Can be iterated |
 
-No son compromisos de calendario; es una forma de ver dónde está el riesgo. La
-primera semana de firmware debería ser un `GET /user` en la Cardputer con TLS y
-medición de heap, antes de escribir pantallas.
+These are not calendar commitments; it is a way to see where the risk is. The
+first week of firmware should be a `GET /user` on the Cardputer with TLS and
+heap measurement, before writing screens.
 
 ---
 
-## 9. Riesgos del fork
+## 9. Fork risks
 
-| Riesgo | Mitigación |
+| Risk | Mitigation |
 |---|---|
-| Arrastrar código de mazos sin querer | Poda agresiva; compilar y borrar warnings |
-| Divergencia con Tangocho | Mantener `upstream`; cherry-pick de arreglos de HAL |
-| Namespace y nombres confusos | Renombrar `tgc` a `kk` en una rama dedicada |
-| Tests de Tangocho que ya no aplican | Conservar los de render/UI; borrar los de packs/quiz/SRS |
-| Licencia | Mantener MIT y avisos desde el primer commit |
+| Dragging deck code along unintentionally | Aggressive pruning; build and clear warnings |
+| Divergence from Tangocho | Keep `upstream`; cherry-pick HAL fixes |
+| Confusing namespace and names | Rename `tgc` to `kk` in a dedicated branch |
+| Tangocho tests that no longer apply | Keep the render/UI ones; delete the pack/quiz/SRS ones |
+| License | Keep MIT and notices from the first commit |
