@@ -85,7 +85,18 @@ token and is not redistributed. If a glyph is missing, the item is blocked with 
 
 ---
 
-## 2026-10-25 — Lessons in phase 2
+## 2026-10-25 — M1 uses efontJA_16 as a temporary glyph source
+
+**Decision:** the first review screen renders kanji/vocabulary with M5GFX's
+`efontJA_16` (16 px, scaled 2–3×) instead of waiting for the visual pack.
+
+**Why:** the Home screen is live and the next visible milestone is a real review.
+The font is already in M5GFX, covers ~10,800 Japanese glyphs and adds ~468 KB of
+flash; the app still fits its 1.75 MiB slot at 88.6%.
+
+**Implications:** this is a bring-up fallback, not a reversal of the visual-pack
+decision. The pack remains the final path for 64 px prompts, radical images and
+a smaller flash footprint. Remove the efont reference when the pack lands.
 
 **Decision:** the MVP focuses on reviews. Lessons come later.
 

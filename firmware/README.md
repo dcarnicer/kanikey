@@ -14,8 +14,13 @@ First hardware milestone for the M5Stack Cardputer ADV.
   next review and last sync.
 - Measures internal heap before and after each TLS request.
 
-It does not sync WaniKani data yet. Hardware measurements are in
+It does not sync WaniKani data yet. The Home screen shows live `/user` and
+`/summary` data. Hardware measurements are in
 [docs/hardware.md](../docs/hardware.md).
+
+M1 uses M5GFX's `efontJA_16` as a temporary kanji source; the final visual pack
+is still the plan. The font reference adds ~468 KB of flash and keeps the app
+at 88.6% of its slot.
 
 The token is a development convenience. Production KaniKey will use the setup
 portal and the same NVS storage, with the token masked on screen and never

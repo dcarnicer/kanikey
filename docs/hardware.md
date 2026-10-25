@@ -23,8 +23,8 @@ App: display, keyboard controller, microSD, heap report, Wi-Fi, TLS
 
 | | |
 |---|---|
-| Flash used | 1,126,621 B of 1,835,008 B (61.4%) |
-| Static RAM | 50,036 B of 327,680 B (15.3%) |
+| Flash used | 1,626,569 B of 1,835,008 B (88.6%) |
+| Static RAM | 50,204 B of 327,680 B (15.3%) |
 
 ### Heap
 
@@ -72,6 +72,9 @@ later allocation.
 - After the summary parses, the Home screen shows the level, username, due
   reviews, lessons, next review and last sync time.
 - `Tab` toggles the keyboard/debug screen.
+- The debug screen renders a test kanji with M5GFX's `efontJA_16`; that font
+  adds ~468 KB of flash and leaves ~208 KB for the review UI. It is a bring-up
+  fallback, not the final glyph-pack path.
 - A physical key-press pass still needs to be recorded here.
 
 ### Keyboard

@@ -468,6 +468,13 @@ The generated-pack option best balances quality, memory, and licensing. In the
 future, a generator in the phone's browser could be added so no computer is
 needed, or on-device rasterization for missing characters.
 
+**Bring-up fallback (M1).** M5GFX ships `efontJA_16`, a 16 px Japanese bitmap
+font with ~10,800 glyphs. Referencing it adds ~468 KB of flash and gives the
+first review screen a real kanji prompt (scaled 2–3×) without waiting for the
+visual-pack tool. It is not the final answer: the pack gives 64 px glyphs,
+radical images and a smaller flash footprint. The fallback is removed once the
+pack path is ready.
+
 ### 11.4 Rendering
 
 `render/Renderer` is adapted to an interface:

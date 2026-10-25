@@ -5,7 +5,8 @@
 > **Status: firmware M1 in progress (2026-10-25).** The Cardputer ADV runs the
 > first build with display, keyboard controller, microSD, Wi-Fi, SNTP and
 > authenticated `/user` + `/summary` calls. The Home screen shows the live due
-> reviews, lessons, next review and sync time. The review session is next.
+> reviews, lessons, next review and sync time. The first review screen is next,
+> using M5GFX's Japanese font as a bring-up fallback until the visual pack lands.
 >
 > KaniKey is an **unofficial** third-party app for WaniKani. It is not
 > affiliated with, endorsed by or sponsored by WaniKani or Tofugu LLC. WaniKani

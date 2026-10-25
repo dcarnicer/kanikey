@@ -142,6 +142,8 @@ void runSummary() {
         const uint32_t nextAt = r.summary.nextReviewAt(now);
         if (nextAt)
             localHm(nextAt, gNextReview, sizeof gNextReview);
+        else if (gDueReviews > 0)
+            snprintf(gNextReview, sizeof gNextReview, "now");
         else
             snprintf(gNextReview, sizeof gNextReview, "all clear");
         gShowHome = true;
@@ -379,6 +381,10 @@ void draw() {
         d.drawString(mods, 233, 126);
         d.setTextDatum(lgfx::top_left);
     }
+
+    d.setFont(&fonts::efontJA_16);
+    d.setTextColor(kText, kBg);
+    d.drawString("食", 200, 100);
 
     d.endWrite();
 }
