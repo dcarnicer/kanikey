@@ -110,6 +110,16 @@ By default the script reuses the Noto Sans JP font that Tangocho downloads into
 KANIKEY_FONT=/path/NotoSansJP-Regular.otf python3 tools/mockups/render.py
 ```
 
+## Secret scanning
+
+GitHub Actions runs [gitleaks](https://github.com/gitleaks/gitleaks) on every
+push to `main` and on pull requests, scanning the full history. Locally:
+
+```sh
+brew install gitleaks
+gitleaks detect --source . --verbose --redact
+```
+
 ## Name
 
 **KaniKey** is a working name: *kani* (crab, as in WaniKani) + *key*. It doesn't
@@ -119,6 +129,7 @@ design doesn't depend on it.
 
 ## License
 
-Still to be decided. If code from Tangocho (MIT) is reused, KaniKey will have to
-include its copyright notice. The natural choice is MIT for the code and no
-WaniKani content in the repository.
+KaniKey's own license is still to be decided. The code adapted from Tangocho
+(MIT) and the other third-party components are credited in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). No WaniKani content is
+distributed in the repository.
