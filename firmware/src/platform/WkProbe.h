@@ -1,26 +1,34 @@
 #pragma once
-// A tiny HTTPS probe for the first hardware milestone: GET /v2/user with no
-// token, so a 401 proves DNS, TLS and the WaniKani endpoint while measuring the
-// heap the secure client costs.
+// WaniKani probes used by the first milestones: GET /user and GET /summary.
 #include <Arduino.h>
+
+#include "wk/Summary.h"
+#include "wk/User.h"
 
 namespace kk {
 
 struct WkProbeResult {
-    bool connected = false;  // TCP/TLS connection established
-    bool tlsOk = false;      // certificate verified
-    int httpCode = 0;        // 0 when no HTTP response was read
+    bool connected = false;
+    int httpCode = 0;
     int tlsError = 0;
     uint32_t ms = 0;
     size_t bytes = 0;
+    bool parsed = false;
     String statusLine;
-    String username;
-    int level = 0;
+    User user;
 };
 
-// With an empty token the request has no Authorization header, so a 401 still
-// proves DNS, TLS and the endpoint. With a token, a 200 also proves the token
-// and returns username/level when they can be extracted.
-WkProbeResult probeWaniKaniUser(const String& token = String());
+struct SummaryProbeResult {
+    bool connected = false;
+    int httpCode = 0;
+    int tlsError = 0;
+    uint32_t ms = 0;
+    size_t bytes = 0;
+    bool parsed = false;
+    Summary summary;
+};
+
+WkProbeResult probeWaniKaniUser(const String& token);
+SummaryProbeResult probeWaniKaniSummary(const String& token);
 
 }  // namespace kk

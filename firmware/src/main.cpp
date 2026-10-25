@@ -15,6 +15,7 @@
 #include <WiFi.h>
 #include <esp_heap_caps.h>
 #include <esp_system.h>
+#include <time.h>
 
 #include <cstring>
 
@@ -22,6 +23,7 @@
 #include "platform/DevToken.h"
 #include "platform/DevWifi.h"
 #include "platform/WkProbe.h"
+#include "wk/Time.h"
 
 namespace {
 
@@ -47,6 +49,19 @@ bool gSdOk = false;
 char gSdLine[48] = "SD: not mounted";
 char gNetLine[48] = "NET: not tested";
 String gSerialLine;
+
+kk::User gUser;
+kk::Summary gSummary;
+bool gHaveUser = false;
+bool gHaveSummary = false;
+bool gShowHome = false;
+uint32_t gDueReviews = 0;
+uint32_t gLessons = 0;
+uint32_t gSyncedAt = 0;
+char gNextReview[12] = "--:--";
+char gSyncClock[12] = "--:--";
+
+void localHm(uint32_t epoch, char* out, size_t n);
 
 bool gShift = false;
 bool gFn = false;
@@ -96,9 +111,14 @@ void runProbe() {
     snprintf(gNetLine, sizeof gNetLine, "API: probing...");
     gDirty = true;
     const kk::WkProbeResult r = kk::probeWaniKaniUser(token);
+    if (r.parsed) {
+        gUser = r.user;
+        gHaveUser = true;
+    }
     if (r.connected) {
-        if (r.httpCode == 200 && !r.username.isEmpty())
-            snprintf(gNetLine, sizeof gNetLine, "API: 200 %s L%d", r.username.c_str(), r.level);
+        if (r.httpCode == 200 && r.parsed)
+            snprintf(gNetLine, sizeof gNetLine, "API: 200 %s L%d", r.user.username.c_str(),
+                     r.user.level);
         else
             snprintf(gNetLine, sizeof gNetLine, "API: %d  TLS %ums", r.httpCode,
                      static_cast<unsigned>(r.ms));
@@ -108,8 +128,48 @@ void runProbe() {
     gDirty = true;
 }
 
+void runSummary() {
+    const String token = kk::DevToken::load();
+    const kk::SummaryProbeResult r = kk::probeWaniKaniSummary(token);
+    const uint32_t now = static_cast<uint32_t>(time(nullptr));
+    if (r.parsed) {
+        gSummary = r.summary;
+        gHaveSummary = true;
+        gDueReviews = r.summary.dueReviews(now);
+        gLessons = r.summary.totalLessons();
+        gSyncedAt = now;
+        localHm(now, gSyncClock, sizeof gSyncClock);
+        const uint32_t nextAt = r.summary.nextReviewAt(now);
+        if (nextAt)
+            localHm(nextAt, gNextReview, sizeof gNextReview);
+        else
+            snprintf(gNextReview, sizeof gNextReview, "all clear");
+        gShowHome = true;
+    }
+    if (r.parsed)
+        Serial.printf("[summary] due %u of %u reviews, %u lessons, next %s\n",
+                      static_cast<unsigned>(r.summary.dueReviews(now)),
+                      static_cast<unsigned>(r.summary.totalReviews()),
+                      static_cast<unsigned>(r.summary.totalLessons()),
+                      r.summary.nextReviewsAt.c_str());
+    if (r.parsed)
+        snprintf(gNetLine, sizeof gNetLine, "Summary: %ur %ul",
+                 static_cast<unsigned>(r.summary.totalReviews()),
+                 static_cast<unsigned>(r.summary.totalLessons()));
+    else if (r.connected)
+        snprintf(gNetLine, sizeof gNetLine, "Summary: HTTP %d", r.httpCode);
+    else
+        snprintf(gNetLine, sizeof gNetLine, "Summary: TLS failed (%d)", r.tlsError);
+    gDirty = true;
+}
+
 void onKey(const KeyEvent& e) {
     updateModifier(e.x, e.y, e.down);
+    if (e.down && e.key == Key::Tab && gHaveSummary) {
+        gShowHome = !gShowHome;
+        gDirty = true;
+        return;
+    }
     const char c = tgc::cardputerCharAt(e.x, e.y, gShift);
 
     char line[44];
@@ -166,7 +226,94 @@ bool mountSd() {
     return true;
 }
 
+void localHm(uint32_t epoch, char* out, size_t n) {
+    const time_t t = static_cast<time_t>(epoch);
+    struct tm tm {};
+    if (!localtime_r(&t, &tm)) {
+        snprintf(out, n, "--:--");
+        return;
+    }
+    snprintf(out, n, "%02d:%02d", tm.tm_hour, tm.tm_min);
+}
+
+void drawHome() {
+    if (!gDisp) return;
+    static bool logged = false;
+    if (!logged) {
+        logged = true;
+        Serial.println("[kk] home drawn");
+    }
+    auto& d = *gDisp;
+    d.startWrite();
+    d.fillScreen(kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+
+    d.setTextFont(2);
+    d.setTextSize(2);
+    d.setTextColor(kBrand, kBg);
+    d.drawString("KaniKey", 6, 2);
+
+    const int bat = tgc::board::batteryPercent();
+    char right[20];
+    if (bat >= 0)
+        snprintf(right, sizeof right, "%d%%", bat);
+    else
+        snprintf(right, sizeof right, "USB");
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(bat >= 0 && bat < 20 ? kWarn : kDim, kBg);
+    d.setTextDatum(lgfx::top_right);
+    d.drawString(right, 233, 7);
+
+    d.setTextDatum(lgfx::top_left);
+    d.setTextColor(GOLD, kBg);
+    char lvl[16];
+    snprintf(lvl, sizeof lvl, "LEVEL %d", gHaveUser ? gUser.level : 0);
+    d.drawString(lvl, 7, 22);
+    d.setTextColor(kDim, kBg);
+    d.drawString(gHaveUser ? gUser.username.c_str() : "not signed in", 80, 22);
+
+    d.setTextFont(2);
+    d.setTextSize(3);
+    d.setTextColor(kText, kBg);
+    char due[16];
+    snprintf(due, sizeof due, "%u", static_cast<unsigned>(gDueReviews));
+    d.drawString(due, 8, 34);
+    d.setTextFont(1);
+    d.setTextColor(kDim, kBg);
+    d.drawString("REVIEWS DUE", 8, 78);
+
+    d.setTextFont(2);
+    d.setTextSize(2);
+    d.setTextColor(kText, kBg);
+    char lessons[16];
+    snprintf(lessons, sizeof lessons, "%u", static_cast<unsigned>(gLessons));
+    d.drawString(lessons, 164, 42);
+    d.setTextFont(1);
+    d.setTextColor(kDim, kBg);
+    d.drawString("LESSONS", 164, 78);
+
+    d.setTextFont(1);
+    d.setTextColor(kDim, kBg);
+    char next[40];
+    snprintf(next, sizeof next, "Next review  %s", gNextReview);
+    d.drawString(next, 8, 94);
+    char sync[40];
+    snprintf(sync, sizeof sync, "Synced       %s", gSyncClock);
+    d.setTextColor(kFaint, kBg);
+    d.drawString(sync, 8, 108);
+
+    d.setTextColor(kFaint, kBg);
+    d.drawString("Tab: debug screen", 8, 125);
+    d.endWrite();
+}
+
 void draw() {
+    if (gShowHome) {
+        drawHome();
+        return;
+    }
     if (!gDisp) return;
     auto& d = *gDisp;
     d.startWrite();
@@ -237,7 +384,7 @@ void draw() {
 }
 
 void drawStatus() {
-    if (!gDisp) return;
+    if (!gDisp || gShowHome) return;
     // The status line changes on its own (battery/heap), so redraw just it.
     auto& d = *gDisp;
     d.startWrite();
@@ -334,6 +481,12 @@ void handleSerial() {
             kk::DevToken::clear();
             Serial.println("[auth] token cleared");
             snprintf(gNetLine, sizeof gNetLine, "API: token cleared");
+        } else if (gSerialLine == "m") {
+            if (!kk::DevWifi::connected() && !kk::DevWifi::connect(30000)) {
+                snprintf(gNetLine, sizeof gNetLine, "Summary: no Wi-Fi");
+            } else {
+                runSummary();
+            }
         } else if (gSerialLine == "h") {
             Serial.printf("[heap] free %u, largest %u, min %u\n",
                           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
@@ -358,7 +511,7 @@ void handleSerial() {
             delay(100);
             ESP.restart();
         } else if (!gSerialLine.isEmpty()) {
-            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user k <token> c=clear h=heap s=scan r=restart\n");
+            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary k <token> c=clear h=heap s=scan r=restart\n");
         }
         gSerialLine = "";
         gDirty = true;
@@ -403,7 +556,16 @@ void setup() {
         if (kk::DevWifi::connect(30000)) {
             snprintf(gNetLine, sizeof gNetLine, "NET: %s", kk::DevWifi::ip().c_str());
             drawStatus();
+            setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
+            tzset();
+            configTime(0, 0, "pool.ntp.org", "time.cloudflare.com");
+            const uint32_t ntpStart = millis();
+            while (time(nullptr) < 1700000000 && millis() - ntpStart < 5000) delay(100);
+            const uint32_t utc = static_cast<uint32_t>(time(nullptr));
+            Serial.printf("[time] %s: %u\n", utc >= 1700000000 ? "synced" : "not synced",
+                          static_cast<unsigned>(utc));
             runProbe();
+            runSummary();
         } else {
             snprintf(gNetLine, sizeof gNetLine, "NET: join failed");
             gDirty = true;

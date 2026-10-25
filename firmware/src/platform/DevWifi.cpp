@@ -73,24 +73,35 @@ bool DevWifi::connect(uint32_t timeoutMs) {
     WiFi.persistent(false);
     WiFi.setAutoReconnect(false);
     WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid.c_str(), pass.length() ? pass.c_str() : nullptr);
-    wipe(pass);
 
-    const uint32_t t0 = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - t0 < timeoutMs) {
-        delay(100);
+    // The first join after a cold boot sometimes sits in WL_DISCONNECTED until
+    // the driver's scan settles. Two attempts with a clean radio in between
+    // match what a manual retry does; split the caller's budget between them.
+    const uint32_t perAttempt = timeoutMs / 2;
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        if (attempt > 0) {
+            WiFi.disconnect(true);
+            WiFi.mode(WIFI_OFF);
+            delay(500);
+            WiFi.mode(WIFI_STA);
+        }
+        WiFi.begin(ssid.c_str(), pass.length() ? pass.c_str() : nullptr);
+        const uint32_t t0 = millis();
+        while (WiFi.status() != WL_CONNECTED && millis() - t0 < perAttempt) delay(100);
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.printf("[wifi] connected in %u ms (attempt %d), ip %s, rssi %d dBm\n",
+                          static_cast<unsigned>(millis() - t0), attempt + 1,
+                          WiFi.localIP().toString().c_str(), WiFi.RSSI());
+            wipe(pass);
+            return true;
+        }
+        Serial.printf("[wifi] attempt %d failed after %u ms, status %d\n", attempt + 1,
+                      static_cast<unsigned>(millis() - t0), static_cast<int>(WiFi.status()));
     }
-    const uint32_t ms = millis() - t0;
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.printf("[wifi] failed after %u ms, status %d\n", static_cast<unsigned>(ms),
-                      static_cast<int>(WiFi.status()));
-        WiFi.disconnect(true);
-        WiFi.mode(WIFI_OFF);
-        return false;
-    }
-    Serial.printf("[wifi] connected in %u ms, ip %s, rssi %d dBm\n",
-                  static_cast<unsigned>(ms), WiFi.localIP().toString().c_str(), WiFi.RSSI());
-    return true;
+    wipe(pass);
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    return false;
 }
 
 void DevWifi::disconnect() {

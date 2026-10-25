@@ -9,10 +9,10 @@ First hardware milestone for the M5Stack Cardputer ADV.
 - Shows every key event on screen and over serial: TCA8418 code, grid position,
   action and character on the main/Shift layer.
 - If Tangocho already saved Wi-Fi credentials in NVS namespace `net`, joins that
-  network and runs a TLS `GET /v2/user` against `api.wanikani.com`. Without a
-  token a `401` proves DNS, TLS, the certificate chain and the endpoint; with a
-  token a `200` also prints the username and level.
-- Measures internal heap before and after the TLS client.
+  network, syncs time with SNTP and calls `GET /v2/user` and `GET /summary`.
+- With a token, the Home screen shows the account level, due reviews, lessons,
+  next review and last sync.
+- Measures internal heap before and after each TLS request.
 
 It does not sync WaniKani data yet. Hardware measurements are in
 [docs/hardware.md](../docs/hardware.md).

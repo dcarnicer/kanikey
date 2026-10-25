@@ -1,9 +1,9 @@
 # KaniKey — product design and architecture
 
-> **Status:** design approved, 2026-10-25. Firmware M0 is verified on hardware:
-> display, keyboard controller, microSD, Wi-Fi and an authenticated
-> `GET /v2/user` returning 200. The WaniKani data sync and Home screen are next.
-> Measurements: [hardware.md](hardware.md).
+> **Status:** design approved, 2026-10-25. Firmware M1 is in progress: display,
+> keyboard controller, microSD, Wi-Fi, SNTP, authenticated `/user` + `/summary`
+> and a live Home screen. The review session is next. Measurements:
+> [hardware.md](hardware.md).
 >
 > **Working name:** KaniKey. It's provisional; the design doesn't depend on it.
 >

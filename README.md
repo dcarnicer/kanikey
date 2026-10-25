@@ -2,10 +2,10 @@
 
 **A pocket-sized review terminal for WaniKani, built for the M5Stack Cardputer ADV.**
 
-> **Status: firmware M0 verified on hardware (2026-10-25).** The Cardputer ADV
-> runs the first build: display, keyboard controller, microSD, Wi-Fi and an
-> authenticated `GET /v2/user` returning 200. The WaniKani data sync and Home
-> screen are next.
+> **Status: firmware M1 in progress (2026-10-25).** The Cardputer ADV runs the
+> first build with display, keyboard controller, microSD, Wi-Fi, SNTP and
+> authenticated `/user` + `/summary` calls. The Home screen shows the live due
+> reviews, lessons, next review and sync time. The review session is next.
 >
 > KaniKey is an **unofficial** third-party app for WaniKani. It is not
 > affiliated with, endorsed by or sponsored by WaniKani or Tofugu LLC. WaniKani

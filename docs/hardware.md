@@ -35,8 +35,9 @@ All values are internal heap, bytes.
 | After boot, before SD | 322,548 | 286,708 | — |
 | After SD mount | 307,084 | 270,324 | — |
 | Before TLS | 253,772 | 241,652 | 248,676 |
-| After TLS `/user` | 250,764 | 172,020 | 177,612 |
-| Idle after sync | ~253,300 | — | — |
+| After TLS `/user` | 249,428 | 217,076 | 173,640 |
+| After `/summary` | 245,056 | 180,212 | 173,640 |
+| Idle after sync | ~252,600 | — | — |
 
 The current M0 draws directly to the panel and does **not** allocate the
 planned 64.8 KB full-screen canvas. With the canvas, expect roughly 186 KB free
@@ -52,19 +53,32 @@ later allocation.
 
 - Saved credentials in NVS namespace `net` (shared with Tangocho during
   development).
-- Join: 3.8 s, RSSI −54 dBm.
-- TLS handshake + `GET /v2/user`: 1.8–2.0 s.
-- Response: `HTTP/1.1 200 OK`, 1,785 bytes.
-- Username and level parsed from the body; the token is not logged.
-- First join during bring-up needed a retry after 15 s; the 30 s budget now
-  connects on the first attempt. Production will use Tangocho-style
-  scan/pin/retry logic.
+- Join: 3.8–3.9 s, RSSI −51 to −55 dBm.
+- SNTP time sync: ~1 s after the join.
+- TLS handshake + `GET /v2/user`: ~2.0 s, 719 body bytes, `200 OK`.
+- TLS handshake + `GET /summary`: ~2.1 s, 5,094 body bytes, `200 OK`.
+- Both bodies parse; the Home screen shows the account level, due reviews,
+  lesson count, next review and sync time.
+- The request uses **HTTP/1.0** so WaniKani sends a plain body instead of
+  chunked transfer encoding; no chunk decoder is needed.
+- The token is not logged.
+- The first join after a cold boot sometimes stalls in `WL_DISCONNECTED` for
+  the whole 15 s attempt; a second attempt with a clean radio connects in
+  ~3.9 s. The dev helper now does two attempts. Production will use
+  Tangocho-style scan/pin/retry logic.
+
+### Home screen
+
+- After the summary parses, the Home screen shows the level, username, due
+  reviews, lessons, next review and last sync time.
+- `Tab` toggles the keyboard/debug screen.
+- A physical key-press pass still needs to be recorded here.
 
 ### Keyboard
 
 - `TCA8418 ready` on boot.
-- 21 native tests cover the grid mapping, characters, modifiers, answer
-  checker, romaji IME and review queue.
+- 26 native tests cover the grid mapping, characters, modifiers, answer
+  checker, romaji IME, review queue, JSON, ISO 8601, user and summary parsing.
 - A physical key-press pass still needs to be recorded here.
 
 ### Serial
@@ -89,6 +103,6 @@ E (221) esp_core_dump_flash: No core dump partition found!
 
 ### Next
 
-- `/summary` + assignments + subjects cache.
-- First Home screen with real due counts.
+- Assignments + subjects cache.
+- Real review session screen with the typed answer flow.
 - Canvas + renderer, then measure the real UI budget.

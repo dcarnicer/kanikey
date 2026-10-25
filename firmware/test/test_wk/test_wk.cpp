@@ -4,6 +4,10 @@
 
 #include "ui/KeyInput.h"
 #include "wk/AnswerChecker.h"
+#include "wk/Json.h"
+#include "wk/Summary.h"
+#include "wk/Time.h"
+#include "wk/User.h"
 #include "wk/ReviewQueue.h"
 #include "wk/RomajiIme.h"
 #include "wk/Text.h"
@@ -332,6 +336,88 @@ static void test_cardputer_event_fields() {
     TEST_ASSERT_EQUAL(tgc::Key::Up, e.key);
 }
 
+
+// ---------------------------------------------------------------- json/time
+static void test_json_values_and_escapes() {
+    JsonParser p;
+    JsonValue v;
+    const char* text =
+        "{\"a\":1,\"b\":[true,null,\"x\\n\\u3042\"],\"c\":{\"d\":-2.5e1},"
+        "\"e\":\"\\uD83D\\uDE00\"}";
+    TEST_ASSERT_TRUE(p.parse(text, &v));
+    TEST_ASSERT_TRUE(v.isObject());
+    TEST_ASSERT_EQUAL(1, static_cast<int>(v.find("a")->number));
+    const JsonValue* b = v.find("b");
+    TEST_ASSERT_TRUE(b && b->isArray());
+    TEST_ASSERT_EQUAL(3, b->size());
+    TEST_ASSERT_TRUE(b->at(0)->boolean);
+    TEST_ASSERT_EQUAL(JsonType::Null, b->at(1)->type);
+    TEST_ASSERT_EQUAL_STRING("x\nあ", b->at(2)->string.c_str());
+    TEST_ASSERT_EQUAL(-25, static_cast<int>(v.find("c")->find("d")->number));
+    TEST_ASSERT_EQUAL_STRING("😀", v.find("e")->string.c_str());
+}
+
+static void test_json_rejects_bad_input() {
+    JsonParser p;
+    JsonValue v;
+    TEST_ASSERT_FALSE(p.parse("{\"a\":1,}", &v));
+    TEST_ASSERT_FALSE(p.parse("{\"a\":", &v));
+    TEST_ASSERT_FALSE(p.parse("{\"a\":1} trailing", &v));
+    TEST_ASSERT_FALSE(p.parse("", &v));
+    TEST_ASSERT_FALSE(p.error().empty());
+}
+
+static void test_iso8601_round_trip() {
+    uint32_t e = 0;
+    TEST_ASSERT_TRUE(parseIso8601("2026-10-25T12:38:37.375268Z", &e));
+    TEST_ASSERT_EQUAL_STRING("2026-10-25T12:38:37Z", formatIso8601(e).c_str());
+    TEST_ASSERT_TRUE(parseIso8601("1970-01-01T00:00:00Z", &e));
+    TEST_ASSERT_EQUAL_UINT32(0, e);
+    TEST_ASSERT_FALSE(parseIso8601("2026-10-25 12:38:37", &e));
+    TEST_ASSERT_FALSE(parseIso8601("2026-10-25T12:38:37+02:00", &e));
+}
+
+static void test_user_parse() {
+    JsonParser p;
+    JsonValue v;
+    const char* text =
+        "{\"data\":{\"username\":\"tester\",\"level\":8,"
+        "\"subscription\":{\"active\":true,\"max_level_granted\":60},"
+        "\"preferences\":{\"lessons_batch_size\":10}}}";
+    TEST_ASSERT_TRUE(p.parse(text, &v));
+    User u;
+    TEST_ASSERT_TRUE(parseUser(v, &u));
+    TEST_ASSERT_EQUAL_STRING("tester", u.username.c_str());
+    TEST_ASSERT_EQUAL(8, u.level);
+    TEST_ASSERT_TRUE(u.subscriptionActive);
+    TEST_ASSERT_EQUAL(60, u.maxLevelGranted);
+    TEST_ASSERT_EQUAL(10, u.lessonsBatchSize);
+}
+
+static void test_summary_parse_and_counts() {
+    JsonParser p;
+    JsonValue v;
+    const char* text =
+        "{\"object\":\"report\",\"data\":{"
+        "\"lessons\":[{\"available_at\":\"2026-10-25T12:00:00Z\",\"subject_ids\":[1,2,3]}],"
+        "\"next_reviews_at\":\"2026-10-25T13:00:00Z\","
+        "\"reviews\":["
+        "{\"available_at\":\"2026-10-25T12:00:00Z\",\"subject_ids\":[10,11]},"
+        "{\"available_at\":\"2026-10-25T13:00:00Z\",\"subject_ids\":[12]}]}}";
+    TEST_ASSERT_TRUE(p.parse(text, &v));
+    Summary s;
+    TEST_ASSERT_TRUE(parseSummary(v, &s));
+    TEST_ASSERT_EQUAL(3, s.totalReviews());
+    TEST_ASSERT_EQUAL(3, s.totalLessons());
+    TEST_ASSERT_EQUAL_STRING("2026-10-25T13:00:00Z", s.nextReviewsAt.c_str());
+    uint32_t now = 0;
+    TEST_ASSERT_TRUE(parseIso8601("2026-10-25T12:30:00Z", &now));
+    TEST_ASSERT_EQUAL(2, s.dueReviews(now));
+    uint32_t next = 0;
+    TEST_ASSERT_TRUE(parseIso8601("2026-10-25T13:00:00Z", &next));
+    TEST_ASSERT_EQUAL_UINT32(next, s.nextReviewAt(now));
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_romaji_common_words);
@@ -355,5 +441,10 @@ int main(int, char**) {
     RUN_TEST(test_cardputer_characters);
     RUN_TEST(test_cardputer_modifiers);
     RUN_TEST(test_cardputer_event_fields);
+    RUN_TEST(test_json_values_and_escapes);
+    RUN_TEST(test_json_rejects_bad_input);
+    RUN_TEST(test_iso8601_round_trip);
+    RUN_TEST(test_user_parse);
+    RUN_TEST(test_summary_parse_and_counts);
     return UNITY_END();
 }
