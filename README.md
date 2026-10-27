@@ -14,8 +14,9 @@
 > the pack's 96 px bitmaps, and radical-only lessons are included; the device
 > verification and the pack regeneration with a token are pending.
 > `efontJA_16` remains only as a fallback for readings when the pack lacks a
-> glyph. The lesson list/components and dismissing rejected outbox items are
-> next.
+> glyph. Normal boots show setup/sync states; the M0 debug screen is only in
+> the development build. The lesson list/components and dismissing rejected
+> outbox items are next.
 >
 > KaniKey is an **unofficial** third-party app for WaniKani. It is not
 > affiliated with, endorsed by or sponsored by WaniKani or Tofugu LLC. WaniKani

@@ -107,11 +107,18 @@ bool gAssetServerActive = false;
 bool gLessonActive = false;
 size_t gLessonIndex = 0;
 size_t gLessonPage = 0;
+bool gSyncing = false;
+bool gSyncAttempted = false;
+#ifdef KANIKEY_DEV
+bool gShowDebug = false;
+#endif
 
 void localHm(uint32_t epoch, char* out, size_t n);
 void draw();
 void drawLoading(const char* title, const char* subtitle);
 void drawLesson();
+void drawBoot();
+void retryBoot();
 
 lgfx::LovyanGFX& target() {
     if (gCanvas) return *gCanvas;
@@ -1092,19 +1099,24 @@ void onKey(const KeyEvent& e) {
         if (e.down && (e.key == Key::Enter || e.key == Key::Esc)) endReview();
         return;
     }
-    if (e.down && e.key == Key::Enter && gShowHome && gHaveSummary) {
-        startReview();
+#ifdef KANIKEY_DEV
+    if (e.down && e.key == Key::Tab) {
+        gShowDebug = !gShowDebug;
+        gDirty = true;
+        return;
+    }
+#endif
+    if (e.down && e.key == Key::Enter) {
+        if (gShowHome && gHaveSummary)
+            startReview();
+        else
+            retryBoot();
         return;
     }
     if (e.down && gShowHome && e.key == Key::Other &&
         (tgc::cardputerCharAt(e.x, e.y, gShift) == 'l' ||
          tgc::cardputerCharAt(e.x, e.y, gShift) == 'L')) {
         startLessons();
-        return;
-    }
-    if (e.down && e.key == Key::Tab && gHaveSummary) {
-        gShowHome = !gShowHome;
-        gDirty = true;
         return;
     }
     const char c = tgc::cardputerCharAt(e.x, e.y, gShift);
@@ -1198,6 +1210,74 @@ void drawLoading(const char* title, const char* subtitle) {
     present();
 }
 
+void startSync() {
+    if (!gSdOk || !gPack.ready() || !kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
+        gDirty = true;
+        return;
+    }
+    gSyncing = true;
+    gSyncAttempted = true;
+    snprintf(gNetLine, sizeof gNetLine, "NET: joining %s",
+             kk::DevWifi::savedSsid().c_str());
+    drawBoot();
+    if (!kk::DevWifi::connect(30000)) {
+        snprintf(gNetLine, sizeof gNetLine, "NET: join failed");
+        gSyncing = false;
+        gDirty = true;
+        return;
+    }
+    snprintf(gNetLine, sizeof gNetLine, "NET: %s", kk::DevWifi::ip().c_str());
+    setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
+    tzset();
+    configTime(0, 0, "pool.ntp.org", "time.cloudflare.com");
+    const uint32_t ntpStart = millis();
+    while (time(nullptr) < 1700000000 && millis() - ntpStart < 5000) delay(100);
+    const uint32_t utc = static_cast<uint32_t>(time(nullptr));
+    Serial.printf("[time] %s: %u\n", utc >= 1700000000 ? "synced" : "not synced",
+                  static_cast<unsigned>(utc));
+    flushOutbox();
+    snprintf(gNetLine, sizeof gNetLine, "API: checking token");
+    drawBoot();
+    runProbe();
+    snprintf(gNetLine, sizeof gNetLine, "Summary: syncing");
+    drawBoot();
+    runSummary();
+    gSyncing = false;
+    gDirty = true;
+}
+
+void retryBoot() {
+    if (gHaveSummary) {
+        gShowHome = true;
+        gDirty = true;
+        return;
+    }
+    if (!gSdOk) {
+        gSdOk = mountSd();
+        if (gSdOk) {
+            gPack.open(SD, "/kanikey/glyphs.kgp");
+            Serial.printf("[pack] %s\n", gPack.statusLine());
+        }
+    }
+    if (gSdOk && !gPack.ready()) {
+        gPack.open(SD, "/kanikey/glyphs.kgp");
+        Serial.printf("[pack] %s\n", gPack.statusLine());
+    }
+    if (!gSdOk) {
+        snprintf(gNetLine, sizeof gNetLine, "SD: not mounted");
+    } else if (!gPack.ready()) {
+        snprintf(gNetLine, sizeof gNetLine, "Pack: %s", gPack.statusLine());
+    } else if (!kk::DevToken::has()) {
+        snprintf(gNetLine, sizeof gNetLine, "Token: not configured");
+    } else if (!kk::DevWifi::hasSaved()) {
+        snprintf(gNetLine, sizeof gNetLine, "Wi-Fi: not configured");
+    } else {
+        startSync();
+        return;
+    }
+    gDirty = true;
+}
+
 void drawHome() {
     if (!gDisp) return;
     static bool logged = false;
@@ -1281,33 +1361,150 @@ void drawHome() {
         d.drawString(line, 8, 117);
     }
     d.setTextColor(kFaint, kBg);
+#ifdef KANIKEY_DEV
     d.drawString("Enter: reviews  L: lessons  Tab: debug", 8, 125);
+#else
+    d.drawString("Enter: reviews  L: lessons", 8, 125);
+#endif
     d.endWrite();
     present();
 }
 
-void draw() {
-    if (gReviewActive) {
-        drawReview();
-        return;
-    }
-    if (gReviewSummary) {
-        drawReviewSummary();
-        return;
-    }
-    if (gLessonActive) {
-        drawLesson();
-        return;
-    }
-    if (gShowHome) {
-        drawHome();
-        return;
-    }
+enum class BootState : uint8_t {
+    NoSd,
+    NoPack,
+    NoToken,
+    NoWifi,
+    NotSynced,
+    Syncing,
+    Failed,
+    Ready
+};
+
+BootState bootState() {
+    if (!gSdOk) return BootState::NoSd;
+    if (!gPack.ready()) return BootState::NoPack;
+    if (!kk::DevToken::has()) return BootState::NoToken;
+    if (!kk::DevWifi::hasSaved()) return BootState::NoWifi;
+    if (gSyncing) return BootState::Syncing;
+    if (!gHaveSummary) return gSyncAttempted ? BootState::Failed : BootState::NotSynced;
+    return BootState::Ready;
+}
+
+void drawBootLine(lgfx::LovyanGFX& d, const char* text, int x, int y, uint16_t fg) {
+    if (!text || !text[0]) return;
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(fg, kBg);
+    std::string s = text;
+    while (s.size() > 1 && d.textWidth(s.c_str()) > 224) s.pop_back();
+    d.drawString(s.c_str(), x, y);
+}
+
+void drawBoot() {
     if (!gDisp) return;
     auto& d = target();
     d.startWrite();
     d.fillScreen(kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
 
+    d.setTextFont(2);
+    d.setTextSize(1);
+    d.setTextColor(kBrand, kBg);
+    d.drawString("KaniKey", 6, 2);
+
+    const int bat = tgc::board::batteryPercent();
+    char right[24];
+    if (bat >= 0)
+        snprintf(right, sizeof right, "%d%%", bat);
+    else
+        snprintf(right, sizeof right, "USB");
+    d.setTextFont(1);
+    d.setTextColor(bat >= 0 && bat < 20 ? kWarn : kDim, kBg);
+    d.setTextDatum(lgfx::top_right);
+    d.drawString(right, 233, 5);
+    d.setTextDatum(lgfx::top_left);
+
+    const BootState st = bootState();
+    const char* title = "";
+    const char* line1 = "";
+    const char* line2 = "";
+    const char* action = "";
+    switch (st) {
+        case BootState::NoSd:
+            title = "No SD card";
+            line1 = "Insert a FAT32 card with";
+            line2 = "/kanikey/glyphs.kgp";
+            action = "Enter: retry";
+            break;
+        case BootState::NoPack:
+            title = "Pack missing";
+            line1 = "Copy glyphs.kgp to";
+            line2 = "/kanikey/ on the SD card";
+            action = "Enter: check again";
+            break;
+        case BootState::NoToken:
+            title = "Token needed";
+            line1 = "Connect USB and send:";
+            line2 = "k <token>";
+            action = "Then press Enter";
+            break;
+        case BootState::NoWifi:
+            title = "Wi-Fi needed";
+            line1 = "Connect USB and send:";
+            line2 = "w <ssid>|<password>";
+            action = "Then press Enter";
+            break;
+        case BootState::NotSynced:
+            title = "Not synced";
+            line1 = gNetLine;
+            line2 = "Press Enter to sync";
+            action = "Enter: sync";
+            break;
+        case BootState::Syncing:
+            title = "Syncing...";
+            line1 = gNetLine;
+            line2 = "First sync can take a few seconds";
+            action = "";
+            break;
+        case BootState::Failed:
+            title = "Sync failed";
+            line1 = gNetLine;
+            line2 = "Check Wi-Fi and token";
+            action = "Enter: retry";
+            break;
+        case BootState::Ready:
+            title = "Ready";
+            line1 = "Press Enter to open Home";
+            action = "Enter: home";
+            break;
+    }
+
+    const bool warn = st == BootState::NoSd || st == BootState::NoPack ||
+                      st == BootState::Failed;
+    d.setTextFont(4);
+    d.setTextSize(1);
+    d.setTextColor(warn ? kWarn : kText, kBg);
+    d.drawString(title, 8, 38);
+    drawBootLine(d, line1, 8, 82, kDim);
+    drawBootLine(d, line2, 8, 96, kDim);
+    if (action[0]) {
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(kFaint, kBg);
+        d.drawString(action, 8, 120);
+    }
+    d.endWrite();
+    present();
+}
+
+#ifdef KANIKEY_DEV
+void drawDebug() {
+    if (!gDisp) return;
+    auto& d = target();
+    d.startWrite();
+    d.fillScreen(kBg);
     d.setTextDatum(top_left);
     d.setTextWrap(false);
     d.setTextFont(2);
@@ -1318,7 +1515,7 @@ void draw() {
     d.setTextFont(1);
     d.setTextSize(1);
     d.setTextColor(kDim, kBg);
-    d.drawString("unofficial WaniKani companion", 7, 38);
+    d.drawString("debug build", 7, 38);
 
     const int bat = tgc::board::batteryPercent();
     char right[24];
@@ -1368,52 +1565,44 @@ void draw() {
         d.drawString(mods, 233, 126);
         d.setTextDatum(lgfx::top_left);
     }
-
-    if (!gPack.drawTextCentered(d, "食", 32, 216, 100, 42, 42, kText, kBg,
-                                kk::ClipRect{190, 82, 238, 118})) {
-        d.setFont(&fonts::efontJA_16);
-        d.setTextColor(kText, kBg);
-        d.drawString("食", 200, 100);
-    }
     d.endWrite();
     present();
+}
+#endif
+
+void draw() {
+    if (gReviewActive) {
+        drawReview();
+        return;
+    }
+    if (gReviewSummary) {
+        drawReviewSummary();
+        return;
+    }
+    if (gLessonActive) {
+        drawLesson();
+        return;
+    }
+#ifdef KANIKEY_DEV
+    if (gShowDebug) {
+        drawDebug();
+        return;
+    }
+#endif
+    if (gShowHome) {
+        drawHome();
+        return;
+    }
+    drawBoot();
 }
 
 void drawStatus() {
     if (!gDisp || gShowHome || gReviewActive || gReviewSummary || gLessonActive) return;
-    // The status line changes on its own (battery/heap), so redraw just it.
-    auto& d = target();
-    d.startWrite();
-    d.setTextDatum(top_left);
-    d.setTextFont(0);
-    d.setTextColor(gSdOk ? kOk : kWarn, kBg);
-    d.fillRect(5, 117, 230, 8, kBg);
-    d.drawString(gSdLine, 5, 117);
-    char heap[40];
-    snprintf(heap, sizeof heap, "heap %u  largest %u",
-             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
-             static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL |
-                                                                     MALLOC_CAP_8BIT)));
-    d.fillRect(5, 126, 230, 8, kBg);
-    d.setTextColor(kFaint, kBg);
-    d.drawString(heap, 5, 126);
-    d.fillRect(5, 66, 230, 12, kBg);
-    d.setTextFont(1);
-    d.setTextColor(kFaint, kBg);
-    d.drawString(gNetLine, 7, 66);
-    const int bat = tgc::board::batteryPercent();
-    char right[24];
-    if (bat >= 0)
-        snprintf(right, sizeof right, "%d%%", bat);
-    else
-        snprintf(right, sizeof right, "USB");
-    d.fillRect(206, 7, 28, 12, kBg);
-    d.setTextFont(1);
-    d.setTextColor(bat >= 0 && bat < 20 ? kWarn : kDim, kBg);
-    d.setTextDatum(lgfx::top_right);
-    d.drawString(right, 233, 7);
-    d.setTextDatum(lgfx::top_left);
-    d.endWrite();
+#ifdef KANIKEY_DEV
+    if (gShowDebug) drawDebug();
+#endif
+    // The boot screen is redrawn on state changes through gDirty; only the
+    // debug screen needs a periodic heap/battery refresh.
 }
 
 void wakeScreen() {
@@ -1860,7 +2049,7 @@ void setup() {
     ensureCanvas();
     kk::wkSetRequestHooks(requestBefore, requestAfter);
 
-    Serial.printf("\n[kk] KaniKey M0\n");
+    Serial.printf("\n[kk] KaniKey boot\n");
     Serial.printf("[kk] canvas: %s (%u bytes, %d bpp)\n", gCanvas ? "ok" : "none",
                   static_cast<unsigned>(gCanvas ? gCanvas->bufferLength() : 0),
                   static_cast<int>(gCanvas ? gCanvas->getColorDepth() : 0));
@@ -1896,31 +2085,18 @@ void setup() {
     gLastDrawMs = millis();
 
     Serial.printf("[wifi] saved credentials: %s\n", kk::DevWifi::hasSaved() ? "yes" : "no");
-    if (kk::DevWifi::hasSaved()) {
-        snprintf(gNetLine, sizeof gNetLine, "NET: joining %s",
-                 kk::DevWifi::savedSsid().c_str());
-        drawStatus();
-        if (kk::DevWifi::connect(30000)) {
-            snprintf(gNetLine, sizeof gNetLine, "NET: %s", kk::DevWifi::ip().c_str());
-            drawStatus();
-            setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
-            tzset();
-            configTime(0, 0, "pool.ntp.org", "time.cloudflare.com");
-            const uint32_t ntpStart = millis();
-            while (time(nullptr) < 1700000000 && millis() - ntpStart < 5000) delay(100);
-            const uint32_t utc = static_cast<uint32_t>(time(nullptr));
-            Serial.printf("[time] %s: %u\n", utc >= 1700000000 ? "synced" : "not synced",
-                          static_cast<unsigned>(utc));
-            flushOutbox();
-            runProbe();
-            runSummary();
-        } else {
-            snprintf(gNetLine, sizeof gNetLine, "NET: join failed");
-            gDirty = true;
-        }
+    if (!gSdOk) {
+        snprintf(gNetLine, sizeof gNetLine, "SD: not mounted");
+    } else if (!gPack.ready()) {
+        snprintf(gNetLine, sizeof gNetLine, "Pack: %s", gPack.statusLine());
+    } else if (!kk::DevToken::has()) {
+        snprintf(gNetLine, sizeof gNetLine, "Token: not configured");
+    } else if (!kk::DevWifi::hasSaved()) {
+        snprintf(gNetLine, sizeof gNetLine, "Wi-Fi: not configured");
     } else {
-        snprintf(gNetLine, sizeof gNetLine, "NET: no saved Wi-Fi");
+        startSync();
     }
+    gDirty = true;
     drawStatus();
     gLastStatusMs = millis();
 }

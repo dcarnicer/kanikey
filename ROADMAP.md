@@ -24,13 +24,15 @@ Working on hardware:
 - Radical prompts render from the pack's 96 px bitmaps; radical-only lessons
   and reviews are no longer filtered out. Missing glyphs show an explicit
   state. Device verification is pending.
+- User-facing boot states for missing SD/pack, token or Wi-Fi and sync
+  failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
 - 33 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,741,561 B / 1,835,008 B flash (94.9%)**, **93,208 B /
-327,680 B static RAM (28.4%)**. Flash headroom is ~91 KB partly because
-`efontJA_16` is still linked (~468 KB).
+Current build: **1,741,665 B / 1,835,008 B flash (94.9%)**, **93,208 B /
+327,680 B static RAM (28.4%)**. The dev image is 1,742,805 B. Flash headroom is
+~91 KB partly because `efontJA_16` is still linked (~468 KB).
 
 ## Priority summary
 
@@ -40,7 +42,7 @@ Current build: **1,741,561 B / 1,835,008 B flash (94.9%)**, **93,208 B /
 | 2 | Persistent offline cache | The outbox survives reboot, the review batch does not | Partial |
 | 3 | Complete lesson flow | Card + start exists; list, components and quiz do not | Partial |
 | 4 | Outbox and API robustness | Rejected items and rate limits have no user path | Partial |
-| 5 | Setup, settings and pause | Wi-Fi/token still need a serial cable | Not started |
+| 5 | Setup, settings and pause | Wi-Fi/token still need a serial cable | Partial (boot states done) |
 | 6 | UI polish | Missing states, SRS bar, sync screen, small layout issues | Partial |
 | 7 | Technical debt, CI and release | Maintainability and shipping | Ongoing |
 
@@ -135,6 +137,8 @@ Tasks:
 
 - First-boot setup portal: Wi-Fi scan/password, token entry (masked, never
   logged), timezone and visual-pack check.
+- User-facing boot states for missing SD/pack, token or Wi-Fi and sync
+  failures, with `Enter` retry. **Done** in code; on-device check pending.
 - Pause menu while reviewing: Continue / End session / Settings, replacing the
   current direct `Esc` exit.
 - Settings: brightness, dim/blank/sleep timings, timezone, About/version.

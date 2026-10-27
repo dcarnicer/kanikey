@@ -1,10 +1,13 @@
 # KaniKey firmware
 
-First hardware milestone for the M5Stack Cardputer ADV.
+KaniKey firmware for the M5Stack Cardputer ADV.
 
 ## What it does
 
 - Starts the board layer: display, TCA8418 keyboard, battery and heap report.
+- Shows user-facing boot states for a missing SD card, visual pack, token or
+  Wi-Fi, and for sync failures. `Enter` retries; no debug UI is shown by
+  default.
 - Mounts a FAT32 microSD on SPI3 and prints its size.
 - Shows every key event on screen and over serial: TCA8418 code, grid position,
   action and character on the main/Shift layer.
@@ -76,6 +79,13 @@ logged.
 ```sh
 cd firmware
 pio run -e cardputer-adv
+```
+
+For the M0 hardware/debug screen and the `Tab: debug` shortcut, build the
+development image instead:
+
+```sh
+pio run -e cardputer-adv-dev
 ```
 
 The build uses two 1.75 MiB OTA slots and 4.44 MiB LittleFS, the same layout as

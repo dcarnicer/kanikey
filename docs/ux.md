@@ -293,8 +293,9 @@ Home ──L──► Lessons ──Enter──► Lesson card
 - `Next review 18:00` and `Synced 14:47`, with right-aligned values (12 px).
 - If the outbox is not empty, `Outbox: N pending` in amber or
   `N need attention` in red at 8 px.
-- Hint: `Enter: reviews  Tab: debug` (8 px). The SRS distribution bar arrives
-  with a later revision.
+- Hint: `Enter: reviews  L: lessons` (8 px). The M0 debug screen and
+  `Tab: debug` only exist in the `cardputer-adv-dev` build. The SRS
+  distribution bar arrives with a later revision.
 - States:
   - **Sync:** `Syncing…` with spinner and progress in the header.
   - **Offline:** line in `warn`: `Offline · 18 cached · 4 to sync`.
