@@ -82,17 +82,19 @@ LessonBatch fetchLessonBatch(const String& token, const std::vector<uint32_t>& l
                       static_cast<unsigned>(ids.size()),
                       static_cast<unsigned>(batch.subjects.size()));
     }
+    // Keep radical-only lessons too: their prompt is a bitmap from the visual
+    // pack, not a Unicode character. The UI reports a missing glyph or pack.
     std::vector<Assignment> usable;
     for (const Assignment& a : batch.assignments) {
         for (const Subject& s : batch.subjects)
-            if (s.id == a.subjectId && !s.characters.empty()) {
+            if (s.id == a.subjectId) {
                 usable.push_back(a);
                 break;
             }
     }
     batch.assignments = std::move(usable);
     batch.ok = !batch.assignments.empty();
-    if (!batch.ok) batch.error = "no lessons with glyphs";
+    if (!batch.ok) batch.error = "no lesson subjects";
     return batch;
 }
 

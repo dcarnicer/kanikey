@@ -226,6 +226,103 @@ int GlyphPack::textWidth(std::string_view text, uint8_t size) const {
     return width;
 }
 
+bool GlyphPack::hasRadical(uint32_t subjectId) const {
+    GlyphInfo g;
+    return findRadical(subjectId, &g);
+}
+
+bool GlyphPack::drawRadical(lgfx::LovyanGFX& gfx, uint32_t subjectId, int cx, int cy,
+                            int maxWidth, int maxHeight, uint16_t fg, uint16_t bg,
+                            const ClipRect& clip) const {
+    GlyphInfo g;
+    if (!findRadical(subjectId, &g)) return false;
+    if (!file_ || g.encoding != kEncodingRle4 || g.width == 0 || g.height == 0)
+        return false;
+    if (g.width > 128 || maxWidth <= 0 || maxHeight <= 0) return false;
+
+    // Keep the aspect ratio and only ever downscale: 96 px is the native size
+    // used by the pack builder.
+    int dstW = std::min<int>(maxWidth, g.width);
+    int dstH = dstW * static_cast<int>(g.height) / static_cast<int>(g.width);
+    if (dstH > maxHeight) {
+        dstH = maxHeight;
+        dstW = dstH * static_cast<int>(g.width) / static_cast<int>(g.height);
+    }
+    if (dstW <= 0 || dstH <= 0 || dstW > 240 || dstH > 240) return false;
+
+    if (!file_.seek(g.offset)) return false;
+
+    const int left = cx - dstW / 2;
+    const int top = cy - dstH / 2;
+    uint16_t sum[240] = {};
+    uint16_t count[240] = {};
+    int curDy = -1;
+    auto flush = [&](int dy) {
+        if (dy < 0) return;
+        const int py = top + dy;
+        for (int dx = 0; dx < dstW; ++dx) {
+            if (count[dx] == 0) continue;
+            const uint8_t alpha =
+                static_cast<uint8_t>((sum[dx] + count[dx] / 2) / count[dx]);
+            if (alpha == 0) continue;
+            const int px = left + dx;
+            if (clip.contains(px, py))
+                gfx.drawPixel(px, py, alpha >= 15 ? fg : blend565(fg, bg, alpha));
+        }
+    };
+
+    gfx.startWrite();
+    uint8_t buf[128];
+    size_t bufLen = 0;
+    size_t bufPos = 0;
+    uint32_t consumed = 0;
+    int sx = 0;
+    int sy = 0;
+    bool ok = true;
+    while (sy < g.height) {
+        if (bufPos >= bufLen) {
+            if (consumed >= g.length) {
+                ok = false;
+                break;
+            }
+            const size_t want =
+                std::min(sizeof buf, static_cast<size_t>(g.length - consumed));
+            const size_t got = file_.read(buf, want);
+            if (got == 0) {
+                ok = false;
+                break;
+            }
+            consumed += got;
+            bufLen = got;
+            bufPos = 0;
+        }
+        const uint8_t b = buf[bufPos++];
+        const int run = (b >> 4) + 1;
+        const uint8_t alpha = b & 0x0F;
+        for (int i = 0; i < run && sy < g.height; ++i) {
+            const int dy = sy * dstH / g.height;
+            if (dy != curDy) {
+                flush(curDy);
+                std::memset(sum, 0, sizeof sum);
+                std::memset(count, 0, sizeof count);
+                curDy = dy;
+            }
+            if (alpha != 0) {
+                const int dx = sx * dstW / g.width;
+                sum[dx] += alpha;
+                ++count[dx];
+            }
+            if (++sx >= g.width) {
+                sx = 0;
+                ++sy;
+            }
+        }
+    }
+    if (ok) flush(curDy);
+    gfx.endWrite();
+    return ok;
+}
+
 bool GlyphPack::drawGlyph(lgfx::LovyanGFX& gfx, const GlyphInfo& glyph, int x, int y,
                           uint16_t fg, uint16_t bg, const ClipRect& clip) const {
     if (!file_ || glyph.encoding != kEncodingRle4 || glyph.width == 0 || glyph.height == 0)

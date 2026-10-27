@@ -15,6 +15,8 @@ First hardware milestone for the M5Stack Cardputer ADV.
 - Measures internal heap before and after each TLS request.
 - Draws Japanese prompts and readings from the microSD visual pack
   (`/kanikey/glyphs.kgp`); the first full pack has 6,621 glyphs at 64/32/20 px.
+- Draws radical prompts from the pack's 96 px radical bitmaps and includes
+  radical-only lessons/reviews.
 - Writes the pack to the card over the USB serial link or a one-shot Wi-Fi
   upload server.
 
@@ -29,9 +31,9 @@ no review is active. Hardware measurements are in
 The full-screen canvas is **8-bit RGB332** (32,400 B). A 16-bit canvas is
 64,800 B and could not be reallocated after the subject batches fragmented the
 heap; 8 bits always reallocate. `efontJA_16` is now only the fallback for
-characters missing from the pack (principally radicals). The font reference
-still costs ~468 KB of flash; removing it needs radical images and a
-"visual pack missing" screen.
+readings and text when the pack lacks a glyph. The font reference still costs
+~468 KB of flash; removing it needs the radical pack regenerated with a token
+and a full "visual pack missing" startup screen, verified on hardware.
 
 ## Visual pack
 

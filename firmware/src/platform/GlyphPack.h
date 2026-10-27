@@ -65,6 +65,15 @@ public:
     // Width in pixels, or -1 when a glyph is missing.
     int textWidth(std::string_view text, uint8_t size) const;
 
+    // True when the pack has a bitmap for this WaniKani radical subject.
+    bool hasRadical(uint32_t subjectId) const;
+    // Draws a radical bitmap scaled to fit (maxWidth, maxHeight) and centred at
+    // (cx, cy). Radicals are stored once at their native size; this never
+    // upscales. Returns false when the subject has no bitmap.
+    bool drawRadical(lgfx::LovyanGFX& gfx, uint32_t subjectId, int cx, int cy,
+                     int maxWidth, int maxHeight, uint16_t fg, uint16_t bg,
+                     const ClipRect& clip) const;
+
     // Draws with the baseline at `y`, clipped to `clip`.
     bool drawText(lgfx::LovyanGFX& gfx, std::string_view text, int x, int y,
                   uint8_t size, uint16_t fg, uint16_t bg, const ClipRect& clip) const;

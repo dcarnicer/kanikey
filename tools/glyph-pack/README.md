@@ -106,6 +106,7 @@ is 189,805 B. The entry table is 20 bytes per glyph; the rest is RLE payloads.
   default. Pass `--font` for another font.
 - Radical images come from the URLs in the user's own WaniKani subject
   response. They are personal, not redistributable.
-- The current firmware has radical entries in the format but no radical
-  renderer yet; the tokenless pack has no radical images at all.
+- The firmware renders radical entries at their native 96 px and scales them
+  down for review/lesson prompts. The tokenless pack has no radical images at
+  all, so regenerate with `WANIKANI_TOKEN` and `cairosvg` to see radicals.
 - The generated `dist/` directory is in `.gitignore`.

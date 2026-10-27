@@ -10,9 +10,12 @@
 > mnemonic pages, and start with `PUT /assignments/{id}/start` (200).
 > Japanese prompts and readings now come from the microSD visual pack at
 > 64/32/20 px: 6,621 glyphs in 2.9 MB, generated locally from the WaniKani kanji
-> cache. No WaniKani content is in the repository. `efontJA_16` remains only as
-> a fallback for radicals. Radical images, the lesson list/components and
-> dismissing rejected outbox items are next.
+> cache. No WaniKani content is in the repository. Radical prompts render from
+> the pack's 96 px bitmaps, and radical-only lessons are included; the device
+> verification and the pack regeneration with a token are pending.
+> `efontJA_16` remains only as a fallback for readings when the pack lacks a
+> glyph. The lesson list/components and dismissing rejected outbox items are
+> next.
 >
 > KaniKey is an **unofficial** third-party app for WaniKani. It is not
 > affiliated with, endorsed by or sponsored by WaniKani or Tofugu LLC. WaniKani

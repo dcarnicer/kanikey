@@ -373,6 +373,35 @@ void trimFrontToWidth(lgfx::LovyanGFX& d, std::string& text, int maxWidth) {
     }
 }
 
+// Radicals use their own bitmap; everything else uses the character pack. The
+// caller draws an explicit missing-glyph state when this returns false.
+bool drawSubjectPrompt(lgfx::LovyanGFX& d, const kk::Subject& s, int cx, int cy,
+                       int maxWidth, int maxHeight, uint16_t fg, uint16_t bg,
+                       const kk::ClipRect& clip) {
+    if (s.type == kk::SubjectType::Radical &&
+        gPack.drawRadical(d, s.id, cx, cy, maxWidth, maxHeight, fg, bg, clip))
+        return true;
+    if (!s.characters.empty() &&
+        gPack.drawTextCentered(d, s.characters, 64, cx, cy, maxWidth, maxHeight, fg, bg,
+                               clip))
+        return true;
+    return false;
+}
+
+void drawMissingGlyph(lgfx::LovyanGFX& d, int cx, int cy) {
+    d.setTextDatum(lgfx::middle_center);
+    d.setTextFont(4);
+    d.setTextSize(1);
+    d.setTextColor(kWarn, kSurface);
+    d.drawString("?", cx, cy - 8);
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextColor(kFaint, kSurface);
+    d.drawString(gPack.ready() ? "no glyph" : "no pack", cx, cy + 12);
+    d.drawString("check SD", cx, cy + 21);
+    d.setTextDatum(lgfx::top_left);
+}
+
 void drawReview() {
     if (!gDisp) return;
     const kk::SessionItem* item = gQueue.current();
@@ -406,19 +435,9 @@ void drawReview() {
 
     d.fillRect(4, 20, 88, 88, kSurface);
     d.drawRect(4, 20, 88, 88, kLine);
-    if (!gPack.drawTextCentered(d, s->characters, 64, 48, 56, 78, 80, kText, kSurface,
-                                kk::ClipRect{6, 22, 90, 106})) {
-        d.setFont(&fonts::efontJA_16);
-        d.setTextSize(1);
-        const int base = d.textWidth(s->characters.c_str());
-        int scale = 3;
-        while (scale > 1 && base * scale > 80) --scale;
-        d.setTextSize(scale);
-        d.setTextDatum(lgfx::middle_center);
-        d.setTextColor(kText, kSurface);
-        d.drawString(s->characters.c_str(), 48, 56);
-        d.setTextDatum(lgfx::top_left);
-    }
+    if (!drawSubjectPrompt(d, *s, 48, 56, 78, 80, kText, kSurface,
+                           kk::ClipRect{6, 22, 90, 106}))
+        drawMissingGlyph(d, 48, 56);
     char type[24];
     const char* kindName = s->type == kk::SubjectType::Vocabulary ? "VOCAB"
                            : s->type == kk::SubjectType::Radical ? "RADICAL"
@@ -790,8 +809,9 @@ void startReview() {
     drawLoading("Starting session...", "");
     std::vector<kk::Assignment> due;
     for (const kk::Assignment& a : gBatch.assignments) {
-        const kk::Subject* s = subjectById(a.subjectId);
-        if (s && !s->characters.empty()) due.push_back(a);
+        // Radicals with no Unicode character are valid review items: their
+        // prompt comes from the radical bitmap in the visual pack.
+        if (subjectById(a.subjectId)) due.push_back(a);
     }
     gQueue.build(due, gBatch.subjects, static_cast<uint32_t>(time(nullptr)), 20);
     if (gQueue.empty()) {
@@ -915,19 +935,9 @@ void drawLesson() {
 
     d.fillRect(4, 20, 74, 64, kSurface);
     d.drawRect(4, 20, 74, 64, kLine);
-    if (!gPack.drawTextCentered(d, s->characters, 64, 41, 52, 70, 62, kText, kSurface,
-                                kk::ClipRect{6, 22, 76, 82})) {
-        d.setFont(&fonts::efontJA_16);
-        d.setTextSize(1);
-        const int base = d.textWidth(s->characters.c_str());
-        int scale = 3;
-        while (scale > 1 && base * scale > 66) --scale;
-        d.setTextSize(scale);
-        d.setTextDatum(lgfx::middle_center);
-        d.setTextColor(kText, kSurface);
-        d.drawString(s->characters.c_str(), 41, 52);
-        d.setTextDatum(lgfx::top_left);
-    }
+    if (!drawSubjectPrompt(d, *s, 41, 52, 70, 62, kText, kSurface,
+                           kk::ClipRect{6, 22, 76, 82}))
+        drawMissingGlyph(d, 41, 52);
 
     const char* kind = s->type == kk::SubjectType::Vocabulary ? "VOCAB"
                        : s->type == kk::SubjectType::Radical ? "RADICAL"

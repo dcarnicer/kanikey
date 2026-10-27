@@ -1,9 +1,11 @@
 # KaniKey roadmap
 
-Status snapshot: **2026-10-25**. This is the working backlog after the SD
+Status snapshot: **2026-10-27**. This is the working backlog after the SD
 visual pack landed, not the original product plan. The milestone definitions
 and UX live in [docs/design.md](docs/design.md), [docs/ux.md](docs/ux.md) and
-[docs/api-sync.md](docs/api-sync.md).
+[docs/api-sync.md](docs/api-sync.md). The radical renderer is implemented and
+builds clean, but hardware verification is pending because the test device is
+not available.
 
 ## Where we are
 
@@ -19,19 +21,22 @@ Working on hardware:
   `PUT /assignments/{id}/start` returns 200.
 - SD visual pack: `KKGP` v1, 6,621 glyphs at 64/32/20 px, 2.9 MB, generated
   locally from the WaniKani kanji cache. Wi-Fi asset upload works.
+- Radical prompts render from the pack's 96 px bitmaps; radical-only lessons
+  and reviews are no longer filtered out. Missing glyphs show an explicit
+  state. Device verification is pending.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
 - 33 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,740,389 B / 1,835,008 B flash (94.8%)**, **93,208 B /
-327,680 B static RAM (28.4%)**. Flash headroom is ~92 KB partly because
+Current build: **1,741,561 B / 1,835,008 B flash (94.9%)**, **93,208 B /
+327,680 B static RAM (28.4%)**. Flash headroom is ~91 KB partly because
 `efontJA_16` is still linked (~468 KB).
 
 ## Priority summary
 
 | Priority | Workstream | Why | Status |
 |---:|---|---|---|
-| 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Not started |
+| 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Partial (renderer done, pack/device pending) |
 | 2 | Persistent offline cache | The outbox survives reboot, the review batch does not | Partial |
 | 3 | Complete lesson flow | Card + start exists; list, components and quiz do not | Partial |
 | 4 | Outbox and API robustness | Rejected items and rate limits have no user path | Partial |
@@ -41,25 +46,31 @@ Current build: **1,740,389 B / 1,835,008 B flash (94.8%)**, **93,208 B /
 
 ## 1. Radicals and remove `efontJA_16` (v1 blocker)
 
-The current pack covers kanji, kana and vocabulary, but it has **no radical
-images**. Radicals with a Unicode character fall back to `efontJA_16`;
-graphical radicals cannot be drawn at all. `fetchLessonBatch` also drops
-subjects with empty `characters`, so a lesson batch made only of graphical
-radicals can report “no lessons with glyphs”. This is the largest user-facing
-gap and the reason ~468 KB of flash is still occupied.
+The pack on the card covers kanji, kana and vocabulary, but was generated
+without a token, so it has **no radical images**. The firmware now renders
+radical entries, includes radical-only lessons/reviews and shows a missing
+glyph state, but the pack must be regenerated with the user's token to see the
+symbols. `efontJA_16` is still linked for readings/text fallback and keeps
+~468 KB of flash occupied. This remains the largest user-facing gap until the
+radical pack is generated and checked on hardware.
 
 Tasks:
 
 - Generate a pack with the user's token and radical SVG images
-  (`cairosvg`), including the 16-byte radical entries.
+  (`cairosvg`), including the 16-byte radical entries. **Pending:** needs the
+  user's token; the generator already supports it.
 - Implement `GlyphPack::drawRadical`: decode the native 96 px bitmap and scale
-  it to the 64/32 px prompt sizes; use it in review and lesson prompts.
-- Include radical-only lessons instead of filtering them out by `characters`.
+  it to the prompt sizes; use it in review and lesson prompts. **Done** in code.
+- Include radical-only lessons and reviews instead of filtering them out by
+  `characters`. **Done** in code.
 - Add a “visual pack missing” / “glyph missing” state with an actionable
-  message instead of a silently blank prompt.
+  message instead of a silently blank prompt. **Partial:** items now show
+  `no glyph` / `no pack` + `check SD`; a full startup screen still needs work.
 - Remove `efontJA_16` references once radicals render; reclaim ~468 KB of
-  flash for the remaining features.
+  flash for the remaining features. **Pending:** do it after the radical pack
+  and the missing-pack startup screen are verified on hardware.
 - Test with a low-level account, where the first lessons are mostly radicals.
+  **Pending:** needs the device and a generated radical pack.
 
 Dependency: the radical images are generated locally with the user's own token;
 the repository must not contain WaniKani art.
