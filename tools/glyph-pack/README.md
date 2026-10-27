@@ -96,10 +96,10 @@ pixel over the destination color. It does not load the pack into RAM.
 ## Sizes
 
 The tokenless full pack (2,026 WaniKani kanji + kana + `々〜・〇`) has 2,207
-characters, 6,621 glyphs and is about 2.9 MB. The token pack generated on
-2026-10-27 has 7,269 glyphs and 498 radical bitmaps, 3,698,476 B (~3.7 MB).
-The test pack with 203 characters is 189,805 B. The entry table is 20 bytes
-per glyph; the rest is RLE payloads.
+characters, 6,621 glyphs and is about 2.9 MB. The token pack generated and
+uploaded on 2026-10-27 has 7,269 glyphs and 498 radical bitmaps, 3,698,476 B
+(~3.7 MB). The test pack with 203 characters is 189,805 B. The entry table is
+20 bytes per glyph; the rest is RLE payloads.
 
 ## Notes
 

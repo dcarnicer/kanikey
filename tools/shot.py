@@ -9,6 +9,8 @@ parses the dump and writes a PNG.
 
     uv run --with pyserial --with pillow python3 tools/shot.py
     uv run --with pyserial --with pillow python3 tools/shot.py --out /tmp/kk.png
+    uv run --with pyserial --with pillow python3 tools/shot.py \
+        --before "R 8820" --out /tmp/radical.png
 """
 from __future__ import annotations
 
@@ -68,7 +70,7 @@ def parse_shot(text: str, table: list[bytes]) -> Image.Image:
     return Image.frombytes("RGB", (width, height), bytes(pixels))
 
 
-def capture(port: str, timeout: float = 60.0) -> Image.Image:
+def capture(port: str, timeout: float = 60.0, before: str | None = None) -> Image.Image:
     table = rgb565_table()
     with serial.Serial(port, 115200, timeout=0.3) as s:
         s.dtr = False
@@ -84,7 +86,12 @@ def capture(port: str, timeout: float = 60.0) -> Image.Image:
                 if not sent:
                     text = log.decode("utf-8", "replace")
                     if "home drawn" in text or "alive heap" in text:
-                        time.sleep(0.5)
+                        if before:
+                            s.write((before + "\n").encode())
+                            s.flush()
+                            time.sleep(0.8)
+                        else:
+                            time.sleep(0.5)
                         s.write(b"p\n")
                         s.flush()
                         sent = True
@@ -112,9 +119,10 @@ def main() -> int:
     ap.add_argument("--port", default=DEFAULT_PORT)
     ap.add_argument("--out", type=Path, default=Path("tools/screenshots/out/home.png"))
     ap.add_argument("--scale", type=int, default=4, help="also save NAME@Nx.png")
+    ap.add_argument("--before", help="send this serial command before the screenshot")
     args = ap.parse_args()
 
-    img = capture(args.port)
+    img = capture(args.port, before=args.before)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     img.save(args.out)
     print(args.out)

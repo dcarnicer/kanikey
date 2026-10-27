@@ -141,6 +141,7 @@ prints or stores the password. `token` prompts for the WaniKani token, sends
 | `s` | Scan Wi-Fi networks (when not connected) |
 | `h` | Print free/largest/minimum internal heap |
 | `i` | Print the visual pack status |
+| `R <id>` | Dev build only: render a radical bitmap by subject id |
 | `S` | Start the one-shot Wi-Fi asset upload server |
 | `up <bytes> <path>` | Write a file to the card over USB (8 KiB ACKed chunks) |
 | `d` | Disconnect Wi-Fi (test offline) |

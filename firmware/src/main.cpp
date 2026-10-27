@@ -111,6 +111,8 @@ bool gSyncing = false;
 bool gSyncAttempted = false;
 #ifdef KANIKEY_DEV
 bool gShowDebug = false;
+bool gShowRadicalTest = false;
+uint32_t gRadicalTestId = 1;
 #endif
 
 void localHm(uint32_t epoch, char* out, size_t n);
@@ -383,11 +385,12 @@ void trimFrontToWidth(lgfx::LovyanGFX& d, std::string& text, int maxWidth) {
 // Radicals use their own bitmap; everything else uses the character pack. The
 // caller draws an explicit missing-glyph state when this returns false.
 bool drawSubjectPrompt(lgfx::LovyanGFX& d, const kk::Subject& s, int cx, int cy,
-                       int maxWidth, int maxHeight, uint16_t fg, uint16_t bg,
-                       const kk::ClipRect& clip) {
-    if (s.type == kk::SubjectType::Radical &&
-        gPack.drawRadical(d, s.id, cx, cy, maxWidth, maxHeight, fg, bg, clip))
-        return true;
+                       int maxWidth, int maxHeight, int radicalMaxSide, uint16_t fg,
+                       uint16_t bg, const kk::ClipRect& clip) {
+    if (s.type == kk::SubjectType::Radical) {
+        const int side = std::min({maxWidth, maxHeight, radicalMaxSide});
+        if (gPack.drawRadical(d, s.id, cx, cy, side, side, fg, bg, clip)) return true;
+    }
     if (!s.characters.empty() &&
         gPack.drawTextCentered(d, s.characters, 64, cx, cy, maxWidth, maxHeight, fg, bg,
                                clip))
@@ -442,7 +445,7 @@ void drawReview() {
 
     d.fillRect(4, 20, 88, 88, kSurface);
     d.drawRect(4, 20, 88, 88, kLine);
-    if (!drawSubjectPrompt(d, *s, 48, 56, 78, 80, kText, kSurface,
+    if (!drawSubjectPrompt(d, *s, 48, 56, 78, 80, 64, kText, kSurface,
                            kk::ClipRect{6, 22, 90, 106}))
         drawMissingGlyph(d, 48, 56);
     char type[24];
@@ -942,7 +945,7 @@ void drawLesson() {
 
     d.fillRect(4, 20, 74, 64, kSurface);
     d.drawRect(4, 20, 74, 64, kLine);
-    if (!drawSubjectPrompt(d, *s, 41, 52, 70, 62, kText, kSurface,
+    if (!drawSubjectPrompt(d, *s, 41, 52, 70, 62, 60, kText, kSurface,
                            kk::ClipRect{6, 22, 76, 82}))
         drawMissingGlyph(d, 41, 52);
 
@@ -1087,6 +1090,15 @@ void lessonKey(const KeyEvent& e) {
 
 void onKey(const KeyEvent& e) {
     updateModifier(e.x, e.y, e.down);
+#ifdef KANIKEY_DEV
+    if (gShowRadicalTest) {
+        if (e.down && e.key == Key::Esc) {
+            gShowRadicalTest = false;
+            gDirty = true;
+        }
+        return;
+    }
+#endif
     if (gLessonActive) {
         lessonKey(e);
         return;
@@ -1568,9 +1580,50 @@ void drawDebug() {
     d.endWrite();
     present();
 }
+
+void drawRadicalTest() {
+    if (!gDisp) return;
+    auto& d = target();
+    d.startWrite();
+    d.fillScreen(kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+    d.setTextFont(2);
+    d.setTextSize(1);
+    d.setTextColor(kBrand, kBg);
+    d.drawString("KaniKey", 6, 2);
+    d.setTextFont(1);
+    d.setTextColor(kDim, kBg);
+    d.drawString("radical test", 7, 22);
+
+    d.fillRect(4, 38, 232, 66, kSurface);
+    d.drawRect(4, 38, 232, 66, kLine);
+    const bool ok = gPack.drawRadical(d, gRadicalTestId, 120, 71, 96, 62, kText, kSurface,
+                                      kk::ClipRect{6, 40, 234, 102});
+    if (!ok) drawMissingGlyph(d, 120, 71);
+
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(ok ? kOk : kWarn, kBg);
+    char line[64];
+    snprintf(line, sizeof line, "subject %u  %s", static_cast<unsigned>(gRadicalTestId),
+             ok ? "bitmap" : "missing");
+    d.drawString(line, 8, 110);
+    d.setTextFont(0);
+    d.setTextColor(kFaint, kBg);
+    d.drawString("R <id>: load  Esc: back", 8, 124);
+    d.endWrite();
+    present();
+}
 #endif
 
 void draw() {
+#ifdef KANIKEY_DEV
+    if (gShowRadicalTest) {
+        drawRadicalTest();
+        return;
+    }
+#endif
     if (gReviewActive) {
         drawReview();
         return;
@@ -2005,6 +2058,16 @@ void handleSerial() {
                           static_cast<unsigned>(heap_caps_get_largest_free_block(
                               MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
                           static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL)));
+#ifdef KANIKEY_DEV
+        } else if (gSerialLine.startsWith("R")) {
+            String arg = gSerialLine.substring(1);
+            arg.trim();
+            gRadicalTestId = arg.length() ? static_cast<uint32_t>(arg.toInt()) : 1;
+            gShowRadicalTest = true;
+            gShowDebug = false;
+            gDirty = true;
+            Serial.printf("[test] radical %u\n", static_cast<unsigned>(gRadicalTestId));
+#endif
         } else if (gSerialLine == "i") {
             Serial.printf("[pack] %s\n", gPack.statusLine());
         } else if (gSerialLine == "S") {

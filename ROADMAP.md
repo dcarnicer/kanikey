@@ -22,21 +22,22 @@ Working on hardware:
   (Wi-Fi off → review → reboot → reconnect → 201) is verified.
 - Lessons: five at a time, card with meaning/reading and paged mnemonic,
   `PUT /assignments/{id}/start` returns 200.
-- SD visual pack: the card has the tokenless 2.9 MB pack (6,621 glyphs). A
-  token pack with **7,269 glyphs + 498 radical bitmaps** (3,698,476 B) was
-  generated locally on 2026-10-27 and is pending upload/hardware verification.
-  Wi-Fi asset upload works.
+- SD visual pack: the card now has the token pack with **7,269 glyphs + 498
+  radical bitmaps** (3,698,476 B), uploaded over USB on 2026-10-27. Wi-Fi
+  asset upload also works.
 - Radical prompts render from the pack's 96 px bitmaps; radical-only lessons
   and reviews are no longer filtered out. Missing glyphs show an explicit
-  state. Device verification is pending.
+  state. The hardware renderer and missing state are verified with the dev
+  `R <id>` test; actual review/lesson prompts and radical-only lessons still
+  need a configured token/Wi-Fi.
 - User-facing boot states for missing SD/pack, token or Wi-Fi and sync
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
 - 33 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,741,665 B / 1,835,008 B flash (94.9%)**, **93,208 B /
-327,680 B static RAM (28.4%)**. The dev image is 1,742,805 B. Flash headroom is
+Current build: **1,741,705 B / 1,835,008 B flash (94.9%)**, **93,208 B /
+327,680 B static RAM (28.4%)**. The dev image is 1,743,357 B. Flash headroom is
 ~91 KB partly because `efontJA_16` is still linked (~468 KB).
 
 ## Priority summary
@@ -74,17 +75,20 @@ behavior gap and it affects Home, reviews, sync and sleep.
 
 ## 1. Radicals and remove `efontJA_16` (v1 blocker)
 
-The card currently has the tokenless pack (2.9 MB), which has **no radical
-images**. A new pack with 7,269 glyphs and 498 radical bitmaps (3,698,476 B)
-was generated locally on 2026-10-27. It still needs to be copied to the card
-and verified on the device; only then can `efontJA_16` be removed.
+The card has the token pack with 7,269 glyphs and 498 radical bitmaps
+(3,698,476 B), generated and uploaded on 2026-10-27. The renderer and the
+missing-glyph state have been verified on hardware with the dev `R <id>` test.
+The last verification step is the real review/lesson prompt and a radical-only
+lesson, which need a configured token and Wi-Fi.
 
 - **RAD-01 — Generate the radical pack.** Use the user's token and the radical
-  SVG URLs (`cairosvg`), including the 16-byte radical entries. **Done locally
-  (2026-10-27):** 498 radical entries, no empty bitmaps; upload pending.
+  SVG URLs (`cairosvg`), including the 16-byte radical entries. **Done
+  (2026-10-27):** 498 radical entries, no empty bitmaps, uploaded to the card.
 - **RAD-02 — Verify radical rendering on hardware.** Check review and lesson
   prompts at 64/32 px, radical-only lessons and the missing-glyph state.
-  **Pending:** needs the device and the RAD-01 pack.
+  **Partial:** the 96 px bitmap, 62 px scaling and missing state are verified
+  with subjects 1 and 8820; real prompts/radical-only lessons pending token and
+  Wi-Fi.
 - **RAD-03 — Remove `efontJA_16`.** Replace the remaining fallbacks with the
   pack + missing state, then confirm the flash drop. **Pending:** after RAD-02.
 - **RAD-04 — Test with a low-level account.** The first lessons are mostly
