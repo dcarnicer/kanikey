@@ -1,11 +1,14 @@
 # KaniKey roadmap
 
 Status snapshot: **2026-10-27**. This is the working backlog after the SD
-visual pack landed, not the original product plan. The milestone definitions
-and UX live in [docs/design.md](docs/design.md), [docs/ux.md](docs/ux.md) and
-[docs/api-sync.md](docs/api-sync.md). The radical renderer is implemented and
-builds clean, but hardware verification is pending because the test device is
-not available.
+visual pack and the user-facing boot states landed, not the original product
+plan. Product scope and UX live in [docs/design.md](docs/design.md),
+[docs/ux.md](docs/ux.md) and [docs/api-sync.md](docs/api-sync.md).
+
+The review loop works on hardware. The main v1 gaps are the persistent offline
+cache, the complete lesson flow, WaniKani preferences/study materials, setup
+and settings on the device, and API robustness. The radical renderer builds,
+but its hardware verification and the `efontJA_16` removal are still pending.
 
 ## Where we are
 
@@ -36,153 +39,270 @@ Current build: **1,741,665 B / 1,835,008 B flash (94.9%)**, **93,208 B /
 
 ## Priority summary
 
-| Priority | Workstream | Why | Status |
+| Priority | Workstream | Why | Status | Start with |
+|---:|---|---|---|---|
+| 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Partial: renderer done; pack/device pending | RAD-01, RAD-02 |
+| 2 | Persistent offline cache | The outbox survives reboot, the review batch does not | Partial: outbox only | CACHE-01, CACHE-02 |
+| 3 | Complete lesson flow | Card + start exists; list, components, quiz and preferences do not | Partial | LESSON-01, LESSON-03 |
+| 4 | WaniKani data and preferences | Synonyms, item detail, SRS feedback, stats and preferences are missing | Not started | WK-01, WK-03 |
+| 5 | Outbox and API robustness | Rejected items, 429 and invalid auth have no user path | Partial | API-01, API-02 |
+| 6 | Setup, settings and pause | Wi-Fi/token still need a serial cable | Partial: boot states done | SETUP-01, SETUP-04 |
+| 7 | UI, stats and sync | Missing SRS bar, sync progress, accuracy and item detail | Partial | UI-01, UI-02 |
+| 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Not started | TNG-01, TNG-04 |
+| 9 | Technical debt, CI and release | Maintainability and shipping | Ongoing | TECH-01, TECH-04 |
+| 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | Not started | EXT-01, EXT-03 |
+
+## Execution order
+
+Radicals can run in parallel as soon as the token and the device are available.
+The software work starts with the offline cache, because it is the largest v1
+behavior gap and it affects Home, reviews, sync and sleep.
+
+| Order | Phase | Tasks | Outcome |
 |---:|---|---|---|
-| 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Partial (renderer done, pack/device pending) |
-| 2 | Persistent offline cache | The outbox survives reboot, the review batch does not | Partial |
-| 3 | Complete lesson flow | Card + start exists; list, components and quiz do not | Partial |
-| 4 | Outbox and API robustness | Rejected items and rate limits have no user path | Partial |
-| 5 | Setup, settings and pause | Wi-Fi/token still need a serial cable | Partial (boot states done) |
-| 6 | UI polish | Missing states, SRS bar, sync screen, small layout issues | Partial |
-| 7 | Technical debt, CI and release | Maintainability and shipping | Ongoing |
+| 0 | Close radicals (parallel) | RAD-01 → RAD-04 | Real radical prompts and ~468 KB flash reclaimed |
+| 1 | Offline cache | CACHE-01 → CACHE-08, TNG-04, TNG-05 | Review and Home work after reboot without network |
+| 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | List, understand, quiz and start lessons |
+| 3 | Setup and device UX | SETUP-01 → SETUP-08, TNG-01, TNG-02 | Wi-Fi/token/time/settings without a cable |
+| 4 | WaniKani data and detail | WK-01, WK-03 → WK-11 | Synonyms, item detail, SRS and progress |
+| 5 | API robustness | API-01 → API-07 | Recoverable rejected, rate-limited and auth errors |
+| 6 | UI, stats and sync | UI-01 → UI-08 | SRS bar, sync screen, accuracy and polish |
+| 7 | Technical debt and release | TECH-01 → TECH-07 | CI, refactor, version, OTA and license |
+| 8 | Kakehashi-inspired extras | EXT-01 → EXT-09 | Practice modes, critical items, audio and stats |
 
 ## 1. Radicals and remove `efontJA_16` (v1 blocker)
 
 The pack on the card covers kanji, kana and vocabulary, but was generated
-without a token, so it has **no radical images**. The firmware now renders
-radical entries, includes radical-only lessons/reviews and shows a missing
-glyph state, but the pack must be regenerated with the user's token to see the
-symbols. `efontJA_16` is still linked for readings/text fallback and keeps
-~468 KB of flash occupied. This remains the largest user-facing gap until the
-radical pack is generated and checked on hardware.
+without a token, so it has **no radical images**. The firmware renders radical
+entries, includes radical-only lessons/reviews and shows a missing glyph
+state. The pack must be regenerated with the user's token, verified on the
+device and only then can `efontJA_16` be removed.
 
-Tasks:
+- **RAD-01 — Generate the radical pack.** Use the user's token and the radical
+  SVG URLs (`cairosvg`), including the 16-byte radical entries. **Pending:**
+  needs the user's token.
+- **RAD-02 — Verify radical rendering on hardware.** Check review and lesson
+  prompts at 64/32 px, radical-only lessons and the missing-glyph state.
+  **Pending:** needs the device and the RAD-01 pack.
+- **RAD-03 — Remove `efontJA_16`.** Replace the remaining fallbacks with the
+  pack + missing state, then confirm the flash drop. **Pending:** after RAD-02.
+- **RAD-04 — Test with a low-level account.** The first lessons are mostly
+  radicals. **Pending:** needs a low-level account and hardware.
 
-- Generate a pack with the user's token and radical SVG images
-  (`cairosvg`), including the 16-byte radical entries. **Pending:** needs the
-  user's token; the generator already supports it.
-- Implement `GlyphPack::drawRadical`: decode the native 96 px bitmap and scale
-  it to the prompt sizes; use it in review and lesson prompts. **Done** in code.
-- Include radical-only lessons and reviews instead of filtering them out by
-  `characters`. **Done** in code.
-- Add a “visual pack missing” / “glyph missing” state with an actionable
-  message instead of a silently blank prompt. **Partial:** items now show
-  `no glyph` / `no pack` + `check SD`; a full startup screen still needs work.
-- Remove `efontJA_16` references once radicals render; reclaim ~468 KB of
-  flash for the remaining features. **Pending:** do it after the radical pack
-  and the missing-pack startup screen are verified on hardware.
-- Test with a low-level account, where the first lessons are mostly radicals.
-  **Pending:** needs the device and a generated radical pack.
-
-Dependency: the radical images are generated locally with the user's own token;
-the repository must not contain WaniKani art.
+Dependency: the radical images are generated locally with the user's own
+token; the repository must not contain WaniKani art.
 
 ## 2. Persistent offline cache (v1 blocker)
 
 The outbox protects completed reviews, but assignments and subjects live only
-in RAM. After a reboot without network there is no batch to review. This does
-not yet meet the offline requirement.
+in RAM. After a reboot without network there is no batch to review and Home
+has no data. This does not yet meet the offline requirement.
 
-Tasks:
-
-- Persist the due assignment list and the subjects needed for a session
-  (LittleFS for critical assignment state, SD for the larger subject payload,
-  as in the design).
-- Restore Home counts and a review batch at boot when Wi-Fi is unavailable.
-- Add an explicit `Offline` state, last-sync time and cache age.
-- Define invalidation: server `data_updated_at`, token/account change, cache
-  version, and a manual sync.
-- Keep the outbox flush/reconciliation path working with the cache.
-- Test: online fetch → reboot with Wi-Fi off → complete a review → reconnect →
-  outbox 201.
+- **CACHE-01 — Persist assignments.** Store the due assignment list and
+  critical state in LittleFS, as in the design.
+- **CACHE-02 — Persist subjects.** Store the subjects needed for the cached
+  sessions on SD; keep the payload separate from assignments.
+- **CACHE-03 — Restore at boot.** Load Home counts and a review batch at boot
+  when Wi-Fi is unavailable, without waiting for a failed request.
+- **CACHE-04 — Offline state.** Show `Offline`, last-sync time and cache age;
+  distinguish “no network” from “never synced”.
+- **CACHE-05 — Invalidation.** Define cache version, token/account change,
+  server `data_updated_at` and manual sync invalidation.
+- **CACHE-06 — Keep the outbox coherent.** Flush/reconcile pending reviews
+  against the cache and avoid resurrecting stale assignments.
+- **CACHE-07 — End-to-end test.** Online fetch → reboot with Wi-Fi off →
+  complete a review → reconnect → outbox 201.
+- **CACHE-08 — Save before sleep.** Persist the cache/outbox before dim,
+  blank or deep sleep (coordinate with TNG-05).
 
 ## 3. Complete lesson flow (M4)
 
-The card and `PUT /start` work, but this is not yet a full lesson flow.
+The card and `PUT /start` work, but this is not yet a full lesson flow. The
+local quiz decision still needs to be made; the recommendation is to keep it
+optional practice before `PUT /start` unless real use shows otherwise.
 
-Tasks:
+- **LESSON-01 — Lesson list.** Available lessons with character, type, level
+  and main meaning; sorted by level and `lesson_position`.
+- **LESSON-02 — Selection/picker.** Let the user choose from the available
+  batch instead of always taking the first five.
+- **LESSON-03 — Detail card.** Components, meaning/reading, mnemonic pages,
+  hints and the component meanings.
+- **LESSON-04 — Local quiz.** Meaning/reading quiz, incorrect-answer feedback
+  and completion state, if required before starting.
+- **LESSON-05 — Batch size and progress.** Respect `lessons_batch_size` and
+  show progress through the batch.
+- **LESSON-06 — No lessons state.** Show the next unlock or the next review
+  time when there are no lessons.
+- **LESSON-07 — Radical-only lessons.** Already included in code; verify on
+  hardware with RAD-01/RAD-02.
+- **LESSON-08 — Ordering.** Respect level and `lesson_position`; do not rely
+  on the summary order.
 
-- Lesson list: available lessons with character, type, level and main meaning;
-  sorted by level and `lesson_position`.
-- Detail card: components, meaning/reading, mnemonic pages and hints.
-- Decide whether the local meaning/reading quiz is required before `PUT
-  /start` or optional practice. If required, add the quiz, incorrect-answer
-  feedback and completion state.
-- Respect the user's lesson batch size and show progress through the batch.
-- Handle radical-only subjects once radical images exist.
-- Add a “no lessons right now” state with the next unlock if known.
+## 4. WaniKani data and preferences
 
-## 4. Outbox and API robustness (finish M3)
+These are the parts of WaniKani that change the study experience but are not
+visible yet. They are mostly small API/data tasks and should land before the
+UI is considered complete.
+
+- **WK-01 — `GET /study_materials`.** Fetch meaning synonyms, reading notes and
+  meaning notes; use synonyms in the answer checker and show notes in detail.
+- **WK-02 — `lessons_batch_size`.** `User` already parses it; use it for
+  `fetchLessonBatch` and progress.
+- **WK-03 — `reviews_presentation_order`.** Apply `shuffled` /
+  `lower_levels_first` instead of always shuffling.
+- **WK-04 — SRS indicator.** Show the SRS stage after completing an item and on
+  the Home/detail screens where useful.
+- **WK-05 — Vacation notice.** Read `current_vacation_started_at` and show a
+  non-blocking notice.
+- **WK-06 — `GET /review_statistics`.** Per-subject accuracy and mistake
+  history; feed the session summary and detail screen.
+- **WK-07 — `GET /level_progressions`.** Level progress, current level and
+  level-up time.
+- **WK-08 — Item detail data.** Mnemonics, hints, components, user notes and
+  synonyms for the review detail screen.
+- **WK-09 — Vocabulary detail fields.** Parse `parts_of_speech`,
+  `context_sentences` (phase 2) and `pronunciation_audios` (phase 2).
+- **WK-10 — Related subjects.** Parse `visually_similar_subject_ids`,
+  `amalgamation_subject_ids` and the component graph; use it in lesson
+  components and a future constellation view.
+- **WK-11 — Review history.** `GET /reviews` for heatmap, streak and forecast;
+  this is a later stats input, not a v1 blocker.
+
+## 5. Outbox and API robustness (finish M3)
 
 Already done: CRC/`.bak`, ambiguous-request reconciliation, offline end-to-end,
 Home pending/attention counts. Remaining:
 
-- User-facing dismissal of `Rejected` items (today only the dev `z` command
-  clears the outbox).
-- 429 handling: wait for `RateLimit-Reset` and back off instead of retrying
-  immediately. A 429 currently becomes `Pending` with no delay.
-- 401/403: surface “token invalid/expired” as an auth state; do not retry
-  forever.
-- Retry truncated/parse-failed responses, not just transport errors. The
-  subject DOM path still fails the batch on a short body.
-- Cap attempts and show attempt/age information for stuck items.
-- Keep `api-sync.md` error table and screens in sync with the implementation.
+- **API-01 — Dismiss `Rejected` items.** User-facing action with confirmation
+  and a clear reason; today only the dev `z` command clears the outbox.
+- **API-02 — 429 backoff.** Wait for `RateLimit-Reset` and back off instead of
+  retrying immediately. A 429 currently becomes `Pending` with no delay.
+- **API-03 — 401/403 auth state.** Surface “token invalid/expired” and
+  “missing permissions”; do not retry forever.
+- **API-04 — Retry parse failures.** Retry truncated or parse-failed responses,
+  not just transport errors. The subject DOM path still fails the batch on a
+  short body.
+- **API-05 — Attempts and age.** Cap attempts and show attempt/age information
+  for stuck items.
+- **API-06 — Manual sync and retry.** A clear action from Home/Settings and the
+  error screens.
+- **API-07 — Keep docs in sync.** Update `api-sync.md` error table and screens
+  with the implementation.
 
-## 5. Setup, settings and pause (M5)
+## 6. Setup, settings and pause (M5)
 
 Today Wi-Fi and the token are configured over serial into NVS. That is fine for
-development, not for a device someone else can use.
+development, not for a device someone else can use. The boot states are in
+place; the setup flow and settings are not.
 
-Tasks:
-
-- First-boot setup portal: Wi-Fi scan/password, token entry (masked, never
-  logged), timezone and visual-pack check.
-- User-facing boot states for missing SD/pack, token or Wi-Fi and sync
-  failures, with `Enter` retry. **Done** in code; on-device check pending.
-- Pause menu while reviewing: Continue / End session / Settings, replacing the
+- **SETUP-01 — First-boot setup portal.** Wi-Fi scan/password, token entry
+  (masked, never logged), timezone and visual-pack check. Port the applicable
+  parts of Tangocho's portal (TNG-01).
+- **SETUP-02 — Token validation.** Validate the token with `/user` before
+  storing it; show scopes/permission errors clearly.
+- **SETUP-03 — Time and pack check.** Timezone selection, SNTP result and
+  “copy glyphs.kgp / check again” state.
+- **SETUP-04 — Pause menu.** Continue / End session / Settings instead of the
   current direct `Esc` exit.
-- Settings: brightness, dim/blank/sleep timings, timezone, About/version.
-- Low-battery state and confirmation before starting a long session.
-- Manual sync and clear error/retry screens.
+- **SETUP-05 — Settings.** Brightness, dim/blank/sleep timings, timezone,
+  review/lesson preferences and About/version.
+- **SETUP-06 — Low battery.** Show a low-battery state and confirm before
+  starting a long session.
+- **SETUP-07 — Manual sync and errors.** Sync now, retry, and clear
+  offline/auth/rate-limit screens.
+- **SETUP-08 — About.** Firmware version, pack status, cache status, heap and
+  last sync.
 
-## 6. UI polish (M5)
+## 7. UI, stats and sync (M5)
 
-- Home SRS distribution bar.
-- Sync screen with progress and a clear offline/error state.
-- Missing-pack and missing-glyph states.
-- Lesson layout fixes (for example the page counter and hint bar spacing).
-- Japanese subtitle in `drawLoading` currently uses a bitmap font and can be
-  blank; use the pack or an ASCII message.
-- Revisit the 8-bit palette after real use; consider 16-bit only if a streaming
-  subject parser frees enough contiguous memory.
-- Keep live screenshots out of the repository because they contain the user's
-  WaniKani content.
+- **UI-01 — Home SRS distribution bar.** Apprentice/Guru/Master/Enlightened/
+  Burned counts and visual bars.
+- **UI-02 — Sync screen.** Progress, cancel and a clear offline/error state.
+- **UI-03 — Session summary.** Accuracy, time, completed items, mistakes and
+  SRS stage changes, not only counts.
+- **UI-04 — Item detail screen.** Mnemonics, components, notes, synonyms and
+  readings; open from review feedback.
+- **UI-05 — Level progress.** Current level, progress to next level and
+  level-up feedback (with WK-07).
+- **UI-06 — Lesson layout fixes.** Page counter, hint bar spacing and the
+  `drawLoading` Japanese subtitle that can be blank.
+- **UI-07 — Missing pack/glyph states.** The prompt state exists; finish the
+  full startup/setup wording and actions.
+- **UI-08 — Palette and screenshots.** Revisit the RGB332 palette after real
+  use; keep live screenshots with user content out of the repository.
 
-## 7. Technical debt, CI and release
+## 8. Tangocho modules to port
 
-- **Streaming subject parser**: assignments/subjects still build a JSON DOM;
-  the summary already streams. A streaming parser would reduce fragmentation,
-  permit larger batches and make a 16-bit canvas realistic.
-- **Refactor `main.cpp`**: it is ~1,900 lines with many globals. Split screens,
-  session state and app services before adding more flows.
-- **Dev hooks**: `gDirectReading`, synthetic outbox commands and other serial
-  helpers should be behind a development build flag.
-- **Tests/CI**: add a PlatformIO workflow (`pio run -e cardputer-adv`,
-  `pio test -e native`) alongside gitleaks; add host tests for the pack
-  reader/RLE and more outbox/HTTP edge cases.
-- **Release**: decide KaniKey's license, finalize third-party notices, version
-  the firmware, add OTA/About, and review WaniKani API/branding compliance.
-- **Extras later**: audio, stroke order, FSRS practice, forecast, synonyms,
-  phone-side pack generation.
+The Cardputer layer from Tangocho is already paid for. This section lists what
+still applies and where it lands; the `.tgc` pack, multiple-choice quiz, local
+SRS and deck catalog remain intentionally dropped. See
+[docs/reuse-tangocho.md](docs/reuse-tangocho.md) for the module matrix.
 
-## Recommended order
+- **TNG-01 — `WifiPortal`.** Adapt the Wi-Fi portal for first-boot setup and
+  token entry (SETUP-01).
+- **TNG-02 — `Ota`.** Port manifest download, SHA-256 verification, update and
+  rollback (TECH-06).
+- **TNG-03 — UI primitives.** Port/adapt `Widgets`, `ListView`, `HintBar`,
+  `TextLayout`, `UiFont` and `Icons` before adding more screens; the current UI
+  is hand-drawn.
+- **TNG-04 — Storage layer.** Adapt LittleFS/SD paths and atomic writes for the
+  assignment/subject cache (CACHE-01/CACHE-02).
+- **TNG-05 — Power and sleep.** Save the cache and outbox before dim, blank or
+  deep sleep; restore on wake (CACHE-08).
+- **TNG-06 — Serial remote.** Extend the screenshot/remote workflow for text
+  input and the new screens.
+- **TNG-07 — Clock/time helpers.** Adapt ISO 8601, timezone and SNTP helpers
+  for SETUP-03 and WK-05.
+- **TNG-08 — Upstream discipline.** Keep Tangocho as an upstream reference and
+  cherry-pick HAL/keyboard/display fixes when needed.
 
-1. Radicals + remove `efontJA_16`.
-2. Persistent offline cache and boot-without-network.
-3. Lesson list, components and quiz.
-4. Outbox dismissal, 429/backoff and auth-invalid state.
-5. Setup portal, Pause menu and settings.
-6. UI polish, CI build/tests, `main.cpp` refactor, release.
+## 9. Technical debt, CI and release
+
+- **TECH-01 — Streaming subject parser.** Assignments/subjects still build a
+  JSON DOM; a streaming parser would reduce fragmentation, permit larger
+  batches and make a 16-bit canvas realistic.
+- **TECH-02 — Refactor `main.cpp`.** It is ~2,000 lines with many globals.
+  Split screens, session state and app services before adding more flows.
+- **TECH-03 — Dev hooks.** `KANIKEY_DEV` now covers the M0 screen and Tab
+  shortcut; put `gDirectReading`, synthetic outbox commands and other serial
+  helpers behind the same flag.
+- **TECH-04 — PlatformIO CI.** Add `pio run -e cardputer-adv` and
+  `pio test -e native` to GitHub Actions alongside gitleaks.
+- **TECH-05 — Host tests.** Add pack/RLE reader tests and more outbox/HTTP edge
+  cases.
+- **TECH-06 — Release.** Decide the license, finalize third-party notices,
+  version the firmware, integrate OTA/About and review WaniKani API/branding
+  compliance.
+- **TECH-07 — 16-bit canvas.** Evaluate only if TECH-01 frees enough contiguous
+  memory; the 8-bit path is currently the stable one.
+
+## 10. Kakehashi-inspired extras that fit (after v1)
+
+These are the product-ideas part of [docs/reuse-tangocho.md](docs/reuse-tangocho.md)
+§6. They are worth doing once the WaniKani core is solid; they are practice and
+progress features, not a second SRS.
+
+- **EXT-01 — Configurable batch sizes.** Review and lesson batch size in
+  Settings; today they are fixed at 20 and 5.
+- **EXT-02 — Question order.** Meaning-first / reading-first and custom
+  ordering; today it is always meaning then reading.
+- **EXT-03 — Critical items / leeches.** Prioritize items with repeated
+  mistakes and show a small “critical items” list.
+- **EXT-04 — Extra study modes.** Recent lessons, random tests, vocabulary
+  reading practice and custom reviews; no local SRS writes.
+- **EXT-05 — Advanced stats.** Review forecast, heatmap, streak and 7-day
+  history (needs WK-11).
+- **EXT-06 — Audio.** Vocabulary pronunciation through the ES8311 and
+  `pronunciation_audios`.
+- **EXT-07 — Stroke order.** KanjiVG rendering and attribution (CC BY-SA).
+- **EXT-08 — JLPT / Joyo / frequency / constellation.** Data-heavy views for
+  progress and component relationships; only if the core is stable.
+- **EXT-09 — Reminders.** A device-local “reviews ready” reminder; no push
+  notifications in v1.
+
+Out of scope for KaniKey: anime clips, NHK reader, Spotify lyrics, camera OCR,
+MyAnimeList sync, home-screen widgets, Apple Watch, community/forum, push
+notifications and a local SRS.
 
 ## Definition of done for v1
 
@@ -190,7 +310,10 @@ Tasks:
   flash.
 - A session can be fetched, cached, rebooted, completed offline and synced.
 - Lessons can be listed, understood (components/quiz) and started.
-- Rejected and rate-limited reviews have a visible, recoverable path.
+- WaniKani preferences and user synonyms are respected.
+- Rejected, rate-limited and invalid-auth reviews have a visible, recoverable
+  path.
 - Wi-Fi, token and time can be configured on the device itself.
+- The item detail and session summary show enough to learn from a mistake.
 - CI builds the firmware, runs the native tests and scans secrets.
 - No WaniKani content is distributed in the repository.
