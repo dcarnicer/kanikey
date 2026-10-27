@@ -96,8 +96,10 @@ pixel over the destination color. It does not load the pack into RAM.
 ## Sizes
 
 The tokenless full pack (2,026 WaniKani kanji + kana + `々〜・〇`) has 2,207
-characters, 6,621 glyphs and is about 2.9 MB. The test pack with 203 characters
-is 189,805 B. The entry table is 20 bytes per glyph; the rest is RLE payloads.
+characters, 6,621 glyphs and is about 2.9 MB. The token pack generated on
+2026-10-27 has 7,269 glyphs and 498 radical bitmaps, 3,698,476 B (~3.7 MB).
+The test pack with 203 characters is 189,805 B. The entry table is 20 bytes
+per glyph; the rest is RLE payloads.
 
 ## Notes
 
@@ -105,7 +107,14 @@ is 189,805 B. The entry table is 20 bytes per glyph; the rest is RLE payloads.
   `tools/pack-builder/cache/noto/NotoSansJP-Regular.otf` from Tangocho by
   default. Pass `--font` for another font.
 - Radical images come from the URLs in the user's own WaniKani subject
-  response. They are personal, not redistributable.
+  response. They are personal, not redistributable. Six radicals have no SVG
+  in the API; they fall back to their Unicode glyph.
+- WaniKani SVGs use CSS variables such as `var(--color-text, #000)`.
+  `cairosvg` does not resolve them, so the builder inlines the fallback
+  before rasterizing.
+- `cairosvg` needs the native Cairo library. On macOS with Homebrew, if it
+  cannot find it, run with `DYLD_LIBRARY_PATH=/opt/homebrew/lib` (or install
+  `cairo` with `brew install cairo`).
 - The firmware renders radical entries at their native 96 px and scales them
   down for review/lesson prompts. The tokenless pack has no radical images at
   all, so regenerate with `WANIKANI_TOKEN` and `cairosvg` to see radicals.

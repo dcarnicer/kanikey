@@ -29,6 +29,7 @@ import argparse
 import io
 import json
 import os
+import re
 import struct
 import sys
 import time
@@ -89,6 +90,11 @@ def radical_bitmap(svg: bytes, size: int = 96) -> tuple[bytes, int, int] | None:
     except ImportError:
         print("warning: cairosvg missing; radicals skipped", file=sys.stderr)
         return None
+    # WaniKani's inline SVGs use CSS custom properties such as
+    # `stroke:var(--color-text, #000)`. cairosvg does not resolve var(), so
+    # inline the fallback value (or black when there is no fallback).
+    svg = re.sub(rb"var\([^,)]+,\s*([^)]+)\)", rb"\1", svg)
+    svg = re.sub(rb"var\([^)]*\)", b"#000", svg)
     png = cairosvg.svg2png(bytestring=svg, output_width=size, output_height=size)
     im = Image.open(io.BytesIO(png)).convert("RGBA")
     alpha = im.getchannel("A")

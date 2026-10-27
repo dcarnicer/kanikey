@@ -22,8 +22,10 @@ Working on hardware:
   (Wi-Fi off → review → reboot → reconnect → 201) is verified.
 - Lessons: five at a time, card with meaning/reading and paged mnemonic,
   `PUT /assignments/{id}/start` returns 200.
-- SD visual pack: `KKGP` v1, 6,621 glyphs at 64/32/20 px, 2.9 MB, generated
-  locally from the WaniKani kanji cache. Wi-Fi asset upload works.
+- SD visual pack: the card has the tokenless 2.9 MB pack (6,621 glyphs). A
+  token pack with **7,269 glyphs + 498 radical bitmaps** (3,698,476 B) was
+  generated locally on 2026-10-27 and is pending upload/hardware verification.
+  Wi-Fi asset upload works.
 - Radical prompts render from the pack's 96 px bitmaps; radical-only lessons
   and reviews are no longer filtered out. Missing glyphs show an explicit
   state. Device verification is pending.
@@ -72,15 +74,14 @@ behavior gap and it affects Home, reviews, sync and sleep.
 
 ## 1. Radicals and remove `efontJA_16` (v1 blocker)
 
-The pack on the card covers kanji, kana and vocabulary, but was generated
-without a token, so it has **no radical images**. The firmware renders radical
-entries, includes radical-only lessons/reviews and shows a missing glyph
-state. The pack must be regenerated with the user's token, verified on the
-device and only then can `efontJA_16` be removed.
+The card currently has the tokenless pack (2.9 MB), which has **no radical
+images**. A new pack with 7,269 glyphs and 498 radical bitmaps (3,698,476 B)
+was generated locally on 2026-10-27. It still needs to be copied to the card
+and verified on the device; only then can `efontJA_16` be removed.
 
 - **RAD-01 — Generate the radical pack.** Use the user's token and the radical
-  SVG URLs (`cairosvg`), including the 16-byte radical entries. **Pending:**
-  needs the user's token.
+  SVG URLs (`cairosvg`), including the 16-byte radical entries. **Done locally
+  (2026-10-27):** 498 radical entries, no empty bitmaps; upload pending.
 - **RAD-02 — Verify radical rendering on hardware.** Check review and lesson
   prompts at 64/32 px, radical-only lessons and the missing-glyph state.
   **Pending:** needs the device and the RAD-01 pack.
