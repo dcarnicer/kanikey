@@ -38,6 +38,7 @@
 #include "wk/LessonQuiz.h"
 #include "wk/Outbox.h"
 #include "wk/ReviewQueue.h"
+#include "wk/ReviewResponse.h"
 #include "wk/RomajiIme.h"
 #include "wk/Time.h"
 #include "wk/Utf8.h"
@@ -101,6 +102,14 @@ kk::ReviewPart gFeedbackPart = kk::ReviewPart::None;
 uint32_t gFeedbackSubjectId = 0;
 std::string gFeedbackInput;
 kk::SessionItem gCompletedItem;
+struct StageChange {
+    bool valid = false;
+    uint8_t from = 0;
+    uint8_t to = 0;
+};
+StageChange gStageChange;
+uint32_t gPendingStageAssignment = 0;
+uint8_t gPendingStageFrom = 0;
 std::string gMeaningInput;
 std::string gDirectReading;  // test/serial reading input, bypasses the romaji IME
 kk::RomajiIme gIme;
@@ -692,6 +701,13 @@ void drawReview() {
     d.setTextSize(1);
     d.setTextColor(kDim, kBg);
     d.drawString("REVIEWS", 6, 3);
+    const uint8_t srsStage =
+        gFeedbackCompleted ? gCompletedItem.srsStage : (item ? item->srsStage : 0);
+    char srs[16];
+    snprintf(srs, sizeof srs, "SRS %u", static_cast<unsigned>(srsStage));
+    d.setTextFont(0);
+    d.setTextColor(kFaint, kBg);
+    d.drawString(srs, 62, 5);
     const int total = static_cast<int>(gQueue.completedCount() + gQueue.remaining());
     int pos = static_cast<int>(gQueue.completedCount()) + 1;
     if (gFeedback && gFeedbackCompleted) pos = static_cast<int>(gQueue.completedCount());
@@ -883,6 +899,17 @@ void drawReviewSummary() {
         snprintf(m, sizeof m, "All reviews sent");
     d.setTextColor(rejected ? kErr : pending ? kWarn : kFaint, kBg);
     d.drawString(m, 8, 98);
+    if (gStageChange.valid) {
+        char srs[32];
+        if (gStageChange.from && gStageChange.from != gStageChange.to)
+            snprintf(srs, sizeof srs, "SRS %u -> %u", static_cast<unsigned>(gStageChange.from),
+                     static_cast<unsigned>(gStageChange.to));
+        else
+            snprintf(srs, sizeof srs, "SRS stage %u",
+                     static_cast<unsigned>(gStageChange.to));
+        d.setTextColor(kOk, kBg);
+        d.drawString(srs, 8, 112);
+    }
     d.setTextColor(kFaint, kBg);
     d.drawString("Enter: home", 8, 125);
     d.endWrite();
@@ -961,11 +988,28 @@ bool sendOutboxItem(uint32_t seq) {
     item = kk::outboxFind(gOutbox, seq);
     if (!item) return true;
     if (r.httpCode >= 200 && r.httpCode < 300) {
+        const uint32_t assignmentId = item->assignmentId;
+        const uint32_t subjectId = item->subjectId;
+        kk::JsonParser rp;
+        kk::JsonValue rv;
+        if (rp.parse(r.body, &rv)) {
+            kk::ReviewUpdate update;
+            if (kk::parseReviewUpdate(rv, &update)) {
+                gStageChange.valid = true;
+                gStageChange.to = update.srsStage;
+                gStageChange.from =
+                    update.assignmentId == gPendingStageAssignment ? gPendingStageFrom : 0;
+                Serial.printf("[review] assignment %u SRS %u -> %u\n",
+                              static_cast<unsigned>(assignmentId),
+                              static_cast<unsigned>(gStageChange.from),
+                              static_cast<unsigned>(gStageChange.to));
+            }
+        }
         kk::outboxRemove(gOutbox, seq);
         saveOutbox();
-        markCacheCompleted(item->subjectId, item->assignmentId);
+        markCacheCompleted(subjectId, assignmentId);
         Serial.printf("[outbox] sent assignment %u (%d)\n",
-                      static_cast<unsigned>(item->assignmentId), r.httpCode);
+                      static_cast<unsigned>(assignmentId), r.httpCode);
         return true;
     }
     if (!r.connected)
@@ -984,6 +1028,8 @@ bool sendOutboxItem(uint32_t seq) {
 }
 
 void queueReview(const kk::SessionItem& item) {
+    gPendingStageAssignment = item.assignmentId;
+    gPendingStageFrom = item.srsStage;
     uint32_t created = static_cast<uint32_t>(time(nullptr));
     if (created < 1700000000u) created = 0;  // clock not trusted; let the server stamp it
     const uint32_t seq = kk::outboxAdd(gOutbox, item.assignmentId, item.subjectId,
@@ -1104,6 +1150,9 @@ void requestLowBatteryConfirm(int action) {
 void startReview() {
     if (!gHaveSummary) return;
     gLessonQuizActive = false;
+    gStageChange = StageChange{};
+    gPendingStageAssignment = 0;
+    gPendingStageFrom = 0;
     if (!gLowBatteryConfirmed && lowBatteryNow()) {
         requestLowBatteryConfirm(1);
         return;

@@ -202,6 +202,13 @@ Body:
   `resources_updated.review_statistic`; they are applied to the local state.
 - There is no idempotency key. See §6.
 
+**Implementation (2026-10-28).** The 2xx response is parsed for
+`resources_updated.assignment.data.srs_stage` and `available_at`. The review
+header shows the assignment's stage before completion; the session summary
+shows the stage returned by the POST (with the previous stage when the same
+session queued it). A 201 with a body that cannot be parsed still counts as
+sent; only the stage display is skipped.
+
 ### 3.7 `PUT /assignments/{id}/start`
 
 Body:

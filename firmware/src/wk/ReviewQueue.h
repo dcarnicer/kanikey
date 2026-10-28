@@ -18,6 +18,7 @@ struct SessionItem {
     uint32_t subjectId = 0;
     SubjectType type = SubjectType::Kanji;
     uint8_t level = 0;
+    uint8_t srsStage = 0;
     bool needsMeaning = true;
     bool needsReading = false;
     bool meaningDone = false;

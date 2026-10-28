@@ -37,6 +37,7 @@ void ReviewQueue::build(const std::vector<Assignment>& assignments,
         it.subjectId = a.subjectId;
         it.type = a.type;
         it.level = s->level;
+        it.srsStage = a.srsStage;
         it.needsMeaning = true;
         it.needsReading = s->needsReading();
         items.push_back(it);

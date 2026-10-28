@@ -392,6 +392,23 @@ is covered by native parsing/cache tests only.
 
 ---
 
+## 2026-10-28 — SRS stage comes from the review response
+
+**Decision:** the review header shows the assignment's current SRS stage, and
+the session summary shows the stage parsed from
+`resources_updated.assignment.data.srs_stage` in the `POST /reviews` response.
+The previous stage is shown when the same session queued the review.
+
+**Why:** the stage is the most useful immediate feedback after a review, and
+the response already carries it. Parsing it avoids a second assignment request.
+
+**Implications:** the outbox format does not change; a response that cannot be
+parsed is still treated as sent and only skips the stage display. The parser is
+native-tested. The header was verified on hardware with a synthetic cached
+review; the summary line needs a successful live POST.
+
+---
+
 ## 2026-10-28 — Lesson quiz is optional and local-only
 
 **Decision:** `Q` on a lesson card opens a typed meaning/reading quiz with

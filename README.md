@@ -17,7 +17,9 @@
 > accepted answers and the notes appear on the lesson card and review feedback.
 > `Q` on a lesson card opens an optional local meaning/reading quiz with
 > feedback, retries and a completion screen; the quiz never starts the lesson.
-> Vacation mode from `/user` is shown as a non-blocking Home notice.
+> Vacation mode from `/user` is shown as a non-blocking Home notice. The review
+> header shows the current SRS stage, and the session summary shows the stage
+> returned by `POST /reviews`.
 > Japanese prompts and readings come entirely from the microSD visual pack at
 > 64/32/20 px: 7,269 glyphs + 498 radical bitmaps in 3.7 MB, generated locally
 > with the user's token. No WaniKani content is in the repository.

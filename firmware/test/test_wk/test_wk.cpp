@@ -18,6 +18,7 @@
 #include "wk/Time.h"
 #include "wk/User.h"
 #include "wk/ReviewQueue.h"
+#include "wk/ReviewResponse.h"
 #include "wk/RomajiIme.h"
 #include "wk/Text.h"
 
@@ -285,6 +286,7 @@ static void test_session_meaning_then_reading() {
     ReviewQueue q;
     q.build({assignment(10, s.id, 3, 100)}, {s}, 1000);
     TEST_ASSERT_EQUAL(1, q.remaining());
+    TEST_ASSERT_EQUAL(3, q.current()->srsStage);
     TEST_ASSERT_EQUAL(ReviewPart::Meaning, q.part());
     AnswerOutcome o = q.answer(AnswerStatus::Correct);
     TEST_ASSERT_TRUE(o.advanced);
@@ -700,6 +702,26 @@ static void test_study_materials_parse_and_merge() {
 }
 
 
+static void test_review_response_parse() {
+    JsonParser p;
+    JsonValue v;
+    const char* text =
+        "{\"resources_updated\":{\"assignment\":{\"id\":101,\"object\":\"assignment\","
+        "\"data\":{\"srs_stage\":4,\"available_at\":\"2026-10-28T18:00:00Z\"}}}}";
+    TEST_ASSERT_TRUE(p.parse(text, &v));
+    ReviewUpdate update;
+    TEST_ASSERT_TRUE(parseReviewUpdate(v, &update));
+    TEST_ASSERT_EQUAL_UINT32(101, update.assignmentId);
+    TEST_ASSERT_EQUAL(4, update.srsStage);
+    uint32_t available = 0;
+    TEST_ASSERT_TRUE(parseIso8601("2026-10-28T18:00:00Z", &available));
+    TEST_ASSERT_EQUAL_UINT32(available, update.availableAt);
+
+    JsonValue bad;
+    TEST_ASSERT_TRUE(p.parse("{\"resources_updated\":{}}", &bad));
+    TEST_ASSERT_FALSE(parseReviewUpdate(bad, &update));
+}
+
 static void test_summary_text_parser() {
     const char* text =
         "{\"object\":\"report\",\"url\":\"x\",\"data_updated_at\":\"2026-10-25T12:00:00Z\","
@@ -901,6 +923,7 @@ int main(int, char**) {
     RUN_TEST(test_user_parse);
     RUN_TEST(test_summary_parse_and_counts);
     RUN_TEST(test_summary_text_parser);
+    RUN_TEST(test_review_response_parse);
     RUN_TEST(test_assignment_parse);
     RUN_TEST(test_subject_parse);
     RUN_TEST(test_summary_subject_ids);

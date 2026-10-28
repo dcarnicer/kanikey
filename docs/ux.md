@@ -317,7 +317,7 @@ Home ──L──► Lessons ──Enter──► Lesson card
 ![Meaning review](screens/review-meaning.png)
 ![Reading review](screens/review-reading.png)
 
-- Header `REVIEWS`, `12/48`, battery; 2 px progress bar.
+- Header `REVIEWS`, `SRS 3`, `12/48`, battery; 2 px progress bar.
 - Left panel 88×88:
   - 64 px kanji/radical, centered.
   - Pill `KANJI · L5` or `RADICAL · L3` below.
@@ -394,7 +394,8 @@ kept inside each level.
 
 - `SESSION`.
 - Three columns: reviews, accuracy, time.
-- `8 items moved up` (or `No stage changes`).
+- `8 items moved up` (or `No stage changes`). The live build shows the last
+  parsed stage as `SRS 3 -> 4` when the POST returned it.
 - `Next review 18:00` and, if applicable, `All caught up for now`.
 - If there's an outbox: `4 reviews waiting to sync` in `warn`.
 - `Enter done`, `R review more`.

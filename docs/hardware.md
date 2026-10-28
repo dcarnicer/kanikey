@@ -223,6 +223,9 @@ E (221) esp_core_dump_flash: No core dump partition found!
   review was submitted during this test.
 - Lesson flow: 5 VOCAB L7 rows, card 欠点 / けってん, and the quiz meaning and
   reading both correct. No `/start` call was made.
+- SRS indicator: the review header showed `SRS 1` with a synthetic cached
+  review. The summary line needs a successful live POST; Wi-Fi was flaky at the
+  end of the session (-80 dBm), so it is native-tested only.
 - Long readings: feedback uses `Y`/`A` side labels and a right-aligned 20 px
   fallback, so かつようけい fits without clipping.
 - Crash found and fixed: growing `batch.subjects` while a subject page DOM was
