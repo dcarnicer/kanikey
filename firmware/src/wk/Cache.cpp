@@ -343,6 +343,16 @@ void encodeSubject(Writer& w, const Subject& s) {
     w.u16(components);
     for (uint16_t i = 0; i < components; ++i) w.u32(s.componentSubjectIds[i]);
 
+    if (s.visuallySimilarSubjectIds.size() > kMaxList ||
+        s.amalgamationSubjectIds.size() > kMaxList) {
+        w.fail();
+        return;
+    }
+    w.u16(static_cast<uint16_t>(s.visuallySimilarSubjectIds.size()));
+    for (uint32_t id : s.visuallySimilarSubjectIds) w.u32(id);
+    w.u16(static_cast<uint16_t>(s.amalgamationSubjectIds.size()));
+    for (uint32_t id : s.amalgamationSubjectIds) w.u32(id);
+
     w.str(s.meaningMnemonic);
     w.str(s.readingMnemonic);
     w.str(s.meaningHint);
@@ -407,6 +417,23 @@ bool decodeSubject(Reader& r, Subject* s) {
         uint32_t id = 0;
         if (!r.u32(&id)) return false;
         s->componentSubjectIds.push_back(id);
+    }
+
+    uint16_t similar = 0;
+    if (!r.u16(&similar) || similar > kMaxList) return false;
+    s->visuallySimilarSubjectIds.reserve(similar);
+    for (uint16_t i = 0; i < similar; ++i) {
+        uint32_t id = 0;
+        if (!r.u32(&id)) return false;
+        s->visuallySimilarSubjectIds.push_back(id);
+    }
+    uint16_t amalgamations = 0;
+    if (!r.u16(&amalgamations) || amalgamations > kMaxList) return false;
+    s->amalgamationSubjectIds.reserve(amalgamations);
+    for (uint16_t i = 0; i < amalgamations; ++i) {
+        uint32_t id = 0;
+        if (!r.u32(&id)) return false;
+        s->amalgamationSubjectIds.push_back(id);
     }
 
     if (!r.str(&s->meaningMnemonic) || !r.str(&s->readingMnemonic) || !r.str(&s->meaningHint) ||

@@ -654,6 +654,7 @@ request. After 20 subjects the free heap is ~134 KB and the largest block
 - `ReviewStatistics`: counts, streaks and percentage merge into subjects.
 - `LevelProgress`: current/highest level selection and timestamp parsing.
 - Vocabulary details: parts of speech and context sentences in the cache.
+- Related subjects: similar/amalgamation IDs survive the cache round trip.
 - `Outbox`: append, compaction, retries, reconciliation, corruption.
 - `JsonStream`: WaniKani fixtures with radicals, kanji, vocabulary, kana,
   pagination, errors, `\uXXXX` escapes, invalid UTF-8.

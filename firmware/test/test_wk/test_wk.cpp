@@ -655,6 +655,7 @@ static void test_markup_and_subject_details() {
         "{\"data\":[{\"id\":10,\"object\":\"kanji\",\"data\":{\"level\":5,"
         "\"characters\":\"休\",\"meanings\":[{\"meaning\":\"rest\",\"primary\":true,"
         "\"accepted_answer\":true}],\"component_subject_ids\":[1,2],"
+        "\"visually_similar_subject_ids\":[7,8],\"amalgamation_subject_ids\":[9],"
         "\"meaning_mnemonic\":\"A <radical>person</radical> by a <kanji>tree</kanji>.\","
         "\"reading_mnemonic\":\"<reading>kyuu</reading>.\","
         "\"meaning_hint\":\"A hint.\",\"reading_hint\":\"Read it.\"}}]}";
@@ -662,6 +663,10 @@ static void test_markup_and_subject_details() {
     const std::vector<Subject> ss = parseSubjects(v, true);
     TEST_ASSERT_EQUAL(1, ss.size());
     TEST_ASSERT_EQUAL(2, ss[0].componentSubjectIds.size());
+    TEST_ASSERT_EQUAL(2, ss[0].visuallySimilarSubjectIds.size());
+    TEST_ASSERT_EQUAL_UINT32(7, ss[0].visuallySimilarSubjectIds[0]);
+    TEST_ASSERT_EQUAL(1, ss[0].amalgamationSubjectIds.size());
+    TEST_ASSERT_EQUAL_UINT32(9, ss[0].amalgamationSubjectIds[0]);
     TEST_ASSERT_EQUAL_STRING("A person by a tree.", ss[0].meaningMnemonic.c_str());
     TEST_ASSERT_EQUAL_STRING("kyuu.", ss[0].readingMnemonic.c_str());
     TEST_ASSERT_EQUAL_STRING("A hint.", ss[0].meaningHint.c_str());
@@ -859,6 +864,8 @@ static Subject cacheSubject() {
     s.whitelist = {"adults"};
     s.blacklist = {"child"};
     s.componentSubjectIds = {1, 2, 3};
+    s.visuallySimilarSubjectIds = {4, 5};
+    s.amalgamationSubjectIds = {6};
     s.meaningMnemonic = "An adult is a big person.";
     s.readingMnemonic = "Oh, ton of adults.";
     s.meaningHint = "Not a child.";
@@ -994,6 +1001,8 @@ static void test_cache_subjects_round_trip() {
     TEST_ASSERT_EQUAL(ReadingType::Kunyomi, s.readings[0].type);
     TEST_ASSERT_EQUAL_STRING("grown up", s.meaningSynonyms[0].c_str());
     TEST_ASSERT_EQUAL(3, s.componentSubjectIds.size());
+    TEST_ASSERT_EQUAL(2, s.visuallySimilarSubjectIds.size());
+    TEST_ASSERT_EQUAL(1, s.amalgamationSubjectIds.size());
     TEST_ASSERT_EQUAL_STRING("An adult is a big person.", s.meaningMnemonic.c_str());
     TEST_ASSERT_EQUAL_STRING("Long o.", s.readingHint.c_str());
     TEST_ASSERT_EQUAL_STRING("Use this when talking about people.", s.meaningNote.c_str());

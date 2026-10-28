@@ -53,9 +53,9 @@ KaniKey firmware for the M5Stack Cardputer ADV.
 - Fetches `/v2/level_progressions` on sync and shows the current level's
   unlock date in the Home status line (`L8 since 03 Feb`).
 - `Tab` on review feedback opens the item detail card (meanings, readings,
-  mnemonics, notes, components; vocabulary adds parts of speech and context);
-  `Space` pages and `Tab`/`Esc` returns. Review batches keep mnemonics/hints and
-  fetch component subjects for it.
+  mnemonics, notes, components, related subjects; vocabulary adds parts of
+  speech and context); `Space` pages and `Tab`/`Esc` returns. Review batches
+  keep mnemonics/hints and fetch component subjects for it.
 - Writes the pack to the card over the USB serial link or a one-shot Wi-Fi
   upload server.
 

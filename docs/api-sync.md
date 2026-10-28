@@ -173,7 +173,10 @@ data.readings[] { reading, primary, accepted_answer, type }
 block after the review subjects are loaded. Components are kept in the same
 subject list and cached, so the detail card works offline. Vocabulary context
 sentences are stored (up to 4) and the English sentence is shown on the sixth
-detail page; `pronunciation_audios` remains phase 2 (EXT-06).
+detail page; `pronunciation_audios` remains phase 2 (EXT-06). The related IDs
+(`visually_similar_subject_ids`, `amalgamation_subject_ids`, up to 32 each) are
+stored and the detail card adds a related page with counts and any meanings
+already present in the batch.
 
 ### 3.5 `/study_materials`
 
@@ -468,14 +471,14 @@ alters the SRS stage and the user's statistics. We prefer to leave the item as
 - Never delete the outbox before the POST is confirmed.
 
 **Implementation (2026-10-28).** The Home/user/batch snapshot is
-`/state/cache.bin` (`KKCA`, version 8); the batch subjects are
-`/kanikey/cache/subjects.bin` (`KKCS`, version 8) on SD. Version 3 added the
+`/state/cache.bin` (`KKCA`, version 9); the batch subjects are
+`/kanikey/cache/subjects.bin` (`KKCS`, version 9) on SD. Version 3 added the
 study-material notes to each cached subject, version 4 added the review
 presentation order, version 5 added the vacation timestamp, version 6 added the
-per-subject review statistics, version 7 added the level progression and
-version 8 adds vocabulary parts of speech/context sentences; older files are
-discarded. Both carry the save time, an FNV-1a fingerprint of the API token,
-the payload length and CRC32.
+per-subject review statistics, version 7 added the level progression, version 8
+added vocabulary parts of speech/context sentences and version 9 adds the
+related-subject IDs; older files are discarded. Both carry the save time, an
+FNV-1a fingerprint of the API token, the payload length and CRC32.
 The snapshot also stores the summary's `data_updated_at`; assignments keep
 their own `data_updated_at` for outbox reconciliation. Loading a snapshot
 written for another token or an older version discards both files. The cached
@@ -643,6 +646,7 @@ Minimal fixtures, hand-written, with attribution:
 - `review_statistics.json`: correct/incorrect counts, streaks and percentage.
 - `level_progressions.json`: current and previous level timestamps.
 - `vocabulary_details.json`: parts of speech and context sentences.
+- `related_subjects.json`: visually similar and amalgamation IDs.
 - `review_ok.json`: `resources_updated.assignment`.
 - `errors.json`: 401, 403, 422, 429.
 

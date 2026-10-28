@@ -336,12 +336,12 @@ snapshot fits LittleFS. The token fingerprint discards another account's data.
 
 **Implications:** boot restores Home and a cached batch before any Wi-Fi
 request; completed items are pruned from the cache and stay in the outbox.
-`KKCA`/`KKCS` v8 add the study-material notes, the review presentation order,
+`KKCA`/`KKCS` v9 add the study-material notes, the review presentation order,
 the vacation timestamp, the per-subject review statistics, the level
-progression and vocabulary details, store the summary `data_updated_at`, mark
-caches older than 24 h as stale, and Settings exposes `Sync now`/`Clear cache`.
-The real online fetch → offline → reconnect E2E (CACHE-07) still needs a
-deliberate live run.
+progression, vocabulary details and related-subject IDs, store the summary
+`data_updated_at`, mark caches older than 24 h as stale, and Settings exposes
+`Sync now`/`Clear cache`. The real online fetch → offline → reconnect E2E
+(CACHE-07) still needs a deliberate live run.
 
 ---
 
@@ -356,7 +356,7 @@ missing study-materials permission does not fail the batch.
 for them. Merging keeps one object for the checker, the lesson card, the review
 feedback and the offline cache instead of a second lookup table.
 
-**Implications:** `KKCS` v8 carries `meaning_note`/`reading_note`; older caches
+**Implications:** `KKCS` v9 carries `meaning_note`/`reading_note`; older caches
 are discarded. Notes appear on the lesson card and after a correct review
 answer. The full item-detail screen (UI-04/WK-08) can reuse the same fields.
 
@@ -373,7 +373,7 @@ reading-first.
 toggle, and the local setting already means something else. Sorting after the
 shuffle keeps variety inside a level.
 
-**Implications:** `KKCA` v8 stores the order; older caches are discarded.
+**Implications:** `KKCA` v9 stores the order; older caches are discarded.
 Offline sessions keep the last known order.
 
 ---
@@ -387,7 +387,7 @@ more urgent.
 **Why:** vacation mode changes what the user expects from reviews and lessons,
 but it must not block the session or hide a real sync problem.
 
-**Implications:** the timestamp is part of `KKCA` v8, so the notice works
+**Implications:** the timestamp is part of `KKCA` v9, so the notice works
 offline. The account used for hardware tests is not on vacation, so the notice
 is covered by native parsing/cache tests only.
 
@@ -420,7 +420,7 @@ last item's review count and accuracy.
 **Why:** the statistics are small, already keyed by subject, and belong with the
 rest of the subject data used by the review screen and the future detail screen.
 
-**Implications:** `KKCS` v8 carries the statistics; older caches are discarded.
+**Implications:** `KKCS` v9 carries the statistics; older caches are discarded.
 A token without the review-statistics permission still reviews, without the
 accuracy display. The parser is native-tested; the header and summary were
 hardware-verified with the synthetic cached review.
@@ -437,7 +437,7 @@ more urgent.
 **Why:** the level is already on Home; the unlock date gives context without a
 new screen, and caching keeps it available offline.
 
-**Implications:** `KKCA` v8 stores the progression; older caches are discarded.
+**Implications:** `KKCA` v9 stores the progression; older caches are discarded.
 A token without the level-progressions permission keeps the previous cached
 value. The parser is native-tested; the real request and the Home line were
 verified on hardware on 2026-10-28.
@@ -474,9 +474,26 @@ a sixth detail page for vocabulary. `pronunciation_audios` stays phase 2.
 **Why:** the fields are small, already part of the subject payload, and make the
 detail card useful for vocabulary without another request.
 
-**Implications:** `KKCS` v8 carries the fields; older caches are discarded. The
+**Implications:** `KKCS` v9 carries the fields; older caches are discarded. The
 vocabulary page shows the parts of speech and up to two English context
 sentences; the Japanese sentence is stored for a future audio/context view.
+
+---
+
+## 2026-10-28 — Related-subject IDs are cached
+
+**Decision:** parse up to 32 `visually_similar_subject_ids` and 32
+`amalgamation_subject_ids` per subject and cache them. The detail card adds a
+related page with counts and the meanings of any related subjects already in
+the batch.
+
+**Why:** the IDs are small, already part of the subject payload and are the
+input for the future constellation view. Showing counts and cached meanings
+makes them visible without another fetch.
+
+**Implications:** `KKCS` v9 carries the IDs; older caches are discarded. The
+page is read-only and does not fetch missing related subjects; the constellation
+view will do that later.
 
 ---
 

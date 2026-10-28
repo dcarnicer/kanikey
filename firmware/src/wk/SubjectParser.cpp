@@ -67,6 +67,18 @@ std::vector<Subject> parseSubjects(const JsonValue& root, bool details) {
             for (const JsonValue& c : comps->array)
                 if (c.isNumber()) s.componentSubjectIds.push_back(static_cast<uint32_t>(c.number));
         }
+        if (const JsonValue* similar = d->find("visually_similar_subject_ids");
+            similar && similar->isArray()) {
+            for (const JsonValue& c : similar->array)
+                if (c.isNumber() && s.visuallySimilarSubjectIds.size() < 32)
+                    s.visuallySimilarSubjectIds.push_back(static_cast<uint32_t>(c.number));
+        }
+        if (const JsonValue* amalg = d->find("amalgamation_subject_ids");
+            amalg && amalg->isArray()) {
+            for (const JsonValue& c : amalg->array)
+                if (c.isNumber() && s.amalgamationSubjectIds.size() < 32)
+                    s.amalgamationSubjectIds.push_back(static_cast<uint32_t>(c.number));
+        }
         if (details) {
             auto textField = [d](const char* key) {
                 const JsonValue* v = d->find(key);

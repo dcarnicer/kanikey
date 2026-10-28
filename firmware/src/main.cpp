@@ -902,6 +902,25 @@ void drawReview() {
     present();
 }
 
+bool hasRelatedSubjects(const kk::Subject& s) {
+    return !s.visuallySimilarSubjectIds.empty() || !s.amalgamationSubjectIds.empty();
+}
+
+int detailPageCount(const kk::Subject& s) {
+    return 5 + (s.type == kk::SubjectType::Vocabulary ? 1 : 0) + (hasRelatedSubjects(s) ? 1 : 0);
+}
+
+int detailPageKind(int index, const kk::Subject& s) {
+    if (index < 5) return index;
+    int next = 5;
+    if (s.type == kk::SubjectType::Vocabulary) {
+        if (index == next) return 5;
+        ++next;
+    }
+    if (hasRelatedSubjects(s)) return 6;
+    return 4;
+}
+
 void drawReviewDetail() {
     if (!gDisp) return;
     uint32_t subjectId = gFeedbackSubjectId;
@@ -940,7 +959,7 @@ void drawReviewDetail() {
     d.setTextSize(1);
     drawPill(d, 86, 20, type, kDim, kSurfaceHi);
 
-    switch (gReviewDetailPage) {
+    switch (detailPageKind(gReviewDetailPage, *s)) {
         case 0: {
             d.setTextFont(0);
             d.setTextSize(1);
@@ -1075,6 +1094,35 @@ void drawReviewDetail() {
             }
             if (context.empty()) context = "No context sentences.";
             drawWrapped(d, context, 86, 78, 150, 3, kDim, kBg);
+            break;
+        }
+        case 6: {
+            d.setTextFont(0);
+            d.setTextSize(1);
+            d.setTextColor(kFaint, kBg);
+            d.drawString("RELATED", 86, 38);
+            auto relatedLine = [&](const char* label, const std::vector<uint32_t>& ids,
+                                   int y) {
+                char head[40];
+                snprintf(head, sizeof head, "%s: %u", label, static_cast<unsigned>(ids.size()));
+                d.setTextFont(0);
+                d.setTextSize(1);
+                d.setTextColor(kDim, kBg);
+                d.drawString(head, 86, y);
+                std::string names;
+                for (size_t i = 0; i < ids.size() && i < 2; ++i) {
+                    const kk::Subject* r = subjectById(ids[i]);
+                    if (!r) continue;
+                    const std::string meaning = subjectMainMeaning(*r);
+                    if (meaning.empty()) continue;
+                    if (!names.empty()) names += ", ";
+                    names += meaning;
+                }
+                if (!names.empty())
+                    drawWrapped(d, names, 86, y + 10, 150, 1, kFaint, kBg);
+            };
+            relatedLine("Similar", s->visuallySimilarSubjectIds, 48);
+            relatedLine("Amalgamations", s->amalgamationSubjectIds, 78);
             break;
         }
     }
@@ -1489,8 +1537,7 @@ bool reviewKey(const KeyEvent& e) {
         else if (e.key == Key::Esc) openPause();
         else if (e.key == Key::Tab) {
             const kk::Subject* detail = subjectById(gFeedbackSubjectId);
-            gReviewDetailPages =
-                detail && detail->type == kk::SubjectType::Vocabulary ? 6 : 5;
+            gReviewDetailPages = detail ? detailPageCount(*detail) : 5;
             gReviewDetail = true;
             gReviewDetailPage = 0;
             gDirty = true;
@@ -3710,6 +3757,8 @@ void seedDevCache() {
     kanji.meaningNote = "Remember the sun.";
     kanji.readingNote = "Nichi, not ni.";
     kanji.componentSubjectIds = {1};
+    kanji.visuallySimilarSubjectIds = {3};
+    kanji.amalgamationSubjectIds = {3};
     subjects.subjects.push_back(kanji);
     kk::Subject vocabulary;
     vocabulary.id = 3;
@@ -3723,6 +3772,7 @@ void seedDevCache() {
     vocabulary.partsOfSpeech = {"noun"};
     vocabulary.contextSentences = {{"これは日本です。", "This is Japan."}};
     vocabulary.componentSubjectIds = {2};
+    vocabulary.visuallySimilarSubjectIds = {2};
     subjects.subjects.push_back(vocabulary);
 
     auto stats = [](kk::Subject& s, uint32_t meaningCorrect, uint32_t meaningIncorrect,
@@ -4203,8 +4253,7 @@ void handleSerial() {
         } else if (gSerialLine == "D") {
             if (gReviewActive && gFeedback) {
                 const kk::Subject* detail = subjectById(gFeedbackSubjectId);
-                gReviewDetailPages =
-                    detail && detail->type == kk::SubjectType::Vocabulary ? 6 : 5;
+                gReviewDetailPages = detail ? detailPageCount(*detail) : 5;
                 gReviewDetail = !gReviewDetail;
                 gReviewDetailPage = 0;
                 gDirty = true;

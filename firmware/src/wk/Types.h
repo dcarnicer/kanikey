@@ -40,6 +40,8 @@ struct Subject {
     std::vector<std::string> whitelist;        // auxiliary whitelist
     std::vector<std::string> blacklist;        // auxiliary blacklist
     std::vector<uint32_t> componentSubjectIds;  // lesson components
+    std::vector<uint32_t> visuallySimilarSubjectIds;
+    std::vector<uint32_t> amalgamationSubjectIds;
     std::string meaningMnemonic;                // lessons (stripped markup)
     std::string readingMnemonic;
     std::string meaningHint;
