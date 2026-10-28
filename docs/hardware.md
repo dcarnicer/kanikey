@@ -166,6 +166,16 @@ E (221) esp_core_dump_flash: No core dump partition found!
 - Hardware test: the page reached a laptop on the setup AP; the station phase
   finished setup on the same session. The AP is closed afterwards.
 
+### Pause and settings (M5)
+
+- `Esc` in a review opens Continue / End session / Settings; `Esc` from Home
+  opens Settings.
+- Brightness, dim/blank/sleep timings, Setup portal, Sync now and About are
+  stored in NVS and applied without a reboot.
+- About reads the live pack, cache batch, heap, Wi-Fi/token presence, time zone
+  and last sync.
+- The screens compile in both images; a physical key/visual pass is pending.
+
 ### Lessons (M4 start)
 
 - `/v2/assignments?subject_ids=...` for 5 lesson IDs: ~2.3 KB.

@@ -18,6 +18,17 @@ String settingsTimeZoneName();
 // TZ set. `name` may be empty; it is only for display.
 bool settingsSaveTimeZone(const String& rule, const String& name);
 
+// Display and power timings. Brightness is 8..255; the timings are seconds and
+// 0 means "never". The defaults match the original hardcoded policy.
+int settingsBrightness();
+bool settingsSetBrightness(int level);
+int settingsDimSeconds();
+bool settingsSetDimSeconds(int seconds);
+int settingsBlankSeconds();
+bool settingsSetBlankSeconds(int seconds);
+int settingsSleepSeconds();
+bool settingsSetSleepSeconds(int seconds);
+
 // "<+01>-1" / "<-0330>3:30": a fixed offset east of UTC, used when the browser
 // cannot provide a DST-aware rule.
 String formatFixedTimeZone(int offsetMinutes);

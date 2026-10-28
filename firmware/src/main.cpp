@@ -22,6 +22,7 @@
 #include <cstring>
 
 #include "board/Board.h"
+#include "Version.h"
 #include "platform/CacheStore.h"
 #include "platform/DeviceSettings.h"
 #include "platform/DevToken.h"
@@ -117,6 +118,16 @@ uint32_t gCacheSavedAt = 0;
 kk::SetupPortal gSetupPortal;
 kk::SetupPortalHooks gSetupHooks;
 bool gPortalActive = false;
+
+enum class SettingsOrigin : uint8_t { Home, Pause };
+bool gPauseActive = false;
+int gPauseIndex = 0;
+bool gSettingsActive = false;
+int gSettingsIndex = 0;
+SettingsOrigin gSettingsOrigin = SettingsOrigin::Home;
+bool gAboutActive = false;
+char gSettingsNote[48] = "";
+uint16_t gSettingsNoteColor = kFaint;
 #ifdef KANIKEY_DEV
 bool gShowDebug = false;
 bool gShowRadicalTest = false;
@@ -131,6 +142,11 @@ void drawBoot();
 void retryBoot();
 bool startSetupPortal();
 bool mountSd();
+void startSync();
+void drawPause();
+void drawSettings();
+void drawAbout();
+void openPause();
 
 uint32_t currentAccountKey() {
     const String token = kk::DevToken::load();
@@ -977,6 +993,9 @@ void endReview() {
         queueReview(gCompletedItem);
         gNeedsSubmit = false;
     }
+    gPauseActive = false;
+    gSettingsActive = false;
+    gAboutActive = false;
     gReviewActive = false;
     gReviewSummary = false;
     gShowHome = true;
@@ -1014,6 +1033,9 @@ void startReview() {
     gReviewActive = true;
     gReviewSummary = false;
     gShowHome = false;
+    gPauseActive = false;
+    gSettingsActive = false;
+    gAboutActive = false;
     gFeedback = false;
     gFeedbackCompleted = false;
     gNeedsSubmit = false;
@@ -1032,7 +1054,7 @@ bool reviewKey(const KeyEvent& e) {
     if (!e.down) return false;
     if (gFeedback) {
         if (e.key == Key::Enter) advanceFeedback();
-        else if (e.key == Key::Esc) endReview();
+        else if (e.key == Key::Esc) openPause();
         return true;
     }
     if (e.key == Key::Enter) {
@@ -1040,7 +1062,7 @@ bool reviewKey(const KeyEvent& e) {
         return true;
     }
     if (e.key == Key::Esc) {
-        endReview();
+        openPause();
         return true;
     }
     if (e.key == Key::Backspace) {
@@ -1274,6 +1296,170 @@ void lessonKey(const KeyEvent& e) {
     }
 }
 
+constexpr int kSettingsRows = 7;
+
+void setSettingsNote(const char* text, uint16_t color = kFaint) {
+    snprintf(gSettingsNote, sizeof gSettingsNote, "%s", text ? text : "");
+    gSettingsNoteColor = color;
+}
+
+void openSettings(SettingsOrigin origin) {
+    gSettingsActive = true;
+    gAboutActive = false;
+    gPauseActive = false;
+    gSettingsOrigin = origin;
+    gSettingsIndex = 0;
+    gSettingsNote[0] = 0;
+    gShowHome = false;
+    gDirty = true;
+}
+
+void closeSettings() {
+    gSettingsActive = false;
+    gAboutActive = false;
+    gSettingsNote[0] = 0;
+    if (gSettingsOrigin == SettingsOrigin::Pause)
+        gPauseActive = true;
+    else
+        gShowHome = true;
+    gDirty = true;
+}
+
+void openPause() {
+    if (!gReviewActive) return;
+    gPauseActive = true;
+    gPauseIndex = 0;
+    gSettingsActive = false;
+    gAboutActive = false;
+    gDirty = true;
+}
+
+int nextPreset(const int* values, int count, int current) {
+    for (int i = 0; i < count; ++i)
+        if (values[i] == current) return values[(i + 1) % count];
+    for (int i = 0; i < count; ++i)
+        if (values[i] > current) return values[i];
+    return values[0];
+}
+
+String secondsLabel(int seconds) {
+    if (seconds <= 0) return String("off");
+    if (seconds < 60) return String(seconds) + "s";
+    return String(seconds / 60) + "m";
+}
+
+void settingsAction() {
+    switch (gSettingsIndex) {
+        case 0: {
+            static const int kLevels[] = {64, 128, 192, 255};
+            const int level = nextPreset(kLevels, 4, kk::settingsBrightness());
+            kk::settingsSetBrightness(level);
+            tgc::board::setBrightness(level);
+            char note[32];
+            snprintf(note, sizeof note, "Brightness %d", level);
+            setSettingsNote(note, kOk);
+            break;
+        }
+        case 1: {
+            static const int kDim[] = {0, 15, 30, 60};
+            const int value = nextPreset(kDim, 4, kk::settingsDimSeconds());
+            kk::settingsSetDimSeconds(value);
+            setSettingsNote((String("Dim after ") + secondsLabel(value)).c_str(), kOk);
+            break;
+        }
+        case 2: {
+            static const int kBlank[] = {0, 30, 60, 120};
+            const int value = nextPreset(kBlank, 4, kk::settingsBlankSeconds());
+            kk::settingsSetBlankSeconds(value);
+            setSettingsNote((String("Blank after ") + secondsLabel(value)).c_str(), kOk);
+            break;
+        }
+        case 3: {
+            static const int kSleep[] = {0, 120, 300, 600};
+            const int value = nextPreset(kSleep, 4, kk::settingsSleepSeconds());
+            kk::settingsSetSleepSeconds(value);
+            setSettingsNote((String("Sleep after ") + secondsLabel(value)).c_str(), kOk);
+            break;
+        }
+        case 4:
+            if (gReviewActive) {
+                setSettingsNote("End the review session first", kWarn);
+                break;
+            }
+            gSettingsActive = false;
+            gShowHome = false;
+            startSetupPortal();
+            break;
+        case 5:
+            if (!gSdOk || !gPack.ready() || !kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
+                setSettingsNote("Configure Wi-Fi, token and pack", kWarn);
+                break;
+            }
+            gSettingsActive = false;
+            gShowHome = false;
+            startSync();
+            break;
+        case 6:
+            gAboutActive = true;
+            gSettingsNote[0] = 0;
+            break;
+    }
+    gDirty = true;
+}
+
+void settingsKey(const KeyEvent& e) {
+    if (!e.down) return;
+    if (e.key == Key::Esc) {
+        if (gAboutActive) {
+            gAboutActive = false;
+            gSettingsNote[0] = 0;
+        } else {
+            closeSettings();
+        }
+        gDirty = true;
+        return;
+    }
+    if (gAboutActive) return;
+    if (e.key == Key::Up) {
+        gSettingsIndex = (gSettingsIndex + kSettingsRows - 1) % kSettingsRows;
+        gSettingsNote[0] = 0;
+        gDirty = true;
+    } else if (e.key == Key::Down) {
+        gSettingsIndex = (gSettingsIndex + 1) % kSettingsRows;
+        gSettingsNote[0] = 0;
+        gDirty = true;
+    } else if (e.key == Key::Enter) {
+        settingsAction();
+    }
+}
+
+void pauseKey(const KeyEvent& e) {
+    if (!e.down) return;
+    if (e.key == Key::Esc) {
+        gPauseActive = false;
+        gDirty = true;
+        return;
+    }
+    if (e.key == Key::Up) {
+        gPauseIndex = (gPauseIndex + 2) % 3;
+        gDirty = true;
+    } else if (e.key == Key::Down) {
+        gPauseIndex = (gPauseIndex + 1) % 3;
+        gDirty = true;
+    } else if (e.key == Key::Enter) {
+        if (gPauseIndex == 0) {
+            gPauseActive = false;
+        } else if (gPauseIndex == 1) {
+            gPauseActive = false;
+            endReview();
+        } else {
+            gPauseActive = false;
+            openSettings(SettingsOrigin::Pause);
+        }
+        gDirty = true;
+    }
+}
+
 void onKey(const KeyEvent& e) {
     updateModifier(e.x, e.y, e.down);
     if (gPortalActive) {
@@ -1284,6 +1470,14 @@ void onKey(const KeyEvent& e) {
             snprintf(gNetLine, sizeof gNetLine, "Setup cancelled");
             gDirty = true;
         }
+        return;
+    }
+    if (gSettingsActive) {
+        settingsKey(e);
+        return;
+    }
+    if (gPauseActive) {
+        pauseKey(e);
         return;
     }
 #ifdef KANIKEY_DEV
@@ -1314,6 +1508,10 @@ void onKey(const KeyEvent& e) {
         return;
     }
 #endif
+    if (e.down && gShowHome && e.key == Key::Esc) {
+        openSettings(SettingsOrigin::Home);
+        return;
+    }
     if (e.down && e.key == Key::Enter) {
         if (gShowHome && gHaveSummary)
             startReview();
@@ -1520,7 +1718,7 @@ bool startSetupPortal() {
     if (gPortalActive) return true;
     if (gReviewActive || gLessonActive) return false;
     tgc::board::setDisplayOn(true);
-    tgc::board::setBrightness(128);
+    tgc::board::setBrightness(kk::settingsBrightness());
     gDimmed = false;
     gScreenOff = false;
     gSetupHooks.validateToken = portalValidateToken;
@@ -1531,6 +1729,9 @@ bool startSetupPortal() {
     gShowHome = false;
     gReviewSummary = false;
     gFeedback = false;
+    gPauseActive = false;
+    gSettingsActive = false;
+    gAboutActive = false;
 
     // With a saved network, go straight to the station page so the user can
     // change the token without re-entering Wi-Fi. If it cannot join, fall back
@@ -1708,11 +1909,168 @@ void drawHome() {
         d.drawString(line, 8, 117);
     }
     d.setTextColor(kFaint, kBg);
-#ifdef KANIKEY_DEV
-    d.drawString("Enter: reviews  L: lessons  Tab: debug", 8, 125);
-#else
-    d.drawString("Enter: reviews  L: lessons", 8, 125);
-#endif
+    d.drawString("Enter: reviews  L: lessons  Esc: menu", 8, 125);
+    d.endWrite();
+    present();
+}
+
+void drawPause() {
+    if (!gDisp) return;
+    auto& d = target();
+    d.startWrite();
+    d.fillScreen(kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+    d.setTextFont(2);
+    d.setTextSize(1);
+    d.setTextColor(kBrand, kBg);
+    d.drawString("KaniKey", 6, 2);
+    d.setTextFont(1);
+    d.setTextColor(kDim, kBg);
+    d.drawString("paused", 7, 22);
+
+    char progress[24];
+    const int total = static_cast<int>(gQueue.completedCount() + gQueue.remaining());
+    snprintf(progress, sizeof progress, "%u/%u", static_cast<unsigned>(gQueue.completedCount()),
+             static_cast<unsigned>(total));
+    d.setTextDatum(lgfx::top_right);
+    d.setTextColor(kFaint, kBg);
+    d.drawString(progress, 232, 5);
+    d.setTextDatum(lgfx::top_left);
+
+    static const char* kRows[] = {"Continue", "End session", "Settings"};
+    for (int i = 0; i < 3; ++i) {
+        const int y = 40 + i * 20;
+        if (i == gPauseIndex) {
+            d.fillRect(4, y - 2, 232, 16, kSurfaceHi);
+            d.fillRect(4, y - 2, 2, 16, kAccent);
+        }
+        d.setTextFont(1);
+        d.setTextSize(1);
+        d.setTextColor(i == gPauseIndex ? kText : kDim, i == gPauseIndex ? kSurfaceHi : kBg);
+        d.drawString(kRows[i], 12, y);
+    }
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextColor(kFaint, kBg);
+    d.drawString("Enter: select  Esc: continue", 8, 125);
+    d.endWrite();
+    present();
+}
+
+void drawSettings() {
+    if (!gDisp) return;
+    auto& d = target();
+    d.startWrite();
+    d.fillScreen(kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+    d.setTextFont(2);
+    d.setTextSize(1);
+    d.setTextColor(kBrand, kBg);
+    d.drawString("KaniKey", 6, 2);
+    d.setTextFont(1);
+    d.setTextColor(kDim, kBg);
+    d.drawString("settings", 7, 22);
+    d.setTextFont(0);
+    d.setTextColor(kFaint, kBg);
+    d.setTextDatum(lgfx::top_right);
+    d.drawString("Esc: back", 232, 5);
+    d.setTextDatum(lgfx::top_left);
+    d.drawFastHLine(4, 36, 232, kLine);
+
+    static const char* kLabels[] = {"Brightness", "Dim after", "Blank after", "Sleep after",
+                                    "Setup portal", "Sync now", "About"};
+    String values[kSettingsRows];
+    values[0] = String(kk::settingsBrightness());
+    values[1] = secondsLabel(kk::settingsDimSeconds());
+    values[2] = secondsLabel(kk::settingsBlankSeconds());
+    values[3] = secondsLabel(kk::settingsSleepSeconds());
+    values[4] = "open";
+    values[5] = "run";
+    values[6] = "info";
+
+    for (int i = 0; i < kSettingsRows; ++i) {
+        const int y = 42 + i * 11;
+        if (i == gSettingsIndex) {
+            d.fillRect(4, y - 2, 232, 11, kSurfaceHi);
+            d.fillRect(4, y - 2, 2, 11, kAccent);
+        }
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(i == gSettingsIndex ? kText : kDim,
+                       i == gSettingsIndex ? kSurfaceHi : kBg);
+        d.drawString(kLabels[i], 10, y);
+        d.setTextDatum(lgfx::top_right);
+        d.setTextColor(i == gSettingsIndex ? kAccentHi : kFaint,
+                       i == gSettingsIndex ? kSurfaceHi : kBg);
+        d.drawString(values[i].c_str(), 230, y);
+        d.setTextDatum(lgfx::top_left);
+    }
+
+    d.setTextFont(0);
+    d.setTextColor(gSettingsNote[0] ? gSettingsNoteColor : kFaint, kBg);
+    d.drawString(gSettingsNote[0] ? gSettingsNote : "Enter: change  Esc: back", 8, 123);
+    d.endWrite();
+    present();
+}
+
+void drawAbout() {
+    if (!gDisp) return;
+    auto& d = target();
+    d.startWrite();
+    d.fillScreen(kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+    d.setTextFont(2);
+    d.setTextSize(1);
+    d.setTextColor(kBrand, kBg);
+    d.drawString("KaniKey", 6, 2);
+    d.setTextFont(1);
+    d.setTextColor(kDim, kBg);
+    d.drawString("about", 7, 22);
+    d.setTextFont(0);
+    d.setTextColor(kFaint, kBg);
+    d.setTextDatum(lgfx::top_right);
+    d.drawString("Esc: back", 232, 5);
+    d.setTextDatum(lgfx::top_left);
+
+    auto line = [&d](const String& text, int y, uint16_t fg) {
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(fg, kBg);
+        String s = text;
+        while (s.length() > 1 && d.textWidth(s.c_str()) > 226) s.remove(s.length() - 1);
+        d.drawString(s.c_str(), 7, y);
+    };
+
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(kText, kBg);
+    d.drawString(String("KaniKey ") + kk::kFirmwareVersion, 7, 34);
+
+    line(String("Build ") + __DATE__ + " " + __TIME__, 52, kFaint);
+    line(String("Pack: ") + gPack.statusLine(), 63, gPack.ready() ? kOk : kWarn);
+    char cache[64];
+    snprintf(cache, sizeof cache, "Cache: %u batch, %u due", static_cast<unsigned>(gBatch.assignments.size()),
+             static_cast<unsigned>(gDueReviews));
+    line(cache, 74, kDim);
+    line(String("Last sync: ") + gSyncClock + (gOffline ? " (offline)" : ""), 85,
+         gOffline ? kWarn : kDim);
+    String wifi = kk::DevWifi::hasSaved() ? kk::DevWifi::savedSsid() : String("not configured");
+    if (kk::DevWifi::connected()) wifi += " " + kk::DevWifi::ip();
+    line(String("Wi-Fi: ") + wifi, 96, kDim);
+    line(String("Token: ") + (kk::DevToken::has() ? "configured" : "missing"), 107,
+         kk::DevToken::has() ? kDim : kWarn);
+    String zone = kk::settingsTimeZoneName();
+    if (zone.isEmpty()) zone = kk::settingsTimeZoneRule();
+    line(String("Zone: ") + zone, 118, kFaint);
+    char heap[48];
+    snprintf(heap, sizeof heap, "Heap: %u free / %u largest",
+             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+             static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL |
+                                                                    MALLOC_CAP_8BIT)));
+    line(heap, 126, kFaint);
     d.endWrite();
     present();
 }
@@ -2109,6 +2467,18 @@ void draw() {
         drawSetupPortal();
         return;
     }
+    if (gAboutActive) {
+        drawAbout();
+        return;
+    }
+    if (gSettingsActive) {
+        drawSettings();
+        return;
+    }
+    if (gPauseActive) {
+        drawPause();
+        return;
+    }
 #ifdef KANIKEY_DEV
     if (gShowRadicalTest) {
         drawRadicalTest();
@@ -2141,7 +2511,8 @@ void draw() {
 }
 
 void drawStatus() {
-    if (!gDisp || gPortalActive || gShowHome || gReviewActive || gReviewSummary || gLessonActive)
+    if (!gDisp || gPortalActive || gAboutActive || gSettingsActive || gPauseActive || gShowHome ||
+        gReviewActive || gReviewSummary || gLessonActive)
         return;
 #ifdef KANIKEY_DEV
     if (gShowDebug) drawDebug();
@@ -2153,7 +2524,7 @@ void drawStatus() {
 void wakeScreen() {
     if (!gDimmed && !gScreenOff) return;
     tgc::board::setDisplayOn(true);
-    tgc::board::setBrightness(128);
+    tgc::board::setBrightness(kk::settingsBrightness());
     gDimmed = false;
     gScreenOff = false;
     gDirty = true;
@@ -2606,7 +2977,7 @@ void setup() {
     tgc::board::begin();
     gDisp = &tgc::board::display();
     gDisp->setRotation(1);
-    gDisp->setBrightness(128);
+    gDisp->setBrightness(kk::settingsBrightness());
     kk::settingsApplyTimeZone();
 
     ensureCanvas();
@@ -2732,16 +3103,20 @@ void loop() {
         Serial.println("[key] G0 held");
     }
 
-    if (!gPortalActive && !gDimmed && now - gLastInputAt > 30000) {
+    const uint32_t dimMs = static_cast<uint32_t>(kk::settingsDimSeconds()) * 1000u;
+    const uint32_t blankMs = static_cast<uint32_t>(kk::settingsBlankSeconds()) * 1000u;
+    const uint32_t sleepMs = static_cast<uint32_t>(kk::settingsSleepSeconds()) * 1000u;
+    if (!gPortalActive && dimMs && !gDimmed && now - gLastInputAt > dimMs) {
         tgc::board::setBrightness(20);
         gDimmed = true;
     }
-    if (!gPortalActive && !gScreenOff && now - gLastInputAt > 60000) {
+    if (!gPortalActive && blankMs && !gScreenOff && now - gLastInputAt > blankMs) {
         tgc::board::setDisplayOn(false);
         gScreenOff = true;
     }
     if (!gPortalActive && !gReviewActive && !gReviewSummary && !gFeedback && !gLessonActive &&
-        !gAssetServerActive && now - gLastInputAt > 120000 && !tgc::board::externalPower()) {
+        !gPauseActive && !gSettingsActive && !gAboutActive && !gAssetServerActive && sleepMs &&
+        now - gLastInputAt > sleepMs && !tgc::board::externalPower()) {
         Serial.println("[power] idle sleep");
         saveCacheSnapshot();
         tgc::board::deepSleep();

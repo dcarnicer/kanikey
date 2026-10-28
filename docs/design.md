@@ -234,7 +234,7 @@ sync afterwards may flush reviews already waiting in the outbox.
           │  /time      │              │ next / sync    │
           └──────┬──────┘              └───┬───┬───┬────┘
                  │                         │   │   │
-                 └──────────────►          │   │   └──── Tab ──► Settings
+                 └──────────────►          │   │   └──── Esc ──► Settings
                                       R    │   │ L
                                       ┌────▼───┴────┐
                                       │   Sync      │

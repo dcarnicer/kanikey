@@ -12,6 +12,43 @@ namespace {
 constexpr const char* kNs = "kanikey";
 constexpr const char* kKeyRule = "tzrule";
 constexpr const char* kKeyName = "tzname";
+constexpr const char* kKeyBrightness = "bright";
+constexpr const char* kKeyDim = "dim";
+constexpr const char* kKeyBlank = "blank";
+constexpr const char* kKeySleep = "sleep";
+
+struct DisplaySettings {
+    int brightness = 128;
+    int dim = 30;
+    int blank = 60;
+    int sleep = 120;
+};
+
+DisplaySettings& displaySettings() {
+    static DisplaySettings values;
+    static bool loaded = false;
+    if (loaded) return values;
+    loaded = true;
+    Preferences p;
+    if (!p.begin(kNs, false)) return values;
+    values.brightness = p.getInt(kKeyBrightness, values.brightness);
+    values.dim = p.getInt(kKeyDim, values.dim);
+    values.blank = p.getInt(kKeyBlank, values.blank);
+    values.sleep = p.getInt(kKeySleep, values.sleep);
+    p.end();
+    if (values.brightness < 8 || values.brightness > 255) values.brightness = 128;
+    for (int* v : {&values.dim, &values.blank, &values.sleep})
+        if (*v < 0 || *v > 3600) *v = 0;
+    return values;
+}
+
+bool saveInt(const char* key, int value) {
+    Preferences p;
+    if (!p.begin(kNs, false)) return false;
+    const bool ok = p.putInt(key, value) == sizeof(int32_t);
+    p.end();
+    return ok;
+}
 
 bool validRule(const String& rule) {
     if (rule.isEmpty() || rule.length() > kTimeZoneRuleMax) return false;
@@ -61,6 +98,42 @@ bool settingsSaveTimeZone(const String& rule, const String& name) {
                       rule.c_str());
     }
     return ok;
+}
+
+int settingsBrightness() { return displaySettings().brightness; }
+bool settingsSetBrightness(int level) {
+    if (level < 8) level = 8;
+    if (level > 255) level = 255;
+    DisplaySettings& v = displaySettings();
+    v.brightness = level;
+    return saveInt(kKeyBrightness, level);
+}
+
+int settingsDimSeconds() { return displaySettings().dim; }
+bool settingsSetDimSeconds(int seconds) {
+    if (seconds < 0) seconds = 0;
+    if (seconds > 3600) seconds = 3600;
+    DisplaySettings& v = displaySettings();
+    v.dim = seconds;
+    return saveInt(kKeyDim, seconds);
+}
+
+int settingsBlankSeconds() { return displaySettings().blank; }
+bool settingsSetBlankSeconds(int seconds) {
+    if (seconds < 0) seconds = 0;
+    if (seconds > 3600) seconds = 3600;
+    DisplaySettings& v = displaySettings();
+    v.blank = seconds;
+    return saveInt(kKeyBlank, seconds);
+}
+
+int settingsSleepSeconds() { return displaySettings().sleep; }
+bool settingsSetSleepSeconds(int seconds) {
+    if (seconds < 0) seconds = 0;
+    if (seconds > 3600) seconds = 3600;
+    DisplaySettings& v = displaySettings();
+    v.sleep = seconds;
+    return saveInt(kKeySleep, seconds);
 }
 
 String formatFixedTimeZone(int offsetMinutes) {

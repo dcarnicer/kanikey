@@ -17,10 +17,11 @@
 > boot brings up a WPA2 setup portal (`KaniKey-XXXX`, key on screen): the phone
 > saves the Wi-Fi, the device joins it, and the station page validates the
 > WaniKani token with `GET /user`, sets the clock/time zone from the browser and
-> checks the visual pack. Setup makes no lesson-start calls; validation only reads `/user`. Normal boots
-> show setup/sync states; the M0 debug screen is only in the development
-> build. The lesson list/components and dismissing rejected outbox items are
-> next.
+> checks the visual pack. Setup makes no lesson-start calls; validation only
+> reads `/user`. `Esc` opens Pause in a review and Settings from Home, with
+> brightness/timings, Sync now, the setup portal and About. Normal boots show
+> setup/sync states; the M0 debug screen is only in the development build. The
+> lesson list/components and dismissing rejected outbox items are next.
 >
 > KaniKey is an **unofficial** third-party app for WaniKani. It is not
 > affiliated with, endorsed by or sponsored by WaniKani or Tofugu LLC. WaniKani

@@ -129,8 +129,10 @@ missing) to open the portal again.
 - If you get it wrong, read the correct answer and press `Enter`; the item comes back later.
 - When you finish, a summary. `Enter` to return to the home screen.
 - `L` → lessons (phase 2).
-- `S` → sync.
-- `Tab` → settings from the home screen.
+- `Esc` → Settings; `Sync now` starts a manual sync. In a review, `Esc` opens
+  Pause (Continue / End session / Settings).
+- Settings stores brightness and dim/blank/sleep timings in NVS; `Setup portal`
+  reopens the Wi-Fi/token/time page.
 
 ---
 

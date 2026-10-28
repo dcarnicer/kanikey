@@ -154,8 +154,8 @@ the field is active.
 | `Ctrl+S` | Sync from any menu |
 | `G0` | Back / pause (holding it in the review opens the session menu) |
 
-`Tab` in the review doesn't open settings: it opens the item card. For
-settings, `Esc` → session menu → Settings, or `Tab` from home.
+`Esc` from Home opens Settings; in a review it opens Pause → Settings. In the
+review, `Tab` opens the item card later (it is the dev debug shortcut today).
 
 ### 3.4 Repeat and modifiers
 
@@ -293,9 +293,10 @@ Home ──L──► Lessons ──Enter──► Lesson card
 - `Next review 18:00` and `Synced 14:47`, with right-aligned values (12 px).
 - If the outbox is not empty, `Outbox: N pending` in amber or
   `N need attention` in red at 8 px.
-- Hint: `Enter: reviews  L: lessons` (8 px). The M0 debug screen and
-  `Tab: debug` only exist in the `cardputer-adv-dev` build. The SRS
-  distribution bar arrives with a later revision.
+- Hint: `Enter: reviews  L: lessons  Esc: menu` (8 px). The M0 debug screen and
+  the `Tab: debug` shortcut only exist in the `cardputer-adv-dev` build; the
+  shortcut is no longer advertised on Home. The SRS distribution bar arrives
+  with a later revision.
 - States:
   - **Sync:** `Syncing…` with spinner and progress in the header.
   - **Offline:** line in `warn`: `Offline · 18 cached · 4 to sync`.
@@ -327,7 +328,8 @@ Home ──L──► Lessons ──Enter──► Lesson card
   pressed.
 - If the answer is long, the text scrolls horizontally; the caret stays
   visible. It doesn't wrap to two lines so as not to change the height.
-- Holding G0 opens `Pause` (Continue / End session / Settings).
+- `Esc` in a review opens `Pause` (Continue / End session / Settings).
+  Holding G0 remains the future power action.
 - Idle: the panel dims at 30 s, blanks at 60 s and the device deep-sleeps at
   2 min when no review is active and it is on battery. On a blank panel the
   first key only wakes it.
@@ -337,7 +339,8 @@ reading and 20 px feedback from the SD visual pack. Vocabulary words composed
 of several characters are laid out from individual glyphs. Radicals use their
 96 px bitmap when the subject has no Unicode character; a missing glyph shows
 an explicit `no glyph` state. The bottom bar says
-`Enter check` / `Esc quit`; the Pause menu and `Tab: details` are later. The
+`Enter check` / `Esc quit`; `Esc` now opens the Pause menu (Continue / End
+session / Settings), so quitting is deliberate. `Tab: details` is later. The
 screen is driven by the same review queue and answer checker as the final
 design.
 
@@ -421,14 +424,18 @@ design.
 
 ![Settings](screens/settings.png)
 
-- Rows: Account, Study, Sync, Device, About.
-- Account: user, level, masked token, `Sign out`.
-- Study: `Meaning first` / `Reading first`, `Auto-advance`, `Session size`,
-  `Strict answers`.
-- Sync: `Sync on boot`, `Sync now`, `Last sync`, `Clear cache`.
-- Device: `Brightness`, `Sleep after`, `Wi-Fi`, `Time`, `Firmware`.
-- About: version, licenses, attributions, disclaimer, heap and last sync.
-- `↑↓` moves, `Enter` opens, `Esc` goes back.
+- Open with `Esc` from Home, or `Esc` in a review → Pause → Settings.
+- Implemented rows: `Brightness`, `Dim after`, `Blank after`, `Sleep after`,
+  `Setup portal`, `Sync now`, `About`.
+- `Brightness` cycles 64/128/192/255; the timings cycle presets and `off`.
+  They are stored in NVS and applied without a reboot.
+- `Setup portal` reopens the Wi-Fi/token/time page; it is disabled during a
+  review so the session is not lost. `Sync now` starts a manual sync.
+- About shows the firmware version, build date, pack status, cached batch,
+  last sync, Wi-Fi, whether a token is configured, time zone and heap.
+- `↑↓` moves, `Enter` changes, `Esc` goes back.
+- Not yet: account/sign-out, study preferences (meaning order, session size,
+  strictness), clear cache and licenses.
 
 ### 5.12 Stats (phase 2)
 

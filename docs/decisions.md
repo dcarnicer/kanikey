@@ -358,3 +358,19 @@ Setup only reads `/user`; it never calls `PUT /assignments/{id}/start`, so it
 cannot move lessons. The normal first sync afterwards may flush reviews already
 waiting in the outbox. Tangocho's
 deck catalog, upload, OTA and progress-restore routes are deliberately dropped.
+
+---
+
+## 2026-10-28 — Pause and settings are local-only
+
+**Decision:** `Esc` in a review opens Continue / End session / Settings; `Esc`
+from Home opens Settings. Brightness, dim/blank/sleep timings, Setup portal,
+Sync now and About are on the device and stored in NVS.
+
+**Why:** the setup portal removed the serial cable, so the same session should
+also expose the device controls without one. Pausing instead of ending avoids
+losing a session on a stray `Esc`, and a sync can be requested deliberately.
+
+**Implications:** changing settings never calls WaniKani. `Sync now` may flush
+the existing outbox and is a user action. Account/study preferences, clear-cache
+and the auth/rate-limit screens are still open (SETUP-05/07).

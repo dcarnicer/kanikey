@@ -43,15 +43,20 @@ Working on hardware:
   with `GET /user`, the browser sets the clock/time zone and the pack can be
   checked again. Setup only reads `/user` during validation; it never starts lessons.
   The normal first sync afterwards may flush the existing outbox.
+- Pause and settings: `Esc` in a review opens Continue / End session /
+  Settings; `Esc` from Home opens Settings. Brightness, dim/blank/sleep
+  timings, Setup portal, Sync now and About are live; values persist in NVS.
+  About shows version, build, pack, cache, last sync, Wi-Fi, token state, zone
+  and heap.
 - User-facing boot states for missing SD/pack, token or Wi-Fi and sync
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
 - 37 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,337,425 B / 1,835,008 B flash (72.9%)**, **93,672 B /
-327,680 B static RAM (28.6%)**. The dev image is 1,342,561 B. Removing
-`efontJA_16` freed ~468 KB and leaves ~498 KB of flash headroom.
+Current build: **1,344,905 B / 1,835,008 B flash (73.3%)**, **93,752 B /
+327,680 B static RAM (28.6%)**. The dev image is 1,350,225 B. Removing
+`efontJA_16` freed ~468 KB and leaves ~490 KB of flash headroom.
 
 ## Priority summary
 
@@ -62,7 +67,7 @@ Current build: **1,337,425 B / 1,835,008 B flash (72.9%)**, **93,672 B /
 | 3 | Complete lesson flow | Card + start exists; list, components, quiz and preferences do not | Partial | LESSON-01, LESSON-03 |
 | 4 | WaniKani data and preferences | Synonyms, item detail, SRS feedback, stats and preferences are missing | Not started | WK-01, WK-03 |
 | 5 | Outbox and API robustness | Rejected items, 429 and invalid auth have no user path | Partial | API-01, API-02 |
-| 6 | Setup, settings and pause | First-boot portal works; settings/pause remain | Partial: setup done | SETUP-04, SETUP-05 |
+| 6 | Setup, settings and pause | Setup, pause and core device settings work | Partial: account/study prefs and errors | SETUP-05, SETUP-07 |
 | 7 | UI, stats and sync | Missing SRS bar, sync progress, accuracy and item detail | Partial | UI-01, UI-02 |
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal ported; OTA/widgets pending | TNG-02, TNG-03 |
 | 9 | Technical debt, CI and release | Maintainability and shipping | Ongoing | TECH-01, TECH-04 |
@@ -79,7 +84,7 @@ lesson flow.
 | 0 | Close radicals (parallel) | RAD-02, RAD-04 | Real radical prompts on a configured account |
 | 1 | Offline cache | CACHE-05 → CACHE-07, TNG-04, TNG-05 | Review and Home work after reboot without network |
 | 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | List, understand, quiz and start lessons |
-| 3 | Setup and device UX | SETUP-04 → SETUP-08, TNG-02 | Settings, pause and OTA without a cable |
+| 3 | Setup and device UX | SETUP-05, SETUP-07, SETUP-08, TNG-02 | Remaining settings, error actions and OTA |
 | 4 | WaniKani data and detail | WK-01, WK-03 → WK-11 | Synonyms, item detail, SRS and progress |
 | 5 | API robustness | API-01 → API-07 | Recoverable rejected, rate-limited and auth errors |
 | 6 | UI, stats and sync | UI-01 → UI-08 | SRS bar, sync screen, accuracy and polish |
@@ -226,7 +231,8 @@ Home pending/attention counts. Remaining:
 - **API-05 — Attempts and age.** Cap attempts and show attempt/age information
   for stuck items.
 - **API-06 — Manual sync and retry.** A clear action from Home/Settings and the
-  error screens.
+  error screens. **Partial:** Settings › Sync now works; Home/error-screen
+  actions are pending.
 - **API-07 — Keep docs in sync.** Update `api-sync.md` error table and screens
   with the implementation.
 
@@ -235,8 +241,8 @@ Home pending/attention counts. Remaining:
 First boot no longer needs a serial cable. The device starts a WPA2 setup
 network, saves the home Wi-Fi, joins it, then serves the station page where the
 token is validated with `GET /user`, the browser sets the clock/time zone and
-the pack can be checked again. Settings screens, the pause menu and manual
-sync are still missing.
+the pack can be checked again. Pause and the core device settings are also on
+the device; account/study preferences and clear error actions remain.
 
 - **SETUP-01 — First-boot setup portal.** Wi-Fi scan/password, token entry
   (masked, never logged), timezone and visual-pack check. Port the applicable
@@ -247,21 +253,29 @@ sync are still missing.
 - **SETUP-02 — Token validation.** Validate the token with `/user` before
   storing it; show scopes/permission errors clearly. **Done:** the station page
   validates with `GET /user`; 401/403/TLS errors are shown and the token is
-  only saved on success. Setup makes no lesson-start calls; the first sync may flush the existing outbox.
+  only saved on success. Setup makes no lesson-start calls; the first sync may
+  flush the existing outbox.
 - **SETUP-03 — Time and pack check.** Timezone selection, SNTP result and
   “copy glyphs.kgp / check again” state. **Done:** the browser posts its clock
   and POSIX time-zone rule; the pack status and “Check pack again” button are
   on both pages.
 - **SETUP-04 — Pause menu.** Continue / End session / Settings instead of the
-  current direct `Esc` exit.
+  current direct `Esc` exit. **Done (2026-10-28):** `Esc` in review opens the
+  three-row pause screen; Continue preserves the session, End session queues
+  the current item and leaves, Settings opens the menu.
 - **SETUP-05 — Settings.** Brightness, dim/blank/sleep timings, timezone,
-  review/lesson preferences and About/version.
+  review/lesson preferences and About/version. **Partial:** brightness,
+  timings, time zone (via the setup portal), Setup portal shortcut, Sync now
+  and About are implemented and stored in NVS. Study preferences, account
+  sign-out and clear-cache are pending.
 - **SETUP-06 — Low battery.** Show a low-battery state and confirm before
   starting a long session.
 - **SETUP-07 — Manual sync and errors.** Sync now, retry, and clear
-  offline/auth/rate-limit screens.
+  offline/auth/rate-limit screens. **Partial:** Sync now is in Settings; the
+  auth/rate-limit error screens are still pending.
 - **SETUP-08 — About.** Firmware version, pack status, cache status, heap and
-  last sync.
+  last sync. **Done (2026-10-28):** version, build date, pack, cached batch,
+  last sync/offline, Wi-Fi/IP, token presence, time zone and heap.
 
 ## 7. UI, stats and sync (M5)
 
