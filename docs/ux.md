@@ -401,6 +401,11 @@ design.
 - If there are no lessons: `No lessons right now` + `Next unlock at level 13`.
 - The list is sorted by level and `lesson_position`.
 
+**Implementation note (2026-10-28).** The list and picker are live: a scrolling
+list of up to the configured batch, sorted by level and `lesson_position`
+within the first 10 summary candidates. Opening a card and paging does not call
+`PUT /start`; only `Enter` on the card starts the lesson.
+
 ### 5.9 Lesson card
 
 ![Lesson](screens/lesson.png)
@@ -412,7 +417,8 @@ design.
 - Mnemonic in a 3-line, 10 px panel; `Space` turns the page.
 - `p1/3` in the corner.
 - `Enter start` / `Needs connection` if there's no network.
-- On start, a brief progress animation and back to the list.
+- On start, a brief progress animation and the next card; `Esc` returns to the
+  list. The card itself only reads until `Enter`.
 
 ### 5.10 Sync
 

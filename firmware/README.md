@@ -176,10 +176,10 @@ prints or stores the password. `token` prompts for the WaniKani token, sends
 | `b` | Fetch a 20-item review batch (logs only) |
 | `P` | Open the setup portal (Wi-Fi/token/time/pack) |
 | `v` | Fetch (if needed) and start a review session |
-| `l` | Fetch and show the first lesson card |
+| `l` | Fetch and show the lesson list/picker |
 | `g` | Next mnemonic page in a lesson |
 | `y <text>` | Type text into the current answer (test helper) |
-| `e` | Check the answer / advance after feedback / start the lesson |
+| `e` | Open the selected lesson / check the answer / advance / start |
 | `q` | Quit the review session |
 | `r` | Restart |
 

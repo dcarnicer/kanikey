@@ -8,8 +8,9 @@
 > `POST /v2/reviews` (201). A persistent outbox makes reviews survive a reboot
 > and offline sessions. Home, the user and the review batch are now cached too:
 > after a reboot without network the device restores them, shows `Offline` and
-> can run a cached session. Lessons fetch five at a time, show meaning/reading
-> and mnemonic pages, and start with `PUT /assignments/{id}/start` (200).
+> can run a cached session. Lessons show a list/picker sorted by level and
+> `lesson_position`, then a card with meaning/reading and mnemonic pages; only
+> the card's Enter calls `PUT /assignments/{id}/start` (200).
 > Japanese prompts and readings come entirely from the microSD visual pack at
 > 64/32/20 px: 7,269 glyphs + 498 radical bitmaps in 3.7 MB, generated locally
 > with the user's token. No WaniKani content is in the repository.

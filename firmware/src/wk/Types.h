@@ -52,6 +52,7 @@ struct Assignment {
     uint32_t subjectId = 0;
     SubjectType type = SubjectType::Kanji;
     uint8_t srsStage = 0;
+    uint16_t lessonPosition = 0;  // WaniKani lesson ordering
     uint32_t availableAt = 0;   // Unix seconds; 0 = null
     uint32_t dataUpdatedAt = 0; // Unix seconds; the server's last change
     bool hidden = false;

@@ -28,6 +28,8 @@ std::vector<Assignment> parseAssignments(const JsonValue& root) {
             a.type = subjectTypeFromString(t->string);
         if (const JsonValue* stage = d->find("srs_stage"); stage && stage->isNumber())
             a.srsStage = static_cast<uint8_t>(stage->number);
+        if (const JsonValue* pos = d->find("lesson_position"); pos && pos->isNumber())
+            a.lessonPosition = static_cast<uint16_t>(pos->number);
         if (const JsonValue* at = d->find("available_at"); at && at->isString())
             parseIso8601(at->string, &a.availableAt);
         if (const JsonValue* h = d->find("hidden"); h && h->type == JsonType::Bool)

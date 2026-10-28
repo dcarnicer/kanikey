@@ -193,7 +193,11 @@ E (221) esp_core_dump_flash: No core dump partition found!
   tree had caused an intermittent `std::bad_alloc` (`operator new` in
   `JsonParser::array`). The new parser keeps counts and at most 20 IDs per
   bucket. Two consecutive boots and a lesson start have been clean.
-- Still missing: a lesson list, components on the card, and a lesson quiz.
+- Lesson list/picker (2026-10-28): the list sorts a 10-subject candidate batch
+  by level and `lesson_position`, then trims to the configured batch. It only
+  uses GET /assignments and GET /subjects; opening the card does not start a
+  lesson. The live start path remains the one already verified.
+- Still missing: components on the card and a lesson quiz.
 
 ### Visual pack on microSD (M5)
 

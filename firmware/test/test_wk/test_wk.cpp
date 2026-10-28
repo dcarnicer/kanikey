@@ -448,10 +448,10 @@ static void test_assignment_parse() {
     const char* text =
         "{\"data\":["
         "{\"id\":101,\"object\":\"assignment\",\"data\":{\"subject_id\":10,"
-        "\"subject_type\":\"kanji\",\"srs_stage\":3,"
+        "\"subject_type\":\"kanji\",\"srs_stage\":3,\"lesson_position\":7,"
         "\"available_at\":\"2026-10-25T14:00:00Z\",\"hidden\":false}},"
         "{\"id\":102,\"object\":\"assignment\",\"data\":{\"subject_id\":11,"
-        "\"subject_type\":\"radical\",\"srs_stage\":1,"
+        "\"subject_type\":\"radical\",\"srs_stage\":1,\"lesson_position\":2,"
         "\"available_at\":\"2026-10-25T15:00:00Z\",\"hidden\":true}}]}";
     TEST_ASSERT_TRUE(p.parse(text, &v));
     const std::vector<Assignment> as = parseAssignments(v);
@@ -460,6 +460,7 @@ static void test_assignment_parse() {
     TEST_ASSERT_EQUAL_UINT32(10, as[0].subjectId);
     TEST_ASSERT_EQUAL(SubjectType::Kanji, as[0].type);
     TEST_ASSERT_EQUAL(3, as[0].srsStage);
+    TEST_ASSERT_EQUAL(7, as[0].lessonPosition);
     TEST_ASSERT_TRUE(as[0].availableAt > 0);
     TEST_ASSERT_TRUE(as[1].hidden);
     TEST_ASSERT_EQUAL(SubjectType::Radical, as[1].type);

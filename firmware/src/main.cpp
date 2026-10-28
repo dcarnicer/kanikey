@@ -109,6 +109,7 @@ kk::GlyphPack gPack;
 WiFiServer gAssetServer(8080);
 bool gAssetServerActive = false;
 bool gLessonActive = false;
+bool gLessonListActive = false;
 size_t gLessonIndex = 0;
 size_t gLessonPage = 0;
 bool gSyncing = false;
@@ -144,6 +145,7 @@ void localHm(uint32_t epoch, char* out, size_t n);
 void draw();
 void drawLoading(const char* title, const char* subtitle);
 void drawLesson();
+void drawLessonList();
 void drawBoot();
 void retryBoot();
 bool startSetupPortal();
@@ -1195,6 +1197,107 @@ std::vector<std::string> wrapLines(lgfx::LovyanGFX& d, const std::string& text, 
     return lines;
 }
 
+std::string subjectMainMeaning(const kk::Subject& s) {
+    for (const kk::Meaning& m : s.meanings)
+        if (m.accepted) return m.text;
+    if (!s.meanings.empty()) return s.meanings[0].text;
+    return std::string();
+}
+
+void drawLessonList() {
+    if (!gDisp) return;
+    auto& d = target();
+    d.startWrite();
+    d.fillScreen(kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(kDim, kBg);
+    d.drawString("LESSONS", 6, 3);
+
+    const size_t total = gLessonBatch.assignments.size();
+    if (total == 0 || gLessonIndex >= total) {
+        d.endWrite();
+        present();
+        return;
+    }
+    char pos[20];
+    snprintf(pos, sizeof pos, "%u/%u", static_cast<unsigned>(gLessonIndex + 1),
+             static_cast<unsigned>(total));
+    d.setTextFont(0);
+    d.setTextDatum(lgfx::top_right);
+    d.setTextColor(kFaint, kBg);
+    d.drawString(pos, 233, 5);
+    d.setTextDatum(lgfx::top_left);
+    d.fillRect(0, 14, 240, 2, kSurfaceHi);
+
+    constexpr int kVisible = 5;
+    int top = static_cast<int>(gLessonIndex) - kVisible / 2;
+    if (top < 0) top = 0;
+    if (total > static_cast<size_t>(kVisible) && top > static_cast<int>(total) - kVisible)
+        top = static_cast<int>(total) - kVisible;
+    if (total <= static_cast<size_t>(kVisible)) top = 0;
+    for (int row = 0; row < kVisible && top + row < static_cast<int>(total); ++row) {
+        const int i = top + row;
+        const kk::Assignment& a = gLessonBatch.assignments[i];
+        const kk::Subject* s = lessonSubjectById(a.subjectId);
+        const int y = 20 + row * 19;
+        if (i == static_cast<int>(gLessonIndex)) {
+            d.fillRect(4, y - 1, 228, 18, kSurfaceHi);
+            d.fillRect(4, y - 1, 2, 18, kAccent);
+        }
+        d.fillRect(9, y, 20, 16, kSurface);
+        d.drawRect(9, y, 20, 16, kLine);
+        if (s && !drawSubjectPrompt(d, *s, 19, y + 8, 18, 14, 18, kText, kSurface,
+                                    kk::ClipRect{10, y + 1, 28, y + 15})) {
+            d.setTextFont(1);
+            d.setTextSize(1);
+            d.setTextColor(kWarn, kSurface);
+            d.setTextDatum(lgfx::middle_center);
+            d.drawString("?", 19, y + 8);
+            d.setTextDatum(lgfx::top_left);
+        }
+
+        const char* kind = !s ? "?"
+                           : s->type == kk::SubjectType::Vocabulary ? "VOCAB"
+                           : s->type == kk::SubjectType::Radical  ? "RAD"
+                                                                  : "KANJI";
+        char label[72];
+        const std::string meaning = s ? subjectMainMeaning(*s) : std::string();
+        snprintf(label, sizeof label, "%s L%d  %s", kind, s ? s->level : 0, meaning.c_str());
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(i == static_cast<int>(gLessonIndex) ? kText : kDim,
+                       i == static_cast<int>(gLessonIndex) ? kSurfaceHi : kBg);
+        char* end = label + strlen(label);
+        while (end > label + 1 && d.textWidth(label) > 194) *--end = '\0';
+        d.drawString(label, 34, y + 1);
+        d.setTextColor(i == static_cast<int>(gLessonIndex) ? kAccentHi : kFaint,
+                       i == static_cast<int>(gLessonIndex) ? kSurfaceHi : kBg);
+        d.setTextDatum(lgfx::top_right);
+        d.drawString(">", 230, y + 1);
+        d.setTextDatum(lgfx::top_left);
+    }
+
+    if (total > kVisible) {
+        constexpr int kTrackY = 20;
+        constexpr int kTrackH = 91;
+        d.fillRect(236, kTrackY, 2, kTrackH, kLine);
+        const int thumbH = std::max(10, kTrackH * kVisible / static_cast<int>(total));
+        const int thumbY =
+            kTrackY + (kTrackH - thumbH) * top / static_cast<int>(total - kVisible);
+        d.fillRect(236, thumbY, 2, thumbH, kAccentHi);
+    }
+
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextColor(kFaint, kBg);
+    d.drawString("Enter: open  Esc: home", 6, 125);
+    d.endWrite();
+    present();
+}
+
 void drawLesson() {
     if (!gDisp) return;
     const kk::Subject* s = currentLessonSubject();
@@ -1293,7 +1396,7 @@ void drawLesson() {
     d.setTextDatum(lgfx::top_left);
 
     d.setTextColor(kFaint, kBg);
-    d.drawString("Space: page  Enter: start  Esc: home", 5, 125);
+    d.drawString("Space: page  Enter: start  Esc: list", 5, 125);
     d.endWrite();
     present();
 }
@@ -1306,13 +1409,14 @@ void startLessons() {
     }
     gLowBatteryConfirmed = false;
     const size_t lessonLimit = static_cast<size_t>(kk::settingsLessonBatchSize());
+    const size_t candidateLimit = std::max<size_t>(lessonLimit, 10);
     char subtitle[48];
-    snprintf(subtitle, sizeof subtitle, "%u at a time, please wait",
-             static_cast<unsigned>(lessonLimit));
+    snprintf(subtitle, sizeof subtitle, "up to %u, please wait",
+             static_cast<unsigned>(candidateLimit));
     drawLoading("Fetching lessons...", subtitle);
     gFreeCanvasForRequest = true;
     gLessonBatch = kk::fetchLessonBatch(kk::DevToken::load(),
-                                        gSummary.lessonSubjectIds(lessonLimit), lessonLimit);
+                                        gSummary.lessonSubjectIds(candidateLimit), candidateLimit);
     gFreeCanvasForRequest = false;
     if (!gLessonBatch.ok) {
         Serial.printf("[lesson] failed: %s\n", gLessonBatch.error.c_str());
@@ -1321,11 +1425,27 @@ void startLessons() {
         gDirty = true;
         return;
     }
-    gLessonActive = true;
+    // The summary order is not the lesson order. Sort the candidates by level
+    // and lesson_position, then keep the user's batch size.
+    std::sort(gLessonBatch.assignments.begin(), gLessonBatch.assignments.end(),
+              [](const kk::Assignment& a, const kk::Assignment& b) {
+                  const kk::Subject* sa = lessonSubjectById(a.subjectId);
+                  const kk::Subject* sb = lessonSubjectById(b.subjectId);
+                  const int la = sa ? sa->level : 99;
+                  const int lb = sb ? sb->level : 99;
+                  if (la != lb) return la < lb;
+                  if (a.lessonPosition != b.lessonPosition)
+                      return a.lessonPosition < b.lessonPosition;
+                  return a.id < b.id;
+              });
+    if (gLessonBatch.assignments.size() > lessonLimit)
+        gLessonBatch.assignments.resize(lessonLimit);
+    gLessonListActive = true;
+    gLessonActive = false;
     gShowHome = false;
     gLessonIndex = 0;
     gLessonPage = 0;
-    Serial.printf("[lesson] %u assignments, %u subjects\n",
+    Serial.printf("[lesson] list %u assignments, %u subjects\n",
                   static_cast<unsigned>(gLessonBatch.assignments.size()),
                   static_cast<unsigned>(gLessonBatch.subjects.size()));
     gDirty = true;
@@ -1354,6 +1474,36 @@ void startCurrentLesson() {
     gDirty = true;
 }
 
+void lessonListKey(const KeyEvent& e) {
+    if (!e.down) return;
+    const size_t total = gLessonBatch.assignments.size();
+    if (total == 0) {
+        gLessonListActive = false;
+        gShowHome = true;
+        gDirty = true;
+        return;
+    }
+    if (e.key == Key::Esc) {
+        gLessonListActive = false;
+        gShowHome = true;
+        gDirty = true;
+        return;
+    }
+    if (e.key == Key::Up) {
+        gLessonIndex = gLessonIndex == 0 ? total - 1 : gLessonIndex - 1;
+        gDirty = true;
+    } else if (e.key == Key::Down) {
+        gLessonIndex = (gLessonIndex + 1) % total;
+        gDirty = true;
+    } else if (e.key == Key::Enter) {
+        if (gLessonIndex >= total) gLessonIndex = 0;
+        gLessonListActive = false;
+        gLessonActive = true;
+        gLessonPage = 0;
+        gDirty = true;
+    }
+}
+
 void lessonKey(const KeyEvent& e) {
     if (!e.down) return;
     if (e.key == Key::Enter) {
@@ -1362,7 +1512,10 @@ void lessonKey(const KeyEvent& e) {
     }
     if (e.key == Key::Esc) {
         gLessonActive = false;
-        gShowHome = true;
+        if (!gLessonBatch.assignments.empty() && gLessonIndex < gLessonBatch.assignments.size())
+            gLessonListActive = true;
+        else
+            gShowHome = true;
         gDirty = true;
         return;
     }
@@ -1663,6 +1816,10 @@ void onKey(const KeyEvent& e) {
         return;
     }
 #endif
+    if (gLessonListActive) {
+        lessonListKey(e);
+        return;
+    }
     if (gLessonActive) {
         lessonKey(e);
         return;
@@ -1892,7 +2049,7 @@ void portalFinish() {
 
 bool startSetupPortal() {
     if (gPortalActive) return true;
-    if (gReviewActive || gLessonActive) return false;
+    if (gReviewActive || gLessonActive || gLessonListActive) return false;
     tgc::board::setDisplayOn(true);
     tgc::board::setBrightness(kk::settingsBrightness());
     gDimmed = false;
@@ -2825,6 +2982,10 @@ void draw() {
         drawReviewSummary();
         return;
     }
+    if (gLessonListActive) {
+        drawLessonList();
+        return;
+    }
     if (gLessonActive) {
         drawLesson();
         return;
@@ -2845,7 +3006,7 @@ void draw() {
 void drawStatus() {
     if (!gDisp || gPortalActive || gLowBatteryPrompt || gSignOutConfirm || gAboutActive ||
         gSettingsActive || gPauseActive || gShowHome || gReviewActive || gReviewSummary ||
-        gLessonActive)
+        gLessonListActive || gLessonActive)
         return;
 #ifdef KANIKEY_DEV
     if (gShowDebug) drawDebug();
@@ -2999,7 +3160,7 @@ void serviceAssetServer() {
 }
 
 void startAssetServer() {
-    if (gReviewActive || gLessonActive) {
+    if (gReviewActive || gLessonActive || gLessonListActive) {
         Serial.println("[asset] finish the review/lesson first");
         return;
     }
@@ -3212,16 +3373,32 @@ void handleSerial() {
                 startReview();
             }
         } else if (gSerialLine == "e") {
-            if (gLessonActive) {
+            if (gLessonListActive) {
+                if (!gLessonBatch.assignments.empty()) {
+                    if (gLessonIndex >= gLessonBatch.assignments.size()) gLessonIndex = 0;
+                    gLessonListActive = false;
+                    gLessonActive = true;
+                    gLessonPage = 0;
+                    gDirty = true;
+                }
+            } else if (gLessonActive) {
                 startCurrentLesson();
             } else if (gReviewActive) {
                 if (gFeedback) advanceFeedback();
                 else checkCurrent();
             }
         } else if (gSerialLine == "q") {
-            if (gLessonActive) {
-                gLessonActive = false;
+            if (gLessonListActive) {
+                gLessonListActive = false;
                 gShowHome = true;
+                gDirty = true;
+            } else if (gLessonActive) {
+                gLessonActive = false;
+                if (!gLessonBatch.assignments.empty() &&
+                    gLessonIndex < gLessonBatch.assignments.size())
+                    gLessonListActive = true;
+                else
+                    gShowHome = true;
                 gDirty = true;
             } else if (gReviewActive) {
                 endReview();
@@ -3448,9 +3625,9 @@ void loop() {
         gScreenOff = true;
     }
     if (!gPortalActive && !gReviewActive && !gReviewSummary && !gFeedback && !gLessonActive &&
-        !gPauseActive && !gSettingsActive && !gAboutActive && !gLowBatteryPrompt &&
-        !gAssetServerActive && sleepMs && now - gLastInputAt > sleepMs &&
-        !tgc::board::externalPower()) {
+        !gLessonListActive && !gPauseActive && !gSettingsActive && !gAboutActive &&
+        !gLowBatteryPrompt && !gAssetServerActive && sleepMs &&
+        now - gLastInputAt > sleepMs && !tgc::board::externalPower()) {
         Serial.println("[power] idle sleep");
         saveCacheSnapshot();
         tgc::board::deepSleep();
