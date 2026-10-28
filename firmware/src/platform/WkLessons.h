@@ -21,7 +21,7 @@ struct LessonBatch {
 
 LessonBatch fetchLessonBatch(const String& token, const std::vector<uint32_t>& lessonSubjectIds,
                              size_t limit = 5);
-// Fetch plain subjects by id (lesson components), without mnemonics/details.
+// Fetch plain subjects by id (lesson/review components), without details.
 std::vector<Subject> fetchSubjectsByIds(const String& token, const std::vector<uint32_t>& ids,
                                         size_t batch = 10);
 bool startAssignment(const String& token, uint32_t assignmentId, uint32_t startedAt);

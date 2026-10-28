@@ -53,6 +53,10 @@ Working on hardware:
 - Level progress: `/level_progressions` is fetched on sync and cached. Home
   shows the current level's unlock date in the low-priority status line
   (`L8 since 03 Feb`); the real request returned 200 on hardware.
+- Item detail: review batches now keep mnemonics/hints and fetch their
+  component subjects; `Tab` on feedback opens a 5-page detail card (meanings/
+  readings/synonyms, meaning mnemonic, reading mnemonic, notes, components).
+  The detail screen was hardware-verified with a synthetic cached review.
 - SD visual pack: the card now has the token pack with **7,269 glyphs + 498
   radical bitmaps** (3,698,476 B), uploaded over USB on 2026-10-27. Wi-Fi
   asset upload also works.
@@ -83,9 +87,9 @@ Working on hardware:
   sleep, screenshot capture.
 - 46 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,379,925 B / 1,835,008 B flash (75.2%)**, **94,232 B /
-327,680 B static RAM (28.8%)**. The dev image is 1,385,049 B. Removing
-`efontJA_16` freed ~468 KB and leaves ~455 KB of flash headroom.
+Current build: **1,382,697 B / 1,835,008 B flash (75.3%)**, **94,240 B /
+327,680 B static RAM (28.8%)**. The dev image is 1,388,905 B. Removing
+`efontJA_16` freed ~468 KB and leaves ~452 KB of flash headroom.
 
 ## Priority summary
 
@@ -97,7 +101,7 @@ Current build: **1,379,925 B / 1,835,008 B flash (75.2%)**, **94,232 B /
 | 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats and level progress are live; item detail, stats screens and preferences are missing | Partial | WK-08, WK-09 |
 | 5 | Outbox and API robustness | Rejected items, 429 and invalid auth have no user path | Partial | API-01, API-02 |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
-| 7 | UI, stats and sync | Missing SRS bar, sync progress, accuracy and item detail | Partial | UI-01, UI-02 |
+| 7 | UI, stats and sync | Missing SRS bar, sync progress and accuracy; item detail is live | Partial | UI-01, UI-02 |
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal ported; OTA/widgets pending | TNG-02, TNG-03 |
 | 9 | Technical debt, CI and release | Maintainability and shipping | Ongoing | TECH-01, TECH-04 |
 | 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | Not started | EXT-01, EXT-03 |
@@ -114,9 +118,9 @@ lesson flow.
 | 1 | Offline cache | CACHE-05 → CACHE-07, TNG-04, TNG-05 | Review and Home work after reboot without network |
 | 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | List, understand, quiz and start lessons |
 | 3 | Setup and device UX | TNG-02 | OTA release path (setup/settings complete) |
-| 4 | WaniKani data and detail | WK-08 → WK-11 (WK-01/03/04/05/06/07 done) | Item detail and progress |
+| 4 | WaniKani data and detail | WK-09 → WK-11 (WK-01/03/04/05/06/07/08 done) | Vocabulary data and progress |
 | 5 | API robustness | API-01 → API-07 | Recoverable rejected, rate-limited and auth errors |
-| 6 | UI, stats and sync | UI-01 → UI-08 | SRS bar, sync screen, accuracy and polish |
+| 6 | UI, stats and sync | UI-01 → UI-08 (UI-04 done) | SRS bar, sync screen, accuracy and polish |
 | 7 | Technical debt and release | TECH-01 → TECH-07 | CI, refactor, version, OTA and license |
 | 8 | Kakehashi-inspired extras | EXT-01 → EXT-09 | Practice modes, critical items, audio and stats |
 
@@ -272,7 +276,9 @@ the remaining preferences still need work.
   caches the current level's timestamps and Home shows `L8 since 03 Feb` in the
   low-priority status line. The real request returned 200 on hardware.
 - **WK-08 — Item detail data.** Mnemonics, hints, components, user notes and
-  synonyms for the review detail screen.
+  synonyms for the review detail screen. **Done (2026-10-28):** review subjects
+  are parsed with details, component subjects are fetched in small pages and
+  kept with the batch, and the data is cached. The detail screen is UI-04.
 - **WK-09 — Vocabulary detail fields.** Parse `parts_of_speech`,
   `context_sentences` (phase 2) and `pronunciation_audios` (phase 2).
 - **WK-10 — Related subjects.** Parse `visually_similar_subject_ids`,
@@ -354,7 +360,9 @@ the device; account/study preferences and clear error actions remain.
 - **UI-03 — Session summary.** Accuracy, time, completed items, mistakes and
   SRS stage changes, not only counts.
 - **UI-04 — Item detail screen.** Mnemonics, components, notes, synonyms and
-  readings; open from review feedback.
+  readings; open from review feedback. **Done (2026-10-28):** `Tab` on feedback
+  opens a 5-page card; `Space` pages, `Tab`/`Esc` returns. Verified on hardware
+  with a synthetic cached review.
 - **UI-05 — Level progress.** Current level, progress to next level and
   level-up feedback (with WK-07).
 - **UI-06 — Lesson layout fixes.** Page counter, hint bar spacing and the

@@ -656,13 +656,16 @@ static void test_markup_and_subject_details() {
         "\"characters\":\"休\",\"meanings\":[{\"meaning\":\"rest\",\"primary\":true,"
         "\"accepted_answer\":true}],\"component_subject_ids\":[1,2],"
         "\"meaning_mnemonic\":\"A <radical>person</radical> by a <kanji>tree</kanji>.\","
-        "\"reading_mnemonic\":\"<reading>kyuu</reading>.\"}}]}";
+        "\"reading_mnemonic\":\"<reading>kyuu</reading>.\","
+        "\"meaning_hint\":\"A hint.\",\"reading_hint\":\"Read it.\"}}]}";
     TEST_ASSERT_TRUE(p.parse(text, &v));
     const std::vector<Subject> ss = parseSubjects(v, true);
     TEST_ASSERT_EQUAL(1, ss.size());
     TEST_ASSERT_EQUAL(2, ss[0].componentSubjectIds.size());
     TEST_ASSERT_EQUAL_STRING("A person by a tree.", ss[0].meaningMnemonic.c_str());
     TEST_ASSERT_EQUAL_STRING("kyuu.", ss[0].readingMnemonic.c_str());
+    TEST_ASSERT_EQUAL_STRING("A hint.", ss[0].meaningHint.c_str());
+    TEST_ASSERT_EQUAL_STRING("Read it.", ss[0].readingHint.c_str());
 }
 
 static void test_level_progressions_parse() {

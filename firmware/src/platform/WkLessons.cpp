@@ -115,19 +115,19 @@ std::vector<Subject> fetchSubjectsByIds(const String& token, const std::vector<u
         const String path = "/v2/subjects?ids=" + idList(ids, begin, end);
         const WkResponse r = wkGetRetry(path, token, 32768, 12000);
         if (r.httpCode != 200) {
-            Serial.printf("[lesson] components HTTP %d\n", r.httpCode);
+            Serial.printf("[subjects] components HTTP %d\n", r.httpCode);
             return {};
         }
         JsonValue v;
         if (!parseJson(r.body, &v)) {
-            Serial.printf("[lesson] components JSON failed: len=%u\n",
+            Serial.printf("[subjects] components JSON failed: len=%u\n",
                           static_cast<unsigned>(r.body.size()));
             return {};
         }
         std::vector<Subject> part = parseSubjects(v);
         v = JsonValue{};  // free the page before growing the output vector
         for (Subject& s : part) out.push_back(std::move(s));
-        Serial.printf("[lesson] components %u/%u\n", static_cast<unsigned>(end),
+        Serial.printf("[subjects] components %u/%u\n", static_cast<unsigned>(end),
                       static_cast<unsigned>(ids.size()));
     }
     return out;

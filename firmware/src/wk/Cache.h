@@ -46,6 +46,9 @@ uint32_t cacheAccountKey(std::string_view token);
 bool encodeCacheSnapshot(const CacheSnapshot& snapshot, std::vector<uint8_t>* out);
 bool decodeCacheSnapshot(const uint8_t* data, size_t size, CacheSnapshot* out);
 bool encodeSubjectCache(const SubjectCache& cache, std::vector<uint8_t>* out);
+// Same payload without copying the subjects into a SubjectCache.
+bool encodeSubjectCache(const CacheMeta& meta, const std::vector<Subject>& subjects,
+                        std::vector<uint8_t>* out);
 bool decodeSubjectCache(const uint8_t* data, size_t size, SubjectCache* out);
 
 }  // namespace kk

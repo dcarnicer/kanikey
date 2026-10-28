@@ -443,6 +443,27 @@ verified on hardware on 2026-10-28.
 
 ---
 
+## 2026-10-28 — Review detail data is cached with the batch
+
+**Decision:** review batches parse mnemonics/hints and fetch component subjects
+in pages of 3, keeping them in the same subject list as the review items.
+`Tab` on feedback opens a 5-page detail card (meanings/readings/synonyms,
+meaning mnemonic, reading mnemonic, notes, components). The subject cache is
+written from the vector directly, without copying every Subject.
+
+**Why:** the detail card needs the same data online and offline; components are
+small but a 10-subject page DOM is too large after the review subjects are
+loaded. Copying the 40+ subjects into a second `SubjectCache` added another
+large allocation and could abort during the cache save.
+
+**Implications:** components are part of `KKCS` and count against the raised
+128-subject limit. The detail card is read-only and never calls `/start`. The
+data path is native-tested; the card was hardware-verified with a synthetic
+cached review. A real component fetch reached 24/24 before the no-copy cache
+save was added.
+
+---
+
 ## 2026-10-28 — Lesson quiz is optional and local-only
 
 **Decision:** `Q` on a lesson card opens a typed meaning/reading quiz with

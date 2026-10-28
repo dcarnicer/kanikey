@@ -166,6 +166,12 @@ data.readings[] { reading, primary, accepted_answer, type }
 - `document_url`, `slug`, `created_at`, `hidden_at` and
   `spaced_repetition_system_id` are not stored in v1 (they are not needed).
 
+**Implementation (2026-10-28).** Review batches parse the detail fields
+(`meaning_mnemonic`, `reading_mnemonic`, hints) and fetch the component subjects
+in pages of 3. A 10-subject component page is ~20 KB and its DOM can exceed the
+largest free block after the review subjects are loaded. Components are kept in
+the same subject list and cached, so the detail card works offline.
+
 ### 3.5 `/study_materials`
 
 Fields: `subject_id`, `meaning_note`, `reading_note`, `meaning_synonyms[]`,

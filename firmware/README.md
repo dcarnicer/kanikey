@@ -52,6 +52,9 @@ KaniKey firmware for the M5Stack Cardputer ADV.
   history in the session summary (`SRS 3 -> 4`, `History 18 reviews, 89%`).
 - Fetches `/v2/level_progressions` on sync and shows the current level's
   unlock date in the Home status line (`L8 since 03 Feb`).
+- `Tab` on review feedback opens the item detail card (meanings, readings,
+  mnemonics, notes, components); `Space` pages and `Tab`/`Esc` returns.
+  Review batches keep mnemonics/hints and fetch component subjects for it.
 - Writes the pack to the card over the USB serial link or a one-shot Wi-Fi
   upload server.
 
@@ -193,7 +196,8 @@ prints or stores the password. `token` prompts for the WaniKani token, sends
 | `P` | Open the setup portal (Wi-Fi/token/time/pack) |
 | `v` | Fetch (if needed) and start a review session |
 | `l` | Fetch and show the lesson list/picker |
-| `g` | Next mnemonic page in a lesson |
+| `g` | Next mnemonic page in a lesson, or next review-detail page |
+| `D` | Toggle the review detail card from feedback |
 | `Q` | Open the optional lesson quiz for the current card |
 | `y <text>` | Type text into the current review or lesson-quiz answer (test helper) |
 | `e` | Open the selected lesson / check the answer / advance / start |

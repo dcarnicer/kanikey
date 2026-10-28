@@ -99,6 +99,8 @@ bool gReviewSummary = false;
 bool gFeedback = false;
 bool gNeedsSubmit = false;
 bool gFeedbackCompleted = false;
+bool gReviewDetail = false;
+int gReviewDetailPage = 0;
 kk::AnswerCheck gCheck;
 kk::ReviewPart gFeedbackPart = kk::ReviewPart::None;
 uint32_t gFeedbackSubjectId = 0;
@@ -164,6 +166,8 @@ void localHm(uint32_t epoch, char* out, size_t n);
 void localDate(uint32_t epoch, char* out, size_t n);
 void draw();
 void drawLoading(const char* title, const char* subtitle);
+void drawReviewDetail();
+std::string subjectMainMeaning(const kk::Subject& s);
 void drawLesson();
 void drawLessonList();
 void drawLessonEmpty();
@@ -277,13 +281,12 @@ void saveCacheSnapshot() {
 
 void saveSubjectCache() {
     if (!gSdOk || !gBatch.ok || gBatch.subjects.empty() || !kk::DevToken::has()) return;
-    kk::SubjectCache cache;
-    cache.meta.savedAt = gBatch.fetchedAt ? gBatch.fetchedAt : gSyncedAt;
-    cache.meta.accountKey = currentAccountKey();
-    cache.subjects = gBatch.subjects;
-    if (kk::cacheSaveSubjects(SD, cache)) {
+    kk::CacheMeta meta;
+    meta.savedAt = gBatch.fetchedAt ? gBatch.fetchedAt : gSyncedAt;
+    meta.accountKey = currentAccountKey();
+    if (kk::cacheSaveSubjects(SD, meta, gBatch.subjects)) {
         Serial.printf("[cache] subjects saved: %u\n",
-                      static_cast<unsigned>(cache.subjects.size()));
+                      static_cast<unsigned>(gBatch.subjects.size()));
     } else {
         Serial.println("[cache] subjects save failed");
     }
@@ -325,6 +328,13 @@ bool loadCache() {
                 if (!match) continue;
                 gBatch.assignments.push_back(a);
                 gBatch.subjects.push_back(*match);
+            }
+            // Keep component subjects too, for the offline detail card.
+            for (const kk::Subject& s : subjects.subjects) {
+                if (std::any_of(gBatch.subjects.begin(), gBatch.subjects.end(),
+                                [&s](const kk::Subject& x) { return x.id == s.id; }))
+                    continue;
+                gBatch.subjects.push_back(s);
             }
             gBatch.fetchedAt = snapshot.meta.savedAt;
             gBatch.ok = !gBatch.assignments.empty();
@@ -564,28 +574,35 @@ bool runBatch() {
     Serial.printf("[review] %u assignments, %u subjects\n",
                   static_cast<unsigned>(batch.assignments.size()),
                   static_cast<unsigned>(batch.subjects.size()));
-    for (const kk::Subject& s : batch.subjects) {
+    for (const kk::Assignment& a : batch.assignments) {
+        const kk::Subject* s = nullptr;
+        for (const kk::Subject& candidate : batch.subjects)
+            if (candidate.id == a.subjectId) {
+                s = &candidate;
+                break;
+            }
+        if (!s) continue;
         std::string meaning;
-        for (const kk::Meaning& m : s.meanings)
+        for (const kk::Meaning& m : s->meanings)
             if (m.accepted) {
                 meaning = m.text;
                 break;
             }
-        if (meaning.empty() && !s.meanings.empty()) meaning = s.meanings[0].text;
+        if (meaning.empty() && !s->meanings.empty()) meaning = s->meanings[0].text;
         std::string reading;
-        for (const kk::Reading& r : s.readings)
+        for (const kk::Reading& r : s->readings)
             if (r.accepted && r.primary) {
                 reading = r.text;
                 break;
             }
         if (reading.empty())
-            for (const kk::Reading& r : s.readings)
+            for (const kk::Reading& r : s->readings)
                 if (r.accepted) {
                     reading = r.text;
                     break;
                 }
-        Serial.printf("[review] sub %u %s m=%s r=%s\n", static_cast<unsigned>(s.id),
-                      s.characters.c_str(), meaning.c_str(), reading.c_str());
+        Serial.printf("[review] sub %u %s m=%s r=%s\n", static_cast<unsigned>(s->id),
+                      s->characters.c_str(), meaning.c_str(), reading.c_str());
     }
     snprintf(gNetLine, sizeof gNetLine, "Batch: %ua %us",
              static_cast<unsigned>(batch.assignments.size()),
@@ -876,12 +893,187 @@ void drawReview() {
     d.setTextFont(0);
     d.setTextSize(1);
     d.setTextColor(kFaint, kBg);
-    d.drawString(gFeedback ? "Enter: next" : "Enter: check", 6, 125);
+    d.drawString(gFeedback ? "Enter: next  Tab: details" : "Enter: check", 6, 125);
     d.setTextDatum(lgfx::top_right);
     d.drawString("Esc: quit", 233, 125);
     d.setTextDatum(lgfx::top_left);
     d.endWrite();
     present();
+}
+
+void drawReviewDetail() {
+    if (!gDisp) return;
+    uint32_t subjectId = gFeedbackSubjectId;
+    if (!subjectId && gQueue.current()) subjectId = gQueue.current()->subjectId;
+    const kk::Subject* s = subjectById(subjectId);
+    if (!s) return;
+
+    auto& d = target();
+    d.startWrite();
+    d.fillScreen(kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(kDim, kBg);
+    d.drawString("ITEM DETAIL", 6, 3);
+    char right[16];
+    snprintf(right, sizeof right, "%d/5", gReviewDetailPage + 1);
+    d.setTextFont(0);
+    d.setTextDatum(lgfx::top_right);
+    d.drawString(right, 233, 5);
+    d.setTextDatum(lgfx::top_left);
+    d.fillRect(0, 14, 240, 2, kSurfaceHi);
+
+    d.fillRect(4, 20, 74, 64, kSurface);
+    d.drawRect(4, 20, 74, 64, kLine);
+    if (!drawSubjectPrompt(d, *s, 41, 52, 70, 62, 60, kText, kSurface,
+                           kk::ClipRect{6, 22, 76, 82}))
+        drawMissingGlyph(d, 41, 52);
+    const char* kind = s->type == kk::SubjectType::Vocabulary ? "VOCAB"
+                       : s->type == kk::SubjectType::Radical ? "RADICAL"
+                                                              : "KANJI";
+    char type[24];
+    snprintf(type, sizeof type, "%s L%d", kind, s->level);
+    d.setTextFont(0);
+    d.setTextSize(1);
+    drawPill(d, 86, 20, type, kDim, kSurfaceHi);
+
+    switch (gReviewDetailPage) {
+        case 0: {
+            d.setTextFont(0);
+            d.setTextSize(1);
+            d.setTextColor(kFaint, kBg);
+            d.drawString("MEANINGS", 86, 38);
+            std::string meanings;
+            for (const kk::Meaning& m : s->meanings)
+                if (m.accepted) {
+                    if (!meanings.empty()) meanings += " / ";
+                    meanings += m.text;
+                }
+            if (!s->meaningSynonyms.empty()) {
+                meanings += "  + ";
+                for (size_t i = 0; i < s->meaningSynonyms.size(); ++i) {
+                    if (i) meanings += ", ";
+                    meanings += s->meaningSynonyms[i];
+                }
+            }
+            if (meanings.empty()) meanings = "-";
+            drawWrapped(d, meanings, 86, 48, 150, 3, kText, kBg);
+            d.setTextFont(0);
+            d.setTextSize(1);
+            d.setTextColor(kFaint, kBg);
+            d.drawString("R", 86, 82);
+            std::string reading;
+            for (const kk::Reading& r : s->readings)
+                if (r.accepted && r.primary) {
+                    reading = r.text;
+                    break;
+                }
+            if (reading.empty())
+                for (const kk::Reading& r : s->readings)
+                    if (r.accepted) {
+                        reading = r.text;
+                        break;
+                    }
+            if (reading.empty()) {
+                d.drawString("none", 94, 88);
+            } else if (!drawJapaneseFit(d, reading, 94, 232, 98, 142, kReading, kBg,
+                                        kk::ClipRect{94, 80, 236, 100})) {
+                d.setTextFont(1);
+                d.setTextSize(1);
+                d.setTextColor(kWarn, kBg);
+                d.drawString("no glyph", 94, 88);
+            }
+            break;
+        }
+        case 1:
+        case 2: {
+            const bool meaning = gReviewDetailPage == 1;
+            d.setTextFont(0);
+            d.setTextSize(1);
+            d.setTextColor(kFaint, kBg);
+            d.drawString(meaning ? "MEANING MNEMONIC" : "READING MNEMONIC", 86, 38);
+            std::string text = meaning ? s->meaningMnemonic : s->readingMnemonic;
+            if (text.empty()) text = "No mnemonic cached.";
+            const std::string hint = meaning ? s->meaningHint : s->readingHint;
+            if (!hint.empty()) text += "  Hint: " + hint;
+            drawWrapped(d, text, 86, 48, 150, 6, kText, kBg);
+            break;
+        }
+        case 3: {
+            d.setTextFont(0);
+            d.setTextSize(1);
+            d.setTextColor(kFaint, kBg);
+            d.drawString("NOTES", 86, 38);
+            std::string notes;
+            if (!s->meaningNote.empty()) notes += "Meaning: " + s->meaningNote + " ";
+            if (!s->readingNote.empty()) notes += "Reading: " + s->readingNote;
+            if (notes.empty()) notes = "No study notes.";
+            drawWrapped(d, notes, 86, 48, 150, 6, kText, kBg);
+            break;
+        }
+        default: {
+            d.setTextFont(0);
+            d.setTextSize(1);
+            d.setTextColor(kFaint, kBg);
+            d.drawString("COMPONENTS", 86, 38);
+            int row = 0;
+            for (uint32_t id : s->componentSubjectIds) {
+                const kk::Subject* c = subjectById(id);
+                if (!c) continue;
+                if (row >= 4) break;
+                const int y = 50 + row * 18;
+                if (!c->characters.empty())
+                    gPack.drawTextFit(d, c->characters, 86, y + 15, 20, 24, kText, kBg,
+                                      kk::ClipRect{86, y, 112, y + 17});
+                else {
+                    d.setTextFont(0);
+                    d.setTextSize(1);
+                    d.setTextColor(kFaint, kBg);
+                    d.drawString("RAD", 86, y + 4);
+                }
+                d.setTextFont(1);
+                d.setTextSize(1);
+                d.setTextColor(kDim, kBg);
+                std::string meaning = subjectMainMeaning(*c);
+                while (meaning.size() > 1 && d.textWidth(meaning.c_str()) > 116) meaning.pop_back();
+                d.drawString(meaning.c_str(), 116, y + 3);
+                ++row;
+            }
+            if (row == 0) {
+                d.setTextFont(0);
+                d.setTextSize(1);
+                d.setTextColor(kFaint, kBg);
+                d.drawString("No components cached.", 86, 50);
+            }
+            break;
+        }
+    }
+
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextColor(kFaint, kBg);
+    d.drawString("Space: page  Tab/Esc: back", 5, 125);
+    d.endWrite();
+    present();
+}
+
+void reviewDetailKey(const KeyEvent& e) {
+    if (!e.down) return;
+    if (e.key == Key::Esc || e.key == Key::Tab) {
+        gReviewDetail = false;
+        gDirty = true;
+        return;
+    }
+    if (e.key == Key::Right ||
+        (e.key == Key::Other && tgc::cardputerCharAt(e.x, e.y, false) == ' ')) {
+        if (gReviewDetailPage < 4) ++gReviewDetailPage;
+        gDirty = true;
+    } else if (e.key == Key::Left || e.key == Key::Backspace) {
+        if (gReviewDetailPage > 0) --gReviewDetailPage;
+        gDirty = true;
+    }
 }
 
 void drawReviewSummary() {
@@ -1142,6 +1334,7 @@ void advanceFeedback() {
         queueReview(gCompletedItem);
         gNeedsSubmit = false;
     }
+    gReviewDetail = false;
     gFeedback = false;
     gFeedbackCompleted = false;
     clearReviewInput();
@@ -1168,6 +1361,7 @@ void endReview() {
     gLowBatteryConfirmed = false;
     gReviewActive = false;
     gReviewSummary = false;
+    gReviewDetail = false;
     gShowHome = true;
     gFeedback = false;
     gFeedbackCompleted = false;
@@ -1190,6 +1384,8 @@ void requestLowBatteryConfirm(int action) {
 void startReview() {
     if (!gHaveSummary) return;
     gLessonQuizActive = false;
+    gReviewDetail = false;
+    gReviewDetailPage = 0;
     gStageChange = StageChange{};
     gPendingStageAssignment = 0;
     gPendingStageFrom = 0;
@@ -1256,9 +1452,18 @@ void startReview() {
 
 bool reviewKey(const KeyEvent& e) {
     if (!e.down) return false;
+    if (gReviewDetail) {
+        reviewDetailKey(e);
+        return true;
+    }
     if (gFeedback) {
         if (e.key == Key::Enter) advanceFeedback();
         else if (e.key == Key::Esc) openPause();
+        else if (e.key == Key::Tab) {
+            gReviewDetail = true;
+            gReviewDetailPage = 0;
+            gDirty = true;
+        }
         return true;
     }
     if (e.key == Key::Enter) {
@@ -3466,6 +3671,14 @@ void seedDevCache() {
     kanji.characters = "日";
     kanji.meanings = {{"day", true, true}};
     kanji.readings = {{"にち", true, true, kk::ReadingType::Onyomi}};
+    kanji.meaningSynonyms = {"sun"};
+    kanji.meaningMnemonic = "A window with the sun in it.";
+    kanji.readingMnemonic = "Nichi sounds like a sunny day.";
+    kanji.meaningHint = "Think of daylight.";
+    kanji.readingHint = "The sun is nichi.";
+    kanji.meaningNote = "Remember the sun.";
+    kanji.readingNote = "Nichi, not ni.";
+    kanji.componentSubjectIds = {1};
     subjects.subjects.push_back(kanji);
     kk::Subject vocabulary;
     vocabulary.id = 3;
@@ -3474,6 +3687,9 @@ void seedDevCache() {
     vocabulary.characters = "日本";
     vocabulary.meanings = {{"Japan", true, true}};
     vocabulary.readings = {{"にほん", true, true, kk::ReadingType::Kunyomi}};
+    vocabulary.meaningMnemonic = "The sun's origin is Japan.";
+    vocabulary.readingMnemonic = "Nihon is Japan.";
+    vocabulary.componentSubjectIds = {2};
     subjects.subjects.push_back(vocabulary);
 
     auto stats = [](kk::Subject& s, uint32_t meaningCorrect, uint32_t meaningIncorrect,
@@ -3545,6 +3761,10 @@ void draw() {
         return;
     }
 #endif
+    if (gReviewDetail) {
+        drawReviewDetail();
+        return;
+    }
     if (gReviewActive) {
         drawReview();
         return;
@@ -3943,6 +4163,15 @@ void handleSerial() {
             if (gLessonActive) {
                 ++gLessonPage;
                 gDirty = true;
+            } else if (gReviewDetail) {
+                if (gReviewDetailPage < 4) ++gReviewDetailPage;
+                gDirty = true;
+            }
+        } else if (gSerialLine == "D") {
+            if (gReviewActive && gFeedback) {
+                gReviewDetail = !gReviewDetail;
+                gReviewDetailPage = 0;
+                gDirty = true;
             }
         } else if (gSerialLine == "Q") {
             if (gLessonActive) {
@@ -4081,7 +4310,7 @@ void handleSerial() {
             delay(100);
             ESP.restart();
         } else if (!gSerialLine.isEmpty()) {
-            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload\n");
+            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload\n");
         }
         gSerialLine = "";
         gDirty = true;

@@ -117,8 +117,12 @@ bool cacheLoadSubjects(fs::FS& sd, SubjectCache* out) {
 }
 
 bool cacheSaveSubjects(fs::FS& sd, const SubjectCache& cache) {
+    return cacheSaveSubjects(sd, cache.meta, cache.subjects);
+}
+
+bool cacheSaveSubjects(fs::FS& sd, const CacheMeta& meta, const std::vector<Subject>& subjects) {
     std::vector<uint8_t> bytes;
-    if (!encodeSubjectCache(cache, &bytes)) {
+    if (!encodeSubjectCache(meta, subjects, &bytes)) {
         Serial.println("[cache] subjects encode failed");
         return false;
     }

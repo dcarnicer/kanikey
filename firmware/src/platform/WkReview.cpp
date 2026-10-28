@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "platform/WkClient.h"
+#include "platform/WkLessons.h"
 #include "platform/WkReviewStatistics.h"
 #include "platform/WkStudyMaterials.h"
 #include "wk/Json.h"
@@ -88,7 +89,7 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
             batch.error = "subjects JSON";
             return batch;
         }
-        std::vector<Subject> part = parseSubjects(sv);
+        std::vector<Subject> part = parseSubjects(sv, true);
         sv = JsonValue{};  // free the page before growing the subject vector
         for (Subject& s : part) batch.subjects.push_back(std::move(s));
         Serial.printf("[review] subjects %u/%u, total %u\n", static_cast<unsigned>(end),
@@ -98,6 +99,34 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
 
     attachStudyMaterials(token, &batch.subjects);
     attachReviewStatistics(token, &batch.subjects);
+
+    // Detail data: fetch the component subjects once and keep them in the same
+    // subject list. The queue ignores subjects without an assignment.
+    std::vector<uint32_t> componentIds;
+    for (const Subject& s : batch.subjects) {
+        for (uint32_t id : s.componentSubjectIds) {
+            if (std::find(componentIds.begin(), componentIds.end(), id) != componentIds.end())
+                continue;
+            if (std::any_of(batch.subjects.begin(), batch.subjects.end(),
+                            [id](const Subject& x) { return x.id == id; }))
+                continue;
+            componentIds.push_back(id);
+        }
+    }
+    if (!componentIds.empty()) {
+        // Small pages: a 10-subject component page is ~20 KB and its DOM can
+        // exceed the largest free block after the review subjects are cached.
+        std::vector<Subject> components = fetchSubjectsByIds(token, componentIds, 3);
+        batch.subjects.reserve(batch.subjects.size() + components.size());
+        for (Subject& c : components) {
+            if (std::any_of(batch.subjects.begin(), batch.subjects.end(),
+                            [&c](const Subject& x) { return x.id == c.id; }))
+                continue;
+            batch.subjects.push_back(std::move(c));
+        }
+        Serial.printf("[review] components %u/%u\n", static_cast<unsigned>(components.size()),
+                      static_cast<unsigned>(componentIds.size()));
+    }
 
     batch.fetchedAt = now;
     batch.ok = !batch.subjects.empty();

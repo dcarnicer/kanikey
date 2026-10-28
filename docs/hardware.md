@@ -233,6 +233,12 @@ E (221) esp_core_dump_flash: No core dump partition found!
 - Level progress: `/v2/level_progressions` returned 200 (3,275 bytes) and the
   log showed level 8 with its unlock/start timestamps. Home showed
   `L8 since 03 Feb` in the status line. The request took ~2.2 s.
+- Item detail: `Tab`/`D` on feedback opened the 5-page card with meanings,
+  readings, synonyms, mnemonics, hints, notes and components on a synthetic
+  cached review. A real review batch fetched 24/24 component subjects; the
+  subsequent cache save then hit `std::bad_alloc` while copying 44 subjects.
+  The copy was removed (`encodeSubjectCache` now takes the vector directly),
+  but the fix still needs a clean hardware run because Wi-Fi failed afterwards.
 - Long readings: feedback uses `Y`/`A` side labels and a right-aligned 20 px
   fallback, so かつようけい fits without clipping.
 - Crash found and fixed: growing `batch.subjects` while a subject page DOM was

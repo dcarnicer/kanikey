@@ -15,7 +15,7 @@ constexpr const char kSubjectsMagic[4] = {'K', 'K', 'C', 'S'};
 constexpr uint16_t kMaxBuckets = 64;
 constexpr uint16_t kMaxBucketIds = 1000;
 constexpr uint16_t kMaxAssignments = 128;
-constexpr uint16_t kMaxSubjects = 64;
+constexpr uint16_t kMaxSubjects = 128;
 constexpr uint16_t kMaxMeanings = 32;
 constexpr uint16_t kMaxReadings = 32;
 constexpr uint16_t kMaxList = 64;
@@ -464,14 +464,19 @@ bool decodeCacheSnapshot(const uint8_t* data, size_t size, CacheSnapshot* out) {
     return true;
 }
 
-bool encodeSubjectCache(const SubjectCache& cache, std::vector<uint8_t>* out) {
+bool encodeSubjectCache(const CacheMeta& meta, const std::vector<Subject>& subjects,
+                        std::vector<uint8_t>* out) {
     if (!out) return false;
-    if (cache.subjects.size() > kMaxSubjects) return false;
+    if (subjects.size() > kMaxSubjects) return false;
     Writer w;
-    w.u16(static_cast<uint16_t>(cache.subjects.size()));
-    for (const Subject& s : cache.subjects) encodeSubject(w, s);
+    w.u16(static_cast<uint16_t>(subjects.size()));
+    for (const Subject& s : subjects) encodeSubject(w, s);
     if (!w.ok()) return false;
-    return encodeFile(kSubjectsMagic, cache.meta, w.bytes(), out);
+    return encodeFile(kSubjectsMagic, meta, w.bytes(), out);
+}
+
+bool encodeSubjectCache(const SubjectCache& cache, std::vector<uint8_t>* out) {
+    return encodeSubjectCache(cache.meta, cache.subjects, out);
 }
 
 bool decodeSubjectCache(const uint8_t* data, size_t size, SubjectCache* out) {

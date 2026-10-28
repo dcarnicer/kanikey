@@ -390,6 +390,11 @@ kept inside each level.
 - If the mnemonic isn't cached: `Mnemonic not available offline`.
 - `Esc` returns to the review without losing the written answer.
 
+**Implementation note (2026-10-28).** `Tab` on feedback opens the live card:
+page 1 meanings/readings/synonyms, page 2 meaning mnemonic + hint, page 3
+reading mnemonic + hint, page 4 notes, page 5 components. `Space` pages and
+`Tab`/`Esc` returns to feedback.
+
 ### 5.7 Session summary
 
 ![Summary](screens/summary.png)
