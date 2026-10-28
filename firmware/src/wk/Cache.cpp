@@ -237,6 +237,24 @@ bool decodeUser(Reader& r, User* u) {
     return true;
 }
 
+void encodeLevelProgress(Writer& w, const LevelProgress& p) {
+    w.u8(p.level);
+    w.u32(p.unlockedAt);
+    w.u32(p.startedAt);
+    w.u32(p.passedAt);
+    w.u32(p.completedAt);
+    w.u8(p.valid ? 1 : 0);
+}
+
+bool decodeLevelProgress(Reader& r, LevelProgress* p) {
+    uint8_t valid = 0;
+    if (!r.u8(&p->level) || !r.u32(&p->unlockedAt) || !r.u32(&p->startedAt) ||
+        !r.u32(&p->passedAt) || !r.u32(&p->completedAt) || !r.u8(&valid))
+        return false;
+    p->valid = valid != 0;
+    return true;
+}
+
 void encodeAssignment(Writer& w, const Assignment& a) {
     w.u32(a.id);
     w.u32(a.subjectId);
@@ -412,6 +430,7 @@ bool encodeCacheSnapshot(const CacheSnapshot& snapshot, std::vector<uint8_t>* ou
     encodeBuckets(w, snapshot.summary.lessons);
     encodeBuckets(w, snapshot.summary.reviews);
     encodeUser(w, snapshot.user);
+    encodeLevelProgress(w, snapshot.levelProgress);
     if (snapshot.assignments.size() > kMaxAssignments) return false;
     w.u16(static_cast<uint16_t>(snapshot.assignments.size()));
     for (const Assignment& a : snapshot.assignments) encodeAssignment(w, a);
@@ -429,7 +448,8 @@ bool decodeCacheSnapshot(const uint8_t* data, size_t size, CacheSnapshot* out) {
     if (!r.str(&snapshot.summary.nextReviewsAt) ||
         !r.u32(&snapshot.summary.dataUpdatedAt) ||
         !decodeBuckets(r, &snapshot.summary.lessons) ||
-        !decodeBuckets(r, &snapshot.summary.reviews) || !decodeUser(r, &snapshot.user))
+        !decodeBuckets(r, &snapshot.summary.reviews) || !decodeUser(r, &snapshot.user) ||
+        !decodeLevelProgress(r, &snapshot.levelProgress))
         return false;
     uint16_t count = 0;
     if (!r.u16(&count) || count > kMaxAssignments) return false;

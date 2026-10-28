@@ -10,6 +10,7 @@
 #include "wk/Outbox.h"
 #include "wk/Json.h"
 #include "wk/LessonQuiz.h"
+#include "wk/LevelProgress.h"
 #include "wk/StudyMaterial.h"
 #include "wk/SubjectParser.h"
 #include "wk/Text.h"
@@ -664,6 +665,35 @@ static void test_markup_and_subject_details() {
     TEST_ASSERT_EQUAL_STRING("kyuu.", ss[0].readingMnemonic.c_str());
 }
 
+static void test_level_progressions_parse() {
+    JsonParser p;
+    JsonValue v;
+    const char* text =
+        "{\"data\":["
+        "{\"id\":1,\"object\":\"level_progression\",\"data\":{\"level\":7,"
+        "\"unlocked_at\":\"2026-10-01T12:00:00Z\",\"started_at\":\"2026-10-02T12:00:00Z\","
+        "\"passed_at\":\"2026-10-10T12:00:00Z\",\"completed_at\":\"2026-10-12T12:00:00Z\"}},"
+        "{\"id\":2,\"object\":\"level_progression\",\"data\":{\"level\":8,"
+        "\"unlocked_at\":\"2026-10-12T12:00:00Z\",\"started_at\":null,"
+        "\"passed_at\":null,\"completed_at\":null}},"
+        "{\"id\":3,\"object\":\"level_progression\",\"data\":{\"level\":9,"
+        "\"unlocked_at\":null,\"started_at\":null,\"passed_at\":null,"
+        "\"completed_at\":null}}]}";
+    TEST_ASSERT_TRUE(p.parse(text, &v));
+    LevelProgress progress;
+    TEST_ASSERT_TRUE(parseLevelProgressions(v, 8, &progress));
+    TEST_ASSERT_EQUAL(8, progress.level);
+    uint32_t unlocked = 0;
+    TEST_ASSERT_TRUE(parseIso8601("2026-10-12T12:00:00Z", &unlocked));
+    TEST_ASSERT_EQUAL_UINT32(unlocked, progress.unlockedAt);
+    TEST_ASSERT_EQUAL_UINT32(0, progress.startedAt);
+    TEST_ASSERT_EQUAL_UINT32(0, progress.passedAt);
+
+    LevelProgress highest;
+    TEST_ASSERT_TRUE(parseLevelProgressions(v, 20, &highest));
+    TEST_ASSERT_EQUAL(9, highest.level);
+}
+
 static void test_review_statistics_parse_and_merge() {
     JsonParser p;
     JsonValue v;
@@ -836,6 +866,10 @@ static void test_cache_snapshot_round_trip() {
     in.user.lessonsBatchSize = 4;
     in.user.reviewsOrder = ReviewOrder::LowerLevelsFirst;
     in.user.vacationStartedAt = 1759900000u;
+    in.levelProgress.level = 8;
+    in.levelProgress.unlockedAt = 1759900000u;
+    in.levelProgress.startedAt = 1759900100u;
+    in.levelProgress.valid = true;
     Assignment a;
     a.id = 100;
     a.subjectId = 42;
@@ -868,6 +902,9 @@ static void test_cache_snapshot_round_trip() {
     TEST_ASSERT_EQUAL(4, out.user.lessonsBatchSize);
     TEST_ASSERT_EQUAL(ReviewOrder::LowerLevelsFirst, out.user.reviewsOrder);
     TEST_ASSERT_EQUAL_UINT32(1759900000u, out.user.vacationStartedAt);
+    TEST_ASSERT_EQUAL(8, out.levelProgress.level);
+    TEST_ASSERT_EQUAL_UINT32(1759900000u, out.levelProgress.unlockedAt);
+    TEST_ASSERT_TRUE(out.levelProgress.valid);
     TEST_ASSERT_EQUAL(1, out.assignments.size());
     TEST_ASSERT_EQUAL_UINT32(100, out.assignments[0].id);
     TEST_ASSERT_EQUAL_UINT32(42, out.assignments[0].subjectId);
@@ -985,6 +1022,7 @@ int main(int, char**) {
     RUN_TEST(test_summary_parse_and_counts);
     RUN_TEST(test_summary_text_parser);
     RUN_TEST(test_review_response_parse);
+    RUN_TEST(test_level_progressions_parse);
     RUN_TEST(test_assignment_parse);
     RUN_TEST(test_subject_parse);
     RUN_TEST(test_summary_subject_ids);

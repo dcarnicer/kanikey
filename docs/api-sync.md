@@ -70,6 +70,7 @@ ISO 8601 in UTC, with microseconds and `Z`. KaniKey only needs seconds.
 | GET | `/subjects` | Meanings, readings, components, mnemonics | When IDs are missing |
 | GET | `/study_materials` | User synonyms and notes | Per review/lesson batch |
 | GET | `/review_statistics` | Per-subject accuracy and streaks | Per review batch |
+| GET | `/level_progressions` | Current level and level-up timestamps | Every sync |
 | POST | `/reviews` | Send a completed review | Per item |
 | PUT | `/assignments/{id}/start` | Start a lesson | Per lesson |
 
@@ -78,7 +79,6 @@ Optional for phase 2:
 | Method | Endpoint | What for |
 |---|---|---|
 | GET | `/reviews` | History, streak, heatmap |
-| GET | `/level_progressions` | Level progress |
 
 ### 3.1 `/user`
 
@@ -236,6 +236,18 @@ lifetime accuracy and the session summary shows the last item's review count
 and accuracy. A token without the review-statistics permission still reviews,
 without the accuracy display.
 
+### 3.9 `/level_progressions`
+
+Fields used: `level`, `unlocked_at`, `started_at`, `passed_at`, `completed_at`,
+`abandoned_at`.
+
+**Implementation (2026-10-28).** Sync fetches the collection once and keeps the
+entry for the current level (falling back to the highest level). The snapshot
+stores the timestamps; Home shows the low-priority status line
+`L8 since 03 Feb` when no sync/outbox/offline/vacation message is more urgent.
+A token without the level-progressions permission keeps the previous cached
+value.
+
 ---
 
 ## 4. Token and permissions
@@ -246,6 +258,7 @@ without the accuracy display.
   - Read **subjects**.
   - Read **study materials**.
   - Read **review statistics**.
+  - Read **level progressions**.
   - Read **user** and **summary**.
   - Create **reviews**.
   - (Phase 2: read **reviews**.)
@@ -446,12 +459,13 @@ alters the SRS stage and the user's statistics. We prefer to leave the item as
 - Never delete the outbox before the POST is confirmed.
 
 **Implementation (2026-10-28).** The Home/user/batch snapshot is
-`/state/cache.bin` (`KKCA`, version 6); the batch subjects are
-`/kanikey/cache/subjects.bin` (`KKCS`, version 6) on SD. Version 3 added the
+`/state/cache.bin` (`KKCA`, version 7); the batch subjects are
+`/kanikey/cache/subjects.bin` (`KKCS`, version 7) on SD. Version 3 added the
 study-material notes to each cached subject, version 4 added the review
-presentation order, version 5 added the vacation timestamp and version 6 adds
-the per-subject review statistics; older files are discarded. Both carry the
-save time, an FNV-1a fingerprint of the API token, the payload length and CRC32.
+presentation order, version 5 added the vacation timestamp, version 6 added the
+per-subject review statistics and version 7 adds the level progression; older
+files are discarded. Both carry the save time, an FNV-1a fingerprint of the API
+token, the payload length and CRC32.
 The snapshot also stores the summary's `data_updated_at`; assignments keep
 their own `data_updated_at` for outbox reconciliation. Loading a snapshot
 written for another token or an older version discards both files. The cached
@@ -617,6 +631,7 @@ Minimal fixtures, hand-written, with attribution:
   vocab with context/audio, kana vocab.
 - `study_materials.json`: synonyms.
 - `review_statistics.json`: correct/incorrect counts, streaks and percentage.
+- `level_progressions.json`: current and previous level timestamps.
 - `review_ok.json`: `resources_updated.assignment`.
 - `errors.json`: 401, 403, 422, 429.
 

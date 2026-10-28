@@ -50,6 +50,8 @@ KaniKey firmware for the M5Stack Cardputer ADV.
 - Shows the current SRS stage and lifetime accuracy in the review header, and
   the new stage returned by `POST /v2/reviews` plus the last item's review
   history in the session summary (`SRS 3 -> 4`, `History 18 reviews, 89%`).
+- Fetches `/v2/level_progressions` on sync and shows the current level's
+  unlock date in the Home status line (`L8 since 03 Feb`).
 - Writes the pack to the card over the USB serial link or a one-shot Wi-Fi
   upload server.
 

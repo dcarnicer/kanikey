@@ -33,6 +33,7 @@
 #include "platform/OutboxStore.h"
 #include "platform/WkClient.h"
 #include "platform/WkLessons.h"
+#include "platform/WkLevelProgress.h"
 #include "platform/WkReview.h"
 #include "wk/AnswerChecker.h"
 #include "wk/LessonQuiz.h"
@@ -81,6 +82,7 @@ String gSerialLine;
 
 kk::User gUser;
 kk::Summary gSummary;
+kk::LevelProgress gLevelProgress;
 bool gHaveUser = false;
 bool gHaveSummary = false;
 bool gShowHome = false;
@@ -159,6 +161,7 @@ uint32_t gRadicalTestId = 1;
 #endif
 
 void localHm(uint32_t epoch, char* out, size_t n);
+void localDate(uint32_t epoch, char* out, size_t n);
 void draw();
 void drawLoading(const char* title, const char* subtitle);
 void drawLesson();
@@ -260,6 +263,7 @@ void saveCacheSnapshot() {
     snapshot.meta.accountKey = currentAccountKey();
     snapshot.summary = gSummary;
     if (gHaveUser) snapshot.user = gUser;
+    snapshot.levelProgress = gLevelProgress;
     if (gBatch.ok) snapshot.assignments = gBatch.assignments;
     if (!kk::cacheSaveSnapshot(snapshot)) {
         Serial.println("[cache] snapshot save failed");
@@ -305,6 +309,7 @@ bool loadCache() {
     gHaveSummary = true;
     gHaveUser = !snapshot.user.username.empty() && snapshot.user.level > 0;
     if (gHaveUser) gUser = std::move(snapshot.user);
+    gLevelProgress = snapshot.levelProgress;
 
     gBatch = kk::ReviewBatch{};
     if (!snapshot.assignments.empty()) {
@@ -523,6 +528,18 @@ void runSummary() {
     else
         setSyncIssue(r.httpCode, r.connected, r.tlsError, "Summary");
     gDirty = true;
+}
+
+void runLevelProgress() {
+    if (!gHaveUser) return;
+    const kk::LevelProgress p = kk::fetchLevelProgress(kk::DevToken::load(), gUser.level);
+    if (!p.valid) return;
+    gLevelProgress = p;
+    saveCacheSnapshot();
+    char date[16];
+    localDate(gLevelProgress.unlockedAt ? gLevelProgress.unlockedAt : gLevelProgress.startedAt,
+              date, sizeof date);
+    Serial.printf("[level] %u since %s\n", static_cast<unsigned>(gLevelProgress.level), date);
 }
 
 bool runBatch() {
@@ -2177,6 +2194,7 @@ void settingsKey(const KeyEvent& e) {
             saveOutbox();
             gUser = kk::User{};
             gSummary = kk::Summary{};
+            gLevelProgress = kk::LevelProgress{};
             gHaveUser = false;
             gHaveSummary = false;
             gBatch = kk::ReviewBatch{};
@@ -2426,6 +2444,18 @@ void localHm(uint32_t epoch, char* out, size_t n) {
     snprintf(out, n, "%02d:%02d", tm.tm_hour, tm.tm_min);
 }
 
+void localDate(uint32_t epoch, char* out, size_t n) {
+    if (epoch < 1700000000u) {
+        if (n) out[0] = '\0';
+        return;
+    }
+    const time_t t = static_cast<time_t>(epoch);
+    struct tm tm {};
+    if (!localtime_r(&t, &tm) || !std::strftime(out, n, "%d %b", &tm)) {
+        if (n) out[0] = '\0';
+    }
+}
+
 void drawLoading(const char* title, const char* subtitle) {
     if (!gDisp) return;
     auto& d = target();
@@ -2486,6 +2516,7 @@ void startSync() {
     snprintf(gNetLine, sizeof gNetLine, "Summary: syncing");
     drawBoot();
     runSummary();
+    runLevelProgress();
     gSyncing = false;
     gDirty = true;
 }
@@ -2775,6 +2806,19 @@ void drawHome() {
     } else if (gHaveUser && gUser.vacationStartedAt) {
         d.setTextColor(kWarn, kBg);
         d.drawString("Vacation mode", 8, 117);
+    } else if (gLevelProgress.valid) {
+        char line[40];
+        char date[16];
+        localDate(gLevelProgress.unlockedAt ? gLevelProgress.unlockedAt
+                                            : gLevelProgress.startedAt,
+                  date, sizeof date);
+        if (date[0])
+            snprintf(line, sizeof line, "L%u since %s",
+                     static_cast<unsigned>(gLevelProgress.level), date);
+        else
+            snprintf(line, sizeof line, "Level %u", static_cast<unsigned>(gLevelProgress.level));
+        d.setTextColor(kFaint, kBg);
+        d.drawString(line, 8, 117);
     }
     d.setTextColor(kFaint, kBg);
     d.drawString("Enter: reviews  L: lessons  Esc: menu", 8, 125);
@@ -3387,6 +3431,10 @@ void seedDevCache() {
     snapshot.user.subscriptionActive = true;
     snapshot.user.maxLevelGranted = 3;
     snapshot.user.lessonsBatchSize = 5;
+    snapshot.levelProgress.level = 3;
+    snapshot.levelProgress.unlockedAt = stamp - 7 * 86400;
+    snapshot.levelProgress.startedAt = stamp - 7 * 86400;
+    snapshot.levelProgress.valid = true;
 
     const auto addAssignment = [&snapshot, stamp](uint32_t id, uint32_t subjectId,
                                                   kk::SubjectType type) {

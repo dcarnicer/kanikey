@@ -20,7 +20,8 @@
 > Vacation mode from `/user` is shown as a non-blocking Home notice. The review
 > header shows the current SRS stage and lifetime accuracy; the session summary
 > shows the stage returned by `POST /reviews` and the last item's review
-> history.
+> history. `/level_progressions` is cached and Home shows when the current
+> level unlocked.
 > Japanese prompts and readings come entirely from the microSD visual pack at
 > 64/32/20 px: 7,269 glyphs + 498 radical bitmaps in 3.7 MB, generated locally
 > with the user's token. No WaniKani content is in the repository.

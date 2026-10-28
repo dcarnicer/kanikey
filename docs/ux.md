@@ -304,6 +304,8 @@ Home ──L──► Lessons ──Enter──► Lesson card
     forecast detail.
   - **Vacation:** `Vacation mode` in amber in the status line when no more
     urgent sync/outbox/offline message is shown.
+  - **Level:** `L8 since 03 Feb` in faint text in the status line when nothing
+    more urgent is shown.
   - **Error:** Home shows `Auth: token rejected`, `Auth: missing permissions`,
   `Rate limited; retry later` or `WaniKani error; retry`. Boot shows distinct
   `Token rejected` / `Missing permissions` / `Rate limited` / `WaniKani error`
