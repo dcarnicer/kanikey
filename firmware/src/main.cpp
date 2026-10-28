@@ -878,6 +878,7 @@ bool reconcileOutboxItem(kk::OutboxItem& item) {
         if (a.dataUpdatedAt > item.createdAt && a.availableAt > item.createdAt) {
             kk::outboxRemove(gOutbox, item.seq);
             saveOutbox();
+            markCacheCompleted(item.subjectId, item.assignmentId);
             Serial.printf("[outbox] %u was already accepted\n",
                           static_cast<unsigned>(item.assignmentId));
             return true;
@@ -927,6 +928,7 @@ bool sendOutboxItem(uint32_t seq) {
     if (r.httpCode >= 200 && r.httpCode < 300) {
         kk::outboxRemove(gOutbox, seq);
         saveOutbox();
+        markCacheCompleted(item->subjectId, item->assignmentId);
         Serial.printf("[outbox] sent assignment %u (%d)\n",
                       static_cast<unsigned>(item->assignmentId), r.httpCode);
         return true;
@@ -1985,21 +1987,28 @@ void retryBoot() {
     gDirty = true;
 }
 
-void cacheStatusLine(char* out, size_t n) {
+uint32_t cacheAgeSeconds() {
     const uint32_t now = static_cast<uint32_t>(time(nullptr));
-    if (gCacheSavedAt == 0 || now < 1700000000u || now < gCacheSavedAt) {
+    if (gCacheSavedAt == 0 || now < 1700000000u || now < gCacheSavedAt) return 0;
+    return now - gCacheSavedAt;
+}
+
+bool cacheIsStale() { return cacheAgeSeconds() >= 24u * 3600u; }
+
+void cacheStatusLine(char* out, size_t n) {
+    const uint32_t age = cacheAgeSeconds();
+    if (age == 0) {
         snprintf(out, n, "Offline - cached data");
         return;
     }
-    const uint32_t age = now - gCacheSavedAt;
-    if (age < 60)
+    if (age >= 24u * 3600u)
+        snprintf(out, n, "Stale cache - %ud old", static_cast<unsigned>(age / 86400));
+    else if (age < 60)
         snprintf(out, n, "Offline - just synced");
     else if (age < 3600)
         snprintf(out, n, "Offline - %um old", static_cast<unsigned>(age / 60));
-    else if (age < 86400)
-        snprintf(out, n, "Offline - %uh old", static_cast<unsigned>(age / 3600));
     else
-        snprintf(out, n, "Offline - %ud old", static_cast<unsigned>(age / 86400));
+        snprintf(out, n, "Offline - %uh old", static_cast<unsigned>(age / 3600));
 }
 
 void drawHome() {
@@ -2098,7 +2107,7 @@ void drawHome() {
     } else if (gOffline) {
         char line[40];
         cacheStatusLine(line, sizeof line);
-        d.setTextColor(kWarn, kBg);
+        d.setTextColor(cacheIsStale() ? kErr : kWarn, kBg);
         d.drawString(line, 8, 117);
     }
     d.setTextColor(kFaint, kBg);

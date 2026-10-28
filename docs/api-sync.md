@@ -406,13 +406,16 @@ alters the SRS stage and the user's statistics. We prefer to leave the item as
 - Never delete the outbox before the POST is confirmed.
 
 **Implementation (2026-10-28).** The Home/user/batch snapshot is
-`/state/cache.bin` (`KKCA`, version 1); the batch subjects are
-`/kanikey/cache/subjects.bin` (`KKCS`, version 1) on SD. Both carry the save
+`/state/cache.bin` (`KKCA`, version 2); the batch subjects are
+`/kanikey/cache/subjects.bin` (`KKCS`, version 2) on SD. Both carry the save
 time, an FNV-1a fingerprint of the API token, the payload length and CRC32.
-Loading a snapshot written for another token discards both files. The cached
+The snapshot also stores the summary's `data_updated_at`; assignments keep
+their own `data_updated_at` for outbox reconciliation. Loading a snapshot
+written for another token or an older version discards both files. The cached
 batch is started offline and completed items are removed from the snapshot;
-the outbox is pruned from the cache on boot. `data_updated_at` refresh and
-manual-sync invalidation are still open.
+the outbox is pruned from the cache on boot and after a successful send.
+Settings › `Sync now` refreshes the snapshot, `Clear cache` invalidates it, and
+a cache older than 24 h is shown as stale.
 
 ---
 

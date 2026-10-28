@@ -380,6 +380,7 @@ bool encodeCacheSnapshot(const CacheSnapshot& snapshot, std::vector<uint8_t>* ou
     if (!out) return false;
     Writer w;
     w.str(snapshot.summary.nextReviewsAt);
+    w.u32(snapshot.summary.dataUpdatedAt);
     encodeBuckets(w, snapshot.summary.lessons);
     encodeBuckets(w, snapshot.summary.reviews);
     encodeUser(w, snapshot.user);
@@ -398,6 +399,7 @@ bool decodeCacheSnapshot(const uint8_t* data, size_t size, CacheSnapshot* out) {
     CacheSnapshot snapshot;
     snapshot.meta = meta;
     if (!r.str(&snapshot.summary.nextReviewsAt) ||
+        !r.u32(&snapshot.summary.dataUpdatedAt) ||
         !decodeBuckets(r, &snapshot.summary.lessons) ||
         !decodeBuckets(r, &snapshot.summary.reviews) || !decodeUser(r, &snapshot.user))
         return false;

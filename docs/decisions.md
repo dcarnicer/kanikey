@@ -336,8 +336,9 @@ snapshot fits LittleFS. The token fingerprint discards another account's data.
 
 **Implications:** boot restores Home and a cached batch before any Wi-Fi
 request; completed items are pruned from the cache and stay in the outbox.
-`data_updated_at` refresh and manual-sync invalidation remain open (CACHE-05),
-as does the real online fetch → offline → reconnect E2E (CACHE-07).
+`KKCA`/`KKCS` v2 store the summary `data_updated_at`, mark caches older than
+24 h as stale, and Settings exposes `Sync now`/`Clear cache`. The real online
+fetch → offline → reconnect E2E (CACHE-07) still needs a deliberate live run.
 
 ---
 

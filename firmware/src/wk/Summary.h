@@ -16,6 +16,7 @@ struct SummaryBucket {
 
 struct Summary {
     std::string nextReviewsAt;
+    uint32_t dataUpdatedAt = 0;  // server's data_updated_at, for cache metadata
     std::vector<SummaryBucket> lessons;
     std::vector<SummaryBucket> reviews;
 

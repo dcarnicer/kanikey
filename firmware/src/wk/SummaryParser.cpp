@@ -235,6 +235,10 @@ private:
             if (!take(':')) return fail("expected :");
             if (key == "data") {
                 if (!data(out)) return false;
+            } else if (key == "data_updated_at") {
+                std::string stamp;
+                if (!string(&stamp)) return false;
+                parseIso8601(stamp, &out->dataUpdatedAt);
             } else {
                 if (!skipValue(1)) return false;
             }
@@ -255,11 +259,13 @@ bool parseSummaryText(std::string_view text, Summary* out, size_t maxIdsPerBucke
     out->lessons.clear();
     out->reviews.clear();
     out->nextReviewsAt.clear();
+    out->dataUpdatedAt = 0;
     Reader r(text, maxIdsPerBucket);
     if (!r.parse(out)) {
         out->lessons.clear();
         out->reviews.clear();
         out->nextReviewsAt.clear();
+        out->dataUpdatedAt = 0;
         return false;
     }
     return !out->lessons.empty() || !out->reviews.empty();

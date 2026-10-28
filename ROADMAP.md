@@ -53,8 +53,8 @@ Working on hardware:
   sleep, screenshot capture.
 - 37 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,349,073 B / 1,835,008 B flash (73.5%)**, **93,784 B /
-327,680 B static RAM (28.6%)**. The dev image is 1,354,341 B. Removing
+Current build: **1,351,833 B / 1,835,008 B flash (73.7%)**, **93,784 B /
+327,680 B static RAM (28.6%)**. The dev image is 1,357,053 B. Removing
 `efontJA_16` freed ~468 KB and leaves ~490 KB of flash headroom.
 
 ## Priority summary
@@ -122,9 +122,9 @@ token; the repository must not contain WaniKani art.
 Home, the user and a review batch now survive a reboot without network. The
 snapshot (summary + assignments + user) is in LittleFS; the subjects referenced
 by the batch are on SD. A cached session can be started and completed offline,
-and completed items are pruned from the cache and kept in the outbox. The
-remaining work is real-account E2E validation and the invalidation/refresh
-rules.
+completed items are pruned from the cache and kept in the outbox, and a cache
+older than 24 h is marked stale. The remaining work is the real-account E2E
+validation.
 
 - **CACHE-01 — Persist assignments.** Store the due assignment list and
   critical state in LittleFS, as in the design. **Done:** the fetched batch and
@@ -140,21 +140,23 @@ rules.
   saved.
 - **CACHE-04 — Offline state.** Show `Offline`, last-sync time and cache age;
   distinguish “no network” from “never synced”. **Done:** Home shows `Offline`,
-  the cached sync time and age when the clock is trusted; a missing cache keeps
-  the existing `Not synced` boot state.
+  the cached sync time and age when the clock is trusted; older than 24 h is
+  `Stale cache`; a missing cache keeps the `Not synced` boot state.
 - **CACHE-05 — Invalidation.** Define cache version, token/account change,
-  server `data_updated_at` and manual sync invalidation. **Partial:** version
-  and token fingerprint are implemented; `data_updated_at` and manual sync
-  invalidation are pending.
+  server `data_updated_at` and manual sync invalidation. **Done (2026-10-28):**
+  `KKCA`/`KKCS` v2, token fingerprint at load, summary `data_updated_at` stored,
+  assignments keep theirs, 24 h stale state, Settings `Sync now` and
+  `Clear cache`. Sign-out clears account state.
 - **CACHE-06 — Keep the outbox coherent.** Flush/reconcile pending reviews
-  against the cache and avoid resurrecting stale assignments. **Partial:**
-  cached assignments/subjects already in the outbox are pruned at boot and a
-  fresh summary drops assignments that are no longer due; cache reconciliation
-  during a flush is pending.
+  against the cache and avoid resurrecting stale assignments. **Done:**
+  cached assignments/subjects already in the outbox are pruned at boot, a fresh
+  summary drops assignments that are no longer due, `startReview` filters the
+  outbox, and a successful/reconciled send also prunes the cache.
 - **CACHE-07 — End-to-end test.** Online fetch → reboot with Wi-Fi off →
   complete a review → reconnect → outbox 201. **Partial:** the synthetic-cache
   hardware path (restore → offline review → outbox pending → reboot) passes;
-  the real online fetch and reconnect/201 halves still need credentials.
+  the real online fetch and reconnect/201 halves still need credentials and a
+  deliberate review submission.
 - **CACHE-08 — Save before sleep.** Persist the cache/outbox before dim,
   blank or deep sleep (coordinate with TNG-05). **Done:** the snapshot is saved
   after sync, batch fetch, review completion and lesson start, and again before

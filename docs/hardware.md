@@ -221,11 +221,12 @@ WaniKani subjects and mnemonics.
 - Upload: `S` starts a one-shot HTTP server on port 8080 and
   `tools/device.py push` writes the file with `curl -T`; 2.9 MB transferred
   reliably. The USB `up` path uses 8 KiB ACKed chunks and is a fallback.
-- Offline cache: `/state/cache.bin` (LittleFS) and
-  `/kanikey/cache/subjects.bin` (SD). A synthetic-cache run on 2026-10-28
-  restored Home offline, ran a cached session, kept the completed review in
-  the outbox and restored both after a reboot. Real-account fetch/reconnect is
-  still pending.
+- Offline cache: `/state/cache.bin` (LittleFS, `KKCA` v2) and
+  `/kanikey/cache/subjects.bin` (SD, `KKCS` v2), with the summary
+  `data_updated_at`, 24 h stale state and manual clear/sync. A synthetic-cache
+  run on 2026-10-28 restored Home offline, ran a cached session, kept the
+  completed review in the outbox and restored both after a reboot. Real-account
+  fetch/reconnect is still pending.
 - Still missing: real review/lesson prompts on a configured account and a
   radical-only lesson on a low-level account.
 

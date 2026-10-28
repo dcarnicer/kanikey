@@ -572,6 +572,9 @@ static void test_summary_text_parser() {
     TEST_ASSERT_EQUAL(3, s.totalReviews());
     TEST_ASSERT_EQUAL(3, s.totalLessons());
     TEST_ASSERT_EQUAL_STRING("2026-10-25T13:00:00Z", s.nextReviewsAt.c_str());
+    uint32_t updated = 0;
+    TEST_ASSERT_TRUE(parseIso8601("2026-10-25T12:00:00Z", &updated));
+    TEST_ASSERT_EQUAL_UINT32(updated, s.dataUpdatedAt);
     TEST_ASSERT_EQUAL(2, s.reviews[0].subjectIds.size());
     TEST_ASSERT_EQUAL(1, s.reviews[1].subjectIds.size());
     uint32_t now = 0;
@@ -607,6 +610,7 @@ static void test_cache_snapshot_round_trip() {
     in.meta.savedAt = 1760000000u;
     in.meta.accountKey = cacheAccountKey("token");
     in.summary.nextReviewsAt = "2026-10-28T12:00:00Z";
+    in.summary.dataUpdatedAt = 1760000123u;
     in.summary.lessons = {{0, 2, {10, 11}}};
     in.summary.reviews = {{1760000000u, 1, {42}}, {1760003600u, 2, {43, 44}}};
     in.user.username = "dabi";
@@ -636,6 +640,7 @@ static void test_cache_snapshot_round_trip() {
     TEST_ASSERT_EQUAL_UINT32(in.meta.savedAt, out.meta.savedAt);
     TEST_ASSERT_EQUAL_UINT32(in.meta.accountKey, out.meta.accountKey);
     TEST_ASSERT_EQUAL_STRING(in.summary.nextReviewsAt.c_str(), out.summary.nextReviewsAt.c_str());
+    TEST_ASSERT_EQUAL_UINT32(in.summary.dataUpdatedAt, out.summary.dataUpdatedAt);
     TEST_ASSERT_EQUAL(1, out.summary.lessons.size());
     TEST_ASSERT_EQUAL(2, out.summary.reviews.size());
     TEST_ASSERT_EQUAL_UINT32(1760003600u, out.summary.reviews[1].availableAt);
@@ -667,7 +672,7 @@ static void test_cache_corruption_is_rejected() {
     TEST_ASSERT_FALSE(decodeCacheSnapshot(bytes.data(), bytes.size() - 1, &out));
     TEST_ASSERT_FALSE(decodeCacheSnapshot(bytes.data(), kCacheHeaderBytes - 1, &out));
     bad = bytes;
-    bad[4] = 2;
+    bad[4] = 3;
     TEST_ASSERT_FALSE(decodeCacheSnapshot(bad.data(), bad.size(), &out));
     TEST_ASSERT_TRUE(decodeCacheSnapshot(bytes.data(), bytes.size(), &out));
 }

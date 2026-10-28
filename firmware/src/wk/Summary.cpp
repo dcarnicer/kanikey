@@ -83,6 +83,10 @@ bool parseSummary(const JsonValue& root, Summary* out) {
     const JsonValue* data = root.find("data");
     if (!data || !data->isObject()) return false;
     out->nextReviewsAt.clear();
+    out->dataUpdatedAt = 0;
+    if (const JsonValue* updated = root.find("data_updated_at");
+        updated && updated->isString())
+        parseIso8601(updated->string, &out->dataUpdatedAt);
     if (const JsonValue* next = data->find("next_reviews_at"); next && next->isString())
         out->nextReviewsAt = next->string;
     const bool reviews = parseBuckets(data->find("reviews"), &out->reviews);
