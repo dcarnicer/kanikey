@@ -9,6 +9,7 @@
 #include "wk/Crc32.h"
 #include "wk/Outbox.h"
 #include "wk/Json.h"
+#include "wk/LessonQuiz.h"
 #include "wk/StudyMaterial.h"
 #include "wk/SubjectParser.h"
 #include "wk/Text.h"
@@ -201,6 +202,72 @@ static void test_empty_and_non_kana_readings() {
                       checkAnswer(s, AnswerKind::Reading, "abc123").status);
 }
 
+// ---------------------------------------------------------------- lesson quiz
+static void test_lesson_quiz_meaning_then_reading() {
+    const Subject s = kanji();
+    LessonQuiz q;
+    q.start(s);
+    TEST_ASSERT_TRUE(q.active());
+    TEST_ASSERT_FALSE(q.complete());
+    TEST_ASSERT_EQUAL(AnswerKind::Meaning, q.part());
+
+    q.submit("eat");
+    TEST_ASSERT_TRUE(q.feedback());
+    TEST_ASSERT_EQUAL(AnswerStatus::Correct, q.result().status);
+    q.advance();
+    TEST_ASSERT_EQUAL(AnswerKind::Reading, q.part());
+
+    q.submit("shoku");
+    TEST_ASSERT_EQUAL(AnswerStatus::Correct, q.result().status);
+    q.advance();
+    TEST_ASSERT_TRUE(q.complete());
+    TEST_ASSERT_FALSE(q.active());
+    TEST_ASSERT_EQUAL(0, q.mistakes());
+}
+
+static void test_lesson_quiz_retries_wrong_and_warning() {
+    const Subject s = kanji();
+    LessonQuiz q;
+    q.start(s);
+
+    q.submit("drink");
+    TEST_ASSERT_EQUAL(AnswerStatus::Incorrect, q.result().status);
+    TEST_ASSERT_EQUAL(1, q.mistakes());
+    q.advance();
+    TEST_ASSERT_FALSE(q.feedback());
+    TEST_ASSERT_EQUAL(AnswerKind::Meaning, q.part());
+
+    q.submit("consum");
+    TEST_ASSERT_EQUAL(AnswerStatus::Warning, q.result().status);
+    TEST_ASSERT_EQUAL(1, q.mistakes());
+    q.advance();
+    TEST_ASSERT_EQUAL(AnswerKind::Meaning, q.part());
+
+    q.submit("consume");
+    q.advance();
+    TEST_ASSERT_EQUAL(AnswerKind::Reading, q.part());
+
+    q.submit("taberu");
+    TEST_ASSERT_EQUAL(AnswerStatus::Warning, q.result().status);
+    q.advance();
+    TEST_ASSERT_EQUAL(AnswerKind::Reading, q.part());
+
+    q.submit("shoku");
+    q.advance();
+    TEST_ASSERT_TRUE(q.complete());
+    TEST_ASSERT_EQUAL(1, q.mistakes());
+}
+
+static void test_lesson_quiz_radical_only() {
+    const Subject s = radical();
+    LessonQuiz q;
+    q.start(s);
+    TEST_ASSERT_FALSE(q.needsReading());
+    q.submit("ground");
+    q.advance();
+    TEST_ASSERT_TRUE(q.complete());
+}
+
 // ---------------------------------------------------------------- session queue
 static Assignment assignment(uint32_t id, uint32_t subjectId, uint8_t stage, uint32_t available,
                              SubjectType type = SubjectType::Kanji) {
@@ -317,6 +384,34 @@ static void test_session_skip() {
     TEST_ASSERT_EQUAL(0, q.completedCount());
 }
 
+static void test_session_lower_levels_first() {
+    Subject low;
+    low.id = 1;
+    low.level = 1;
+    low.type = SubjectType::Radical;
+    low.meanings = {{"ground", true, true}};
+    Subject mid;
+    mid.id = 2;
+    mid.level = 5;
+    mid.type = SubjectType::Kanji;
+    mid.meanings = {{"eat", true, true}};
+    Subject high;
+    high.id = 3;
+    high.level = 9;
+    high.type = SubjectType::Vocabulary;
+    high.meanings = {{"adult", true, true}};
+    const std::vector<Assignment> as = {
+        assignment(1, high.id, 3, 100), assignment(2, low.id, 3, 100),
+        assignment(3, mid.id, 3, 100)};
+    ReviewQueue q;
+    q.setLowerLevelsFirst(true);
+    q.build(as, {high, low, mid}, 1000, 123);
+    TEST_ASSERT_EQUAL(3, q.remaining());
+    TEST_ASSERT_EQUAL(1, q.queue()[0].level);
+    TEST_ASSERT_EQUAL(5, q.queue()[1].level);
+    TEST_ASSERT_EQUAL(9, q.queue()[2].level);
+}
+
 
 // ---------------------------------------------------------------- key map
 static uint8_t codeAt(int x, int y) {
@@ -406,7 +501,8 @@ static void test_user_parse() {
     const char* text =
         "{\"data\":{\"username\":\"tester\",\"level\":8,"
         "\"subscription\":{\"active\":true,\"max_level_granted\":60},"
-        "\"preferences\":{\"lessons_batch_size\":10}}}";
+        "\"preferences\":{\"lessons_batch_size\":10,"
+        "\"reviews_presentation_order\":\"lower_levels_first\"}}}";
     TEST_ASSERT_TRUE(p.parse(text, &v));
     User u;
     TEST_ASSERT_TRUE(parseUser(v, &u));
@@ -415,6 +511,7 @@ static void test_user_parse() {
     TEST_ASSERT_TRUE(u.subscriptionActive);
     TEST_ASSERT_EQUAL(60, u.maxLevelGranted);
     TEST_ASSERT_EQUAL(10, u.lessonsBatchSize);
+    TEST_ASSERT_EQUAL(ReviewOrder::LowerLevelsFirst, u.reviewsOrder);
 }
 
 static void test_summary_parse_and_counts() {
@@ -660,6 +757,7 @@ static void test_cache_snapshot_round_trip() {
     in.user.subscriptionActive = true;
     in.user.maxLevelGranted = 60;
     in.user.lessonsBatchSize = 4;
+    in.user.reviewsOrder = ReviewOrder::LowerLevelsFirst;
     Assignment a;
     a.id = 100;
     a.subjectId = 42;
@@ -690,6 +788,7 @@ static void test_cache_snapshot_round_trip() {
     TEST_ASSERT_EQUAL(12, out.user.level);
     TEST_ASSERT_TRUE(out.user.subscriptionActive);
     TEST_ASSERT_EQUAL(4, out.user.lessonsBatchSize);
+    TEST_ASSERT_EQUAL(ReviewOrder::LowerLevelsFirst, out.user.reviewsOrder);
     TEST_ASSERT_EQUAL(1, out.assignments.size());
     TEST_ASSERT_EQUAL_UINT32(100, out.assignments[0].id);
     TEST_ASSERT_EQUAL_UINT32(42, out.assignments[0].subjectId);
@@ -776,6 +875,9 @@ int main(int, char**) {
     RUN_TEST(test_reading_okurigana_and_n_conversion);
     RUN_TEST(test_vocabulary_and_radical_rules);
     RUN_TEST(test_empty_and_non_kana_readings);
+    RUN_TEST(test_lesson_quiz_meaning_then_reading);
+    RUN_TEST(test_lesson_quiz_retries_wrong_and_warning);
+    RUN_TEST(test_lesson_quiz_radical_only);
     RUN_TEST(test_session_meaning_then_reading);
     RUN_TEST(test_session_reading_first);
     RUN_TEST(test_session_wrong_parts_requeue_and_count);
@@ -783,6 +885,7 @@ int main(int, char**) {
     RUN_TEST(test_session_radical_only_meaning);
     RUN_TEST(test_session_filters_and_limit);
     RUN_TEST(test_session_skip);
+    RUN_TEST(test_session_lower_levels_first);
     RUN_TEST(test_cardputer_characters);
     RUN_TEST(test_cardputer_modifiers);
     RUN_TEST(test_cardputer_event_fields);

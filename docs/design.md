@@ -648,7 +648,9 @@ request. After 20 subjects the free heap is ~134 KB and the largest block
 - `AnswerChecker`: accepted meanings, synonyms, blacklist/whitelist, primary vs
   valid readings, okurigana, katakana→hiragana, meaning/reading confusion,
   `n` error.
-- `ReviewQueue`: order, requeueing, counters, completed item, exiting midway.
+- `ReviewQueue`: shuffled/lower-levels-first order, requeueing, counters,
+  completed item, exiting midway.
+- `LessonQuiz`: meaning/reading sequence, warnings, mistake count, completion.
 - `Outbox`: append, compaction, retries, reconciliation, corruption.
 - `JsonStream`: WaniKani fixtures with radicals, kanji, vocabulary, kana,
   pagination, errors, `\uXXXX` escapes, invalid UTF-8.
@@ -732,7 +734,8 @@ account; Enter fetches the batch.
 
 - Lesson card with meaning/reading, mnemonic paging and
   `PUT /assignments/{id}/start` (200) is working.
-- Lesson list, components and the local practice quiz remain.
+- Lesson list, components and the optional local quiz (`Q`, no `/start`) are
+  implemented; hardware verification and the last ordering work remain.
 
 **Output:** complete lessons on the device (card + start already usable).
 

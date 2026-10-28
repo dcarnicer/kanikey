@@ -322,6 +322,11 @@ item_complete:
   pending.
 - At the end, the summary shows `N waiting to sync` if an outbox remains.
 
+**Implementation (2026-10-28).** `ReviewQueue` shuffles the frozen batch and
+then stable-sorts by subject level when the cached `User` says
+`lower_levels_first`; the shuffle stays inside each level. The local `Order`
+setting is separate and only selects meaning-first or reading-first.
+
 ### 5.5 After syncing
 
 - `summary` is refreshed; local counters are recalculated.
@@ -398,7 +403,7 @@ alters the SRS stage and the user's statistics. We prefer to leave the item as
 | `summary` | LittleFS | 30–60 min | Sync / after session |
 | Assignments | LittleFS | Until sync | `updated_after`, review response |
 | Subjects | microSD | Immutable by ID | `data_updated_at` if refreshed |
-| Study materials | LittleFS | Until sync | `updated_after` |
+| Study materials | merged into Subjects (microSD) | Until subject refresh | New review/lesson batch |
 | Visual pack | microSD | Until regenerated | Builder version / new characters |
 | Local stats | LittleFS | Persistent | Manual reset |
 
@@ -418,11 +423,12 @@ alters the SRS stage and the user's statistics. We prefer to leave the item as
 - Never delete the outbox before the POST is confirmed.
 
 **Implementation (2026-10-28).** The Home/user/batch snapshot is
-`/state/cache.bin` (`KKCA`, version 3); the batch subjects are
-`/kanikey/cache/subjects.bin` (`KKCS`, version 3) on SD. Version 3 adds the
-study-material notes to each cached subject; older files are discarded. Both
-carry the save time, an FNV-1a fingerprint of the API token, the payload length
-and CRC32.
+`/state/cache.bin` (`KKCA`, version 4); the batch subjects are
+`/kanikey/cache/subjects.bin` (`KKCS`, version 4) on SD. Version 3 added the
+study-material notes to each cached subject and version 4 adds the review
+presentation order to the cached user; older files are discarded. Both carry
+the save time, an FNV-1a fingerprint of the API token, the payload length and
+CRC32.
 The snapshot also stores the summary's `data_updated_at`; assignments keep
 their own `data_updated_at` for outbox reconciliation. Loading a snapshot
 written for another token or an older version discards both files. The cached

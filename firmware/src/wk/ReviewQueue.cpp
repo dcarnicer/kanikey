@@ -36,6 +36,7 @@ void ReviewQueue::build(const std::vector<Assignment>& assignments,
         it.assignmentId = a.id;
         it.subjectId = a.subjectId;
         it.type = a.type;
+        it.level = s->level;
         it.needsMeaning = true;
         it.needsReading = s->needsReading();
         items.push_back(it);
@@ -43,6 +44,12 @@ void ReviewQueue::build(const std::vector<Assignment>& assignments,
 
     std::mt19937 rng(seed);
     std::shuffle(items.begin(), items.end(), rng);
+    if (lowerLevelsFirst_) {
+        std::stable_sort(items.begin(), items.end(),
+                         [](const SessionItem& a, const SessionItem& b) {
+                             return a.level < b.level;
+                         });
+    }
     if (limit > 0 && items.size() > limit) items.resize(limit);
 
     for (const SessionItem& it : items) queue_.push_back(it);

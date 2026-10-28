@@ -19,7 +19,7 @@
 
 namespace kk {
 
-constexpr uint16_t kCacheVersion = 3;
+constexpr uint16_t kCacheVersion = 4;
 constexpr size_t kCacheHeaderBytes = 24;
 
 struct CacheMeta {

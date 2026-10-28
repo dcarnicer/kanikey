@@ -41,6 +41,10 @@ KaniKey firmware for the M5Stack Cardputer ADV.
   synonyms are accepted answers and meaning/reading notes appear on the lesson
   card and review feedback. A token without that permission still works without
   notes.
+- Review sessions follow WaniKani `reviews_presentation_order` (`shuffled` or
+  `lower_levels_first`). `Q` on a lesson card opens an optional local
+  meaning/reading quiz with feedback, retries and a completion screen; the quiz
+  itself makes no `/start` call.
 - Writes the pack to the card over the USB serial link or a one-shot Wi-Fi
   upload server.
 
@@ -183,9 +187,10 @@ prints or stores the password. `token` prompts for the WaniKani token, sends
 | `v` | Fetch (if needed) and start a review session |
 | `l` | Fetch and show the lesson list/picker |
 | `g` | Next mnemonic page in a lesson |
-| `y <text>` | Type text into the current answer (test helper) |
+| `Q` | Open the optional lesson quiz for the current card |
+| `y <text>` | Type text into the current review or lesson-quiz answer (test helper) |
 | `e` | Open the selected lesson / check the answer / advance / start |
-| `q` | Quit the review session |
+| `q` | Quit the review session or return from the quiz to the card |
 | `r` | Restart |
 
 ## Setup portal

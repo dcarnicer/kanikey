@@ -1,10 +1,13 @@
 #pragma once
 // The subset of GET /user KaniKey needs. Pure C++.
+#include <cstdint>
 #include <string>
 
 #include "wk/Json.h"
 
 namespace kk {
+
+enum class ReviewOrder : uint8_t { Shuffled, LowerLevelsFirst };
 
 struct User {
     std::string username;
@@ -12,6 +15,7 @@ struct User {
     bool subscriptionActive = false;
     int maxLevelGranted = 3;
     int lessonsBatchSize = 5;
+    ReviewOrder reviewsOrder = ReviewOrder::Shuffled;
 };
 
 bool parseUser(const JsonValue& root, User* out);

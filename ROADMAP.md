@@ -18,7 +18,9 @@ Working on hardware:
 - Home from `/user` + `/summary`, with due reviews, lessons, next review and
   outbox status.
 - 20-item review session with typed meaning/reading, romaji-to-kana, answer
-  checking, feedback and requeue.
+  checking, feedback and requeue. The session follows WaniKani
+  `reviews_presentation_order` (`shuffled` or `lower_levels_first`); the local
+  `Order` setting still selects meaning-first or reading-first.
 - `POST /v2/reviews` with a persistent LittleFS outbox; the full offline path
   (Wi-Fi off → review → reboot → reconnect → 201) is verified.
 - Lessons: a list/picker with character, type, level and main meaning, sorted
@@ -26,6 +28,10 @@ Working on hardware:
   mnemonic, component meanings and hints, and `PUT /assignments/{id}/start`
   returns 200. Tests so far use only GETs; no live lesson was started by this
   work.
+- Lesson quiz: `Q` on a lesson card opens an optional local meaning/reading
+  quiz with typed answers, incorrect-answer feedback, retries and a completion
+  screen. It is read-only: the quiz itself never calls `/start`; Enter on the
+  card still starts the lesson. Native-tested; hardware run pending.
 - Study materials: `GET /study_materials` is fetched for review and lesson
   subjects, user synonyms are accepted by the answer checker, and meaning/
   reading notes appear on the lesson card and review feedback. They are part of
@@ -58,11 +64,11 @@ Working on hardware:
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 39 native tests pass. GitHub Actions runs gitleaks on `main`.
+- 43 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,362,985 B / 1,835,008 B flash (74.3%)**, **93,800 B /
-327,680 B static RAM (28.6%)**. The dev image is 1,368,397 B. Removing
-`efontJA_16` freed ~468 KB and leaves ~472 KB of flash headroom.
+Current build: **1,370,093 B / 1,835,008 B flash (74.7%)**, **94,168 B /
+327,680 B static RAM (28.7%)**. The dev image is 1,375,189 B. Removing
+`efontJA_16` freed ~468 KB and leaves ~465 KB of flash headroom.
 
 ## Priority summary
 
@@ -70,8 +76,8 @@ Current build: **1,362,985 B / 1,835,008 B flash (74.3%)**, **93,800 B /
 |---:|---|---|---|---|
 | 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Done except real-prompt hardware check | RAD-02, RAD-04 |
 | 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Core landed; real-account E2E pending | CACHE-05, CACHE-07 |
-| 3 | Complete lesson flow | List/picker, card, components, empty state and start exist; quiz does not | Partial | LESSON-04, LESSON-05 |
-| 4 | WaniKani data and preferences | Synonyms and notes are live; item detail, SRS feedback, stats and preferences are missing | Partial | WK-03, WK-04 |
+| 3 | Complete lesson flow | List/picker, card, components, quiz, empty state and start exist; ordering/hardware remain | Partial | LESSON-08, RAD-04 |
+| 4 | WaniKani data and preferences | Synonyms, notes and review order are live; item detail, SRS feedback, stats and preferences are missing | Partial | WK-04, WK-05 |
 | 5 | Outbox and API robustness | Rejected items, 429 and invalid auth have no user path | Partial | API-01, API-02 |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
 | 7 | UI, stats and sync | Missing SRS bar, sync progress, accuracy and item detail | Partial | UI-01, UI-02 |
@@ -91,7 +97,7 @@ lesson flow.
 | 1 | Offline cache | CACHE-05 → CACHE-07, TNG-04, TNG-05 | Review and Home work after reboot without network |
 | 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | List, understand, quiz and start lessons |
 | 3 | Setup and device UX | TNG-02 | OTA release path (setup/settings complete) |
-| 4 | WaniKani data and detail | WK-03 → WK-11 (WK-01 done) | Item detail, SRS and progress |
+| 4 | WaniKani data and detail | WK-04 → WK-11 (WK-01/WK-03 done) | Item detail, SRS and progress |
 | 5 | API robustness | API-01 → API-07 | Recoverable rejected, rate-limited and auth errors |
 | 6 | UI, stats and sync | UI-01 → UI-08 | SRS bar, sync screen, accuracy and polish |
 | 7 | Technical debt and release | TECH-01 → TECH-07 | CI, refactor, version, OTA and license |
@@ -151,9 +157,9 @@ validation.
   `Stale cache`; a missing cache keeps the `Not synced` boot state.
 - **CACHE-05 — Invalidation.** Define cache version, token/account change,
   server `data_updated_at` and manual sync invalidation. **Done (2026-10-28):**
-  `KKCA`/`KKCS` v2, token fingerprint at load, summary `data_updated_at` stored,
-  assignments keep theirs, 24 h stale state, Settings `Sync now` and
-  `Clear cache`. Sign-out clears account state.
+  versioned `KKCA`/`KKCS` files (currently v4), token fingerprint at load,
+  summary `data_updated_at` stored, assignments keep theirs, 24 h stale state,
+  Settings `Sync now` and `Clear cache`. Sign-out clears account state.
 - **CACHE-06 — Keep the outbox coherent.** Flush/reconcile pending reviews
   against the cache and avoid resurrecting stale assignments. **Done:**
   cached assignments/subjects already in the outbox are pruned at boot, a fresh
@@ -186,7 +192,10 @@ optional practice before `PUT /start` unless real use shows otherwise.
   fetched read-only, and their meanings plus the hints are appended to the
   paged card.
 - **LESSON-04 — Local quiz.** Meaning/reading quiz, incorrect-answer feedback
-  and completion state, if required before starting.
+  and completion state, if required before starting. **Done (2026-10-28):**
+  `Q` on a lesson card opens an optional typed quiz; wrong answers are counted
+  and retried, warnings retry the same part, and a completion screen returns to
+  the card. The quiz never calls `/start`; only Enter on the card does.
 - **LESSON-05 — Batch size and progress.** Respect `lessons_batch_size` and
   show progress through the batch. **Done (2026-10-28):** the local setting is
   clamped to WaniKani `lessons_batch_size`; the list and card show position.
@@ -201,9 +210,9 @@ optional practice before `PUT /start` unless real use shows otherwise.
 
 ## 4. WaniKani data and preferences
 
-These are the parts of WaniKani that change the study experience but are not
-visible yet. They are mostly small API/data tasks and should land before the
-UI is considered complete.
+These are the parts of WaniKani that change the study experience. Study
+materials and review order are live; item detail, SRS, stats and the remaining
+preferences still need work.
 
 - **WK-01 — `GET /study_materials`.** Fetch meaning synonyms, reading notes and
   meaning notes; use synonyms in the answer checker and show notes in detail.
@@ -214,7 +223,11 @@ UI is considered complete.
 - **WK-02 — `lessons_batch_size`.** `User` already parses it; use it for
   `fetchLessonBatch` and progress. **Done:** the lesson batch is clamped to it.
 - **WK-03 — `reviews_presentation_order`.** Apply `shuffled` /
-  `lower_levels_first` instead of always shuffling.
+  `lower_levels_first` instead of always shuffling. **Done (2026-10-28):**
+  `User` parses the preference, the cache keeps it, and the review queue
+  stable-sorts by subject level when it is `lower_levels_first` (the shuffle
+  stays inside each level). The local `Order` setting remains meaning/reading
+  order.
 - **WK-04 — SRS indicator.** Show the SRS stage after completing an item and on
   the Home/detail screens where useful.
 - **WK-05 — Vacation notice.** Read `current_vacation_started_at` and show a

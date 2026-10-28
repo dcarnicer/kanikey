@@ -336,10 +336,10 @@ snapshot fits LittleFS. The token fingerprint discards another account's data.
 
 **Implications:** boot restores Home and a cached batch before any Wi-Fi
 request; completed items are pruned from the cache and stay in the outbox.
-`KKCA`/`KKCS` v3 add the study-material notes to each cached subject, store the
-summary `data_updated_at`, mark caches older than 24 h as stale, and Settings
-exposes `Sync now`/`Clear cache`. The real online fetch → offline → reconnect
-E2E (CACHE-07) still needs a deliberate live run.
+`KKCA`/`KKCS` v4 add the study-material notes and the review presentation
+order, store the summary `data_updated_at`, mark caches older than 24 h as
+stale, and Settings exposes `Sync now`/`Clear cache`. The real online fetch →
+offline → reconnect E2E (CACHE-07) still needs a deliberate live run.
 
 ---
 
@@ -354,9 +354,41 @@ missing study-materials permission does not fail the batch.
 for them. Merging keeps one object for the checker, the lesson card, the review
 feedback and the offline cache instead of a second lookup table.
 
-**Implications:** `KKCS` v3 carries `meaning_note`/`reading_note`; older caches
+**Implications:** `KKCS` v4 carries `meaning_note`/`reading_note`; older caches
 are discarded. Notes appear on the lesson card and after a correct review
 answer. The full item-detail screen (UI-04/WK-08) can reuse the same fields.
+
+---
+
+## 2026-10-28 — Review order follows WaniKani
+
+**Decision:** `User` parses and caches `reviews_presentation_order`;
+`ReviewQueue` shuffles the frozen batch and stable-sorts by subject level when
+it is `lower_levels_first`. The local `Order` setting stays meaning-first /
+reading-first.
+
+**Why:** the account preference should apply without adding another device
+toggle, and the local setting already means something else. Sorting after the
+shuffle keeps variety inside a level.
+
+**Implications:** `KKCA` v4 stores the order; older caches are discarded.
+Offline sessions keep the last known order.
+
+---
+
+## 2026-10-28 — Lesson quiz is optional and local-only
+
+**Decision:** `Q` on a lesson card opens a typed meaning/reading quiz with
+retries, a mistake count and a completion screen. The quiz uses `AnswerChecker`
+but no network or `/start`; Enter on the card remains the only way to start the
+lesson.
+
+**Why:** practice should help without turning the card into a gate, and a local
+quiz must not change the WaniKani lesson flow.
+
+**Implications:** `LessonQuiz` is pure C++ and native-tested. The completion
+screen says the lesson was not started; the user returns to the card and
+decides.
 
 ---
 

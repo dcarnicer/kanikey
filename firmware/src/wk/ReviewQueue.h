@@ -17,6 +17,7 @@ struct SessionItem {
     uint32_t assignmentId = 0;
     uint32_t subjectId = 0;
     SubjectType type = SubjectType::Kanji;
+    uint8_t level = 0;
     bool needsMeaning = true;
     bool needsReading = false;
     bool meaningDone = false;
@@ -55,6 +56,10 @@ public:
     // meaning first. Reading-first is a user preference.
     void setMeaningFirst(bool meaningFirst) { meaningFirst_ = meaningFirst; }
 
+    // WaniKani `reviews_presentation_order`. Call before build(); shuffled is
+    // the default. lower_levels_first keeps the shuffle inside each level.
+    void setLowerLevelsFirst(bool lowerLevelsFirst) { lowerLevelsFirst_ = lowerLevelsFirst; }
+
     // Applies one answer to the current part. Warning leaves the item and the
     // part untouched (the UI retries the same answer). Incorrect increments the
     // counter and either switches to the other part or requeues the item.
@@ -75,6 +80,7 @@ private:
     std::vector<SessionItem> completed_;
     ReviewPart part_ = ReviewPart::None;
     bool meaningFirst_ = true;
+    bool lowerLevelsFirst_ = false;
 };
 
 }  // namespace kk

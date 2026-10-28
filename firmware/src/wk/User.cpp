@@ -25,8 +25,15 @@ bool parseUser(const JsonValue& root, User* out) {
         out->maxLevelGranted = intField(sub, "max_level_granted", out->maxLevelGranted);
     }
     const JsonValue* prefs = data->find("preferences");
-    if (prefs && prefs->isObject())
+    if (prefs && prefs->isObject()) {
         out->lessonsBatchSize = intField(prefs, "lessons_batch_size", out->lessonsBatchSize);
+        if (const JsonValue* order = prefs->find("reviews_presentation_order");
+            order && order->isString()) {
+            out->reviewsOrder = order->string == "lower_levels_first"
+                                    ? ReviewOrder::LowerLevelsFirst
+                                    : ReviewOrder::Shuffled;
+        }
+    }
     return !out->username.empty() && out->level > 0;
 }
 

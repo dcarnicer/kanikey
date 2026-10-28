@@ -35,6 +35,7 @@
 #include "platform/WkLessons.h"
 #include "platform/WkReview.h"
 #include "wk/AnswerChecker.h"
+#include "wk/LessonQuiz.h"
 #include "wk/Outbox.h"
 #include "wk/ReviewQueue.h"
 #include "wk/RomajiIme.h"
@@ -106,12 +107,17 @@ kk::RomajiIme gIme;
 std::vector<kk::OutboxItem> gOutbox;
 kk::LessonBatch gLessonBatch;
 std::vector<kk::Subject> gLessonComponents;
+kk::LessonQuiz gLessonQuiz;
+std::string gLessonQuizInput;
+std::string gLessonQuizDirectReading;
+kk::RomajiIme gLessonQuizIme;
 kk::GlyphPack gPack;
 WiFiServer gAssetServer(8080);
 bool gAssetServerActive = false;
 bool gLessonActive = false;
 bool gLessonListActive = false;
 bool gLessonEmptyActive = false;
+bool gLessonQuizActive = false;
 size_t gLessonIndex = 0;
 size_t gLessonPage = 0;
 bool gSyncing = false;
@@ -149,6 +155,8 @@ void drawLoading(const char* title, const char* subtitle);
 void drawLesson();
 void drawLessonList();
 void drawLessonEmpty();
+void drawLessonQuiz();
+void lessonQuizKey(const KeyEvent& e);
 void drawBoot();
 void retryBoot();
 bool startSetupPortal();
@@ -1056,6 +1064,7 @@ void endReview() {
     gSignOutConfirm = false;
     gLessonEmptyActive = false;
     gLessonListActive = false;
+    gLessonQuizActive = false;
     gLowBatteryPrompt = false;
     gLowBatteryConfirmed = false;
     gReviewActive = false;
@@ -1081,6 +1090,7 @@ void requestLowBatteryConfirm(int action) {
 
 void startReview() {
     if (!gHaveSummary) return;
+    gLessonQuizActive = false;
     if (!gLowBatteryConfirmed && lowBatteryNow()) {
         requestLowBatteryConfirm(1);
         return;
@@ -1109,6 +1119,8 @@ void startReview() {
         if (subjectById(a.subjectId)) due.push_back(a);
     }
     gQueue.setMeaningFirst(kk::settingsMeaningFirst());
+    gQueue.setLowerLevelsFirst(gHaveUser &&
+                               gUser.reviewsOrder == kk::ReviewOrder::LowerLevelsFirst);
     gQueue.build(due, gBatch.subjects, now, reviewLimit);
     if (gQueue.empty()) {
         Serial.println("[review] no reviewable items");
@@ -1476,13 +1488,274 @@ void drawLesson() {
     d.setTextDatum(lgfx::top_left);
 
     d.setTextColor(kFaint, kBg);
-    d.drawString("Space: page  Enter: start  Esc: list", 5, 125);
+    d.drawString("Space p  Q quiz", 5, 125);
+    d.setTextDatum(lgfx::top_right);
+    d.drawString("Enter start  Esc list", 233, 125);
+    d.setTextDatum(lgfx::top_left);
     d.endWrite();
     present();
 }
 
+void clearLessonQuizInput() {
+    gLessonQuizInput.clear();
+    gLessonQuizDirectReading.clear();
+    gLessonQuizIme.clear();
+}
+
+void startLessonQuiz() {
+    const kk::Subject* s = currentLessonSubject();
+    if (!s) return;
+    gLessonQuiz.start(*s);
+    clearLessonQuizInput();
+    gLessonQuizActive = true;
+    gLessonActive = false;
+    gDirty = true;
+    Serial.printf("[lesson] quiz %u\n", static_cast<unsigned>(s->id));
+}
+
+void checkLessonQuiz() {
+    if (!gLessonQuiz.active() || gLessonQuiz.feedback()) return;
+    const bool meaning = gLessonQuiz.part() == kk::AnswerKind::Meaning;
+    const std::string input =
+        meaning ? gLessonQuizInput
+                : (!gLessonQuizDirectReading.empty() ? gLessonQuizDirectReading
+                                                    : gLessonQuizIme.text());
+    if (input.empty()) return;
+    gLessonQuiz.submit(input, true);
+    const char* status = gLessonQuiz.result().status == kk::AnswerStatus::Correct ? "correct"
+                         : gLessonQuiz.result().status == kk::AnswerStatus::Warning ? "warning"
+                                                                                   : "incorrect";
+    Serial.printf("[lesson] quiz %s %s\n", meaning ? "meaning" : "reading", status);
+    gDirty = true;
+}
+
+void drawLessonQuiz() {
+    if (!gDisp) return;
+    const kk::Subject& s = gLessonQuiz.subject();
+    auto& d = target();
+    d.startWrite();
+    d.fillScreen(kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(kDim, kBg);
+    d.drawString("LESSON QUIZ", 6, 3);
+    const int total = gLessonQuiz.needsReading() ? 2 : 1;
+    int pos = 1;
+    if (gLessonQuiz.complete())
+        pos = total;
+    else if (gLessonQuiz.part() == kk::AnswerKind::Reading)
+        pos = 2;
+    char right[24];
+    snprintf(right, sizeof right, "%d/%d", pos, total);
+    d.setTextFont(0);
+    d.setTextDatum(lgfx::top_right);
+    d.drawString(right, 233, 5);
+    d.setTextDatum(lgfx::top_left);
+    d.fillRect(0, 14, 240, 2, kSurfaceHi);
+
+    d.fillRect(4, 20, 74, 64, kSurface);
+    d.drawRect(4, 20, 74, 64, kLine);
+    if (!drawSubjectPrompt(d, s, 41, 52, 70, 62, 60, kText, kSurface,
+                           kk::ClipRect{6, 22, 76, 82}))
+        drawMissingGlyph(d, 41, 52);
+
+    const bool meaning = gLessonQuiz.part() == kk::AnswerKind::Meaning;
+    const kk::AnswerCheck& result = gLessonQuiz.result();
+    if (gLessonQuiz.complete()) {
+        drawPill(d, 86, 20, "DONE", kOk, kOkBg);
+        d.setTextFont(1);
+        d.setTextSize(1);
+        d.setTextColor(kText, kBg);
+        d.drawString("Practice complete", 86, 40);
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(kDim, kBg);
+        char mistakes[32];
+        snprintf(mistakes, sizeof mistakes, "%u mistake%s",
+                 static_cast<unsigned>(gLessonQuiz.mistakes()),
+                 gLessonQuiz.mistakes() == 1 ? "" : "s");
+        d.drawString(mistakes, 86, 58);
+        d.setTextColor(kFaint, kBg);
+        d.drawString("No /start sent.", 86, 76);
+        d.drawString("Enter: lesson card  Esc: card", 5, 125);
+    } else if (gLessonQuiz.feedback()) {
+        const bool ok = result.status == kk::AnswerStatus::Correct;
+        const bool warn = result.status == kk::AnswerStatus::Warning;
+        drawPill(d, 86, 20, ok ? "CORRECT" : warn ? "CHECK" : "NOT QUITE",
+                 ok ? kOk : warn ? kWarn : kErr, ok ? kOkBg : warn ? kSurfaceHi : kErrBg);
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(kFaint, kBg);
+        d.drawString("You typed", 86, 38);
+        const bool japanese = !meaning;
+        std::string typed = japanese
+                                ? (!gLessonQuizDirectReading.empty() ? gLessonQuizDirectReading
+                                                                    : gLessonQuizIme.text())
+                                : gLessonQuizInput;
+        bool typedDrawn = false;
+        if (japanese && !typed.empty())
+            typedDrawn = gPack.drawTextFit(d, typed, 86, 60, 20, 150, kDim, kBg,
+                                           kk::ClipRect{86, 44, 236, 68}) != 0;
+        if (!typedDrawn) {
+            if (japanese) {
+                d.setTextFont(1);
+                d.setTextSize(1);
+                d.setTextColor(kWarn, kBg);
+                d.drawString(typed.empty() ? "-" : "no glyph", 86, 47);
+            } else {
+                d.setTextFont(1);
+                d.setTextSize(1);
+                d.setTextColor(kDim, kBg);
+                while (typed.size() > 1 && d.textWidth(typed.c_str()) > 150)
+                    typed.erase(0, 1);
+                d.drawString(typed.empty() ? "-" : typed.c_str(), 86, 47);
+            }
+        }
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(kFaint, kBg);
+        d.drawString("Answer", 86, 65);
+        const kk::ReviewPart part =
+            meaning ? kk::ReviewPart::Meaning : kk::ReviewPart::Reading;
+        std::string answer = correctAnswer(s, part);
+        bool answerDrawn = false;
+        if (japanese)
+            answerDrawn = gPack.drawTextFit(d, answer, 86, 86, 20, 150,
+                                            ok ? kOk : warn ? kWarn : kErr, kBg,
+                                            kk::ClipRect{86, 70, 236, 94}) != 0;
+        if (!answerDrawn) {
+            if (japanese) {
+                d.setTextFont(1);
+                d.setTextSize(1);
+                d.setTextColor(kWarn, kBg);
+                d.drawString("no glyph", 86, 74);
+            } else {
+                d.setTextFont(1);
+                d.setTextSize(1);
+                d.setTextColor(ok ? kOk : warn ? kWarn : kErr, kBg);
+                while (answer.size() > 1 && d.textWidth(answer.c_str()) > 150)
+                    answer.pop_back();
+                d.drawString(answer.c_str(), 86, 74);
+            }
+        }
+        if (!ok) drawWrapped(d, result.message, 86, 96, 150, 2, kFaint, kBg);
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(kFaint, kBg);
+        d.drawString("Enter: continue  Esc: card", 5, 125);
+    } else {
+        drawPill(d, 86, 20, meaning ? "MEANING" : "READING",
+                 meaning ? kAccentHi : kReading, kSurfaceHi);
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(kDim, kBg);
+        d.drawString(meaning ? "Type the meaning" : "Type the reading", 86, 38);
+
+        d.fillRect(86, 52, 150, 32, kSurfaceHi);
+        d.drawRect(86, 52, 150, 32, kLine);
+        std::string shown = meaning
+                                ? gLessonQuizInput
+                                : (!gLessonQuizDirectReading.empty() ? gLessonQuizDirectReading
+                                                                    : gLessonQuizIme.text());
+        int caret = 92;
+        if (shown.empty()) {
+            d.setTextFont(1);
+            d.setTextSize(1);
+            d.setTextColor(kFaint, kSurfaceHi);
+            d.drawString(meaning ? "answer" : "kana", 92, 60);
+        } else if (meaning) {
+            d.setTextFont(1);
+            d.setTextSize(1);
+            trimFrontToWidth(d, shown, 138);
+            d.setTextColor(kText, kSurfaceHi);
+            d.drawString(shown.c_str(), 92, 60);
+            caret = 92 + d.textWidth(shown.c_str());
+        } else if (gPack.drawTextRight(d, shown, 230, 80, 32, kText, kSurfaceHi,
+                                       kk::ClipRect{88, 54, 234, 86}) ||
+                   gPack.drawTextRight(d, shown, 230, 80, 20, kText, kSurfaceHi,
+                                       kk::ClipRect{88, 54, 234, 86})) {
+            caret = 230;
+        } else {
+            d.setTextFont(1);
+            d.setTextSize(1);
+            d.setTextColor(kWarn, kSurfaceHi);
+            d.drawString("no glyph", 92, 60);
+        }
+        if (caret < 232) d.fillRect(caret, 58, 2, 16, kAccent);
+        if (!meaning) {
+            d.setTextFont(0);
+            d.setTextSize(1);
+            d.setTextColor(kFaint, kBg);
+            std::string raw = "romaji: " + gLessonQuizIme.raw();
+            d.drawString(raw.c_str(), 86, 88);
+        }
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(kFaint, kBg);
+        d.drawString("Enter: check  Esc: card", 5, 125);
+    }
+
+    d.endWrite();
+    present();
+}
+
+void lessonQuizKey(const KeyEvent& e) {
+    if (!e.down) return;
+    if (e.key == Key::Esc) {
+        gLessonQuizActive = false;
+        gLessonActive = true;
+        gDirty = true;
+        return;
+    }
+    if (gLessonQuiz.complete()) {
+        if (e.key == Key::Enter) {
+            gLessonQuizActive = false;
+            gLessonActive = true;
+            gDirty = true;
+        }
+        return;
+    }
+    if (gLessonQuiz.feedback()) {
+        if (e.key == Key::Enter) {
+            gLessonQuiz.advance();
+            clearLessonQuizInput();
+            gDirty = true;
+        }
+        return;
+    }
+    if (e.key == Key::Enter) {
+        checkLessonQuiz();
+        return;
+    }
+    if (e.key == Key::Backspace) {
+        if (gLessonQuiz.part() == kk::AnswerKind::Meaning) {
+            if (!gLessonQuizInput.empty()) gLessonQuizInput.pop_back();
+        } else if (!gLessonQuizDirectReading.empty()) {
+            gLessonQuizDirectReading.pop_back();
+        } else {
+            gLessonQuizIme.backspace();
+        }
+        gDirty = true;
+        return;
+    }
+    const char c = tgc::cardputerCharAt(e.x, e.y, gShift);
+    if (c) {
+        if (gLessonQuiz.part() == kk::AnswerKind::Meaning)
+            gLessonQuizInput.push_back(c);
+        else {
+            gLessonQuizDirectReading.clear();
+            gLessonQuizIme.feed(c);
+        }
+        gDirty = true;
+    }
+}
+
 void startLessons() {
     if (!gHaveSummary) return;
+    gLessonQuizActive = false;
     if (gSummary.totalLessons() == 0) {
         gLessonEmptyActive = true;
         gLessonListActive = false;
@@ -1612,6 +1885,7 @@ void lessonListKey(const KeyEvent& e) {
         gDirty = true;
     } else if (e.key == Key::Enter) {
         if (gLessonIndex >= total) gLessonIndex = 0;
+        gLessonQuizActive = false;
         gLessonListActive = false;
         gLessonActive = true;
         gLessonPage = 0;
@@ -1624,6 +1898,13 @@ void lessonKey(const KeyEvent& e) {
     if (e.key == Key::Enter) {
         startCurrentLesson();
         return;
+    }
+    if (e.key == Key::Other) {
+        const char c = tgc::cardputerCharAt(e.x, e.y, gShift);
+        if (c == 'q' || c == 'Q') {
+            startLessonQuiz();
+            return;
+        }
     }
     if (e.key == Key::Esc) {
         gLessonActive = false;
@@ -1814,6 +2095,7 @@ void settingsKey(const KeyEvent& e) {
             gSyncIssue = SyncIssue::None;
             gReviewActive = false;
             gReviewSummary = false;
+            gLessonQuizActive = false;
             gFeedback = false;
             gNeedsSubmit = false;
             gPauseActive = false;
@@ -1941,6 +2223,10 @@ void onKey(const KeyEvent& e) {
     }
     if (gLessonListActive) {
         lessonListKey(e);
+        return;
+    }
+    if (gLessonQuizActive) {
+        lessonQuizKey(e);
         return;
     }
     if (gLessonActive) {
@@ -3115,6 +3401,10 @@ void draw() {
         drawLessonList();
         return;
     }
+    if (gLessonQuizActive) {
+        drawLessonQuiz();
+        return;
+    }
     if (gLessonActive) {
         drawLesson();
         return;
@@ -3494,6 +3784,12 @@ void handleSerial() {
                 ++gLessonPage;
                 gDirty = true;
             }
+        } else if (gSerialLine == "Q") {
+            if (gLessonActive) {
+                startLessonQuiz();
+            } else {
+                Serial.println("[lesson] open a lesson card first");
+            }
         } else if (gSerialLine == "v") {
             if (gBatch.assignments.empty() && !kk::DevWifi::connected() &&
                 !kk::DevWifi::connect(30000)) {
@@ -3505,11 +3801,23 @@ void handleSerial() {
             if (gLessonListActive) {
                 if (!gLessonBatch.assignments.empty()) {
                     if (gLessonIndex >= gLessonBatch.assignments.size()) gLessonIndex = 0;
+                    gLessonQuizActive = false;
                     gLessonListActive = false;
                     gLessonActive = true;
                     gLessonPage = 0;
                     gDirty = true;
                 }
+            } else if (gLessonQuizActive) {
+                if (gLessonQuiz.complete()) {
+                    gLessonQuizActive = false;
+                    gLessonActive = true;
+                } else if (gLessonQuiz.feedback()) {
+                    gLessonQuiz.advance();
+                    clearLessonQuizInput();
+                } else {
+                    checkLessonQuiz();
+                }
+                gDirty = true;
             } else if (gLessonActive) {
                 startCurrentLesson();
             } else if (gReviewActive) {
@@ -3525,6 +3833,10 @@ void handleSerial() {
                 gLessonListActive = false;
                 gShowHome = true;
                 gDirty = true;
+            } else if (gLessonQuizActive) {
+                gLessonQuizActive = false;
+                gLessonActive = true;
+                gDirty = true;
             } else if (gLessonActive) {
                 gLessonActive = false;
                 if (!gLessonBatch.assignments.empty() &&
@@ -3537,8 +3849,14 @@ void handleSerial() {
                 endReview();
             }
         } else if (gSerialLine.startsWith("y ")) {
-            if (gReviewActive && !gFeedback) {
-                const String text = gSerialLine.substring(2);
+            const String text = gSerialLine.substring(2);
+            if (gLessonQuizActive && !gLessonQuiz.feedback()) {
+                if (gLessonQuiz.part() == kk::AnswerKind::Meaning)
+                    gLessonQuizInput += text.c_str();
+                else
+                    gLessonQuizDirectReading += text.c_str();
+                gDirty = true;
+            } else if (gReviewActive && !gFeedback) {
                 if (gQueue.part() == kk::ReviewPart::Meaning)
                     gMeaningInput += text.c_str();
                 else
@@ -3603,7 +3921,7 @@ void handleSerial() {
             delay(100);
             ESP.restart();
         } else if (!gSerialLine.isEmpty()) {
-            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload\n");
+            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload\n");
         }
         gSerialLine = "";
         gDirty = true;

@@ -5,14 +5,18 @@
 > **Status: firmware preview — offline cache (2026-10-28).** The Cardputer ADV
 > shows a live Home from `/user` + `/summary`, fetches a 20-item due batch,
 > runs a typed meaning/reading session and submits completed items with
-> `POST /v2/reviews` (201). A persistent outbox makes reviews survive a reboot
-> and offline sessions. Home, the user and the review batch are now cached too:
+> `POST /v2/reviews` (201). Review order follows the account's
+> `reviews_presentation_order` (`shuffled` or `lower_levels_first`). A
+> persistent outbox makes reviews survive a reboot and offline sessions. Home,
+> the user and the review batch are now cached too:
 > after a reboot without network the device restores them, shows `Offline` and
 > can run a cached session. Lessons show a list/picker sorted by level and
 > `lesson_position`, then a card with meaning/reading and mnemonic pages; only
 > the card's Enter calls `PUT /assignments/{id}/start` (200). Study materials
 > add the user's meaning synonyms and meaning/reading notes: synonyms are
 > accepted answers and the notes appear on the lesson card and review feedback.
+> `Q` on a lesson card opens an optional local meaning/reading quiz with
+> feedback, retries and a completion screen; the quiz never starts the lesson.
 > Japanese prompts and readings come entirely from the microSD visual pack at
 > 64/32/20 px: 7,269 glyphs + 498 radical bitmaps in 3.7 MB, generated locally
 > with the user's token. No WaniKani content is in the repository.
@@ -23,8 +27,8 @@
 > checks the visual pack. Setup makes no lesson-start calls; validation only
 > reads `/user`. `Esc` opens Pause in a review and Settings from Home, with
 > brightness/timings, Sync now, the setup portal and About. Normal boots show
-> setup/sync states; the M0 debug screen is only in the development build. The
-> lesson quiz and dismissing rejected outbox items are next.
+> setup/sync states; the M0 debug screen is only in the development build.
+> Dismissing rejected outbox items and the item detail screen are next.
 >
 > KaniKey is an **unofficial** third-party app for WaniKani. It is not
 > affiliated with, endorsed by or sponsored by WaniKani or Tofugu LLC. WaniKani

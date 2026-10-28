@@ -347,7 +347,9 @@ an explicit `no glyph` state. The bottom bar says
 `Enter check` / `Esc quit`; `Esc` now opens the Pause menu (Continue / End
 session / Settings), so quitting is deliberate. `Tab: details` is later. The
 screen is driven by the same review queue and answer checker as the final
-design.
+design. The session order follows the account's
+`reviews_presentation_order`: shuffled, or lower levels first with the shuffle
+kept inside each level.
 
 ### 5.5 Feedback
 
@@ -422,11 +424,26 @@ the mnemonic.
   `person + tree` in gray.
 - Mnemonic in a 3-line, 10 px panel; `Space` turns the page.
 - `p1/3` in the corner.
-- `Enter start` / `Needs connection` if there's no network.
+- `Q quiz` opens the optional local quiz; `Enter start` / `Needs connection` if
+  there's no network.
 - On start, a brief progress animation and the next card; `Esc` returns to the
   list. The card itself only reads until `Enter`.
 
-### 5.10 Sync
+### 5.10 Lesson quiz
+
+- `Q` on a lesson card opens an optional local quiz; it is not required before
+  starting the lesson.
+- Header `LESSON QUIZ`, `1/2` (or `1/1` for radicals).
+- Meaning first, then reading when the subject has one.
+- Typed answers use the same romaji-to-kana input and answer checker as reviews.
+- Wrong answers show `NOT QUITE`, the correct answer and are retried; a mistake
+  count is kept. Warnings show `CHECK` and retry the same part.
+- Completion shows `Practice complete`, the mistake count and
+  `No /start sent.`; `Enter` returns to the card.
+- `Esc` also returns to the card. The quiz never calls `PUT /start`; starting
+  the lesson remains `Enter` on the card.
+
+### 5.11 Sync
 
 ![Sync](screens/sync.png)
 
@@ -437,7 +454,7 @@ the mnemonic.
 - When done: `Synced · 2 min ago` and back to Home.
 - If a step fails, it stays in `warn` with `Retry` and doesn't block the others.
 
-### 5.11 Settings
+### 5.12 Settings
 
 ![Settings](screens/settings.png)
 
@@ -448,7 +465,8 @@ the mnemonic.
 - `Brightness` cycles 64/128/192/255; the timings cycle presets and `off`.
   Review batch cycles 10/20/30, lesson batch 3/5/10, and order toggles
   meaning-first / reading-first. All are stored in NVS and applied without a
-  reboot.
+  reboot. WaniKani's `reviews_presentation_order` is applied automatically and
+  is not a device setting.
 - The list scrolls when there are more rows than fit (7 visible, scroll bar).
 - `Setup portal` reopens the Wi-Fi/token/time page; it is disabled during a
   review so the session is not lost. `Sync now` starts a manual sync.
@@ -460,7 +478,7 @@ the mnemonic.
 - Not yet: licenses and attributions, strict answers and clear-cache/sign-out
   from elsewhere.
 
-### 5.12 Stats (phase 2)
+### 5.13 Stats (phase 2)
 
 - Current level and level progress.
 - SRS distribution with bars and counts.
@@ -468,7 +486,7 @@ the mnemonic.
 - Streak and reviews from the last 7 days.
 - `Esc` goes back.
 
-### 5.13 Errors and empty states
+### 5.14 Errors and empty states
 
 - **Not configured:** `Welcome to KaniKey` + `Enter setup`.
 - **No SD:** `No SD card` + `Insert a FAT32 card` + `Enter retry`.
