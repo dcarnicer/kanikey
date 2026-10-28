@@ -35,8 +35,12 @@ KaniKey firmware for the M5Stack Cardputer ADV.
   (`/kanikey/glyphs.kgp`); the token pack on the card has 7,269 glyphs at
   64/32/20 px and 498 radical bitmaps.
 - Draws radical prompts from the pack's 96 px radical bitmaps and includes
-  radical-only lessons/reviews. Lesson cards append component meanings and
-  hints to the paged mnemonic.
+  radical-only lessons/reviews. Lesson cards append component meanings, hints
+  and the user's study-material notes to the paged mnemonic.
+- Fetches `/v2/study_materials` for review and lesson subjects: meaning
+  synonyms are accepted answers and meaning/reading notes appear on the lesson
+  card and review feedback. A token without that permission still works without
+  notes.
 - Writes the pack to the card over the USB serial link or a one-shot Wi-Fi
   upload server.
 

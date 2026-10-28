@@ -1,6 +1,7 @@
 #pragma once
 // Fetch a small, due review batch: assignments for the summary's subject IDs,
 // then their subjects in tiny batches so the DOM stays inside the heap budget.
+// Study materials (synonyms and notes) are merged into the subjects.
 #include <Arduino.h>
 
 #include <cstdint>

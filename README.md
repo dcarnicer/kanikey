@@ -10,7 +10,9 @@
 > after a reboot without network the device restores them, shows `Offline` and
 > can run a cached session. Lessons show a list/picker sorted by level and
 > `lesson_position`, then a card with meaning/reading and mnemonic pages; only
-> the card's Enter calls `PUT /assignments/{id}/start` (200).
+> the card's Enter calls `PUT /assignments/{id}/start` (200). Study materials
+> add the user's meaning synonyms and meaning/reading notes: synonyms are
+> accepted answers and the notes appear on the lesson card and review feedback.
 > Japanese prompts and readings come entirely from the microSD visual pack at
 > 64/32/20 px: 7,269 glyphs + 498 radical bitmaps in 3.7 MB, generated locally
 > with the user's token. No WaniKani content is in the repository.
@@ -22,7 +24,7 @@
 > reads `/user`. `Esc` opens Pause in a review and Settings from Home, with
 > brightness/timings, Sync now, the setup portal and About. Normal boots show
 > setup/sync states; the M0 debug screen is only in the development build. The
-> lesson list/components and dismissing rejected outbox items are next.
+> lesson quiz and dismissing rejected outbox items are next.
 >
 > KaniKey is an **unofficial** third-party app for WaniKani. It is not
 > affiliated with, endorsed by or sponsored by WaniKani or Tofugu LLC. WaniKani

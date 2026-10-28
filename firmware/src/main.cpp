@@ -802,8 +802,17 @@ void drawReview() {
                 d.drawString(answer.c_str(), 100, 74);
             }
         }
-        if (gCheck.status != kk::AnswerStatus::Correct)
+        if (gCheck.status == kk::AnswerStatus::Correct) {
+            const std::string& note =
+                part == kk::ReviewPart::Meaning ? s->meaningNote : s->readingNote;
+            if (!note.empty()) {
+                const std::string label =
+                    part == kk::ReviewPart::Meaning ? "Note: " : "Reading note: ";
+                drawWrapped(d, label + note, 100, 92, 136, 2, kFaint, kBg);
+            }
+        } else {
             drawWrapped(d, gCheck.message, 100, 92, 136, 2, kFaint, kBg);
+        }
     }
 
     d.setTextFont(0);
@@ -1444,6 +1453,8 @@ void drawLesson() {
     if (!components.empty()) extra += "Components: " + components + ". ";
     if (!s->meaningHint.empty()) extra += "Hint: " + s->meaningHint + ". ";
     if (!s->readingHint.empty()) extra += "Reading hint: " + s->readingHint + ". ";
+    if (!s->meaningNote.empty()) extra += "Meaning note: " + s->meaningNote + ". ";
+    if (!s->readingNote.empty()) extra += "Reading note: " + s->readingNote + ". ";
     if (!extra.empty()) mnemonic += " " + extra;
     const std::vector<std::string> lines = wrapLines(d, mnemonic, 232);
     const size_t pages = (lines.size() + 2) / 3;

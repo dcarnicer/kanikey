@@ -6,7 +6,7 @@ plan. Product scope and UX live in [docs/design.md](docs/design.md),
 [docs/ux.md](docs/ux.md) and [docs/api-sync.md](docs/api-sync.md).
 
 The review loop works on hardware. The main v1 gaps are the complete lesson
-flow, WaniKani preferences/study materials and API robustness. The persistent
+flow, WaniKani preferences/item detail and API robustness. The persistent
 offline cache restores Home, the user and a cached review batch after a reboot
 without network; first boot now uses an on-device setup portal, and Settings
 covers display/power/study preferences plus sync, cache and sign-out.
@@ -26,6 +26,10 @@ Working on hardware:
   mnemonic, component meanings and hints, and `PUT /assignments/{id}/start`
   returns 200. Tests so far use only GETs; no live lesson was started by this
   work.
+- Study materials: `GET /study_materials` is fetched for review and lesson
+  subjects, user synonyms are accepted by the answer checker, and meaning/
+  reading notes appear on the lesson card and review feedback. They are part of
+  the cached subject, so they work offline too.
 - SD visual pack: the card now has the token pack with **7,269 glyphs + 498
   radical bitmaps** (3,698,476 B), uploaded over USB on 2026-10-27. Wi-Fi
   asset upload also works.
@@ -54,11 +58,11 @@ Working on hardware:
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 37 native tests pass. GitHub Actions runs gitleaks on `main`.
+- 39 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,358,389 B / 1,835,008 B flash (74.0%)**, **93,800 B /
-327,680 B static RAM (28.6%)**. The dev image is 1,363,609 B. Removing
-`efontJA_16` freed ~468 KB and leaves ~490 KB of flash headroom.
+Current build: **1,362,985 B / 1,835,008 B flash (74.3%)**, **93,800 B /
+327,680 B static RAM (28.6%)**. The dev image is 1,368,397 B. Removing
+`efontJA_16` freed ~468 KB and leaves ~472 KB of flash headroom.
 
 ## Priority summary
 
@@ -67,7 +71,7 @@ Current build: **1,358,389 B / 1,835,008 B flash (74.0%)**, **93,800 B /
 | 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Done except real-prompt hardware check | RAD-02, RAD-04 |
 | 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Core landed; real-account E2E pending | CACHE-05, CACHE-07 |
 | 3 | Complete lesson flow | List/picker, card, components, empty state and start exist; quiz does not | Partial | LESSON-04, LESSON-05 |
-| 4 | WaniKani data and preferences | Synonyms, item detail, SRS feedback, stats and preferences are missing | Not started | WK-01, WK-03 |
+| 4 | WaniKani data and preferences | Synonyms and notes are live; item detail, SRS feedback, stats and preferences are missing | Partial | WK-03, WK-04 |
 | 5 | Outbox and API robustness | Rejected items, 429 and invalid auth have no user path | Partial | API-01, API-02 |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
 | 7 | UI, stats and sync | Missing SRS bar, sync progress, accuracy and item detail | Partial | UI-01, UI-02 |
@@ -87,7 +91,7 @@ lesson flow.
 | 1 | Offline cache | CACHE-05 → CACHE-07, TNG-04, TNG-05 | Review and Home work after reboot without network |
 | 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | List, understand, quiz and start lessons |
 | 3 | Setup and device UX | TNG-02 | OTA release path (setup/settings complete) |
-| 4 | WaniKani data and detail | WK-01, WK-03 → WK-11 | Synonyms, item detail, SRS and progress |
+| 4 | WaniKani data and detail | WK-03 → WK-11 (WK-01 done) | Item detail, SRS and progress |
 | 5 | API robustness | API-01 → API-07 | Recoverable rejected, rate-limited and auth errors |
 | 6 | UI, stats and sync | UI-01 → UI-08 | SRS bar, sync screen, accuracy and polish |
 | 7 | Technical debt and release | TECH-01 → TECH-07 | CI, refactor, version, OTA and license |
@@ -203,6 +207,10 @@ UI is considered complete.
 
 - **WK-01 — `GET /study_materials`.** Fetch meaning synonyms, reading notes and
   meaning notes; use synonyms in the answer checker and show notes in detail.
+  **Done (2026-10-28):** review and lesson batches fetch the materials by
+  `subject_ids`, merge them into the cached subject, accept synonyms as
+  meanings, and show the notes on the lesson card and review feedback. A token
+  without the study-materials permission still reviews/lessons without notes.
 - **WK-02 — `lessons_batch_size`.** `User` already parses it; use it for
   `fetchLessonBatch` and progress. **Done:** the lesson batch is clamped to it.
 - **WK-03 — `reviews_presentation_order`.** Apply `shuffled` /

@@ -39,6 +39,8 @@ struct Subject {
     std::string readingMnemonic;
     std::string meaningHint;
     std::string readingHint;
+    std::string meaningNote;  // study material note (whitespace collapsed)
+    std::string readingNote;
 
     bool needsReading() const {
         return type == SubjectType::Kanji || type == SubjectType::Vocabulary;

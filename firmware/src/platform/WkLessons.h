@@ -1,6 +1,7 @@
 #pragma once
 // Fetch a small lesson batch and start an assignment. Lessons use a few
 // subjects at a time because their mnemonics make the JSON much larger.
+// Study materials (synonyms and notes) are merged into the subjects.
 #include <Arduino.h>
 
 #include <cstdint>

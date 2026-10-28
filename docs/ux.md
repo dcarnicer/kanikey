@@ -368,6 +368,9 @@ design.
 - Feedback doesn't last a fixed time: it waits for `Enter` (or for the user to
   start typing the next one, if auto-advance is enabled).
 - `Tab` opens the full card: meanings, readings, mnemonic and components.
+- **Implementation note (2026-10-28).** After a correct answer, the free lines
+  under the answer show the user's meaning or reading note when one exists.
+  Wrong answers keep the mistake message; the full detail card is still UI-04.
 
 ### 5.6 Item detail
 
@@ -405,8 +408,9 @@ design.
 **Implementation note (2026-10-28).** The list and picker are live: a scrolling
 list of up to the configured batch, sorted by level and `lesson_position`
 within the first 10 summary candidates. Opening a card and paging does not call
-`PUT /start`; only `Enter` on the card starts the lesson. Component meanings
-and hints are appended to the paged card after the mnemonic.
+`PUT /start`; only `Enter` on the card starts the lesson. Component meanings,
+hints and the user's meaning/reading notes are appended to the paged card after
+the mnemonic.
 
 ### 5.9 Lesson card
 

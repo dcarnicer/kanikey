@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "platform/WkClient.h"
+#include "platform/WkStudyMaterials.h"
 #include "wk/Json.h"
 #include "wk/Time.h"
 
@@ -82,6 +83,8 @@ LessonBatch fetchLessonBatch(const String& token, const std::vector<uint32_t>& l
                       static_cast<unsigned>(ids.size()),
                       static_cast<unsigned>(batch.subjects.size()));
     }
+    attachStudyMaterials(token, &batch.subjects);
+
     // Keep radical-only lessons too: their prompt is a bitmap from the visual
     // pack, not a Unicode character. The UI reports a missing glyph or pack.
     std::vector<Assignment> usable;

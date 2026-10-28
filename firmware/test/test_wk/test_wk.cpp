@@ -9,6 +9,7 @@
 #include "wk/Crc32.h"
 #include "wk/Outbox.h"
 #include "wk/Json.h"
+#include "wk/StudyMaterial.h"
 #include "wk/SubjectParser.h"
 #include "wk/Text.h"
 #include "wk/Summary.h"
@@ -559,6 +560,44 @@ static void test_markup_and_subject_details() {
     TEST_ASSERT_EQUAL_STRING("kyuu.", ss[0].readingMnemonic.c_str());
 }
 
+static void test_study_materials_parse_and_merge() {
+    JsonParser p;
+    JsonValue v;
+    const char* text =
+        "{\"data\":["
+        "{\"id\":900,\"object\":\"study_material\",\"data\":{\"subject_id\":10,"
+        "\"meaning_note\":\"  Use this\\nfor eating.  \",\"reading_note\":null,"
+        "\"meaning_synonyms\":[\"consume\",\"ingest\"],\"hidden\":false}},"
+        "{\"id\":901,\"object\":\"study_material\",\"data\":{\"subject_id\":11,"
+        "\"meaning_note\":\"Hidden note\",\"meaning_synonyms\":[\"x\"],\"hidden\":true}}]}";
+    TEST_ASSERT_TRUE(p.parse(text, &v));
+    const std::vector<StudyMaterial> materials = parseStudyMaterials(v);
+    TEST_ASSERT_EQUAL(2, materials.size());
+    TEST_ASSERT_EQUAL_UINT32(10, materials[0].subjectId);
+    TEST_ASSERT_EQUAL_STRING("Use this for eating.", materials[0].meaningNote.c_str());
+    TEST_ASSERT_TRUE(materials[0].readingNote.empty());
+    TEST_ASSERT_EQUAL(2, materials[0].meaningSynonyms.size());
+    TEST_ASSERT_TRUE(materials[1].hidden);
+
+    Subject a;
+    a.id = 10;
+    a.type = SubjectType::Kanji;
+    a.characters = "食";
+    a.meanings = {{"eat", true, true}};
+    a.meaningSynonyms = {"consume"};
+    Subject b;
+    b.id = 11;
+    b.type = SubjectType::Kanji;
+    std::vector<Subject> subjects = {a, b};
+    TEST_ASSERT_EQUAL(1, applyStudyMaterials(materials, &subjects));
+    TEST_ASSERT_EQUAL_STRING("Use this for eating.", subjects[0].meaningNote.c_str());
+    TEST_ASSERT_EQUAL(2, subjects[0].meaningSynonyms.size());
+    TEST_ASSERT_TRUE(subjects[1].meaningNote.empty());
+    TEST_ASSERT_TRUE(subjects[1].meaningSynonyms.empty());
+    TEST_ASSERT_EQUAL(AnswerStatus::Correct,
+                      checkAnswer(subjects[0], AnswerKind::Meaning, "ingest").status);
+}
+
 
 static void test_summary_text_parser() {
     const char* text =
@@ -603,6 +642,8 @@ static Subject cacheSubject() {
     s.readingMnemonic = "Oh, ton of adults.";
     s.meaningHint = "Not a child.";
     s.readingHint = "Long o.";
+    s.meaningNote = "Use this when talking about people.";
+    s.readingNote = "The second o is long.";
     return s;
 }
 
@@ -673,7 +714,9 @@ static void test_cache_corruption_is_rejected() {
     TEST_ASSERT_FALSE(decodeCacheSnapshot(bytes.data(), bytes.size() - 1, &out));
     TEST_ASSERT_FALSE(decodeCacheSnapshot(bytes.data(), kCacheHeaderBytes - 1, &out));
     bad = bytes;
-    bad[4] = 3;
+    bad[4] = static_cast<uint8_t>(kCacheVersion + 1);
+    TEST_ASSERT_FALSE(decodeCacheSnapshot(bad.data(), bad.size(), &out));
+    bad[4] = static_cast<uint8_t>(kCacheVersion - 1);
     TEST_ASSERT_FALSE(decodeCacheSnapshot(bad.data(), bad.size(), &out));
     TEST_ASSERT_TRUE(decodeCacheSnapshot(bytes.data(), bytes.size(), &out));
 }
@@ -709,6 +752,8 @@ static void test_cache_subjects_round_trip() {
     TEST_ASSERT_EQUAL(3, s.componentSubjectIds.size());
     TEST_ASSERT_EQUAL_STRING("An adult is a big person.", s.meaningMnemonic.c_str());
     TEST_ASSERT_EQUAL_STRING("Long o.", s.readingHint.c_str());
+    TEST_ASSERT_EQUAL_STRING("Use this when talking about people.", s.meaningNote.c_str());
+    TEST_ASSERT_EQUAL_STRING("The second o is long.", s.readingNote.c_str());
     TEST_ASSERT_EQUAL(SubjectType::Radical, out.subjects[1].type);
     TEST_ASSERT_TRUE(out.subjects[1].characters.empty());
 
@@ -751,6 +796,7 @@ int main(int, char**) {
     RUN_TEST(test_subject_parse);
     RUN_TEST(test_summary_subject_ids);
     RUN_TEST(test_markup_and_subject_details);
+    RUN_TEST(test_study_materials_parse_and_merge);
     RUN_TEST(test_crc32_known_vector);
     RUN_TEST(test_outbox_model);
     RUN_TEST(test_cache_account_key);

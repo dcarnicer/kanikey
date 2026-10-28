@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "platform/WkClient.h"
+#include "platform/WkStudyMaterials.h"
 #include "wk/Json.h"
 
 namespace kk {
@@ -87,6 +88,8 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
                       static_cast<unsigned>(ids.size()),
                       static_cast<unsigned>(batch.subjects.size()));
     }
+
+    attachStudyMaterials(token, &batch.subjects);
 
     batch.fetchedAt = now;
     batch.ok = !batch.subjects.empty();

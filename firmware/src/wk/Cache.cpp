@@ -321,6 +321,8 @@ void encodeSubject(Writer& w, const Subject& s) {
     w.str(s.readingMnemonic);
     w.str(s.meaningHint);
     w.str(s.readingHint);
+    w.str(s.meaningNote);
+    w.str(s.readingNote);
 }
 
 bool decodeSubject(Reader& r, Subject* s) {
@@ -362,7 +364,7 @@ bool decodeSubject(Reader& r, Subject* s) {
     }
 
     return r.str(&s->meaningMnemonic) && r.str(&s->readingMnemonic) && r.str(&s->meaningHint) &&
-           r.str(&s->readingHint);
+           r.str(&s->readingHint) && r.str(&s->meaningNote) && r.str(&s->readingNote);
 }
 
 }  // namespace

@@ -336,9 +336,27 @@ snapshot fits LittleFS. The token fingerprint discards another account's data.
 
 **Implications:** boot restores Home and a cached batch before any Wi-Fi
 request; completed items are pruned from the cache and stay in the outbox.
-`KKCA`/`KKCS` v2 store the summary `data_updated_at`, mark caches older than
-24 h as stale, and Settings exposes `Sync now`/`Clear cache`. The real online
-fetch → offline → reconnect E2E (CACHE-07) still needs a deliberate live run.
+`KKCA`/`KKCS` v3 add the study-material notes to each cached subject, store the
+summary `data_updated_at`, mark caches older than 24 h as stale, and Settings
+exposes `Sync now`/`Clear cache`. The real online fetch → offline → reconnect
+E2E (CACHE-07) still needs a deliberate live run.
+
+---
+
+## 2026-10-28 — Study materials are merged into the subject
+
+**Decision:** review and lesson batches fetch `/study_materials` by
+`subject_ids` and merge the user's synonyms and notes into the `Subject`; the
+notes are part of the cached subject. Hidden materials are skipped, and a
+missing study-materials permission does not fail the batch.
+
+**Why:** the answer checker already understands synonyms, but it had no source
+for them. Merging keeps one object for the checker, the lesson card, the review
+feedback and the offline cache instead of a second lookup table.
+
+**Implications:** `KKCS` v3 carries `meaning_note`/`reading_note`; older caches
+are discarded. Notes appear on the lesson card and after a correct review
+answer. The full item-detail screen (UI-04/WK-08) can reuse the same fields.
 
 ---
 

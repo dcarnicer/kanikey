@@ -68,7 +68,7 @@ ISO 8601 in UTC, with microseconds and `Z`. KaniKey only needs seconds.
 | GET | `/summary` | Reviews/lessons per hour, `next_reviews_at` | 30–60 min |
 | GET | `/assignments` | Stages, `available_at`, assignment IDs | Every sync |
 | GET | `/subjects` | Meanings, readings, components, mnemonics | When IDs are missing |
-| GET | `/study_materials` | User synonyms | Every sync |
+| GET | `/study_materials` | User synonyms and notes | Per review/lesson batch |
 | POST | `/reviews` | Send a completed review | Per item |
 | PUT | `/assignments/{id}/start` | Start a lesson | Per lesson |
 
@@ -171,6 +171,14 @@ data.readings[] { reading, primary, accepted_answer, type }
 Fields: `subject_id`, `meaning_note`, `reading_note`, `meaning_synonyms[]`,
 `hidden`. The synonyms are used as correct answers. They are requested only for
 subjects in the cache, by `subject_ids` or `updated_after`.
+
+**Implementation (2026-10-28).** Review and lesson batches request the
+materials for their own subject IDs in groups of 10, after the subjects are
+parsed. Notes are whitespace-collapsed, hidden materials are skipped and the
+synonyms are de-duplicated. Everything is merged into the `Subject`, so the
+answer checker and the lesson/feedback cards use it and the subject cache keeps
+it offline. A 401/403 on `/study_materials` is logged and the batch continues
+without notes: a token without that permission can still review and study.
 
 ### 3.6 `POST /reviews`
 
@@ -283,6 +291,10 @@ Body:
 - If the flush fails with 422, the item is reconciled and it continues.
 - `updated_after` may return changes to assignments that are not in the queue
   (because they were reviewed on another device); they are applied.
+
+**Current implementation:** there is no global assignment/subject sync yet, so
+review and lesson batches fetch their own `/study_materials` by `subject_ids`
+(see §3.5). The notes/synonyms then live in the cached subject.
 
 ### 5.4 Review session
 
@@ -406,9 +418,11 @@ alters the SRS stage and the user's statistics. We prefer to leave the item as
 - Never delete the outbox before the POST is confirmed.
 
 **Implementation (2026-10-28).** The Home/user/batch snapshot is
-`/state/cache.bin` (`KKCA`, version 2); the batch subjects are
-`/kanikey/cache/subjects.bin` (`KKCS`, version 2) on SD. Both carry the save
-time, an FNV-1a fingerprint of the API token, the payload length and CRC32.
+`/state/cache.bin` (`KKCA`, version 3); the batch subjects are
+`/kanikey/cache/subjects.bin` (`KKCS`, version 3) on SD. Version 3 adds the
+study-material notes to each cached subject; older files are discarded. Both
+carry the save time, an FNV-1a fingerprint of the API token, the payload length
+and CRC32.
 The snapshot also stores the summary's `data_updated_at`; assignments keep
 their own `data_updated_at` for outbox reconciliation. Loading a snapshot
 written for another token or an older version discards both files. The cached
