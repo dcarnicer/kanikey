@@ -1486,7 +1486,10 @@ void startLessons() {
     }
     gLowBatteryConfirmed = false;
     gLessonEmptyActive = false;
-    const size_t lessonLimit = static_cast<size_t>(kk::settingsLessonBatchSize());
+    size_t lessonLimit = static_cast<size_t>(kk::settingsLessonBatchSize());
+    if (gHaveUser && gUser.lessonsBatchSize > 0)
+        lessonLimit = std::min(lessonLimit, static_cast<size_t>(gUser.lessonsBatchSize));
+    if (lessonLimit == 0) lessonLimit = 1;
     const size_t candidateLimit = std::max<size_t>(lessonLimit, 10);
     char subtitle[48];
     snprintf(subtitle, sizeof subtitle, "up to %u, please wait",

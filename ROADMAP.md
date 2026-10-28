@@ -56,8 +56,8 @@ Working on hardware:
   sleep, screenshot capture.
 - 37 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,358,357 B / 1,835,008 B flash (74.0%)**, **93,800 B /
-327,680 B static RAM (28.6%)**. The dev image is 1,363,561 B. Removing
+Current build: **1,358,389 B / 1,835,008 B flash (74.0%)**, **93,800 B /
+327,680 B static RAM (28.6%)**. The dev image is 1,363,609 B. Removing
 `efontJA_16` freed ~468 KB and leaves ~490 KB of flash headroom.
 
 ## Priority summary
@@ -184,8 +184,8 @@ optional practice before `PUT /start` unless real use shows otherwise.
 - **LESSON-04 — Local quiz.** Meaning/reading quiz, incorrect-answer feedback
   and completion state, if required before starting.
 - **LESSON-05 — Batch size and progress.** Respect `lessons_batch_size` and
-  show progress through the batch. **Partial:** the local lesson batch size is
-  used and the card shows position; WaniKani `lessons_batch_size` is not merged.
+  show progress through the batch. **Done (2026-10-28):** the local setting is
+  clamped to WaniKani `lessons_batch_size`; the list and card show position.
 - **LESSON-06 — No lessons state.** Show the next unlock or the next review
   time when there are no lessons. **Done (2026-10-28):** a local `No lessons
   now` screen shows the next review time from `/summary`; Enter/Esc returns Home.
@@ -204,7 +204,7 @@ UI is considered complete.
 - **WK-01 — `GET /study_materials`.** Fetch meaning synonyms, reading notes and
   meaning notes; use synonyms in the answer checker and show notes in detail.
 - **WK-02 — `lessons_batch_size`.** `User` already parses it; use it for
-  `fetchLessonBatch` and progress.
+  `fetchLessonBatch` and progress. **Done:** the lesson batch is clamped to it.
 - **WK-03 — `reviews_presentation_order`.** Apply `shuffled` /
   `lower_levels_first` instead of always shuffling.
 - **WK-04 — SRS indicator.** Show the SRS stage after completing an item and on
