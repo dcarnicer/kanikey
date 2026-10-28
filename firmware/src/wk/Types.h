@@ -24,6 +24,11 @@ struct Reading {
     ReadingType type = ReadingType::Unknown;
 };
 
+struct ContextSentence {
+    std::string ja;
+    std::string en;
+};
+
 struct Subject {
     uint32_t id = 0;
     SubjectType type = SubjectType::Kanji;
@@ -41,6 +46,8 @@ struct Subject {
     std::string readingHint;
     std::string meaningNote;  // study material note (whitespace collapsed)
     std::string readingNote;
+    std::vector<std::string> partsOfSpeech;       // vocabulary details
+    std::vector<ContextSentence> contextSentences;  // vocabulary details
 
     // Review statistics (GET /review_statistics); hasReviewStats is false for
     // lessons and for subjects without a statistics resource.

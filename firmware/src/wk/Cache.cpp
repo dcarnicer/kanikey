@@ -19,6 +19,7 @@ constexpr uint16_t kMaxSubjects = 128;
 constexpr uint16_t kMaxMeanings = 32;
 constexpr uint16_t kMaxReadings = 32;
 constexpr uint16_t kMaxList = 64;
+constexpr uint16_t kMaxContextSentences = 8;
 constexpr uint16_t kMaxString = 16384;
 
 void put16(uint8_t* p, uint16_t v) {
@@ -348,6 +349,16 @@ void encodeSubject(Writer& w, const Subject& s) {
     w.str(s.readingHint);
     w.str(s.meaningNote);
     w.str(s.readingNote);
+    encodeStrings(w, s.partsOfSpeech);
+    if (s.contextSentences.size() > kMaxContextSentences) {
+        w.fail();
+        return;
+    }
+    w.u16(static_cast<uint16_t>(s.contextSentences.size()));
+    for (const ContextSentence& sentence : s.contextSentences) {
+        w.str(sentence.ja);
+        w.str(sentence.en);
+    }
     w.u32(s.meaningCorrect);
     w.u32(s.meaningIncorrect);
     w.u32(s.readingCorrect);
@@ -401,6 +412,15 @@ bool decodeSubject(Reader& r, Subject* s) {
     if (!r.str(&s->meaningMnemonic) || !r.str(&s->readingMnemonic) || !r.str(&s->meaningHint) ||
         !r.str(&s->readingHint) || !r.str(&s->meaningNote) || !r.str(&s->readingNote))
         return false;
+    if (!decodeStrings(r, &s->partsOfSpeech)) return false;
+    uint16_t contextCount = 0;
+    if (!r.u16(&contextCount) || contextCount > kMaxContextSentences) return false;
+    s->contextSentences.reserve(contextCount);
+    for (uint16_t i = 0; i < contextCount; ++i) {
+        ContextSentence sentence;
+        if (!r.str(&sentence.ja) || !r.str(&sentence.en)) return false;
+        s->contextSentences.push_back(std::move(sentence));
+    }
     uint8_t hasStats = 0;
     if (!r.u32(&s->meaningCorrect) || !r.u32(&s->meaningIncorrect) || !r.u32(&s->readingCorrect) ||
         !r.u32(&s->readingIncorrect) || !r.u16(&s->meaningMaxStreak) ||

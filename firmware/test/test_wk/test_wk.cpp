@@ -737,6 +737,30 @@ static void test_review_statistics_parse_and_merge() {
     TEST_ASSERT_FALSE(subjects[1].hasReviewStats);
 }
 
+static void test_vocabulary_detail_fields() {
+    JsonParser p;
+    JsonValue v;
+    const char* text =
+        "{\"data\":[{\"id\":30,\"object\":\"vocabulary\",\"data\":{\"level\":7,"
+        "\"characters\":\"日本\",\"meanings\":[{\"meaning\":\"Japan\",\"primary\":true,"
+        "\"accepted_answer\":true}],\"readings\":[{\"reading\":\"にほん\",\"primary\":true,"
+        "\"accepted_answer\":true}],\"parts_of_speech\":[\"noun\",\"proper noun\"],"
+        "\"context_sentences\":[{\"en\":\"This is Japan.\",\"ja\":\"これは日本です。\"},"
+        "{\"en\":\"I like Japan.\",\"ja\":\"日本が好きです。\"}]}}]}";
+    TEST_ASSERT_TRUE(p.parse(text, &v));
+    const std::vector<Subject> subjects = parseSubjects(v, true);
+    TEST_ASSERT_EQUAL(1, subjects.size());
+    TEST_ASSERT_EQUAL(2, subjects[0].partsOfSpeech.size());
+    TEST_ASSERT_EQUAL_STRING("noun", subjects[0].partsOfSpeech[0].c_str());
+    TEST_ASSERT_EQUAL(2, subjects[0].contextSentences.size());
+    TEST_ASSERT_EQUAL_STRING("This is Japan.", subjects[0].contextSentences[0].en.c_str());
+    TEST_ASSERT_EQUAL_STRING("これは日本です。", subjects[0].contextSentences[0].ja.c_str());
+
+    const std::vector<Subject> plain = parseSubjects(v, false);
+    TEST_ASSERT_EQUAL(0, plain[0].partsOfSpeech.size());
+    TEST_ASSERT_EQUAL(0, plain[0].contextSentences.size());
+}
+
 static void test_study_materials_parse_and_merge() {
     JsonParser p;
     JsonValue v;
@@ -841,6 +865,8 @@ static Subject cacheSubject() {
     s.readingHint = "Long o.";
     s.meaningNote = "Use this when talking about people.";
     s.readingNote = "The second o is long.";
+    s.partsOfSpeech = {"noun"};
+    s.contextSentences = {{"大人です。", "It is an adult."}};
     s.meaningCorrect = 10;
     s.meaningIncorrect = 2;
     s.readingCorrect = 8;
@@ -972,6 +998,11 @@ static void test_cache_subjects_round_trip() {
     TEST_ASSERT_EQUAL_STRING("Long o.", s.readingHint.c_str());
     TEST_ASSERT_EQUAL_STRING("Use this when talking about people.", s.meaningNote.c_str());
     TEST_ASSERT_EQUAL_STRING("The second o is long.", s.readingNote.c_str());
+    TEST_ASSERT_EQUAL(1, s.partsOfSpeech.size());
+    TEST_ASSERT_EQUAL_STRING("noun", s.partsOfSpeech[0].c_str());
+    TEST_ASSERT_EQUAL(1, s.contextSentences.size());
+    TEST_ASSERT_EQUAL_STRING("大人です。", s.contextSentences[0].ja.c_str());
+    TEST_ASSERT_EQUAL_STRING("It is an adult.", s.contextSentences[0].en.c_str());
     TEST_ASSERT_EQUAL_UINT32(10, s.meaningCorrect);
     TEST_ASSERT_EQUAL_UINT32(2, s.meaningIncorrect);
     TEST_ASSERT_EQUAL_UINT32(8, s.readingCorrect);
@@ -1030,6 +1061,7 @@ int main(int, char**) {
     RUN_TEST(test_subject_parse);
     RUN_TEST(test_summary_subject_ids);
     RUN_TEST(test_markup_and_subject_details);
+    RUN_TEST(test_vocabulary_detail_fields);
     RUN_TEST(test_study_materials_parse_and_merge);
     RUN_TEST(test_review_statistics_parse_and_merge);
     RUN_TEST(test_crc32_known_vector);

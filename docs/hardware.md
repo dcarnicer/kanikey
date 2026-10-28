@@ -233,9 +233,10 @@ E (221) esp_core_dump_flash: No core dump partition found!
 - Level progress: `/v2/level_progressions` returned 200 (3,275 bytes) and the
   log showed level 8 with its unlock/start timestamps. Home showed
   `L8 since 03 Feb` in the status line. The request took ~2.2 s.
-- Item detail: `Tab`/`D` on feedback opened the 5-page card with meanings,
+- Item detail: `Tab`/`D` on feedback opened the detail card with meanings,
   readings, synonyms, mnemonics, hints, notes and components on a synthetic
-  cached review. A real review batch fetched 24/24 component subjects; the
+  cached review. The vocabulary item showed the sixth page with `noun` and
+  `This is Japan.` A real review batch fetched 24/24 component subjects; the
   subsequent cache save then hit `std::bad_alloc` while copying 44 subjects.
   The copy was removed (`encodeSubjectCache` now takes the vector directly),
   but the fix still needs a clean hardware run because Wi-Fi failed afterwards.
@@ -274,8 +275,8 @@ WaniKani subjects and mnemonics.
 - Upload: `S` starts a one-shot HTTP server on port 8080 and
   `tools/device.py push` writes the file with `curl -T`; 2.9 MB transferred
   reliably. The USB `up` path uses 8 KiB ACKed chunks and is a fallback.
-- Offline cache: `/state/cache.bin` (LittleFS, `KKCA` v7) and
-  `/kanikey/cache/subjects.bin` (SD, `KKCS` v7), with the summary
+- Offline cache: `/state/cache.bin` (LittleFS, `KKCA` v8) and
+  `/kanikey/cache/subjects.bin` (SD, `KKCS` v8), with the summary
   `data_updated_at`, 24 h stale state and manual clear/sync. A synthetic-cache
   run on 2026-10-28 restored Home offline, ran a cached session, kept the
   completed review in the outbox and restored both after a reboot. Real-account

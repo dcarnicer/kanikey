@@ -76,6 +76,23 @@ std::vector<Subject> parseSubjects(const JsonValue& root, bool details) {
             s.readingMnemonic = textField("reading_mnemonic");
             s.meaningHint = textField("meaning_hint");
             s.readingHint = textField("reading_hint");
+            if (const JsonValue* pos = d->find("parts_of_speech"); pos && pos->isArray()) {
+                for (const JsonValue& p : pos->array)
+                    if (p.isString() && !p.string.empty() && s.partsOfSpeech.size() < 8)
+                        s.partsOfSpeech.push_back(p.string);
+            }
+            if (const JsonValue* ctx = d->find("context_sentences"); ctx && ctx->isArray()) {
+                for (const JsonValue& c : ctx->array) {
+                    ContextSentence sentence;
+                    if (const JsonValue* en = c.find("en"); en && en->isString())
+                        sentence.en = en->string;
+                    if (const JsonValue* ja = c.find("ja"); ja && ja->isString())
+                        sentence.ja = ja->string;
+                    if (sentence.en.empty() && sentence.ja.empty()) continue;
+                    s.contextSentences.push_back(std::move(sentence));
+                    if (s.contextSentences.size() >= 4) break;
+                }
+            }
         }
         if (const JsonValue* aux = d->find("auxiliary_meanings"); aux && aux->isArray()) {
             for (const JsonValue& a : aux->array) {

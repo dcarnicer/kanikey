@@ -336,11 +336,12 @@ snapshot fits LittleFS. The token fingerprint discards another account's data.
 
 **Implications:** boot restores Home and a cached batch before any Wi-Fi
 request; completed items are pruned from the cache and stay in the outbox.
-`KKCA`/`KKCS` v7 add the study-material notes, the review presentation order,
-the vacation timestamp, the per-subject review statistics and the level
-progression, store the summary `data_updated_at`, mark caches older than 24 h
-as stale, and Settings exposes `Sync now`/`Clear cache`. The real online fetch
-→ offline → reconnect E2E (CACHE-07) still needs a deliberate live run.
+`KKCA`/`KKCS` v8 add the study-material notes, the review presentation order,
+the vacation timestamp, the per-subject review statistics, the level
+progression and vocabulary details, store the summary `data_updated_at`, mark
+caches older than 24 h as stale, and Settings exposes `Sync now`/`Clear cache`.
+The real online fetch → offline → reconnect E2E (CACHE-07) still needs a
+deliberate live run.
 
 ---
 
@@ -355,7 +356,7 @@ missing study-materials permission does not fail the batch.
 for them. Merging keeps one object for the checker, the lesson card, the review
 feedback and the offline cache instead of a second lookup table.
 
-**Implications:** `KKCS` v7 carries `meaning_note`/`reading_note`; older caches
+**Implications:** `KKCS` v8 carries `meaning_note`/`reading_note`; older caches
 are discarded. Notes appear on the lesson card and after a correct review
 answer. The full item-detail screen (UI-04/WK-08) can reuse the same fields.
 
@@ -372,7 +373,7 @@ reading-first.
 toggle, and the local setting already means something else. Sorting after the
 shuffle keeps variety inside a level.
 
-**Implications:** `KKCA` v7 stores the order; older caches are discarded.
+**Implications:** `KKCA` v8 stores the order; older caches are discarded.
 Offline sessions keep the last known order.
 
 ---
@@ -386,7 +387,7 @@ more urgent.
 **Why:** vacation mode changes what the user expects from reviews and lessons,
 but it must not block the session or hide a real sync problem.
 
-**Implications:** the timestamp is part of `KKCA` v7, so the notice works
+**Implications:** the timestamp is part of `KKCA` v8, so the notice works
 offline. The account used for hardware tests is not on vacation, so the notice
 is covered by native parsing/cache tests only.
 
@@ -419,7 +420,7 @@ last item's review count and accuracy.
 **Why:** the statistics are small, already keyed by subject, and belong with the
 rest of the subject data used by the review screen and the future detail screen.
 
-**Implications:** `KKCS` v7 carries the statistics; older caches are discarded.
+**Implications:** `KKCS` v8 carries the statistics; older caches are discarded.
 A token without the review-statistics permission still reviews, without the
 accuracy display. The parser is native-tested; the header and summary were
 hardware-verified with the synthetic cached review.
@@ -436,7 +437,7 @@ more urgent.
 **Why:** the level is already on Home; the unlock date gives context without a
 new screen, and caching keeps it available offline.
 
-**Implications:** `KKCA` v7 stores the progression; older caches are discarded.
+**Implications:** `KKCA` v8 stores the progression; older caches are discarded.
 A token without the level-progressions permission keeps the previous cached
 value. The parser is native-tested; the real request and the Home line were
 verified on hardware on 2026-10-28.
@@ -461,6 +462,21 @@ large allocation and could abort during the cache save.
 data path is native-tested; the card was hardware-verified with a synthetic
 cached review. A real component fetch reached 24/24 before the no-copy cache
 save was added.
+
+---
+
+## 2026-10-28 — Vocabulary details are cached with the subject
+
+**Decision:** parse `parts_of_speech` and up to four `context_sentences` when
+subjects are loaded with details, cache them with the subject and show them on
+a sixth detail page for vocabulary. `pronunciation_audios` stays phase 2.
+
+**Why:** the fields are small, already part of the subject payload, and make the
+detail card useful for vocabulary without another request.
+
+**Implications:** `KKCS` v8 carries the fields; older caches are discarded. The
+vocabulary page shows the parts of speech and up to two English context
+sentences; the Japanese sentence is stored for a future audio/context view.
 
 ---
 

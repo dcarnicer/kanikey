@@ -101,6 +101,7 @@ bool gNeedsSubmit = false;
 bool gFeedbackCompleted = false;
 bool gReviewDetail = false;
 int gReviewDetailPage = 0;
+int gReviewDetailPages = 5;
 kk::AnswerCheck gCheck;
 kk::ReviewPart gFeedbackPart = kk::ReviewPart::None;
 uint32_t gFeedbackSubjectId = 0;
@@ -918,7 +919,7 @@ void drawReviewDetail() {
     d.setTextColor(kDim, kBg);
     d.drawString("ITEM DETAIL", 6, 3);
     char right[16];
-    snprintf(right, sizeof right, "%d/5", gReviewDetailPage + 1);
+    snprintf(right, sizeof right, "%d/%d", gReviewDetailPage + 1, gReviewDetailPages);
     d.setTextFont(0);
     d.setTextDatum(lgfx::top_right);
     d.drawString(right, 233, 5);
@@ -1013,7 +1014,7 @@ void drawReviewDetail() {
             drawWrapped(d, notes, 86, 48, 150, 6, kText, kBg);
             break;
         }
-        default: {
+        case 4: {
             d.setTextFont(0);
             d.setTextSize(1);
             d.setTextColor(kFaint, kBg);
@@ -1049,6 +1050,33 @@ void drawReviewDetail() {
             }
             break;
         }
+        case 5: {
+            d.setTextFont(0);
+            d.setTextSize(1);
+            d.setTextColor(kFaint, kBg);
+            d.drawString("PARTS OF SPEECH", 86, 38);
+            std::string parts;
+            for (const std::string& p : s->partsOfSpeech) {
+                if (!parts.empty()) parts += ", ";
+                parts += p;
+            }
+            if (parts.empty()) parts = "No parts of speech.";
+            drawWrapped(d, parts, 86, 48, 150, 2, kText, kBg);
+            d.setTextFont(0);
+            d.setTextSize(1);
+            d.setTextColor(kFaint, kBg);
+            d.drawString("CONTEXT", 86, 68);
+            std::string context;
+            for (size_t i = 0; i < s->contextSentences.size() && i < 2; ++i) {
+                const std::string& en = s->contextSentences[i].en;
+                if (en.empty()) continue;
+                if (!context.empty()) context += " ";
+                context += en;
+            }
+            if (context.empty()) context = "No context sentences.";
+            drawWrapped(d, context, 86, 78, 150, 3, kDim, kBg);
+            break;
+        }
     }
 
     d.setTextFont(0);
@@ -1068,7 +1096,7 @@ void reviewDetailKey(const KeyEvent& e) {
     }
     if (e.key == Key::Right ||
         (e.key == Key::Other && tgc::cardputerCharAt(e.x, e.y, false) == ' ')) {
-        if (gReviewDetailPage < 4) ++gReviewDetailPage;
+        if (gReviewDetailPage + 1 < gReviewDetailPages) ++gReviewDetailPage;
         gDirty = true;
     } else if (e.key == Key::Left || e.key == Key::Backspace) {
         if (gReviewDetailPage > 0) --gReviewDetailPage;
@@ -1460,6 +1488,9 @@ bool reviewKey(const KeyEvent& e) {
         if (e.key == Key::Enter) advanceFeedback();
         else if (e.key == Key::Esc) openPause();
         else if (e.key == Key::Tab) {
+            const kk::Subject* detail = subjectById(gFeedbackSubjectId);
+            gReviewDetailPages =
+                detail && detail->type == kk::SubjectType::Vocabulary ? 6 : 5;
             gReviewDetail = true;
             gReviewDetailPage = 0;
             gDirty = true;
@@ -3689,6 +3720,8 @@ void seedDevCache() {
     vocabulary.readings = {{"にほん", true, true, kk::ReadingType::Kunyomi}};
     vocabulary.meaningMnemonic = "The sun's origin is Japan.";
     vocabulary.readingMnemonic = "Nihon is Japan.";
+    vocabulary.partsOfSpeech = {"noun"};
+    vocabulary.contextSentences = {{"これは日本です。", "This is Japan."}};
     vocabulary.componentSubjectIds = {2};
     subjects.subjects.push_back(vocabulary);
 
@@ -4164,11 +4197,14 @@ void handleSerial() {
                 ++gLessonPage;
                 gDirty = true;
             } else if (gReviewDetail) {
-                if (gReviewDetailPage < 4) ++gReviewDetailPage;
+                if (gReviewDetailPage + 1 < gReviewDetailPages) ++gReviewDetailPage;
                 gDirty = true;
             }
         } else if (gSerialLine == "D") {
             if (gReviewActive && gFeedback) {
+                const kk::Subject* detail = subjectById(gFeedbackSubjectId);
+                gReviewDetailPages =
+                    detail && detail->type == kk::SubjectType::Vocabulary ? 6 : 5;
                 gReviewDetail = !gReviewDetail;
                 gReviewDetailPage = 0;
                 gDirty = true;

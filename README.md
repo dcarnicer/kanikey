@@ -22,7 +22,8 @@
 > shows the stage returned by `POST /reviews` and the last item's review
 > history. `/level_progressions` is cached and Home shows when the current
 > level unlocked. `Tab` on review feedback opens the item detail card with
-> meanings, readings, mnemonics, notes and components.
+> meanings, readings, mnemonics, notes, components and, for vocabulary, parts
+> of speech and context sentences.
 > Japanese prompts and readings come entirely from the microSD visual pack at
 > 64/32/20 px: 7,269 glyphs + 498 radical bitmaps in 3.7 MB, generated locally
 > with the user's token. No WaniKani content is in the repository.

@@ -392,8 +392,9 @@ kept inside each level.
 
 **Implementation note (2026-10-28).** `Tab` on feedback opens the live card:
 page 1 meanings/readings/synonyms, page 2 meaning mnemonic + hint, page 3
-reading mnemonic + hint, page 4 notes, page 5 components. `Space` pages and
-`Tab`/`Esc` returns to feedback.
+reading mnemonic + hint, page 4 notes, page 5 components and, for vocabulary,
+page 6 parts of speech + context. `Space` pages and `Tab`/`Esc` returns to
+feedback.
 
 ### 5.7 Session summary
 

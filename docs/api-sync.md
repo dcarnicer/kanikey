@@ -167,10 +167,13 @@ data.readings[] { reading, primary, accepted_answer, type }
   `spaced_repetition_system_id` are not stored in v1 (they are not needed).
 
 **Implementation (2026-10-28).** Review batches parse the detail fields
-(`meaning_mnemonic`, `reading_mnemonic`, hints) and fetch the component subjects
-in pages of 3. A 10-subject component page is ~20 KB and its DOM can exceed the
-largest free block after the review subjects are loaded. Components are kept in
-the same subject list and cached, so the detail card works offline.
+(`meaning_mnemonic`, `reading_mnemonic`, hints, `parts_of_speech` and
+`context_sentences`) and fetch the component subjects in pages of 3. A
+10-subject component page is ~20 KB and its DOM can exceed the largest free
+block after the review subjects are loaded. Components are kept in the same
+subject list and cached, so the detail card works offline. Vocabulary context
+sentences are stored (up to 4) and the English sentence is shown on the sixth
+detail page; `pronunciation_audios` remains phase 2 (EXT-06).
 
 ### 3.5 `/study_materials`
 
@@ -465,13 +468,14 @@ alters the SRS stage and the user's statistics. We prefer to leave the item as
 - Never delete the outbox before the POST is confirmed.
 
 **Implementation (2026-10-28).** The Home/user/batch snapshot is
-`/state/cache.bin` (`KKCA`, version 7); the batch subjects are
-`/kanikey/cache/subjects.bin` (`KKCS`, version 7) on SD. Version 3 added the
+`/state/cache.bin` (`KKCA`, version 8); the batch subjects are
+`/kanikey/cache/subjects.bin` (`KKCS`, version 8) on SD. Version 3 added the
 study-material notes to each cached subject, version 4 added the review
 presentation order, version 5 added the vacation timestamp, version 6 added the
-per-subject review statistics and version 7 adds the level progression; older
-files are discarded. Both carry the save time, an FNV-1a fingerprint of the API
-token, the payload length and CRC32.
+per-subject review statistics, version 7 added the level progression and
+version 8 adds vocabulary parts of speech/context sentences; older files are
+discarded. Both carry the save time, an FNV-1a fingerprint of the API token,
+the payload length and CRC32.
 The snapshot also stores the summary's `data_updated_at`; assignments keep
 their own `data_updated_at` for outbox reconciliation. Loading a snapshot
 written for another token or an older version discards both files. The cached
@@ -638,6 +642,7 @@ Minimal fixtures, hand-written, with attribution:
 - `study_materials.json`: synonyms.
 - `review_statistics.json`: correct/incorrect counts, streaks and percentage.
 - `level_progressions.json`: current and previous level timestamps.
+- `vocabulary_details.json`: parts of speech and context sentences.
 - `review_ok.json`: `resources_updated.assignment`.
 - `errors.json`: 401, 403, 422, 429.
 
