@@ -197,7 +197,9 @@ E (221) esp_core_dump_flash: No core dump partition found!
   by level and `lesson_position`, then trims to the configured batch. It only
   uses GET /assignments and GET /subjects; opening the card does not start a
   lesson. Verified on hardware with 120 available lessons: 5 rows rendered
-  with prompts and meanings, and no lesson was started.
+  with prompts and meanings, and no lesson was started. The component subjects
+  are fetched separately (one batch, 10 ids in the test) and their meanings plus
+  hints appear on the last card page.
 - Still missing: components on the card and a lesson quiz.
 
 ### Visual pack on microSD (M5)

@@ -404,7 +404,8 @@ design.
 **Implementation note (2026-10-28).** The list and picker are live: a scrolling
 list of up to the configured batch, sorted by level and `lesson_position`
 within the first 10 summary candidates. Opening a card and paging does not call
-`PUT /start`; only `Enter` on the card starts the lesson.
+`PUT /start`; only `Enter` on the card starts the lesson. Component meanings
+and hints are appended to the paged card after the mnemonic.
 
 ### 5.9 Lesson card
 

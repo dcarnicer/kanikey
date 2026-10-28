@@ -22,9 +22,10 @@ Working on hardware:
 - `POST /v2/reviews` with a persistent LittleFS outbox; the full offline path
   (Wi-Fi off → review → reboot → reconnect → 201) is verified.
 - Lessons: a list/picker with character, type, level and main meaning, sorted
-  by level and `lesson_position`; the card shows meaning/reading and paged
-  mnemonic, and `PUT /assignments/{id}/start` returns 200. Tests so far use only
-  GETs; no live lesson was started by this work.
+  by level and `lesson_position`; the card shows meaning/reading, paged
+  mnemonic, component meanings and hints, and `PUT /assignments/{id}/start`
+  returns 200. Tests so far use only GETs; no live lesson was started by this
+  work.
 - SD visual pack: the card now has the token pack with **7,269 glyphs + 498
   radical bitmaps** (3,698,476 B), uploaded over USB on 2026-10-27. Wi-Fi
   asset upload also works.
@@ -55,8 +56,8 @@ Working on hardware:
   sleep, screenshot capture.
 - 37 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,355,573 B / 1,835,008 B flash (73.9%)**, **93,784 B /
-327,680 B static RAM (28.6%)**. The dev image is 1,360,861 B. Removing
+Current build: **1,357,701 B / 1,835,008 B flash (74.0%)**, **93,800 B /
+327,680 B static RAM (28.6%)**. The dev image is 1,362,925 B. Removing
 `efontJA_16` freed ~468 KB and leaves ~490 KB of flash headroom.
 
 ## Priority summary
@@ -65,7 +66,7 @@ Current build: **1,355,573 B / 1,835,008 B flash (73.9%)**, **93,784 B /
 |---:|---|---|---|---|
 | 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Done except real-prompt hardware check | RAD-02, RAD-04 |
 | 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Core landed; real-account E2E pending | CACHE-05, CACHE-07 |
-| 3 | Complete lesson flow | List/picker, card and start exist; components and quiz do not | Partial | LESSON-03, LESSON-04 |
+| 3 | Complete lesson flow | List/picker, card, components and start exist; quiz does not | Partial | LESSON-04, LESSON-05 |
 | 4 | WaniKani data and preferences | Synonyms, item detail, SRS feedback, stats and preferences are missing | Not started | WK-01, WK-03 |
 | 5 | Outbox and API robustness | Rejected items, 429 and invalid auth have no user path | Partial | API-01, API-02 |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
@@ -177,8 +178,9 @@ optional practice before `PUT /start` unless real use shows otherwise.
   batch instead of always taking the first five. **Done:** Up/Down selects and
   Enter opens the card; no `/start` call until the card is confirmed.
 - **LESSON-03 — Detail card.** Components, meaning/reading, mnemonic pages,
-  hints and the component meanings. **Partial:** meaning/reading, mnemonic and
-  hints render; component meanings still need a component-subject fetch.
+  hints and the component meanings. **Done (2026-10-28):** component subjects are
+  fetched read-only, and their meanings plus the hints are appended to the
+  paged card.
 - **LESSON-04 — Local quiz.** Meaning/reading quiz, incorrect-answer feedback
   and completion state, if required before starting.
 - **LESSON-05 — Batch size and progress.** Respect `lessons_batch_size` and

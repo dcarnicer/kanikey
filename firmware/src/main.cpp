@@ -105,6 +105,7 @@ std::string gDirectReading;  // test/serial reading input, bypasses the romaji I
 kk::RomajiIme gIme;
 std::vector<kk::OutboxItem> gOutbox;
 kk::LessonBatch gLessonBatch;
+std::vector<kk::Subject> gLessonComponents;
 kk::GlyphPack gPack;
 WiFiServer gAssetServer(8080);
 bool gAssetServerActive = false;
@@ -1166,6 +1167,12 @@ const kk::Subject* lessonSubjectById(uint32_t id) {
     return nullptr;
 }
 
+const kk::Subject* lessonComponentById(uint32_t id) {
+    for (const kk::Subject& s : gLessonComponents)
+        if (s.id == id) return &s;
+    return nullptr;
+}
+
 const kk::Subject* currentLessonSubject() {
     if (!gLessonActive || gLessonIndex >= gLessonBatch.assignments.size()) return nullptr;
     return lessonSubjectById(gLessonBatch.assignments[gLessonIndex].subjectId);
@@ -1390,6 +1397,20 @@ void drawLesson() {
     if (mnemonic.empty()) mnemonic = s->readingMnemonic;
     if (mnemonic.empty()) mnemonic = s->meaningHint;
     if (mnemonic.empty()) mnemonic = "No mnemonic cached.";
+    std::string components;
+    for (uint32_t id : s->componentSubjectIds) {
+        const kk::Subject* c = lessonComponentById(id);
+        if (!c) continue;
+        const std::string meaning = subjectMainMeaning(*c);
+        if (meaning.empty()) continue;
+        if (!components.empty()) components += " + ";
+        components += meaning;
+    }
+    std::string extra;
+    if (!components.empty()) extra += "Components: " + components + ". ";
+    if (!s->meaningHint.empty()) extra += "Hint: " + s->meaningHint + ". ";
+    if (!s->readingHint.empty()) extra += "Reading hint: " + s->readingHint + ". ";
+    if (!extra.empty()) mnemonic += " " + extra;
     const std::vector<std::string> lines = wrapLines(d, mnemonic, 232);
     const size_t pages = (lines.size() + 2) / 3;
     if (gLessonPage >= pages) gLessonPage = pages - 1;
@@ -1454,6 +1475,23 @@ void startLessons() {
               });
     if (gLessonBatch.assignments.size() > lessonLimit)
         gLessonBatch.assignments.resize(lessonLimit);
+    gLessonComponents.clear();
+    std::vector<uint32_t> componentIds;
+    for (const kk::Assignment& a : gLessonBatch.assignments) {
+        const kk::Subject* s = lessonSubjectById(a.subjectId);
+        if (!s) continue;
+        for (uint32_t id : s->componentSubjectIds) {
+            if (std::find(componentIds.begin(), componentIds.end(), id) == componentIds.end())
+                componentIds.push_back(id);
+        }
+    }
+    if (!componentIds.empty()) {
+        drawLoading("Loading components...", "lesson detail");
+        gFreeCanvasForRequest = true;
+        gLessonComponents =
+            kk::fetchSubjectsByIds(kk::DevToken::load(), componentIds, 10);
+        gFreeCanvasForRequest = false;
+    }
     gLessonListActive = true;
     gLessonActive = false;
     gShowHome = false;

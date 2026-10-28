@@ -98,6 +98,32 @@ LessonBatch fetchLessonBatch(const String& token, const std::vector<uint32_t>& l
     return batch;
 }
 
+std::vector<Subject> fetchSubjectsByIds(const String& token, const std::vector<uint32_t>& ids,
+                                        size_t batch) {
+    std::vector<Subject> out;
+    if (ids.empty() || batch == 0) return out;
+    for (size_t begin = 0; begin < ids.size(); begin += batch) {
+        const size_t end = std::min(ids.size(), begin + batch);
+        const String path = "/v2/subjects?ids=" + idList(ids, begin, end);
+        const WkResponse r = wkGetRetry(path, token, 32768, 12000);
+        if (r.httpCode != 200) {
+            Serial.printf("[lesson] components HTTP %d\n", r.httpCode);
+            return {};
+        }
+        JsonValue v;
+        if (!parseJson(r.body, &v)) {
+            Serial.printf("[lesson] components JSON failed: len=%u\n",
+                          static_cast<unsigned>(r.body.size()));
+            return {};
+        }
+        std::vector<Subject> part = parseSubjects(v);
+        for (Subject& s : part) out.push_back(std::move(s));
+        Serial.printf("[lesson] components %u/%u\n", static_cast<unsigned>(end),
+                      static_cast<unsigned>(ids.size()));
+    }
+    return out;
+}
+
 bool startAssignment(const String& token, uint32_t assignmentId, uint32_t startedAt) {
     String path = "/v2/assignments/";
     path += String(static_cast<unsigned long>(assignmentId));
