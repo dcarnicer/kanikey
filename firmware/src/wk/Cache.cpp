@@ -330,6 +330,16 @@ void encodeSubject(Writer& w, const Subject& s) {
     w.str(s.readingHint);
     w.str(s.meaningNote);
     w.str(s.readingNote);
+    w.u32(s.meaningCorrect);
+    w.u32(s.meaningIncorrect);
+    w.u32(s.readingCorrect);
+    w.u32(s.readingIncorrect);
+    w.u16(s.meaningMaxStreak);
+    w.u16(s.meaningCurrentStreak);
+    w.u16(s.readingMaxStreak);
+    w.u16(s.readingCurrentStreak);
+    w.u8(s.percentageCorrect);
+    w.u8(s.hasReviewStats ? 1 : 0);
 }
 
 bool decodeSubject(Reader& r, Subject* s) {
@@ -370,8 +380,17 @@ bool decodeSubject(Reader& r, Subject* s) {
         s->componentSubjectIds.push_back(id);
     }
 
-    return r.str(&s->meaningMnemonic) && r.str(&s->readingMnemonic) && r.str(&s->meaningHint) &&
-           r.str(&s->readingHint) && r.str(&s->meaningNote) && r.str(&s->readingNote);
+    if (!r.str(&s->meaningMnemonic) || !r.str(&s->readingMnemonic) || !r.str(&s->meaningHint) ||
+        !r.str(&s->readingHint) || !r.str(&s->meaningNote) || !r.str(&s->readingNote))
+        return false;
+    uint8_t hasStats = 0;
+    if (!r.u32(&s->meaningCorrect) || !r.u32(&s->meaningIncorrect) || !r.u32(&s->readingCorrect) ||
+        !r.u32(&s->readingIncorrect) || !r.u16(&s->meaningMaxStreak) ||
+        !r.u16(&s->meaningCurrentStreak) || !r.u16(&s->readingMaxStreak) ||
+        !r.u16(&s->readingCurrentStreak) || !r.u8(&s->percentageCorrect) || !r.u8(&hasStats))
+        return false;
+    s->hasReviewStats = hasStats != 0;
+    return true;
 }
 
 }  // namespace

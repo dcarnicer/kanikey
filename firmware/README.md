@@ -47,8 +47,9 @@ KaniKey firmware for the M5Stack Cardputer ADV.
   itself makes no `/start` call.
 - Reads `current_vacation_started_at` and shows a non-blocking `Vacation mode`
   notice on Home when no more urgent status is present.
-- Shows the current SRS stage in the review header and the new stage returned
-  by `POST /v2/reviews` in the session summary (`SRS 3 -> 4`).
+- Shows the current SRS stage and lifetime accuracy in the review header, and
+  the new stage returned by `POST /v2/reviews` plus the last item's review
+  history in the session summary (`SRS 3 -> 4`, `History 18 reviews, 89%`).
 - Writes the pack to the card over the USB serial link or a one-shot Wi-Fi
   upload server.
 

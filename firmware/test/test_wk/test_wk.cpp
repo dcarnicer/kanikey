@@ -19,6 +19,7 @@
 #include "wk/User.h"
 #include "wk/ReviewQueue.h"
 #include "wk/ReviewResponse.h"
+#include "wk/ReviewStatistics.h"
 #include "wk/RomajiIme.h"
 #include "wk/Text.h"
 
@@ -663,6 +664,46 @@ static void test_markup_and_subject_details() {
     TEST_ASSERT_EQUAL_STRING("kyuu.", ss[0].readingMnemonic.c_str());
 }
 
+static void test_review_statistics_parse_and_merge() {
+    JsonParser p;
+    JsonValue v;
+    const char* text =
+        "{\"data\":["
+        "{\"id\":1,\"object\":\"review_statistic\",\"data\":{\"subject_id\":10,"
+        "\"meaning_correct\":8,\"meaning_incorrect\":2,\"reading_correct\":7,"
+        "\"reading_incorrect\":1,\"meaning_max_streak\":5,\"meaning_current_streak\":3,"
+        "\"reading_max_streak\":4,\"reading_current_streak\":2,"
+        "\"percentage_correct\":83,\"hidden\":false}},"
+        "{\"id\":2,\"object\":\"review_statistic\",\"data\":{\"subject_id\":11,"
+        "\"meaning_correct\":1,\"percentage_correct\":50,\"hidden\":true}}]}";
+    TEST_ASSERT_TRUE(p.parse(text, &v));
+    const std::vector<ReviewStatistic> stats = parseReviewStatistics(v);
+    TEST_ASSERT_EQUAL(2, stats.size());
+    TEST_ASSERT_EQUAL_UINT32(10, stats[0].subjectId);
+    TEST_ASSERT_EQUAL_UINT32(8, stats[0].meaningCorrect);
+    TEST_ASSERT_EQUAL_UINT32(2, stats[0].meaningIncorrect);
+    TEST_ASSERT_EQUAL_UINT32(7, stats[0].readingCorrect);
+    TEST_ASSERT_EQUAL_UINT32(1, stats[0].readingIncorrect);
+    TEST_ASSERT_EQUAL(5, stats[0].meaningMaxStreak);
+    TEST_ASSERT_EQUAL(3, stats[0].meaningCurrentStreak);
+    TEST_ASSERT_EQUAL(4, stats[0].readingMaxStreak);
+    TEST_ASSERT_EQUAL(2, stats[0].readingCurrentStreak);
+    TEST_ASSERT_EQUAL(83, stats[0].percentageCorrect);
+    TEST_ASSERT_TRUE(stats[1].hidden);
+
+    Subject a;
+    a.id = 10;
+    Subject b;
+    b.id = 11;
+    std::vector<Subject> subjects = {a, b};
+    TEST_ASSERT_EQUAL(1, applyReviewStatistics(stats, &subjects));
+    TEST_ASSERT_TRUE(subjects[0].hasReviewStats);
+    TEST_ASSERT_EQUAL_UINT32(8, subjects[0].meaningCorrect);
+    TEST_ASSERT_EQUAL_UINT32(18, subjects[0].reviewCount());
+    TEST_ASSERT_EQUAL(83, subjects[0].percentageCorrect);
+    TEST_ASSERT_FALSE(subjects[1].hasReviewStats);
+}
+
 static void test_study_materials_parse_and_merge() {
     JsonParser p;
     JsonValue v;
@@ -767,6 +808,16 @@ static Subject cacheSubject() {
     s.readingHint = "Long o.";
     s.meaningNote = "Use this when talking about people.";
     s.readingNote = "The second o is long.";
+    s.meaningCorrect = 10;
+    s.meaningIncorrect = 2;
+    s.readingCorrect = 8;
+    s.readingIncorrect = 1;
+    s.meaningMaxStreak = 5;
+    s.meaningCurrentStreak = 3;
+    s.readingMaxStreak = 4;
+    s.readingCurrentStreak = 2;
+    s.percentageCorrect = 86;
+    s.hasReviewStats = true;
     return s;
 }
 
@@ -881,6 +932,16 @@ static void test_cache_subjects_round_trip() {
     TEST_ASSERT_EQUAL_STRING("Long o.", s.readingHint.c_str());
     TEST_ASSERT_EQUAL_STRING("Use this when talking about people.", s.meaningNote.c_str());
     TEST_ASSERT_EQUAL_STRING("The second o is long.", s.readingNote.c_str());
+    TEST_ASSERT_EQUAL_UINT32(10, s.meaningCorrect);
+    TEST_ASSERT_EQUAL_UINT32(2, s.meaningIncorrect);
+    TEST_ASSERT_EQUAL_UINT32(8, s.readingCorrect);
+    TEST_ASSERT_EQUAL_UINT32(1, s.readingIncorrect);
+    TEST_ASSERT_EQUAL(5, s.meaningMaxStreak);
+    TEST_ASSERT_EQUAL(3, s.meaningCurrentStreak);
+    TEST_ASSERT_EQUAL(4, s.readingMaxStreak);
+    TEST_ASSERT_EQUAL(2, s.readingCurrentStreak);
+    TEST_ASSERT_EQUAL(86, s.percentageCorrect);
+    TEST_ASSERT_TRUE(s.hasReviewStats);
     TEST_ASSERT_EQUAL(SubjectType::Radical, out.subjects[1].type);
     TEST_ASSERT_TRUE(out.subjects[1].characters.empty());
 
@@ -929,6 +990,7 @@ int main(int, char**) {
     RUN_TEST(test_summary_subject_ids);
     RUN_TEST(test_markup_and_subject_details);
     RUN_TEST(test_study_materials_parse_and_merge);
+    RUN_TEST(test_review_statistics_parse_and_merge);
     RUN_TEST(test_crc32_known_vector);
     RUN_TEST(test_outbox_model);
     RUN_TEST(test_cache_account_key);

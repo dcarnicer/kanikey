@@ -336,11 +336,11 @@ snapshot fits LittleFS. The token fingerprint discards another account's data.
 
 **Implications:** boot restores Home and a cached batch before any Wi-Fi
 request; completed items are pruned from the cache and stay in the outbox.
-`KKCA`/`KKCS` v5 add the study-material notes, the review presentation order
-and the vacation timestamp, store the summary `data_updated_at`, mark caches
-older than 24 h as stale, and Settings exposes `Sync now`/`Clear cache`. The
-real online fetch → offline → reconnect E2E (CACHE-07) still needs a deliberate
-live run.
+`KKCA`/`KKCS` v6 add the study-material notes, the review presentation order,
+the vacation timestamp and the per-subject review statistics, store the summary
+`data_updated_at`, mark caches older than 24 h as stale, and Settings exposes
+`Sync now`/`Clear cache`. The real online fetch → offline → reconnect E2E
+(CACHE-07) still needs a deliberate live run.
 
 ---
 
@@ -355,7 +355,7 @@ missing study-materials permission does not fail the batch.
 for them. Merging keeps one object for the checker, the lesson card, the review
 feedback and the offline cache instead of a second lookup table.
 
-**Implications:** `KKCS` v5 carries `meaning_note`/`reading_note`; older caches
+**Implications:** `KKCS` v6 carries `meaning_note`/`reading_note`; older caches
 are discarded. Notes appear on the lesson card and after a correct review
 answer. The full item-detail screen (UI-04/WK-08) can reuse the same fields.
 
@@ -372,7 +372,7 @@ reading-first.
 toggle, and the local setting already means something else. Sorting after the
 shuffle keeps variety inside a level.
 
-**Implications:** `KKCA` v5 stores the order; older caches are discarded.
+**Implications:** `KKCA` v6 stores the order; older caches are discarded.
 Offline sessions keep the last known order.
 
 ---
@@ -386,7 +386,7 @@ more urgent.
 **Why:** vacation mode changes what the user expects from reviews and lessons,
 but it must not block the session or hide a real sync problem.
 
-**Implications:** the timestamp is part of `KKCA` v5, so the notice works
+**Implications:** the timestamp is part of `KKCA` v6, so the notice works
 offline. The account used for hardware tests is not on vacation, so the notice
 is covered by native parsing/cache tests only.
 
@@ -406,6 +406,23 @@ the response already carries it. Parsing it avoids a second assignment request.
 parsed is still treated as sent and only skips the stage display. The parser is
 native-tested. The header was verified on hardware with a synthetic cached
 review; the summary line needs a successful live POST.
+
+---
+
+## 2026-10-28 — Review statistics are merged into the subject
+
+**Decision:** review batches fetch `/review_statistics` by `subject_ids` and
+merge the per-subject counts, streaks and `percentage_correct` into the cached
+`Subject`. The review header shows the lifetime accuracy; the summary shows the
+last item's review count and accuracy.
+
+**Why:** the statistics are small, already keyed by subject, and belong with the
+rest of the subject data used by the review screen and the future detail screen.
+
+**Implications:** `KKCS` v6 carries the statistics; older caches are discarded.
+A token without the review-statistics permission still reviews, without the
+accuracy display. The parser is native-tested; the header and summary were
+hardware-verified with the synthetic cached review.
 
 ---
 

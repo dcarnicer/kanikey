@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "platform/WkClient.h"
+#include "platform/WkReviewStatistics.h"
 #include "platform/WkStudyMaterials.h"
 #include "wk/Json.h"
 
@@ -96,6 +97,7 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
     }
 
     attachStudyMaterials(token, &batch.subjects);
+    attachReviewStatistics(token, &batch.subjects);
 
     batch.fetchedAt = now;
     batch.ok = !batch.subjects.empty();

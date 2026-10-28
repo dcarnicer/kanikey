@@ -69,6 +69,7 @@ ISO 8601 in UTC, with microseconds and `Z`. KaniKey only needs seconds.
 | GET | `/assignments` | Stages, `available_at`, assignment IDs | Every sync |
 | GET | `/subjects` | Meanings, readings, components, mnemonics | When IDs are missing |
 | GET | `/study_materials` | User synonyms and notes | Per review/lesson batch |
+| GET | `/review_statistics` | Per-subject accuracy and streaks | Per review batch |
 | POST | `/reviews` | Send a completed review | Per item |
 | PUT | `/assignments/{id}/start` | Start a lesson | Per lesson |
 
@@ -76,7 +77,6 @@ Optional for phase 2:
 
 | Method | Endpoint | What for |
 |---|---|---|
-| GET | `/review_statistics` | Accuracy per subject |
 | GET | `/reviews` | History, streak, heatmap |
 | GET | `/level_progressions` | Level progress |
 
@@ -222,6 +222,20 @@ Body:
   allowed level.
 - It returns the assignment with `srs_stage = 1` and `available_at`.
 
+### 3.8 `/review_statistics`
+
+Fields used: `subject_id`, `meaning_correct`, `meaning_incorrect`,
+`reading_correct`, `reading_incorrect`, `meaning_max_streak`,
+`meaning_current_streak`, `reading_max_streak`, `reading_current_streak`,
+`percentage_correct`, `hidden`.
+
+**Implementation (2026-10-28).** Review batches request statistics by
+`subject_ids` in groups of 10, after subjects and study materials. The fields
+are merged into the cached `Subject`; the review header shows the subject's
+lifetime accuracy and the session summary shows the last item's review count
+and accuracy. A token without the review-statistics permission still reviews,
+without the accuracy display.
+
 ---
 
 ## 4. Token and permissions
@@ -231,9 +245,10 @@ Body:
   - Read **assignments**.
   - Read **subjects**.
   - Read **study materials**.
+  - Read **review statistics**.
   - Read **user** and **summary**.
   - Create **reviews**.
-  - (Phase 2: read **review statistics** and **reviews**.)
+  - (Phase 2: read **reviews**.)
 - It is stored in NVS; it is shown masked; it is deleted on logout.
 - It is validated with `GET /user` before storing it.
 - If the token lacks permissions, `403`; what is missing is shown and updating it
@@ -411,6 +426,7 @@ alters the SRS stage and the user's statistics. We prefer to leave the item as
 | Assignments | LittleFS | Until sync | `updated_after`, review response |
 | Subjects | microSD | Immutable by ID | `data_updated_at` if refreshed |
 | Study materials | merged into Subjects (microSD) | Until subject refresh | New review/lesson batch |
+| Review statistics | merged into Subjects (microSD) | Until subject refresh | New review batch |
 | Visual pack | microSD | Until regenerated | Builder version / new characters |
 | Local stats | LittleFS | Persistent | Manual reset |
 
@@ -430,12 +446,12 @@ alters the SRS stage and the user's statistics. We prefer to leave the item as
 - Never delete the outbox before the POST is confirmed.
 
 **Implementation (2026-10-28).** The Home/user/batch snapshot is
-`/state/cache.bin` (`KKCA`, version 5); the batch subjects are
-`/kanikey/cache/subjects.bin` (`KKCS`, version 5) on SD. Version 3 added the
+`/state/cache.bin` (`KKCA`, version 6); the batch subjects are
+`/kanikey/cache/subjects.bin` (`KKCS`, version 6) on SD. Version 3 added the
 study-material notes to each cached subject, version 4 added the review
-presentation order and version 5 adds the vacation timestamp to the cached
-user; older files are discarded. Both carry the save time, an FNV-1a
-fingerprint of the API token, the payload length and CRC32.
+presentation order, version 5 added the vacation timestamp and version 6 adds
+the per-subject review statistics; older files are discarded. Both carry the
+save time, an FNV-1a fingerprint of the API token, the payload length and CRC32.
 The snapshot also stores the summary's `data_updated_at`; assignments keep
 their own `data_updated_at` for outbox reconciliation. Loading a snapshot
 written for another token or an older version discards both files. The cached
@@ -600,6 +616,7 @@ Minimal fixtures, hand-written, with attribution:
 - `subjects.json`: radical with `characters: null`, kanji with on/kun/nanori,
   vocab with context/audio, kana vocab.
 - `study_materials.json`: synonyms.
+- `review_statistics.json`: correct/incorrect counts, streaks and percentage.
 - `review_ok.json`: `resources_updated.assignment`.
 - `errors.json`: 401, 403, 422, 429.
 

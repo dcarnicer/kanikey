@@ -42,8 +42,25 @@ struct Subject {
     std::string meaningNote;  // study material note (whitespace collapsed)
     std::string readingNote;
 
+    // Review statistics (GET /review_statistics); hasReviewStats is false for
+    // lessons and for subjects without a statistics resource.
+    uint32_t meaningCorrect = 0;
+    uint32_t meaningIncorrect = 0;
+    uint32_t readingCorrect = 0;
+    uint32_t readingIncorrect = 0;
+    uint16_t meaningMaxStreak = 0;
+    uint16_t meaningCurrentStreak = 0;
+    uint16_t readingMaxStreak = 0;
+    uint16_t readingCurrentStreak = 0;
+    uint8_t percentageCorrect = 0;
+    bool hasReviewStats = false;
+
     bool needsReading() const {
         return type == SubjectType::Kanji || type == SubjectType::Vocabulary;
+    }
+
+    uint32_t reviewCount() const {
+        return meaningCorrect + meaningIncorrect + readingCorrect + readingIncorrect;
     }
 };
 

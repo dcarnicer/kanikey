@@ -226,6 +226,10 @@ E (221) esp_core_dump_flash: No core dump partition found!
 - SRS indicator: the review header showed `SRS 1` with a synthetic cached
   review. The summary line needs a successful live POST; Wi-Fi was flaky at the
   end of the session (-80 dBm), so it is native-tested only.
+- Review statistics: with a synthetic cached review, the header showed
+  `SRS 1 86%` and the summary showed `History 18 reviews, 89%`. The outbox
+  sends failed offline, so the stage-change arrow was not exercised in this
+  run; the stats display itself is verified.
 - Long readings: feedback uses `Y`/`A` side labels and a right-aligned 20 px
   fallback, so かつようけい fits without clipping.
 - Crash found and fixed: growing `batch.subjects` while a subject page DOM was
@@ -261,8 +265,8 @@ WaniKani subjects and mnemonics.
 - Upload: `S` starts a one-shot HTTP server on port 8080 and
   `tools/device.py push` writes the file with `curl -T`; 2.9 MB transferred
   reliably. The USB `up` path uses 8 KiB ACKed chunks and is a fallback.
-- Offline cache: `/state/cache.bin` (LittleFS, `KKCA` v5) and
-  `/kanikey/cache/subjects.bin` (SD, `KKCS` v5), with the summary
+- Offline cache: `/state/cache.bin` (LittleFS, `KKCA` v6) and
+  `/kanikey/cache/subjects.bin` (SD, `KKCS` v6), with the summary
   `data_updated_at`, 24 h stale state and manual clear/sync. A synthetic-cache
   run on 2026-10-28 restored Home offline, ran a cached session, kept the
   completed review in the outbox and restored both after a reboot. Real-account

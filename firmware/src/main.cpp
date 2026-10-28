@@ -703,8 +703,12 @@ void drawReview() {
     d.drawString("REVIEWS", 6, 3);
     const uint8_t srsStage =
         gFeedbackCompleted ? gCompletedItem.srsStage : (item ? item->srsStage : 0);
-    char srs[16];
-    snprintf(srs, sizeof srs, "SRS %u", static_cast<unsigned>(srsStage));
+    char srs[24];
+    if (s->hasReviewStats)
+        snprintf(srs, sizeof srs, "SRS %u  %u%%", static_cast<unsigned>(srsStage),
+                 static_cast<unsigned>(s->percentageCorrect));
+    else
+        snprintf(srs, sizeof srs, "SRS %u", static_cast<unsigned>(srsStage));
     d.setTextFont(0);
     d.setTextColor(kFaint, kBg);
     d.drawString(srs, 62, 5);
@@ -899,14 +903,33 @@ void drawReviewSummary() {
         snprintf(m, sizeof m, "All reviews sent");
     d.setTextColor(rejected ? kErr : pending ? kWarn : kFaint, kBg);
     d.drawString(m, 8, 98);
-    if (gStageChange.valid) {
-        char srs[32];
-        if (gStageChange.from && gStageChange.from != gStageChange.to)
-            snprintf(srs, sizeof srs, "SRS %u -> %u", static_cast<unsigned>(gStageChange.from),
-                     static_cast<unsigned>(gStageChange.to));
-        else
-            snprintf(srs, sizeof srs, "SRS stage %u",
-                     static_cast<unsigned>(gStageChange.to));
+    const kk::Subject* lastSubject =
+        gCompletedItem.subjectId ? subjectById(gCompletedItem.subjectId) : nullptr;
+    if (gStageChange.valid || (lastSubject && lastSubject->hasReviewStats)) {
+        char srs[48];
+        if (gStageChange.valid && lastSubject && lastSubject->hasReviewStats) {
+            if (gStageChange.from && gStageChange.from != gStageChange.to)
+                snprintf(srs, sizeof srs, "SRS %u -> %u  %u%%",
+                         static_cast<unsigned>(gStageChange.from),
+                         static_cast<unsigned>(gStageChange.to),
+                         static_cast<unsigned>(lastSubject->percentageCorrect));
+            else
+                snprintf(srs, sizeof srs, "SRS %u  %u%%",
+                         static_cast<unsigned>(gStageChange.to),
+                         static_cast<unsigned>(lastSubject->percentageCorrect));
+        } else if (gStageChange.valid) {
+            if (gStageChange.from && gStageChange.from != gStageChange.to)
+                snprintf(srs, sizeof srs, "SRS %u -> %u",
+                         static_cast<unsigned>(gStageChange.from),
+                         static_cast<unsigned>(gStageChange.to));
+            else
+                snprintf(srs, sizeof srs, "SRS stage %u",
+                         static_cast<unsigned>(gStageChange.to));
+        } else {
+            snprintf(srs, sizeof srs, "History %u reviews, %u%%",
+                     static_cast<unsigned>(lastSubject->reviewCount()),
+                     static_cast<unsigned>(lastSubject->percentageCorrect));
+        }
         d.setTextColor(kOk, kBg);
         d.drawString(srs, 8, 112);
     }
@@ -3404,6 +3427,20 @@ void seedDevCache() {
     vocabulary.meanings = {{"Japan", true, true}};
     vocabulary.readings = {{"にほん", true, true, kk::ReadingType::Kunyomi}};
     subjects.subjects.push_back(vocabulary);
+
+    auto stats = [](kk::Subject& s, uint32_t meaningCorrect, uint32_t meaningIncorrect,
+                    uint32_t readingCorrect, uint32_t readingIncorrect,
+                    uint8_t percentageCorrect) {
+        s.meaningCorrect = meaningCorrect;
+        s.meaningIncorrect = meaningIncorrect;
+        s.readingCorrect = readingCorrect;
+        s.readingIncorrect = readingIncorrect;
+        s.percentageCorrect = percentageCorrect;
+        s.hasReviewStats = true;
+    };
+    stats(subjects.subjects[0], 12, 2, 0, 0, 86);
+    stats(subjects.subjects[1], 10, 2, 8, 1, 86);
+    stats(subjects.subjects[2], 9, 1, 7, 1, 89);
 
     const bool snapshotOk = kk::cacheSaveSnapshot(snapshot);
     const bool subjectsOk = gSdOk && kk::cacheSaveSubjects(SD, subjects);

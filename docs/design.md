@@ -651,6 +651,7 @@ request. After 20 subjects the free heap is ~134 KB and the largest block
 - `ReviewQueue`: shuffled/lower-levels-first order, requeueing, counters,
   completed item, exiting midway.
 - `LessonQuiz`: meaning/reading sequence, warnings, mistake count, completion.
+- `ReviewStatistics`: counts, streaks and percentage merge into subjects.
 - `Outbox`: append, compaction, retries, reconciliation, corruption.
 - `JsonStream`: WaniKani fixtures with radicals, kanji, vocabulary, kana,
   pagination, errors, `\uXXXX` escapes, invalid UTF-8.
