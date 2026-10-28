@@ -5,6 +5,7 @@
 #include "ui/KeyInput.h"
 #include "wk/AnswerChecker.h"
 #include "wk/Assignment.h"
+#include "wk/Cache.h"
 #include "wk/Crc32.h"
 #include "wk/Outbox.h"
 #include "wk/Json.h"
@@ -563,6 +564,138 @@ static void test_summary_text_parser() {
     TEST_ASSERT_EQUAL(2, s.dueReviews(now));
 }
 
+static void test_cache_account_key() {
+    TEST_ASSERT_EQUAL_UINT32(0x4F9F2CABu, cacheAccountKey("hello"));
+}
+
+static Subject cacheSubject() {
+    Subject s;
+    s.id = 42;
+    s.type = SubjectType::Vocabulary;
+    s.level = 7;
+    s.characters = "大人";
+    s.meanings = {{"adult", true, true}, {"grown-up", false, true}};
+    s.readings = {{"おとな", true, true, ReadingType::Kunyomi}};
+    s.meaningSynonyms = {"grown up"};
+    s.whitelist = {"adults"};
+    s.blacklist = {"child"};
+    s.componentSubjectIds = {1, 2, 3};
+    s.meaningMnemonic = "An adult is a big person.";
+    s.readingMnemonic = "Oh, ton of adults.";
+    s.meaningHint = "Not a child.";
+    s.readingHint = "Long o.";
+    return s;
+}
+
+static void test_cache_snapshot_round_trip() {
+    CacheSnapshot in;
+    in.meta.savedAt = 1760000000u;
+    in.meta.accountKey = cacheAccountKey("token");
+    in.summary.nextReviewsAt = "2026-10-28T12:00:00Z";
+    in.summary.lessons = {{0, 2, {10, 11}}};
+    in.summary.reviews = {{1760000000u, 1, {42}}, {1760003600u, 2, {43, 44}}};
+    in.user.username = "dabi";
+    in.user.level = 12;
+    in.user.subscriptionActive = true;
+    in.user.maxLevelGranted = 60;
+    in.user.lessonsBatchSize = 4;
+    Assignment a;
+    a.id = 100;
+    a.subjectId = 42;
+    a.type = SubjectType::Vocabulary;
+    a.srsStage = 3;
+    a.availableAt = 1759999999u;
+    a.dataUpdatedAt = 1759999000u;
+    a.hidden = true;
+    a.pendingReview = true;
+    in.assignments.push_back(a);
+
+    std::vector<uint8_t> bytes;
+    TEST_ASSERT_TRUE(encodeCacheSnapshot(in, &bytes));
+    TEST_ASSERT_GREATER_OR_EQUAL(kCacheHeaderBytes, bytes.size());
+    TEST_ASSERT_EQUAL_UINT8('K', bytes[0]);
+    TEST_ASSERT_EQUAL_UINT8('A', bytes[3]);
+
+    CacheSnapshot out;
+    TEST_ASSERT_TRUE(decodeCacheSnapshot(bytes.data(), bytes.size(), &out));
+    TEST_ASSERT_EQUAL_UINT32(in.meta.savedAt, out.meta.savedAt);
+    TEST_ASSERT_EQUAL_UINT32(in.meta.accountKey, out.meta.accountKey);
+    TEST_ASSERT_EQUAL_STRING(in.summary.nextReviewsAt.c_str(), out.summary.nextReviewsAt.c_str());
+    TEST_ASSERT_EQUAL(1, out.summary.lessons.size());
+    TEST_ASSERT_EQUAL(2, out.summary.reviews.size());
+    TEST_ASSERT_EQUAL_UINT32(1760003600u, out.summary.reviews[1].availableAt);
+    TEST_ASSERT_EQUAL_STRING("dabi", out.user.username.c_str());
+    TEST_ASSERT_EQUAL(12, out.user.level);
+    TEST_ASSERT_TRUE(out.user.subscriptionActive);
+    TEST_ASSERT_EQUAL(4, out.user.lessonsBatchSize);
+    TEST_ASSERT_EQUAL(1, out.assignments.size());
+    TEST_ASSERT_EQUAL_UINT32(100, out.assignments[0].id);
+    TEST_ASSERT_EQUAL_UINT32(42, out.assignments[0].subjectId);
+    TEST_ASSERT_EQUAL(3, out.assignments[0].srsStage);
+    TEST_ASSERT_TRUE(out.assignments[0].hidden);
+    TEST_ASSERT_TRUE(out.assignments[0].pendingReview);
+}
+
+static void test_cache_corruption_is_rejected() {
+    CacheSnapshot in;
+    in.meta.savedAt = 1234;
+    in.meta.accountKey = 99;
+    in.summary.nextReviewsAt = "x";
+    in.summary.reviews = {{0, 1, {1}}};
+    std::vector<uint8_t> bytes;
+    TEST_ASSERT_TRUE(encodeCacheSnapshot(in, &bytes));
+
+    CacheSnapshot out;
+    std::vector<uint8_t> bad = bytes;
+    bad[kCacheHeaderBytes + 2] ^= 0x40;
+    TEST_ASSERT_FALSE(decodeCacheSnapshot(bad.data(), bad.size(), &out));
+    TEST_ASSERT_FALSE(decodeCacheSnapshot(bytes.data(), bytes.size() - 1, &out));
+    TEST_ASSERT_FALSE(decodeCacheSnapshot(bytes.data(), kCacheHeaderBytes - 1, &out));
+    bad = bytes;
+    bad[4] = 2;
+    TEST_ASSERT_FALSE(decodeCacheSnapshot(bad.data(), bad.size(), &out));
+    TEST_ASSERT_TRUE(decodeCacheSnapshot(bytes.data(), bytes.size(), &out));
+}
+
+static void test_cache_subjects_round_trip() {
+    SubjectCache in;
+    in.meta.savedAt = 1760000000u;
+    in.meta.accountKey = 7;
+    in.subjects.push_back(cacheSubject());
+    Subject radical;
+    radical.id = 1;
+    radical.type = SubjectType::Radical;
+    radical.level = 1;
+    radical.meanings = {{"ground", true, true}};
+    in.subjects.push_back(radical);
+
+    std::vector<uint8_t> bytes;
+    TEST_ASSERT_TRUE(encodeSubjectCache(in, &bytes));
+    TEST_ASSERT_EQUAL_UINT8('S', bytes[3]);
+    SubjectCache out;
+    TEST_ASSERT_TRUE(decodeSubjectCache(bytes.data(), bytes.size(), &out));
+    TEST_ASSERT_EQUAL(2, out.subjects.size());
+    const Subject& s = out.subjects[0];
+    TEST_ASSERT_EQUAL_UINT32(42, s.id);
+    TEST_ASSERT_EQUAL(SubjectType::Vocabulary, s.type);
+    TEST_ASSERT_EQUAL_STRING("大人", s.characters.c_str());
+    TEST_ASSERT_EQUAL(2, s.meanings.size());
+    TEST_ASSERT_EQUAL_STRING("adult", s.meanings[0].text.c_str());
+    TEST_ASSERT_TRUE(s.meanings[0].primary);
+    TEST_ASSERT_EQUAL_STRING("おとな", s.readings[0].text.c_str());
+    TEST_ASSERT_EQUAL(ReadingType::Kunyomi, s.readings[0].type);
+    TEST_ASSERT_EQUAL_STRING("grown up", s.meaningSynonyms[0].c_str());
+    TEST_ASSERT_EQUAL(3, s.componentSubjectIds.size());
+    TEST_ASSERT_EQUAL_STRING("An adult is a big person.", s.meaningMnemonic.c_str());
+    TEST_ASSERT_EQUAL_STRING("Long o.", s.readingHint.c_str());
+    TEST_ASSERT_EQUAL(SubjectType::Radical, out.subjects[1].type);
+    TEST_ASSERT_TRUE(out.subjects[1].characters.empty());
+
+    out.subjects.clear();
+    bytes[bytes.size() - 1] ^= 0x01;
+    TEST_ASSERT_FALSE(decodeSubjectCache(bytes.data(), bytes.size(), &out));
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_romaji_common_words);
@@ -598,5 +731,9 @@ int main(int, char**) {
     RUN_TEST(test_markup_and_subject_details);
     RUN_TEST(test_crc32_known_vector);
     RUN_TEST(test_outbox_model);
+    RUN_TEST(test_cache_account_key);
+    RUN_TEST(test_cache_snapshot_round_trip);
+    RUN_TEST(test_cache_corruption_is_rejected);
+    RUN_TEST(test_cache_subjects_round_trip);
     return UNITY_END();
 }

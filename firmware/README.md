@@ -17,7 +17,8 @@ KaniKey firmware for the M5Stack Cardputer ADV.
   next review and last sync.
 - Measures internal heap before and after each TLS request.
 - Draws Japanese prompts and readings from the microSD visual pack
-  (`/kanikey/glyphs.kgp`); the first full pack has 6,621 glyphs at 64/32/20 px.
+  (`/kanikey/glyphs.kgp`); the token pack on the card has 7,269 glyphs at
+  64/32/20 px and 498 radical bitmaps.
 - Draws radical prompts from the pack's 96 px radical bitmaps and includes
   radical-only lessons/reviews.
 - Writes the pack to the card over the USB serial link or a one-shot Wi-Fi
@@ -27,16 +28,22 @@ The Home screen shows live `/user` and `/summary` data. Enter fetches a
 20-item due batch, runs a typed meaning/reading session and submits completed
 items with `POST /v2/reviews`. Results are persisted in `/state/outbox.bin`
 before the request and retried after a reboot. The offline path is verified.
+The Home snapshot (summary, user and batch assignments) is persisted in
+`/state/cache.bin`, and the batch subjects in `/kanikey/cache/subjects.bin` on
+the SD card. After a reboot without network the device restores Home, shows
+`Offline` and can run the cached batch; completed items are removed from the
+cache and kept in the outbox. Both files use a version, token fingerprint,
+CRC32 and `.tmp`/`.bak` writes.
 The panel dims after 30 s, blanks after 60 s and deep-sleeps after 2 min when
 no review is active. Hardware measurements are in
 [docs/hardware.md](../docs/hardware.md).
 
 The full-screen canvas is **8-bit RGB332** (32,400 B). A 16-bit canvas is
 64,800 B and could not be reallocated after the subject batches fragmented the
-heap; 8 bits always reallocate. `efontJA_16` is now only the fallback for
-readings and text when the pack lacks a glyph. The font reference still costs
-~468 KB of flash; removing it needs the radical pack regenerated with a token
-and a full "visual pack missing" startup screen, verified on hardware.
+heap; 8 bits always reallocate. `efontJA_16` is no longer linked: Japanese text
+comes from the pack, and a missing glyph shows an explicit `no glyph` state.
+Removing the font freed ~468 KB of flash (1,741,705 B → 1,273,425 B before the
+cache work).
 
 ## Visual pack
 
@@ -142,6 +149,8 @@ prints or stores the password. `token` prompts for the WaniKani token, sends
 | `h` | Print free/largest/minimum internal heap |
 | `i` | Print the visual pack status |
 | `R <id>` | Dev build only: render a radical bitmap by subject id |
+| `C` | Dev build only: seed a synthetic offline cache (needs a token) |
+| `X` | Dev build only: clear the synthetic cache |
 | `S` | Start the one-shot Wi-Fi asset upload server |
 | `up <bytes> <path>` | Write a file to the card over USB (8 KiB ACKed chunks) |
 | `d` | Disconnect Wi-Fi (test offline) |

@@ -468,11 +468,11 @@ The generated-pack option best balances quality, memory, and licensing. In the
 future, a generator in the phone's browser could be added so no computer is
 needed, or on-device rasterization for missing characters.
 
-**Bring-up fallback (M1).** M5GFX ships `efontJA_16`, a 16 px Japanese bitmap
-font with ~10,800 glyphs. Referencing it adds ~468 KB of flash. It is now only
-the fallback for characters missing from the pack, principally radicals. The
-fallback is removed once radical images render and a “visual pack missing”
-screen exists.
+**Bring-up fallback removed (2026-10-28).** M5GFX ships `efontJA_16`, a 16 px
+Japanese bitmap font with ~10,800 glyphs. Referencing it added ~468 KB of
+flash. It was used as the fallback for characters missing from the pack; that
+reference is gone. Readings and feedback now use the pack at 32/20 px, and a
+missing glyph shows an explicit `no glyph` state instead.
 
 ### 11.4 Rendering
 

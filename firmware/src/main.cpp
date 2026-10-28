@@ -22,6 +22,7 @@
 #include <cstring>
 
 #include "board/Board.h"
+#include "platform/CacheStore.h"
 #include "platform/DevToken.h"
 #include "platform/DevWifi.h"
 #include "platform/GlyphPack.h"
@@ -109,6 +110,8 @@ size_t gLessonIndex = 0;
 size_t gLessonPage = 0;
 bool gSyncing = false;
 bool gSyncAttempted = false;
+bool gOffline = false;
+uint32_t gCacheSavedAt = 0;
 #ifdef KANIKEY_DEV
 bool gShowDebug = false;
 bool gShowRadicalTest = false;
@@ -121,6 +124,181 @@ void drawLoading(const char* title, const char* subtitle);
 void drawLesson();
 void drawBoot();
 void retryBoot();
+
+uint32_t currentAccountKey() {
+    const String token = kk::DevToken::load();
+    return kk::cacheAccountKey(std::string_view(token.c_str(), token.length()));
+}
+
+// Without SNTP there is no battery-backed clock. Use the last cache save as
+// the reference so cached due counts and available_at checks stay meaningful.
+uint32_t effectiveNow() {
+    const uint32_t now = static_cast<uint32_t>(time(nullptr));
+    if (now >= 1700000000u) return now;
+    if (gCacheSavedAt) return gCacheSavedAt;
+    if (gBatch.fetchedAt) return gBatch.fetchedAt;
+    return now;
+}
+
+void applySummary(uint32_t now) {
+    gDueReviews = gSummary.dueReviews(now);
+    gLessons = gSummary.totalLessons();
+    const uint32_t nextAt = gSummary.nextReviewAt(now);
+    if (nextAt)
+        localHm(nextAt, gNextReview, sizeof gNextReview);
+    else if (gDueReviews > 0)
+        snprintf(gNextReview, sizeof gNextReview, "now");
+    else
+        snprintf(gNextReview, sizeof gNextReview, "all clear");
+}
+
+bool outboxHasAssignment(uint32_t assignmentId) {
+    for (const kk::OutboxItem& it : gOutbox)
+        if (it.assignmentId == assignmentId) return true;
+    return false;
+}
+
+void removeSubjectFromReviews(kk::Summary& summary, uint32_t subjectId) {
+    for (kk::SummaryBucket& b : summary.reviews) {
+        auto it = std::find(b.subjectIds.begin(), b.subjectIds.end(), subjectId);
+        if (it == b.subjectIds.end()) continue;
+        b.subjectIds.erase(it);
+        if (b.count > 0) --b.count;
+    }
+}
+
+// Completed-but-unsent reviews are still in the outbox; they must not come
+// back as due after a reboot.
+void pruneCacheOutbox() {
+    if (gOutbox.empty()) return;
+    for (size_t i = 0; i < gBatch.assignments.size();) {
+        if (outboxHasAssignment(gBatch.assignments[i].id)) {
+            removeSubjectFromReviews(gSummary, gBatch.assignments[i].subjectId);
+            gBatch.assignments.erase(gBatch.assignments.begin() + i);
+        } else {
+            ++i;
+        }
+    }
+    for (const kk::OutboxItem& it : gOutbox)
+        if (it.subjectId) removeSubjectFromReviews(gSummary, it.subjectId);
+    gBatch.ok = !gBatch.assignments.empty() && !gBatch.subjects.empty();
+}
+
+// A fresh summary is authoritative: drop cached assignments that are no
+// longer due or that were reviewed in the meantime.
+void pruneBatchToSummary(uint32_t now) {
+    if (gBatch.assignments.empty()) return;
+    const std::vector<uint32_t> due = gSummary.dueSubjectIds(now, 1000);
+    for (size_t i = 0; i < gBatch.assignments.size();) {
+        const kk::Assignment& a = gBatch.assignments[i];
+        const bool stillDue = std::find(due.begin(), due.end(), a.subjectId) != due.end();
+        if (!stillDue || outboxHasAssignment(a.id) || (a.availableAt && a.availableAt > now))
+            gBatch.assignments.erase(gBatch.assignments.begin() + i);
+        else
+            ++i;
+    }
+    gBatch.ok = !gBatch.assignments.empty() && !gBatch.subjects.empty();
+}
+
+void saveCacheSnapshot() {
+    if (!gHaveSummary || !kk::DevToken::has()) return;
+    kk::CacheSnapshot snapshot;
+    snapshot.meta.savedAt = gSyncedAt;
+    snapshot.meta.accountKey = currentAccountKey();
+    snapshot.summary = gSummary;
+    if (gHaveUser) snapshot.user = gUser;
+    if (gBatch.ok) snapshot.assignments = gBatch.assignments;
+    if (!kk::cacheSaveSnapshot(snapshot)) {
+        Serial.println("[cache] snapshot save failed");
+        return;
+    }
+    gCacheSavedAt = snapshot.meta.savedAt;
+    Serial.printf("[cache] snapshot saved: %u assignments, %u due\n",
+                  static_cast<unsigned>(snapshot.assignments.size()),
+                  static_cast<unsigned>(gDueReviews));
+}
+
+void saveSubjectCache() {
+    if (!gSdOk || !gBatch.ok || gBatch.subjects.empty() || !kk::DevToken::has()) return;
+    kk::SubjectCache cache;
+    cache.meta.savedAt = gBatch.fetchedAt ? gBatch.fetchedAt : gSyncedAt;
+    cache.meta.accountKey = currentAccountKey();
+    cache.subjects = gBatch.subjects;
+    if (kk::cacheSaveSubjects(SD, cache)) {
+        Serial.printf("[cache] subjects saved: %u\n",
+                      static_cast<unsigned>(cache.subjects.size()));
+    } else {
+        Serial.println("[cache] subjects save failed");
+    }
+}
+
+void saveCacheAll() {
+    saveCacheSnapshot();
+    saveSubjectCache();
+}
+
+bool loadCache() {
+    if (!gSdOk || !kk::DevToken::has()) return false;
+    kk::CacheSnapshot snapshot;
+    if (!kk::cacheLoadSnapshot(&snapshot)) return false;
+    const uint32_t key = currentAccountKey();
+    if (snapshot.meta.accountKey != key) {
+        Serial.println("[cache] token/account changed; discarding cache");
+        kk::cacheClearSnapshot();
+        kk::cacheClearSubjects(SD);
+        return false;
+    }
+    gSummary = std::move(snapshot.summary);
+    gHaveSummary = true;
+    gHaveUser = !snapshot.user.username.empty() && snapshot.user.level > 0;
+    if (gHaveUser) gUser = std::move(snapshot.user);
+
+    gBatch = kk::ReviewBatch{};
+    if (!snapshot.assignments.empty()) {
+        kk::SubjectCache subjects;
+        if (kk::cacheLoadSubjects(SD, &subjects) && subjects.meta.accountKey == key) {
+            for (const kk::Assignment& a : snapshot.assignments) {
+                const kk::Subject* match = nullptr;
+                for (const kk::Subject& s : subjects.subjects)
+                    if (s.id == a.subjectId) {
+                        match = &s;
+                        break;
+                    }
+                if (!match) continue;
+                gBatch.assignments.push_back(a);
+                gBatch.subjects.push_back(*match);
+            }
+            gBatch.fetchedAt = snapshot.meta.savedAt;
+            gBatch.ok = !gBatch.assignments.empty();
+        }
+    }
+
+    gCacheSavedAt = snapshot.meta.savedAt;
+    gSyncedAt = snapshot.meta.savedAt;
+    if (gSyncedAt) localHm(gSyncedAt, gSyncClock, sizeof gSyncClock);
+    pruneCacheOutbox();
+    applySummary(effectiveNow());
+    gOffline = true;
+    gShowHome = true;
+    Serial.printf("[cache] loaded: %u assignments, %u subjects, %u due, saved %u\n",
+                  static_cast<unsigned>(gBatch.assignments.size()),
+                  static_cast<unsigned>(gBatch.subjects.size()),
+                  static_cast<unsigned>(gDueReviews), static_cast<unsigned>(gCacheSavedAt));
+    return true;
+}
+
+void markCacheCompleted(uint32_t subjectId, uint32_t assignmentId) {
+    if (!gHaveSummary) return;
+    removeSubjectFromReviews(gSummary, subjectId);
+    for (size_t i = 0; i < gBatch.assignments.size();) {
+        if (gBatch.assignments[i].id == assignmentId)
+            gBatch.assignments.erase(gBatch.assignments.begin() + i);
+        else
+            ++i;
+    }
+    gBatch.ok = !gBatch.assignments.empty() && !gBatch.subjects.empty();
+    saveCacheSnapshot();
+}
 
 lgfx::LovyanGFX& target() {
     if (gCanvas) return *gCanvas;
@@ -233,22 +411,17 @@ void runProbe() {
 void runSummary() {
     const String token = kk::DevToken::load();
     const kk::SummaryProbeResult r = kk::probeWaniKaniSummary(token);
-    const uint32_t now = static_cast<uint32_t>(time(nullptr));
+    const uint32_t now = effectiveNow();
     if (r.parsed) {
         gSummary = r.summary;
         gHaveSummary = true;
-        gDueReviews = r.summary.dueReviews(now);
-        gLessons = r.summary.totalLessons();
-        gSyncedAt = now;
-        localHm(now, gSyncClock, sizeof gSyncClock);
-        const uint32_t nextAt = r.summary.nextReviewAt(now);
-        if (nextAt)
-            localHm(nextAt, gNextReview, sizeof gNextReview);
-        else if (gDueReviews > 0)
-            snprintf(gNextReview, sizeof gNextReview, "now");
-        else
-            snprintf(gNextReview, sizeof gNextReview, "all clear");
+        gSyncedAt = now >= 1700000000u ? now : 0;
+        if (gSyncedAt) localHm(gSyncedAt, gSyncClock, sizeof gSyncClock);
+        pruneBatchToSummary(now);
+        applySummary(now);
+        gOffline = false;
         gShowHome = true;
+        saveCacheSnapshot();
     }
     if (r.parsed)
         Serial.printf("[summary] due %u of %u reviews, %u lessons, next %s\n",
@@ -272,7 +445,7 @@ bool runBatch() {
         Serial.println("[review] no summary yet");
         return false;
     }
-    const uint32_t now = static_cast<uint32_t>(time(nullptr));
+    const uint32_t now = effectiveNow();
     const std::vector<uint32_t> ids = gSummary.dueSubjectIds(now, 20);
     Serial.printf("[review] %u due subject ids\n", static_cast<unsigned>(ids.size()));
     gFreeCanvasForRequest = true;
@@ -315,6 +488,7 @@ bool runBatch() {
              static_cast<unsigned>(batch.assignments.size()),
              static_cast<unsigned>(batch.subjects.size()));
     gBatch = std::move(batch);
+    saveCacheAll();
     gDirty = true;
     return true;
 }
@@ -476,22 +650,23 @@ void drawReview() {
             d.setTextSize(1);
             d.setTextColor(kFaint, kSurfaceHi);
             d.drawString(meaning ? "answer" : "kana", 106, 60);
-        } else if (!meaning &&
-                   gPack.drawTextRight(d, shown, 230, 80, 32, kText, kSurfaceHi,
-                                       kk::ClipRect{102, 54, 234, 86})) {
-            caret = 230;
-        } else {
-            if (meaning) {
-                d.setTextFont(1);
-                d.setTextSize(1);
-            } else {
-                d.setFont(&fonts::efontJA_16);
-                d.setTextSize(1);
-            }
+        } else if (meaning) {
+            d.setTextFont(1);
+            d.setTextSize(1);
             trimFrontToWidth(d, shown, 128);
             d.setTextColor(kText, kSurfaceHi);
             d.drawString(shown.c_str(), 106, 60);
             caret = 106 + d.textWidth(shown.c_str());
+        } else if (gPack.drawTextRight(d, shown, 230, 80, 32, kText, kSurfaceHi,
+                                       kk::ClipRect{102, 54, 234, 86}) ||
+                   gPack.drawTextRight(d, shown, 230, 80, 20, kText, kSurfaceHi,
+                                       kk::ClipRect{102, 54, 234, 86})) {
+            caret = 230;
+        } else {
+            d.setTextFont(1);
+            d.setTextSize(1);
+            d.setTextColor(kWarn, kSurfaceHi);
+            d.drawString("no glyph", 106, 60);
         }
         if (caret < 232) d.fillRect(caret, 58, 2, 16, kAccent);
 
@@ -519,19 +694,18 @@ void drawReview() {
                                            kk::ClipRect{100, 44, 236, 68}) != 0;
         if (!typedDrawn) {
             if (japanese) {
-                d.setFont(&fonts::efontJA_16);
+                d.setTextFont(1);
+                d.setTextSize(1);
+                d.setTextColor(kWarn, kBg);
+                d.drawString(typed.empty() ? "-" : "no glyph", 100, 47);
             } else {
                 d.setTextFont(1);
-            }
-            d.setTextSize(1);
-            d.setTextColor(kDim, kBg);
-            if (japanese) {
-                trimFrontToWidth(d, typed, 136);
-            } else {
+                d.setTextSize(1);
+                d.setTextColor(kDim, kBg);
                 while (typed.size() > 1 && d.textWidth(typed.c_str()) > 136)
                     typed.erase(0, 1);
+                d.drawString(typed.empty() ? "-" : typed.c_str(), 100, 47);
             }
-            d.drawString(typed.empty() ? "-" : typed.c_str(), 100, 47);
         }
         d.setTextFont(0);
         d.setTextSize(1);
@@ -545,20 +719,19 @@ void drawReview() {
                                             kk::ClipRect{100, 70, 236, 94}) != 0;
         if (!answerDrawn) {
             if (japanese) {
-                d.setFont(&fonts::efontJA_16);
+                d.setTextFont(1);
+                d.setTextSize(1);
+                d.setTextColor(kWarn, kBg);
+                d.drawString("no glyph", 100, 74);
             } else {
                 d.setTextFont(1);
-            }
-            d.setTextSize(1);
-            d.setTextColor(ok ? kOk : warn ? kWarn : kErr, kBg);
-            if (japanese) {
-                trimFrontToWidth(d, answer, 136);
-            } else {
+                d.setTextSize(1);
+                d.setTextColor(ok ? kOk : warn ? kWarn : kErr, kBg);
                 if (d.textWidth(answer.c_str()) > 136) d.setTextFont(0);
                 while (answer.size() > 1 && d.textWidth(answer.c_str()) > 136) answer.pop_back();
                 if (answer.size() < correctAnswer(*s, part).size()) answer += "...";
+                d.drawString(answer.c_str(), 100, 74);
             }
-            d.drawString(answer.c_str(), 100, 74);
         }
         if (gCheck.status != kk::AnswerStatus::Correct)
             drawWrapped(d, gCheck.message, 100, 92, 136, 2, kFaint, kBg);
@@ -765,6 +938,7 @@ void checkCurrent() {
             gNeedsSubmit = true;
             gFeedbackCompleted = true;
             if (gDueReviews > 0) --gDueReviews;
+            markCacheCompleted(gCompletedItem.subjectId, gCompletedItem.assignmentId);
         }
     }
     gDirty = true;
@@ -801,7 +975,6 @@ void endReview() {
     gShowHome = true;
     gFeedback = false;
     gFeedbackCompleted = false;
-    gBatch = kk::ReviewBatch{};
     gQueue = kk::ReviewQueue{};
     gDirty = true;
 }
@@ -817,13 +990,16 @@ void startReview() {
         }
     }
     drawLoading("Starting session...", "");
+    const uint32_t now = effectiveNow();
     std::vector<kk::Assignment> due;
     for (const kk::Assignment& a : gBatch.assignments) {
         // Radicals with no Unicode character are valid review items: their
         // prompt comes from the radical bitmap in the visual pack.
+        if (a.availableAt != 0 && a.availableAt > now) continue;
+        if (outboxHasAssignment(a.id)) continue;
         if (subjectById(a.subjectId)) due.push_back(a);
     }
-    gQueue.build(due, gBatch.subjects, static_cast<uint32_t>(time(nullptr)), 20);
+    gQueue.build(due, gBatch.subjects, now, 20);
     if (gQueue.empty()) {
         Serial.println("[review] no reviewable items");
         return;
@@ -985,11 +1161,13 @@ void drawLesson() {
             }
     if (!reading.empty()) {
         if (!gPack.drawTextFit(d, reading, 86, 80, 32, 148, kReading, kBg,
+                               kk::ClipRect{86, 50, 236, 88}) &&
+            !gPack.drawTextFit(d, reading, 86, 80, 20, 148, kReading, kBg,
                                kk::ClipRect{86, 50, 236, 88})) {
-            d.setFont(&fonts::efontJA_16);
+            d.setTextFont(1);
             d.setTextSize(1);
-            d.setTextColor(kReading, kBg);
-            d.drawString(reading.c_str(), 86, 58);
+            d.setTextColor(kWarn, kBg);
+            d.drawString("no glyph", 86, 58);
         }
     }
 
@@ -1057,6 +1235,7 @@ void startCurrentLesson() {
     gFreeCanvasForRequest = false;
     if (ok) {
         if (gLessons > 0) --gLessons;
+        saveCacheSnapshot();
         ++gLessonIndex;
         gLessonPage = 0;
         if (gLessonIndex >= gLessonBatch.assignments.size()) {
@@ -1275,6 +1454,10 @@ void retryBoot() {
         gPack.open(SD, "/kanikey/glyphs.kgp");
         Serial.printf("[pack] %s\n", gPack.statusLine());
     }
+    if (gSdOk && gPack.ready() && !gHaveSummary && kk::DevToken::has() && loadCache()) {
+        gDirty = true;
+        return;
+    }
     if (!gSdOk) {
         snprintf(gNetLine, sizeof gNetLine, "SD: not mounted");
     } else if (!gPack.ready()) {
@@ -1288,6 +1471,23 @@ void retryBoot() {
         return;
     }
     gDirty = true;
+}
+
+void cacheStatusLine(char* out, size_t n) {
+    const uint32_t now = static_cast<uint32_t>(time(nullptr));
+    if (gCacheSavedAt == 0 || now < 1700000000u || now < gCacheSavedAt) {
+        snprintf(out, n, "Offline - cached data");
+        return;
+    }
+    const uint32_t age = now - gCacheSavedAt;
+    if (age < 60)
+        snprintf(out, n, "Offline - just synced");
+    else if (age < 3600)
+        snprintf(out, n, "Offline - %um old", static_cast<unsigned>(age / 60));
+    else if (age < 86400)
+        snprintf(out, n, "Offline - %uh old", static_cast<unsigned>(age / 3600));
+    else
+        snprintf(out, n, "Offline - %ud old", static_cast<unsigned>(age / 86400));
 }
 
 void drawHome() {
@@ -1346,13 +1546,13 @@ void drawHome() {
     d.drawFastHLine(4, 85, 232, kLine);
     d.setTextFont(1);
     d.setTextSize(1);
-    d.setTextColor(kDim, kBg);
+    d.setTextColor(gOffline ? kWarn : kDim, kBg);
     d.drawString("Next review", 8, 91);
-    d.drawString("Synced", 8, 105);
+    d.drawString(gOffline ? "Offline" : "Synced", 8, 105);
     d.setTextDatum(lgfx::top_right);
     d.setTextColor(kText, kBg);
     d.drawString(gNextReview, 232, 91);
-    d.setTextColor(kFaint, kBg);
+    d.setTextColor(gOffline ? kWarn : kFaint, kBg);
     d.drawString(gSyncClock, 232, 105);
     d.setTextDatum(lgfx::top_left);
 
@@ -1369,6 +1569,11 @@ void drawHome() {
     } else if (pending) {
         char line[40];
         snprintf(line, sizeof line, "Outbox: %u pending", static_cast<unsigned>(pending));
+        d.setTextColor(kWarn, kBg);
+        d.drawString(line, 8, 117);
+    } else if (gOffline) {
+        char line[40];
+        cacheStatusLine(line, sizeof line);
         d.setTextColor(kWarn, kBg);
         d.drawString(line, 8, 117);
     }
@@ -1614,6 +1819,90 @@ void drawRadicalTest() {
     d.drawString("R <id>: load  Esc: back", 8, 124);
     d.endWrite();
     present();
+}
+
+// Seeds a small cache to verify CACHE-03/04 without WaniKani credentials.
+// Dev-only: `C` writes it, `X` removes it.
+void seedDevCache() {
+    if (!kk::DevToken::has()) {
+        Serial.println("[cache] set a token first: k <token>");
+        return;
+    }
+    const uint32_t now = static_cast<uint32_t>(time(nullptr));
+    const uint32_t stamp = now >= 1700000000u ? now : 1760000000u;
+
+    kk::CacheSnapshot snapshot;
+    snapshot.meta.savedAt = stamp;
+    snapshot.meta.accountKey = currentAccountKey();
+    snapshot.summary.reviews.push_back(
+        kk::SummaryBucket{stamp - 60, 3, {1, 2, 3}});
+    snapshot.user.username = "dev";
+    snapshot.user.level = 3;
+    snapshot.user.subscriptionActive = true;
+    snapshot.user.maxLevelGranted = 3;
+    snapshot.user.lessonsBatchSize = 5;
+
+    const auto addAssignment = [&snapshot, stamp](uint32_t id, uint32_t subjectId,
+                                                  kk::SubjectType type) {
+        kk::Assignment a;
+        a.id = id;
+        a.subjectId = subjectId;
+        a.type = type;
+        a.srsStage = 1;
+        a.availableAt = stamp - 120;
+        a.dataUpdatedAt = stamp - 240;
+        snapshot.assignments.push_back(a);
+    };
+    addAssignment(1001, 1, kk::SubjectType::Radical);
+    addAssignment(1002, 2, kk::SubjectType::Kanji);
+    addAssignment(1003, 3, kk::SubjectType::Vocabulary);
+
+    kk::SubjectCache subjects;
+    subjects.meta = snapshot.meta;
+    kk::Subject radical;
+    radical.id = 1;
+    radical.type = kk::SubjectType::Radical;
+    radical.level = 1;
+    radical.meanings = {{"ground", true, true}};
+    subjects.subjects.push_back(radical);
+    kk::Subject kanji;
+    kanji.id = 2;
+    kanji.type = kk::SubjectType::Kanji;
+    kanji.level = 1;
+    kanji.characters = "日";
+    kanji.meanings = {{"day", true, true}};
+    kanji.readings = {{"にち", true, true, kk::ReadingType::Onyomi}};
+    subjects.subjects.push_back(kanji);
+    kk::Subject vocabulary;
+    vocabulary.id = 3;
+    vocabulary.type = kk::SubjectType::Vocabulary;
+    vocabulary.level = 1;
+    vocabulary.characters = "日本";
+    vocabulary.meanings = {{"Japan", true, true}};
+    vocabulary.readings = {{"にほん", true, true, kk::ReadingType::Kunyomi}};
+    subjects.subjects.push_back(vocabulary);
+
+    const bool snapshotOk = kk::cacheSaveSnapshot(snapshot);
+    const bool subjectsOk = gSdOk && kk::cacheSaveSubjects(SD, subjects);
+    Serial.printf("[cache] dev seed snapshot=%d subjects=%d\n", snapshotOk ? 1 : 0,
+                  subjectsOk ? 1 : 0);
+    if (snapshotOk && loadCache()) gDirty = true;
+}
+
+void clearDevCache() {
+    kk::cacheClearSnapshot();
+    if (gSdOk) kk::cacheClearSubjects(SD);
+    gHaveSummary = false;
+    gHaveUser = false;
+    gBatch = kk::ReviewBatch{};
+    gDueReviews = 0;
+    gLessons = 0;
+    gOffline = false;
+    gShowHome = false;
+    gSyncedAt = 0;
+    gCacheSavedAt = 0;
+    gDirty = true;
+    Serial.println("[cache] dev cache cleared");
 }
 #endif
 
@@ -2009,7 +2298,8 @@ void handleSerial() {
                 gDirty = true;
             }
         } else if (gSerialLine == "v") {
-            if (!kk::DevWifi::connected() && !kk::DevWifi::connect(30000)) {
+            if (gBatch.assignments.empty() && !kk::DevWifi::connected() &&
+                !kk::DevWifi::connect(30000)) {
                 snprintf(gNetLine, sizeof gNetLine, "Review: no Wi-Fi");
             } else {
                 startReview();
@@ -2059,6 +2349,10 @@ void handleSerial() {
                               MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
                           static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL)));
 #ifdef KANIKEY_DEV
+        } else if (gSerialLine == "C") {
+            seedDevCache();
+        } else if (gSerialLine == "X") {
+            clearDevCache();
         } else if (gSerialLine.startsWith("R")) {
             String arg = gSerialLine.substring(1);
             arg.trim();
@@ -2139,6 +2433,7 @@ void setup() {
         gPack.open(SD, "/kanikey/glyphs.kgp");
         Serial.printf("[pack] %s\n", gPack.statusLine());
     }
+    const bool cacheLoaded = gSdOk && gPack.ready() && loadCache();
     gLastInputAt = millis();
     gDirty = true;
     Serial.println("[kk] first draw");
@@ -2155,7 +2450,10 @@ void setup() {
     } else if (!kk::DevToken::has()) {
         snprintf(gNetLine, sizeof gNetLine, "Token: not configured");
     } else if (!kk::DevWifi::hasSaved()) {
-        snprintf(gNetLine, sizeof gNetLine, "Wi-Fi: not configured");
+        if (cacheLoaded)
+            snprintf(gNetLine, sizeof gNetLine, "NET: offline (cached)");
+        else
+            snprintf(gNetLine, sizeof gNetLine, "Wi-Fi: not configured");
     } else {
         startSync();
     }
@@ -2240,6 +2538,7 @@ void loop() {
     if (!gReviewActive && !gReviewSummary && !gFeedback && !gLessonActive && !gAssetServerActive &&
         now - gLastInputAt > 120000 && !tgc::board::externalPower()) {
         Serial.println("[power] idle sleep");
+        saveCacheSnapshot();
         tgc::board::deepSleep();
     }
 

@@ -405,6 +405,15 @@ alters the SRS stage and the user's statistics. We prefer to leave the item as
 - On startup, if the main file fails CRC, use `.bak` and warn.
 - Never delete the outbox before the POST is confirmed.
 
+**Implementation (2026-10-28).** The Home/user/batch snapshot is
+`/state/cache.bin` (`KKCA`, version 1); the batch subjects are
+`/kanikey/cache/subjects.bin` (`KKCS`, version 1) on SD. Both carry the save
+time, an FNV-1a fingerprint of the API token, the payload length and CRC32.
+Loading a snapshot written for another token discards both files. The cached
+batch is started offline and completed items are removed from the snapshot;
+the outbox is pruned from the cache on boot. `data_updated_at` refresh and
+manual-sync invalidation are still open.
+
 ---
 
 ## 8. Streaming JSON parser

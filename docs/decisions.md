@@ -16,9 +16,10 @@ kanji cache and is never committed.
 30 GB. A 64 px glyph is also much better than a scaled 16 px font.
 
 **Implications:** the SD card is required for Japanese in v1. Missing glyphs
-(radicals today) fall back to `efontJA_16`; removing the font needs radical
-images and a “visual pack missing” screen. The full tokenless pack is 2.9 MB
-for 6,621 glyphs.
+show an explicit state instead of falling back to a font; the `efontJA_16`
+reference was removed on 2026-10-28. The full tokenless pack is 2.9 MB for
+6,621 glyphs; the token pack on the card has 7,269 glyphs and 498 radical
+bitmaps.
 
 ---
 
@@ -146,8 +147,8 @@ The font is already in M5GFX, covers ~10,800 Japanese glyphs and adds ~468 KB of
 flash; the app still fits its 1.75 MiB slot at 88.6%.
 
 **Implications:** this is a bring-up fallback, not a reversal of the visual-pack
-decision. The pack remains the final path for 64 px prompts, radical images and
-a smaller flash footprint. Remove the efont reference when the pack lands.
+decision. **Superseded on 2026-10-28:** the reference is removed and missing
+glyphs show an explicit state.
 
 **Decision:** the MVP focuses on reviews. Lessons come later.
 
@@ -304,3 +305,36 @@ review already justifies the device.
 
 **Implications:** the design leaves room for them (item card, settings, visual
 pack) but does not promise them.
+
+---
+
+## 2026-10-28 — efontJA_16 removed; missing glyphs are explicit
+
+**Decision:** no CJK font is linked. Japanese text comes only from the visual
+pack; feedback and readings try 32/20 px and a missing glyph shows `no glyph`.
+
+**Why:** the radical bitmaps and the token pack cover the prompts, and the font
+cost ~468 KB of a 1.75 MiB app slot. Flash fell from 1,741,705 B to 1,273,425 B
+before the offline cache work.
+
+**Implications:** a missing or incomplete pack is visible instead of silently
+falling back. The real review/lesson prompts still need a configured account on
+hardware.
+
+---
+
+## 2026-10-28 — Offline cache split between LittleFS and SD
+
+**Decision:** persist a versioned snapshot (`/state/cache.bin`: summary, user
+and batch assignments) in LittleFS, and the batch subjects
+(`/kanikey/cache/subjects.bin`) on SD. Both use a token fingerprint, CRC32,
+`.tmp` + rename and a `.bak` copy.
+
+**Why:** Home and the next session must survive a reboot without network; the
+subject payload is larger and belongs on the card, while the small mutable
+snapshot fits LittleFS. The token fingerprint discards another account's data.
+
+**Implications:** boot restores Home and a cached batch before any Wi-Fi
+request; completed items are pruned from the cache and stay in the outbox.
+`data_updated_at` refresh and manual-sync invalidation remain open (CACHE-05),
+as does the real online fetch → offline → reconnect E2E (CACHE-07).

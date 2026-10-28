@@ -334,8 +334,9 @@ Home ──L──► Lessons ──Enter──► Lesson card
 
 **Implementation note (M5).** The live build draws the 64 px prompt, 32 px
 reading and 20 px feedback from the SD visual pack. Vocabulary words composed
-of several characters are laid out from individual glyphs. Radicals with no
-glyph in the pack still fall back to `efontJA_16`. The bottom bar says
+of several characters are laid out from individual glyphs. Radicals use their
+96 px bitmap when the subject has no Unicode character; a missing glyph shows
+an explicit `no glyph` state. The bottom bar says
 `Enter check` / `Esc quit`; the Pause menu and `Tab: details` are later. The
 screen is driven by the same review queue and answer checker as the final
 design.

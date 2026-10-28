@@ -2,21 +2,21 @@
 
 **A pocket-sized review terminal for WaniKani, built for the M5Stack Cardputer ADV.**
 
-> **Status: firmware preview — SD visual pack (2026-10-25).** The Cardputer ADV
+> **Status: firmware preview — offline cache (2026-10-28).** The Cardputer ADV
 > shows a live Home from `/user` + `/summary`, fetches a 20-item due batch,
 > runs a typed meaning/reading session and submits completed items with
 > `POST /v2/reviews` (201). A persistent outbox makes reviews survive a reboot
-> and offline sessions. Lessons fetch five at a time, show meaning/reading and
-> mnemonic pages, and start with `PUT /assignments/{id}/start` (200).
-> Japanese prompts and readings now come from the microSD visual pack at
-> 64/32/20 px: 6,621 glyphs in 2.9 MB, generated locally from the WaniKani kanji
-> cache. No WaniKani content is in the repository. Radical prompts render from
-> the pack's 96 px bitmaps, and radical-only lessons are included; the device
-> verification and the pack regeneration with a token are pending.
-> `efontJA_16` remains only as a fallback for readings when the pack lacks a
-> glyph. Normal boots show setup/sync states; the M0 debug screen is only in
-> the development build. The lesson list/components and dismissing rejected
-> outbox items are next.
+> and offline sessions. Home, the user and the review batch are now cached too:
+> after a reboot without network the device restores them, shows `Offline` and
+> can run a cached session. Lessons fetch five at a time, show meaning/reading
+> and mnemonic pages, and start with `PUT /assignments/{id}/start` (200).
+> Japanese prompts and readings come entirely from the microSD visual pack at
+> 64/32/20 px: 7,269 glyphs + 498 radical bitmaps in 3.7 MB, generated locally
+> with the user's token. No WaniKani content is in the repository.
+> `efontJA_16` has been removed; missing glyphs show an explicit state. Normal
+> boots show setup/sync states; the M0 debug screen is only in the development
+> build. The lesson list/components and dismissing rejected outbox items are
+> next.
 >
 > KaniKey is an **unofficial** third-party app for WaniKani. It is not
 > affiliated with, endorsed by or sponsored by WaniKani or Tofugu LLC. WaniKani

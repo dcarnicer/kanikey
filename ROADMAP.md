@@ -1,14 +1,15 @@
 # KaniKey roadmap
 
-Status snapshot: **2026-10-27**. This is the working backlog after the SD
-visual pack and the user-facing boot states landed, not the original product
+Status snapshot: **2026-10-28**. This is the working backlog after the offline
+cache and the `efontJA_16` removal landed, not the original product
 plan. Product scope and UX live in [docs/design.md](docs/design.md),
 [docs/ux.md](docs/ux.md) and [docs/api-sync.md](docs/api-sync.md).
 
-The review loop works on hardware. The main v1 gaps are the persistent offline
-cache, the complete lesson flow, WaniKani preferences/study materials, setup
-and settings on the device, and API robustness. The radical renderer builds,
-but its hardware verification and the `efontJA_16` removal are still pending.
+The review loop works on hardware. The main v1 gaps are the complete lesson
+flow, WaniKani preferences/study materials, setup and settings on the device,
+and API robustness. The persistent offline cache now restores Home, the user
+and a cached review batch after a reboot without network; the real
+fetch → offline → reconnect path still needs a configured account.
 
 ## Where we are
 
@@ -26,26 +27,31 @@ Working on hardware:
   radical bitmaps** (3,698,476 B), uploaded over USB on 2026-10-27. Wi-Fi
   asset upload also works.
 - Radical prompts render from the pack's 96 px bitmaps; radical-only lessons
-  and reviews are no longer filtered out. Missing glyphs show an explicit
-  state. The hardware renderer and missing state are verified with the dev
-  `R <id>` test; actual review/lesson prompts and radical-only lessons still
-  need a configured token/Wi-Fi.
+  and reviews are no longer filtered out. `efontJA_16` is gone: missing glyphs
+  show an explicit state instead. The hardware renderer and missing state are
+  verified with the dev `R <id>` test; actual review/lesson prompts and
+  radical-only lessons still need a configured token/Wi-Fi.
+- Offline cache: Home counts, the user and the cached review batch are
+  restored at boot without network. Assignments live in LittleFS
+  (`/state/cache.bin`), subjects on SD (`/kanikey/cache/subjects.bin`), with
+  version, token fingerprint, CRC32 and `.bak` recovery. Completed reviews are
+  pruned from the cache and stay in the outbox.
 - User-facing boot states for missing SD/pack, token or Wi-Fi and sync
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 33 native tests pass. GitHub Actions runs gitleaks on `main`.
+- 37 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,741,705 B / 1,835,008 B flash (94.9%)**, **93,208 B /
-327,680 B static RAM (28.4%)**. The dev image is 1,743,357 B. Flash headroom is
-~91 KB partly because `efontJA_16` is still linked (~468 KB).
+Current build: **1,289,593 B / 1,835,008 B flash (70.3%)**, **93,224 B /
+327,680 B static RAM (28.4%)**. The dev image is 1,294,793 B. Removing
+`efontJA_16` freed ~468 KB and leaves ~545 KB of flash headroom.
 
 ## Priority summary
 
 | Priority | Workstream | Why | Status | Start with |
 |---:|---|---|---|---|
-| 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Partial: renderer done; pack/device pending | RAD-01, RAD-02 |
-| 2 | Persistent offline cache | The outbox survives reboot, the review batch does not | Partial: outbox only | CACHE-01, CACHE-02 |
+| 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Done except real-prompt hardware check | RAD-02, RAD-04 |
+| 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Core landed; real-account E2E pending | CACHE-05, CACHE-07 |
 | 3 | Complete lesson flow | Card + start exists; list, components, quiz and preferences do not | Partial | LESSON-01, LESSON-03 |
 | 4 | WaniKani data and preferences | Synonyms, item detail, SRS feedback, stats and preferences are missing | Not started | WK-01, WK-03 |
 | 5 | Outbox and API robustness | Rejected items, 429 and invalid auth have no user path | Partial | API-01, API-02 |
@@ -57,14 +63,14 @@ Current build: **1,741,705 B / 1,835,008 B flash (94.9%)**, **93,208 B /
 
 ## Execution order
 
-Radicals can run in parallel as soon as the token and the device are available.
-The software work starts with the offline cache, because it is the largest v1
-behavior gap and it affects Home, reviews, sync and sleep.
+Radicals are closed except the real-account hardware check. The software work
+continues with the remaining cache invalidation/E2E items, then the complete
+lesson flow.
 
 | Order | Phase | Tasks | Outcome |
 |---:|---|---|---|
-| 0 | Close radicals (parallel) | RAD-01 → RAD-04 | Real radical prompts and ~468 KB flash reclaimed |
-| 1 | Offline cache | CACHE-01 → CACHE-08, TNG-04, TNG-05 | Review and Home work after reboot without network |
+| 0 | Close radicals (parallel) | RAD-02, RAD-04 | Real radical prompts on a configured account |
+| 1 | Offline cache | CACHE-05 → CACHE-07, TNG-04, TNG-05 | Review and Home work after reboot without network |
 | 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | List, understand, quiz and start lessons |
 | 3 | Setup and device UX | SETUP-01 → SETUP-08, TNG-01, TNG-02 | Wi-Fi/token/time/settings without a cable |
 | 4 | WaniKani data and detail | WK-01, WK-03 → WK-11 | Synonyms, item detail, SRS and progress |
@@ -90,7 +96,10 @@ lesson, which need a configured token and Wi-Fi.
   with subjects 1 and 8820; real prompts/radical-only lessons pending token and
   Wi-Fi.
 - **RAD-03 — Remove `efontJA_16`.** Replace the remaining fallbacks with the
-  pack + missing state, then confirm the flash drop. **Pending:** after RAD-02.
+  pack + missing state, then confirm the flash drop. **Done (2026-10-28):**
+  readings and feedback use the pack at 32/20 px, missing text shows “no
+  glyph”, and the reference is gone. Flash fell from 1,741,705 B to 1,273,425 B
+  before the cache work (~468 KB).
 - **RAD-04 — Test with a low-level account.** The first lessons are mostly
   radicals. **Pending:** needs a low-level account and hardware.
 
@@ -99,26 +108,46 @@ token; the repository must not contain WaniKani art.
 
 ## 2. Persistent offline cache (v1 blocker)
 
-The outbox protects completed reviews, but assignments and subjects live only
-in RAM. After a reboot without network there is no batch to review and Home
-has no data. This does not yet meet the offline requirement.
+Home, the user and a review batch now survive a reboot without network. The
+snapshot (summary + assignments + user) is in LittleFS; the subjects referenced
+by the batch are on SD. A cached session can be started and completed offline,
+and completed items are pruned from the cache and kept in the outbox. The
+remaining work is real-account E2E validation and the invalidation/refresh
+rules.
 
 - **CACHE-01 — Persist assignments.** Store the due assignment list and
-  critical state in LittleFS, as in the design.
+  critical state in LittleFS, as in the design. **Done:** the fetched batch and
+  its SRS state live in `/state/cache.bin` (version, token fingerprint, CRC32,
+  `.tmp` + `.bak`).
 - **CACHE-02 — Persist subjects.** Store the subjects needed for the cached
-  sessions on SD; keep the payload separate from assignments.
+  sessions on SD; keep the payload separate from assignments. **Done:**
+  `/kanikey/cache/subjects.bin`; loading tolerates missing subjects and drops
+  the affected assignments.
 - **CACHE-03 — Restore at boot.** Load Home counts and a review batch at boot
-  when Wi-Fi is unavailable, without waiting for a failed request.
+  when Wi-Fi is unavailable, without waiting for a failed request. **Done:**
+  the cached Home is drawn first; Wi-Fi sync is skipped when no credentials are
+  saved.
 - **CACHE-04 — Offline state.** Show `Offline`, last-sync time and cache age;
-  distinguish “no network” from “never synced”.
+  distinguish “no network” from “never synced”. **Done:** Home shows `Offline`,
+  the cached sync time and age when the clock is trusted; a missing cache keeps
+  the existing `Not synced` boot state.
 - **CACHE-05 — Invalidation.** Define cache version, token/account change,
-  server `data_updated_at` and manual sync invalidation.
+  server `data_updated_at` and manual sync invalidation. **Partial:** version
+  and token fingerprint are implemented; `data_updated_at` and manual sync
+  invalidation are pending.
 - **CACHE-06 — Keep the outbox coherent.** Flush/reconcile pending reviews
-  against the cache and avoid resurrecting stale assignments.
+  against the cache and avoid resurrecting stale assignments. **Partial:**
+  cached assignments/subjects already in the outbox are pruned at boot and a
+  fresh summary drops assignments that are no longer due; cache reconciliation
+  during a flush is pending.
 - **CACHE-07 — End-to-end test.** Online fetch → reboot with Wi-Fi off →
-  complete a review → reconnect → outbox 201.
+  complete a review → reconnect → outbox 201. **Partial:** the synthetic-cache
+  hardware path (restore → offline review → outbox pending → reboot) passes;
+  the real online fetch and reconnect/201 halves still need credentials.
 - **CACHE-08 — Save before sleep.** Persist the cache/outbox before dim,
-  blank or deep sleep (coordinate with TNG-05).
+  blank or deep sleep (coordinate with TNG-05). **Done:** the snapshot is saved
+  after sync, batch fetch, review completion and lesson start, and again before
+  deep sleep; the outbox already writes before each request.
 
 ## 3. Complete lesson flow (M4)
 

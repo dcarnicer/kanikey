@@ -77,9 +77,9 @@ later allocation.
 - After the summary parses, the Home screen shows the level, username, due
   reviews, lessons, next review and last sync time.
 - `Tab` toggles the keyboard/debug screen.
-- The debug screen renders a test kanji from the SD pack, with
-  `efontJA_16` as the fallback. That font still adds ~468 KB of flash and is
-  removed once radical images exist.
+- The debug screen renders a test kanji from the SD pack. The `efontJA_16`
+  fallback was removed on 2026-10-28; the build dropped from 1,741,705 B to
+  1,273,425 B before the cache work. A missing glyph shows `no glyph`.
 - The Home layout was rebalanced after a live screenshot: 16 px brand, 32 px
   counters, 8 px labels, 12 px lower rows. `tools/shot.py` reads the 240×135
   RGB332 canvas over USB and writes a PNG.
@@ -122,7 +122,7 @@ E (221) esp_core_dump_flash: No core dump partition found!
 - With the canvas released, the batch and the POST fit. After the 20 subjects,
   the retained batch + canvas leaves ~171 KB free (largest ~19–40 KB).
 - Review prompts are drawn from the SD visual pack at 64 px; readings use
-  32 px and feedback uses 20 px. `efontJA_16` remains only as a fallback.
+  32 px and feedback uses 20 px. `efontJA_16` is no longer linked.
 - `POST /v2/reviews` returns **201** with the updated resources; the client
   accepts any 2xx. One completed item was submitted and the session moved on.
 - The app still lacks a persistent outbox: if the immediate POST fails, that
@@ -172,13 +172,17 @@ E (221) esp_core_dump_flash: No core dump partition found!
 - Path: `/kanikey/glyphs.kgp`, format `KKGP` v1: 32-byte header, 20-byte glyph
   entries sorted by `(codepoint, size)`, 4bpp RLE payload, optional 16-byte
   radical entries.
-- Full pack: 2,207 characters / 6,621 glyphs at 64/32/20 px / 2,895,555 B, made
-  from Tangocho's local WaniKani kanji cache (2,026 kanji + kana + `々〜・〇`).
-  It contains no radical images.
-- Boot: `[pack] 6621 glyphs, 64/32/20 px`; lookups binary-search the entry table
-  and decode one glyph at a time. The pack is not loaded into RAM.
+- Tokenless pack: 2,207 characters / 6,621 glyphs at 64/32/20 px / 2,895,555 B,
+  made from Tangocho's local WaniKani kanji cache (2,026 kanji + kana +
+  `々〜・〇`). It contains no radical images.
+- Token pack (on the card since 2026-10-27): **7,269 glyphs + 498 radical
+  bitmaps**, 3,698,476 B. Radical prompts now render from the 96 px bitmaps.
+- Boot: `[pack] 7269 glyphs, 498 radicals, 64/32/20 px`; lookups binary-search
+  the entry table and decode one glyph at a time. The pack is not loaded into
+  RAM.
 - The 64 px review/lesson prompt, 32 px reading and 20 px feedback are drawn
-  from the pack. `efontJA_16` is only the fallback for missing characters.
+  from the pack. `efontJA_16` was removed on 2026-10-28; missing glyphs show an
+  explicit state instead.
 - Review screenshot: 思う and おもう rendered from the pack; lesson screenshot:
   欠点 / けってん with the mnemonic.
 
@@ -189,12 +193,17 @@ WaniKani subjects and mnemonics.
 - Upload: `S` starts a one-shot HTTP server on port 8080 and
   `tools/device.py push` writes the file with `curl -T`; 2.9 MB transferred
   reliably. The USB `up` path uses 8 KiB ACKed chunks and is a fallback.
-- Still missing: radical images (the pack has radical entry support but no
-  renderer), a “visual pack missing” screen, and removing `efontJA_16`.
+- Offline cache: `/state/cache.bin` (LittleFS) and
+  `/kanikey/cache/subjects.bin` (SD). A synthetic-cache run on 2026-10-28
+  restored Home offline, ran a cached session, kept the completed review in
+  the outbox and restored both after a reboot. Real-account fetch/reconnect is
+  still pending.
+- Still missing: real review/lesson prompts on a configured account and a
+  radical-only lesson on a low-level account.
 
 ### Next
 
-- Radical images and the lesson list/components.
+- Real review/lesson prompts and a radical-only lesson on a configured account.
+- Lesson list/components.
 - Ways to dismiss rejected outbox items.
-- Remove the efont fallback once radicals render.
 - Real renderer/UI font instead of the M5GFX text calls.
