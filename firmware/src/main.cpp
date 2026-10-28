@@ -142,6 +142,29 @@ bool gOffline = false;
 uint32_t gCacheSavedAt = 0;
 enum class SyncIssue : uint8_t { None, Network, Auth, Forbidden, RateLimit, Server, Other };
 SyncIssue gSyncIssue = SyncIssue::None;
+
+// Sync screen: one row per real step, updated between blocking requests.
+constexpr int kSyncRowCount = 6;
+enum SyncRowIndex : uint8_t {
+    SyncWifi,
+    SyncOutbox,
+    SyncAccount,
+    SyncSummary,
+    SyncLevel,
+    SyncSrs,
+};
+enum class SyncRowState : uint8_t { Pending, Active, Done, Warn, Failed };
+struct SyncRow {
+    const char* label = "";
+    char value[40] = "";
+    SyncRowState state = SyncRowState::Pending;
+};
+SyncRow gSyncRows[kSyncRowCount];
+uint8_t gSyncCompleted = 0;
+bool gSyncScreen = false;
+bool gSyncFinished = false;
+bool gSyncCancelRequested = false;
+
 kk::SetupPortal gSetupPortal;
 kk::SetupPortalHooks gSetupHooks;
 bool gPortalActive = false;
@@ -177,10 +200,12 @@ void drawLessonEmpty();
 void drawLessonQuiz();
 void lessonQuizKey(const KeyEvent& e);
 void drawBoot();
+void drawSync();
 void retryBoot();
 bool startSetupPortal();
 bool mountSd();
 void startSync();
+void syncScreenKey(const KeyEvent& e);
 void drawPause();
 void drawSettings();
 void drawAbout();
@@ -563,14 +588,15 @@ void runLevelProgress() {
     Serial.printf("[level] %u since %s\n", static_cast<unsigned>(gLevelProgress.level), date);
 }
 
-void runSrsCounts() {
+bool runSrsCounts() {
     kk::SrsCounts counts;
     if (!kk::fetchSrsCounts(kk::DevToken::load(), &counts)) {
         Serial.println("[srs] distribution unavailable; keeping the cached counts");
-        return;
+        return false;
     }
     gSrs = counts;
     saveCacheSnapshot();
+    return true;
 }
 
 bool runBatch() {
@@ -2583,6 +2609,29 @@ void pauseKey(const KeyEvent& e) {
     }
 }
 
+void syncScreenKey(const KeyEvent& e) {
+    if (!e.down) return;
+    if (!gSyncFinished) {
+        if (e.key == Key::Esc) gSyncCancelRequested = true;
+        return;
+    }
+    if (e.key == Key::Enter) {
+        if (gSyncIssue == SyncIssue::Auth || gSyncIssue == SyncIssue::Forbidden) {
+            gSyncScreen = false;
+            gShowHome = false;
+            startSetupPortal();
+        } else {
+            startSync();
+        }
+        return;
+    }
+    if (e.key == Key::Esc) {
+        gSyncScreen = false;
+        gShowHome = gHaveSummary;
+        gDirty = true;
+    }
+}
+
 void onKey(const KeyEvent& e) {
     updateModifier(e.x, e.y, e.down);
     if (gPortalActive) {
@@ -2613,6 +2662,10 @@ void onKey(const KeyEvent& e) {
             gShowHome = true;
             gDirty = true;
         }
+        return;
+    }
+    if (gSyncScreen) {
+        syncScreenKey(e);
         return;
     }
     if (gSettingsActive) {
@@ -2787,27 +2840,119 @@ void drawLoading(const char* title, const char* subtitle) {
     present();
 }
 
+void resetSyncScreen() {
+    static const char* kLabels[kSyncRowCount] = {"Wi-Fi", "Outbox", "Account",
+                                                 "Summary", "Level", "SRS"};
+    for (int i = 0; i < kSyncRowCount; ++i) {
+        gSyncRows[i].label = kLabels[i];
+        gSyncRows[i].value[0] = '\0';
+        gSyncRows[i].state = SyncRowState::Pending;
+    }
+    gSyncCompleted = 0;
+    gSyncFinished = false;
+    gSyncCancelRequested = false;
+    gSyncScreen = true;
+}
+
+void syncRowText(int row, const char* text) {
+    if (row < 0 || row >= kSyncRowCount) return;
+    snprintf(gSyncRows[row].value, sizeof gSyncRows[row].value, "%s", text ? text : "");
+}
+
+void syncRowBegin(int row, const char* text) {
+    if (row < 0 || row >= kSyncRowCount) return;
+    syncRowText(row, text);
+    gSyncRows[row].state = SyncRowState::Active;
+    drawSync();
+}
+
+void syncRowDone(int row, const char* text) {
+    if (row < 0 || row >= kSyncRowCount) return;
+    syncRowText(row, text);
+    gSyncRows[row].state = SyncRowState::Done;
+    if (gSyncCompleted < kSyncRowCount) ++gSyncCompleted;
+    drawSync();
+}
+
+void syncRowWarn(int row, const char* text) {
+    if (row < 0 || row >= kSyncRowCount) return;
+    syncRowText(row, text);
+    gSyncRows[row].state = SyncRowState::Warn;
+    if (gSyncCompleted < kSyncRowCount) ++gSyncCompleted;
+    drawSync();
+}
+
+void syncRowFail(int row, const char* text) {
+    if (row < 0 || row >= kSyncRowCount) return;
+    syncRowText(row, text);
+    gSyncRows[row].state = SyncRowState::Failed;
+    gSyncFinished = true;
+    gSyncing = false;
+    gLastInputAt = millis();
+    gDirty = true;
+    Serial.printf("[sync] %s failed: %s\n", gSyncRows[row].label, gNetLine);
+    drawSync();
+}
+
+// Pump the keyboard between blocking requests; Esc is the only action.
+bool syncStopRequested() {
+    if (gSyncCancelRequested) return true;
+    tgc::board::update();
+    KeyEvent e;
+    while (tgc::board::nextKeyEvent(&e)) {
+        gLastInputAt = millis();
+        updateModifier(e.x, e.y, e.down);
+        if (e.down && e.key == Key::Esc) gSyncCancelRequested = true;
+    }
+    return gSyncCancelRequested;
+}
+
+void finishSyncCancelled() {
+    gSyncFinished = true;
+    gSyncScreen = false;
+    gSyncing = false;
+    gSyncAttempted = false;
+    gSyncIssue = SyncIssue::None;
+    snprintf(gNetLine, sizeof gNetLine, "Sync cancelled");
+    Serial.println("[sync] cancelled");
+    gShowHome = gHaveSummary;
+    gLastInputAt = millis();
+    gDirty = true;
+}
+
 void startSync() {
     if (!gSdOk || !gPack.ready() || !kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
+        gSyncScreen = false;
         gDirty = true;
         return;
     }
     gSyncing = true;
     gSyncAttempted = true;
     gSyncIssue = SyncIssue::None;
+    resetSyncScreen();
+    drawSync();
+
+    // Wi-Fi (the only step shown before the first API call).
     if (!kk::DevWifi::connected()) {
-        snprintf(gNetLine, sizeof gNetLine, "NET: joining %s",
-                 kk::DevWifi::savedSsid().c_str());
-        drawBoot();
+        const String ssid = kk::DevWifi::savedSsid();
+        syncRowBegin(SyncWifi, ssid.c_str());
+        snprintf(gNetLine, sizeof gNetLine, "NET: joining %s", ssid.c_str());
         if (!kk::DevWifi::connect(30000)) {
             gSyncIssue = SyncIssue::Network;
             snprintf(gNetLine, sizeof gNetLine, "NET: join failed");
-            gSyncing = false;
-            gDirty = true;
+            syncRowFail(SyncWifi, "join failed");
             return;
         }
+    } else {
+        syncRowBegin(SyncWifi, kk::DevWifi::ip().c_str());
     }
     snprintf(gNetLine, sizeof gNetLine, "NET: %s", kk::DevWifi::ip().c_str());
+    syncRowDone(SyncWifi, kk::DevWifi::ip().c_str());
+    if (syncStopRequested()) {
+        finishSyncCancelled();
+        return;
+    }
+
     kk::settingsApplyTimeZone();
     configTime(0, 0, "pool.ntp.org", "time.cloudflare.com");
     const uint32_t ntpStart = millis();
@@ -2815,22 +2960,103 @@ void startSync() {
     const uint32_t utc = static_cast<uint32_t>(time(nullptr));
     Serial.printf("[time] %s: %u\n", utc >= 1700000000 ? "synced" : "not synced",
                   static_cast<unsigned>(utc));
+
+    // Outbox: keep going even if items remain pending.
+    const size_t beforeOutbox = kk::outboxPendingCount(gOutbox);
+    char outbox[32];
+    if (beforeOutbox)
+        snprintf(outbox, sizeof outbox, "%u pending", static_cast<unsigned>(beforeOutbox));
+    else
+        snprintf(outbox, sizeof outbox, "none");
+    syncRowBegin(SyncOutbox, outbox);
     flushOutbox();
-    snprintf(gNetLine, sizeof gNetLine, "API: checking token");
-    drawBoot();
-    runProbe();
-    snprintf(gNetLine, sizeof gNetLine, "Summary: syncing");
-    drawBoot();
-    runSummary();
-    runLevelProgress();
-    if (gSyncIssue == SyncIssue::None) {
-        snprintf(gNetLine, sizeof gNetLine, "SRS: syncing");
-        drawBoot();
-        runSrsCounts();
-    } else {
-        Serial.println("[srs] skipped after a sync error");
+    const size_t afterOutbox = kk::outboxPendingCount(gOutbox);
+    if (afterOutbox)
+        snprintf(outbox, sizeof outbox, "%u pending", static_cast<unsigned>(afterOutbox));
+    else
+        snprintf(outbox, sizeof outbox, "sent");
+    if (afterOutbox)
+        syncRowWarn(SyncOutbox, outbox);
+    else
+        syncRowDone(SyncOutbox, outbox);
+    if (syncStopRequested()) {
+        finishSyncCancelled();
+        return;
     }
+
+    syncRowBegin(SyncAccount, "checking");
+    runProbe();
+    if (gSyncIssue != SyncIssue::None) {
+        syncRowFail(SyncAccount, gNetLine);
+        return;
+    }
+    char account[40];
+    snprintf(account, sizeof account, "%s L%d", gUser.username.c_str(), gUser.level);
+    syncRowDone(SyncAccount, account);
+    if (syncStopRequested()) {
+        finishSyncCancelled();
+        return;
+    }
+
+    syncRowBegin(SyncSummary, "fetching");
+    runSummary();
+    if (gSyncIssue != SyncIssue::None) {
+        syncRowFail(SyncSummary, gNetLine);
+        return;
+    }
+    char summary[40];
+    snprintf(summary, sizeof summary, "%u due, %u lessons",
+             static_cast<unsigned>(gDueReviews), static_cast<unsigned>(gLessons));
+    syncRowDone(SyncSummary, summary);
+    if (syncStopRequested()) {
+        finishSyncCancelled();
+        return;
+    }
+
+    syncRowBegin(SyncLevel, "fetching");
+    runLevelProgress();
+    if (gLevelProgress.valid) {
+        char date[16];
+        localDate(gLevelProgress.unlockedAt ? gLevelProgress.unlockedAt
+                                            : gLevelProgress.startedAt,
+                  date, sizeof date);
+        char level[40];
+        if (date[0])
+            snprintf(level, sizeof level, "L%u since %s",
+                     static_cast<unsigned>(gLevelProgress.level), date);
+        else
+            snprintf(level, sizeof level, "Level %u",
+                     static_cast<unsigned>(gLevelProgress.level));
+        syncRowDone(SyncLevel, level);
+    } else {
+        syncRowWarn(SyncLevel, "unavailable");
+    }
+    if (syncStopRequested()) {
+        finishSyncCancelled();
+        return;
+    }
+
+    syncRowBegin(SyncSrs, "fetching");
+    if (runSrsCounts()) {
+        char srs[40];
+        snprintf(srs, sizeof srs, "A%u G%u M%u E%u B%u",
+                 static_cast<unsigned>(gSrs.apprentice), static_cast<unsigned>(gSrs.guru),
+                 static_cast<unsigned>(gSrs.master), static_cast<unsigned>(gSrs.enlightened),
+                 static_cast<unsigned>(gSrs.burned));
+        syncRowDone(SyncSrs, srs);
+    } else {
+        syncRowWarn(SyncSrs, "unavailable");
+    }
+    if (syncStopRequested()) {
+        finishSyncCancelled();
+        return;
+    }
+
     gSyncing = false;
+    gSyncFinished = true;
+    gSyncScreen = false;
+    Serial.println("[sync] complete");
+    gLastInputAt = millis();
     gDirty = true;
 }
 
@@ -3592,6 +3818,123 @@ void drawBoot() {
     present();
 }
 
+void drawSyncText(lgfx::LovyanGFX& d, const char* text, int x, int y, uint16_t fg,
+                  int maxWidth) {
+    if (!text || !text[0]) return;
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextColor(fg, kBg);
+    std::string s = text;
+    while (s.size() > 1 && d.textWidth(s.c_str()) > maxWidth) s.pop_back();
+    d.drawString(s.c_str(), x, y);
+}
+
+void drawSync() {
+    if (!gDisp) return;
+    auto& d = target();
+    d.startWrite();
+    d.fillScreen(kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+
+    d.setTextFont(2);
+    d.setTextSize(1);
+    d.setTextColor(kBrand, kBg);
+    d.drawString("KaniKey", 6, 2);
+
+    const int bat = tgc::board::batteryPercent();
+    char right[16];
+    if (bat >= 0)
+        snprintf(right, sizeof right, "%d%%", bat);
+    else
+        snprintf(right, sizeof right, "USB");
+    d.setTextFont(1);
+    d.setTextColor(bat >= 0 && bat < 20 ? kWarn : kDim, kBg);
+    d.setTextDatum(lgfx::top_right);
+    d.drawString(right, 233, 5);
+    d.setTextDatum(lgfx::top_left);
+
+    d.setTextFont(2);
+    d.setTextSize(1);
+    const bool allDone = gSyncCompleted >= kSyncRowCount;
+    d.setTextColor(gSyncFinished ? kWarn : allDone ? kOk : kText, kBg);
+    d.drawString(gSyncFinished ? "Sync failed" : allDone ? "Synced" : "Syncing...", 8, 24);
+    char count[12];
+    snprintf(count, sizeof count, "%u/%u", static_cast<unsigned>(gSyncCompleted),
+             static_cast<unsigned>(kSyncRowCount));
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextColor(kFaint, kBg);
+    d.setTextDatum(lgfx::top_right);
+    d.drawString(count, 233, 32);
+    d.setTextDatum(lgfx::top_left);
+
+    for (int i = 0; i < kSyncRowCount; ++i) {
+        const SyncRow& row = gSyncRows[i];
+        const int y = 46 + i * 11;
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(kDim, kBg);
+        d.drawString(row.label, 8, y);
+
+        uint16_t valueColor = kFaint;
+        const char* status = "--";
+        uint16_t statusColor = kFaint;
+        switch (row.state) {
+            case SyncRowState::Pending: break;
+            case SyncRowState::Active:
+                valueColor = kText;
+                status = "..";
+                statusColor = kAccentHi;
+                break;
+            case SyncRowState::Done:
+                valueColor = kText;
+                status = "ok";
+                statusColor = kOk;
+                break;
+            case SyncRowState::Warn:
+                valueColor = kWarn;
+                status = "!";
+                statusColor = kWarn;
+                break;
+            case SyncRowState::Failed:
+                valueColor = kErr;
+                status = "X";
+                statusColor = kErr;
+                break;
+        }
+        if (row.value[0]) drawSyncText(d, row.value, 64, y, valueColor, 140);
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(statusColor, kBg);
+        d.setTextDatum(lgfx::top_right);
+        d.drawString(status, 233, y);
+        d.setTextDatum(lgfx::top_left);
+    }
+
+    if (gSyncFinished && gSyncIssue != SyncIssue::None) {
+        drawSyncText(d, gNetLine, 8, 112, kWarn, 224);
+    } else {
+        d.fillRect(8, 113, 224, 3, kSurfaceHi);
+        if (gSyncCompleted)
+            d.fillRect(8, 113, 224 * gSyncCompleted / kSyncRowCount, 3, kAccentHi);
+    }
+
+    const char* hint = "Esc: cancel";
+    if (gSyncFinished)
+        hint = (gSyncIssue == SyncIssue::Auth || gSyncIssue == SyncIssue::Forbidden)
+                   ? "Enter: setup  Esc: back"
+                   : "Enter: retry  Esc: back";
+    else if (allDone)
+        hint = "";
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextColor(kFaint, kBg);
+    d.drawString(hint, 8, 125);
+    d.endWrite();
+    present();
+}
+
 void drawSetupPortal() {
     if (!gDisp) return;
     auto& d = target();
@@ -3911,6 +4254,10 @@ void draw() {
         drawPause();
         return;
     }
+    if (gSyncScreen) {
+        drawSync();
+        return;
+    }
 #ifdef KANIKEY_DEV
     if (gShowRadicalTest) {
         drawRadicalTest();
@@ -3960,8 +4307,8 @@ void draw() {
 
 void drawStatus() {
     if (!gDisp || gPortalActive || gLowBatteryPrompt || gSignOutConfirm || gAboutActive ||
-        gSettingsActive || gPauseActive || gShowHome || gReviewActive || gReviewSummary ||
-        gLessonListActive || gLessonEmptyActive || gLessonActive)
+        gSettingsActive || gPauseActive || gSyncScreen || gShowHome || gReviewActive ||
+        gReviewSummary || gLessonListActive || gLessonEmptyActive || gLessonActive)
         return;
 #ifdef KANIKEY_DEV
     if (gShowDebug) drawDebug();

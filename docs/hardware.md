@@ -310,3 +310,20 @@ WaniKani subjects and mnemonics.
   `[cache] srs A 145, G 143, M 81, E 147, B 586`, so the bar also has cached
   data offline. A live screenshot was captured in `tools/screenshots/out/`
   (not committed because it contains user data).
+
+### Hardware verification 2026-10-28 (UI-02)
+
+- A normal boot drew the six sync rows and completed Wi-Fi, Outbox, Account,
+  Summary, Level and SRS in order; the log ended with `[sync] complete` and
+  Home showed the fresh counts. The last screen frame (before Home) showed
+  `Synced`, `6/6`, all rows `ok` and the full progress bar.
+- A temporary forced Summary failure rendered `Sync failed`, the failed row in
+  red with `X`, `3/6` and `Summary: network unreachable`, with
+  `Enter: retry  Esc: back`. A local capture is in
+  `tools/screenshots/out/sync-failed.png` (not committed).
+- A temporary auto-cancel after Summary logged `[sync] cancelled`, made no
+  Level or SRS requests and returned to Home with the already-fetched summary;
+  what had arrived was kept.
+- The failure and cancel checks used temporary builds; the final image was
+  reflashed and completed a normal sync. The cancel input is cooperative: a key
+  pressed during a blocking request is read when it returns.

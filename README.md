@@ -23,7 +23,9 @@
 > history. `/level_progressions` is cached and Home shows when the current
 > level unlocked. The Home SRS bar splits the cached assignment counts into
 > Apprentice/Guru/Master/Enlightened/Burned buckets, filled by five small
-> `/assignments` count requests. `Tab` on review feedback opens the item
+> `/assignments` count requests. Sync runs on a six-row screen (Wi-Fi, Outbox,
+> Account, Summary, Level, SRS) with a progress bar and `Esc` cancel; failures
+> stay on screen with retry or setup. `Tab` on review feedback opens the item
 > detail card with meanings, readings, mnemonics, notes, components, related
 > subjects and, for vocabulary, parts of speech and context sentences.
 > Japanese prompts and readings come entirely from the microSD visual pack at
@@ -37,7 +39,7 @@
 > reads `/user`. `Esc` opens Pause in a review and Settings from Home, with
 > brightness/timings, Sync now, the setup portal and About. Normal boots show
 > setup/sync states; the M0 debug screen is only in the development build.
-> Dismissing rejected outbox items and the sync screen are next.
+> Dismissing rejected outbox items is next.
 >
 > KaniKey is an **unofficial** third-party app for WaniKani. It is not
 > affiliated with, endorsed by or sponsored by WaniKani or Tofugu LLC. WaniKani

@@ -330,27 +330,24 @@ def screen_sync() -> Image.Image:
     header(d, "SYNC", pct=84)
 
     rows = [
-        ("Account", "you · L12", "ok"),
-        ("Summary", "28 due · 5 lessons", "ok"),
-        ("Reviews", "42 assignments", "ok"),
-        ("Subjects", "64 / 128", "busy"),
-        ("Outbox", "3 to send", "clock"),
+        ("Wi-Fi", "192.168.1.181", "ok"),
+        ("Outbox", "sent", "ok"),
+        ("Account", "you L12", "ok"),
+        ("Summary", "28 due, 5 lessons", "ok"),
+        ("Level", "L12 since 03 Feb", "ok"),
+        ("SRS", "fetching", "busy"),
     ]
     y = 22
     for label, value, state in rows:
         text(d, (10, y), label, 10, TEXT)
-        text(d, (78, y), value, 9, DIM)
+        text(d, (70, y), value, 9, DIM)
         if state == "ok":
             check(d, 220, y + 1, OK)
-        elif state == "busy":
-            d.arc((220, y, 230, y + 10), 30, 300, fill=ACCENT, width=2)
         else:
-            d.ellipse((221, y + 2, 227, y + 8), outline=WARN, width=1)
-            d.line((224, y + 3, 224, y + 6), fill=WARN)
-        y += 16
+            d.arc((220, y, 230, y + 10), 30, 300, fill=ACCENT, width=2)
+        y += 13
 
-    progress(d, 10, 114, 220, 3, 64, 128)
-    text(d, (10, 104), "Fetching subjects…", 9, DIM)
+    progress(d, 10, 114, 220, 3, 5, 6)
     hints(d, [], [("Esc", "cancel")])
     return im
 

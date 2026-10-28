@@ -570,3 +570,23 @@ shows `SRS: sync for counts`. A successful live review moves one count between
 buckets; the next sync replaces the whole distribution. The review queue still
 comes from `/summary` and the per-batch `/assignments` request; the bar is
 display-only.
+
+---
+
+## 2026-10-28 — Sync screen cancels at step boundaries
+
+**Decision:** a sync remains synchronous on the main task but draws a dedicated
+six-row screen (`Wi-Fi`, `Outbox`, `Account`, `Summary`, `Level`, `SRS`) before
+and after each blocking request. `Esc` is polled between steps and cancels
+cooperatively; failures stay on screen with retry/setup instead of disappearing.
+
+**Why:** TLS requests need large contiguous heap blocks and are not safe to run
+in a second task with the current client. A step screen gives useful progress
+without a state-machine rewrite, and cooperative cancel avoids aborting a
+request midway.
+
+**Implications:** a cancel pressed during a request takes effect when that
+request returns (SRS can take up to five requests). What already arrived stays
+in the cache and the device returns Home, or to `Sync cancelled` when there is
+no cache. An Account or Summary failure stops later steps; Level and SRS
+failures are warnings and the sync completes.

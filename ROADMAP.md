@@ -58,6 +58,10 @@ Working on hardware:
   Enlightened/Burned bar with counts. The counts are cached, so the bar works
   offline. The five requests add ~350 B each to a sync and are skipped after a
   sync error.
+- Sync screen: a dedicated six-row screen (`Wi-Fi`, `Outbox`, `Account`,
+  `Summary`, `Level`, `SRS`) shows values and `ok` / active / warn / fail
+  states with a progress bar. `Esc` cancels at the next step boundary; failure
+  stays on screen with retry (or setup for auth) and the completed data is kept.
 - Item detail: review batches now keep mnemonics/hints and fetch their
   component subjects; `Tab` on feedback opens a detail card (meanings/readings/
   synonyms, meaning mnemonic, reading mnemonic, notes, components). Vocabulary
@@ -94,9 +98,9 @@ Working on hardware:
   sleep, screenshot capture.
 - 48 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,389,657 B / 1,835,008 B flash (75.7%)**, **94,312 B /
-327,680 B static RAM (28.8%)**. The dev image is 1,396,841 B. Removing
-`efontJA_16` freed ~468 KB and leaves ~445 KB of flash headroom.
+Current build: **1,392,789 B / 1,835,008 B flash (75.9%)**, **94,600 B /
+327,680 B static RAM (28.9%)**. The dev image is 1,399,885 B. Removing
+`efontJA_16` freed ~468 KB and leaves ~442 KB of flash headroom.
 
 ## Priority summary
 
@@ -108,7 +112,7 @@ Current build: **1,389,657 B / 1,835,008 B flash (75.7%)**, **94,312 B /
 | 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; review history and audio remain | Partial | WK-11, EXT-06 |
 | 5 | Outbox and API robustness | Rejected items, 429 and invalid auth have no user path | Partial | API-01, API-02 |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
-| 7 | UI, stats and sync | Missing sync progress and accuracy; the SRS bar and item detail are live | Partial | UI-02, UI-03 |
+| 7 | UI, stats and sync | Missing accuracy; the SRS bar, sync screen and item detail are live | Partial | UI-03, UI-05 |
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal ported; OTA/widgets pending | TNG-02, TNG-03 |
 | 9 | Technical debt, CI and release | Maintainability and shipping | Ongoing | TECH-01, TECH-04 |
 | 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | Not started | EXT-01, EXT-03 |
@@ -127,7 +131,7 @@ lesson flow.
 | 3 | Setup and device UX | TNG-02 | OTA release path (setup/settings complete) |
 | 4 | WaniKani data and detail | WK-11 (WK-01/03/04/05/06/07/08/09/10 done) | Review history and progress |
 | 5 | API robustness | API-01 → API-07 | Recoverable rejected, rate-limited and auth errors |
-| 6 | UI, stats and sync | UI-02 → UI-08 (UI-01/UI-04 done) | Sync screen, accuracy and polish |
+| 6 | UI, stats and sync | UI-03 → UI-08 (UI-01/02/04 done) | Accuracy and polish |
 | 7 | Technical debt and release | TECH-01 → TECH-07 | CI, refactor, version, OTA and license |
 | 8 | Kakehashi-inspired extras | EXT-01 → EXT-09 | Practice modes, critical items, audio and stats |
 
@@ -378,6 +382,14 @@ the device; account/study preferences and clear error actions remain.
   (2026-10-28): counts A 145 / G 143 / M 81 / E 147 / B 586; each count request
   returned ~350 B.
 - **UI-02 — Sync screen.** Progress, cancel and a clear offline/error state.
+  **Done (2026-10-28):** a dedicated six-row screen shows Wi-Fi, Outbox,
+  Account, Summary, Level and SRS with values and `ok` / active / `!` / `X` /
+  `--` states, a 0/6 progress bar and `Esc: cancel`. The rows update between
+  the blocking requests; a cancel keeps completed data and returns to Home (or
+  boot `Sync cancelled`). Failures stay on screen with the error line and
+  `Enter: retry` or `Enter: setup` for 401/403; `Esc` goes back. Level and SRS
+  failures are warnings and do not block the sync. Hardware-verified on
+  2026-10-28 with a forced Summary failure; normal sync returned to Home.
 - **UI-03 — Session summary.** Accuracy, time, completed items, mistakes and
   SRS stage changes, not only counts.
 - **UI-04 — Item detail screen.** Mnemonics, components, notes, synonyms and

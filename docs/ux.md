@@ -263,7 +263,8 @@ Home ──L──► Lessons ──Enter──► Lesson card
 ### 5.1 Boot
 
 - Black background, `KaniKey` in coral, thin progress bar.
-- States: `Mounting SD…`, `Reading cache…`, `Wi-Fi…`, `Syncing…`.
+- States: `Mounting SD…`, `Reading cache…`, `Wi-Fi…`. Sync progress has its
+  own screen (§5.11).
 - If something critical fails, a single sentence and an action:
   - `No SD card · Insert a FAT32 card` / `Enter retry`.
   - `Visual pack missing · See docs/setup.md`.
@@ -302,7 +303,7 @@ Home ──L──► Lessons ──Enter──► Lesson card
   the `Tab: debug` shortcut only exist in the `cardputer-adv-dev` build; the
   shortcut is no longer advertised on Home.
 - States:
-  - **Sync:** `Syncing…` with spinner and progress in the header.
+  - **Sync:** the Sync screen (§5.11) replaces Home while a sync runs.
   - **Offline:** line in `warn`: `Offline · 18 cached · 4 to sync`.
   - **Empty:** `All caught up` + `Next review 18:00`; `Enter` opens the
     forecast detail.
@@ -465,12 +466,22 @@ the mnemonic.
 
 ![Sync](screens/sync.png)
 
-- List of steps: Account, Summary, Reviews, Subjects, Outbox.
-- Each row: name, value and status (✓, spinner, clock, ✗).
-- Progress bar and `Fetching subjects… 64/128`.
-- `Esc cancel`; if cancelled, what's already downloaded is kept.
-- When done: `Synced · 2 min ago` and back to Home.
-- If a step fails, it stays in `warn` with `Retry` and doesn't block the others.
+- A dedicated screen replaces Home while a sync runs.
+- Six rows: `Wi-Fi`, `Outbox`, `Account`, `Summary`, `Level`, `SRS`.
+- Each row shows a name, a value and a status: `ok` in green, `..` while
+  active, `!` for a warning, `X` for a failure and `--` while pending.
+- Progress bar `0/6` … `6/6`; the title reads `Syncing…`, `Synced` or
+  `Sync failed`.
+- `Esc` cancels at the next step boundary. Completed requests are kept, and
+  the device returns to Home (or to boot with `Sync cancelled` if there is no
+  cache).
+- A failed Account or Summary request stops the later steps and leaves the
+  screen on `Sync failed` with the error line. `Enter` retries; for a token or
+  permission error `Enter` opens setup. `Esc` goes back.
+- A failed Level or SRS request is a warning (`!`), not a blocker: the sync
+  completes and keeps the previous cached data.
+- The rows are drawn between the blocking TLS requests, so a cancel pressed
+  during a request takes effect when it finishes.
 
 ### 5.12 Settings
 
