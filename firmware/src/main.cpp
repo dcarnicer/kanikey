@@ -1242,20 +1242,34 @@ void drawLessonList() {
         const int i = top + row;
         const kk::Assignment& a = gLessonBatch.assignments[i];
         const kk::Subject* s = lessonSubjectById(a.subjectId);
-        const int y = 20 + row * 19;
+        const int y = 18 + row * 20;
         if (i == static_cast<int>(gLessonIndex)) {
-            d.fillRect(4, y - 1, 228, 18, kSurfaceHi);
-            d.fillRect(4, y - 1, 2, 18, kAccent);
+            d.fillRect(4, y - 1, 228, 19, kSurfaceHi);
+            d.fillRect(4, y - 1, 2, 19, kAccent);
         }
-        d.fillRect(9, y, 20, 16, kSurface);
-        d.drawRect(9, y, 20, 16, kLine);
-        if (s && !drawSubjectPrompt(d, *s, 19, y + 8, 18, 14, 18, kText, kSurface,
-                                    kk::ClipRect{10, y + 1, 28, y + 15})) {
+        d.fillRect(9, y, 22, 20, kSurface);
+        d.drawRect(9, y, 22, 20, kLine);
+        bool promptDrawn = false;
+        if (s) {
+            if (s->type == kk::SubjectType::Radical) {
+                promptDrawn = gPack.drawRadical(d, s->id, 20, y + 10, 20, 18, kText, kSurface,
+                                                kk::ClipRect{10, y + 1, 30, y + 19});
+            } else if (!s->characters.empty()) {
+                std::string first = s->characters;
+                const char* p = first.c_str();
+                kk::utf8Next(&p);
+                first.resize(static_cast<size_t>(p - first.c_str()));
+                promptDrawn = gPack.drawTextCentered(d, first, 20, 20, y + 10, 20, 20, kText,
+                                                     kSurface,
+                                                     kk::ClipRect{10, y + 1, 30, y + 19});
+            }
+        }
+        if (!promptDrawn) {
             d.setTextFont(1);
             d.setTextSize(1);
             d.setTextColor(kWarn, kSurface);
             d.setTextDatum(lgfx::middle_center);
-            d.drawString("?", 19, y + 8);
+            d.drawString("?", 20, y + 10);
             d.setTextDatum(lgfx::top_left);
         }
 
@@ -1281,8 +1295,8 @@ void drawLessonList() {
     }
 
     if (total > kVisible) {
-        constexpr int kTrackY = 20;
-        constexpr int kTrackH = 91;
+        constexpr int kTrackY = 18;
+        constexpr int kTrackH = 100;
         d.fillRect(236, kTrackY, 2, kTrackH, kLine);
         const int thumbH = std::max(10, kTrackH * kVisible / static_cast<int>(total));
         const int thumbY =

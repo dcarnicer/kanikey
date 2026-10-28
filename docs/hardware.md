@@ -196,7 +196,8 @@ E (221) esp_core_dump_flash: No core dump partition found!
 - Lesson list/picker (2026-10-28): the list sorts a 10-subject candidate batch
   by level and `lesson_position`, then trims to the configured batch. It only
   uses GET /assignments and GET /subjects; opening the card does not start a
-  lesson. The live start path remains the one already verified.
+  lesson. Verified on hardware with 120 available lessons: 5 rows rendered
+  with prompts and meanings, and no lesson was started.
 - Still missing: components on the card and a lesson quiz.
 
 ### Visual pack on microSD (M5)

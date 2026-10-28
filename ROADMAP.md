@@ -55,8 +55,8 @@ Working on hardware:
   sleep, screenshot capture.
 - 37 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,355,253 B / 1,835,008 B flash (73.9%)**, **93,784 B /
-327,680 B static RAM (28.6%)**. The dev image is 1,360,513 B. Removing
+Current build: **1,355,573 B / 1,835,008 B flash (73.9%)**, **93,784 B /
+327,680 B static RAM (28.6%)**. The dev image is 1,360,861 B. Removing
 `efontJA_16` freed ~468 KB and leaves ~490 KB of flash headroom.
 
 ## Priority summary
