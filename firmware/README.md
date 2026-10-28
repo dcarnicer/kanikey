@@ -45,6 +45,8 @@ KaniKey firmware for the M5Stack Cardputer ADV.
   `lower_levels_first`). `Q` on a lesson card opens an optional local
   meaning/reading quiz with feedback, retries and a completion screen; the quiz
   itself makes no `/start` call.
+- Reads `current_vacation_started_at` and shows a non-blocking `Vacation mode`
+  notice on Home when no more urgent status is present.
 - Writes the pack to the card over the USB serial link or a one-shot Wi-Fi
   upload server.
 

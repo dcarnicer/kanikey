@@ -16,6 +16,7 @@ struct User {
     int maxLevelGranted = 3;
     int lessonsBatchSize = 5;
     ReviewOrder reviewsOrder = ReviewOrder::Shuffled;
+    uint32_t vacationStartedAt = 0;  // Unix seconds; 0 = not on vacation
 };
 
 bool parseUser(const JsonValue& root, User* out);

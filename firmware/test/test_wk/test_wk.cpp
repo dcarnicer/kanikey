@@ -500,6 +500,7 @@ static void test_user_parse() {
     JsonValue v;
     const char* text =
         "{\"data\":{\"username\":\"tester\",\"level\":8,"
+        "\"current_vacation_started_at\":\"2026-10-20T12:00:00Z\","
         "\"subscription\":{\"active\":true,\"max_level_granted\":60},"
         "\"preferences\":{\"lessons_batch_size\":10,"
         "\"reviews_presentation_order\":\"lower_levels_first\"}}}";
@@ -512,6 +513,9 @@ static void test_user_parse() {
     TEST_ASSERT_EQUAL(60, u.maxLevelGranted);
     TEST_ASSERT_EQUAL(10, u.lessonsBatchSize);
     TEST_ASSERT_EQUAL(ReviewOrder::LowerLevelsFirst, u.reviewsOrder);
+    uint32_t vacation = 0;
+    TEST_ASSERT_TRUE(parseIso8601("2026-10-20T12:00:00Z", &vacation));
+    TEST_ASSERT_EQUAL_UINT32(vacation, u.vacationStartedAt);
 }
 
 static void test_summary_parse_and_counts() {
@@ -758,6 +762,7 @@ static void test_cache_snapshot_round_trip() {
     in.user.maxLevelGranted = 60;
     in.user.lessonsBatchSize = 4;
     in.user.reviewsOrder = ReviewOrder::LowerLevelsFirst;
+    in.user.vacationStartedAt = 1759900000u;
     Assignment a;
     a.id = 100;
     a.subjectId = 42;
@@ -789,6 +794,7 @@ static void test_cache_snapshot_round_trip() {
     TEST_ASSERT_TRUE(out.user.subscriptionActive);
     TEST_ASSERT_EQUAL(4, out.user.lessonsBatchSize);
     TEST_ASSERT_EQUAL(ReviewOrder::LowerLevelsFirst, out.user.reviewsOrder);
+    TEST_ASSERT_EQUAL_UINT32(1759900000u, out.user.vacationStartedAt);
     TEST_ASSERT_EQUAL(1, out.assignments.size());
     TEST_ASSERT_EQUAL_UINT32(100, out.assignments[0].id);
     TEST_ASSERT_EQUAL_UINT32(42, out.assignments[0].subjectId);

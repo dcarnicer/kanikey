@@ -2700,6 +2700,9 @@ void drawHome() {
         cacheStatusLine(line, sizeof line);
         d.setTextColor(cacheIsStale() ? kErr : kWarn, kBg);
         d.drawString(line, 8, 117);
+    } else if (gHaveUser && gUser.vacationStartedAt) {
+        d.setTextColor(kWarn, kBg);
+        d.drawString("Vacation mode", 8, 117);
     }
     d.setTextColor(kFaint, kBg);
     d.drawString("Enter: reviews  L: lessons  Esc: menu", 8, 125);

@@ -214,6 +214,7 @@ void encodeUser(Writer& w, const User& u) {
     w.u16(static_cast<uint16_t>(u.maxLevelGranted < 0 ? 0 : u.maxLevelGranted));
     w.u16(static_cast<uint16_t>(u.lessonsBatchSize < 0 ? 0 : u.lessonsBatchSize));
     w.u8(static_cast<uint8_t>(u.reviewsOrder));
+    w.u32(u.vacationStartedAt);
 }
 
 bool decodeUser(Reader& r, User* u) {
@@ -222,8 +223,9 @@ bool decodeUser(Reader& r, User* u) {
     uint16_t maxLevel = 0;
     uint16_t batch = 0;
     uint8_t order = 0;
+    uint32_t vacation = 0;
     if (!r.str(&u->username) || !r.u16(&level) || !r.u8(&subscription) ||
-        !r.u16(&maxLevel) || !r.u16(&batch) || !r.u8(&order))
+        !r.u16(&maxLevel) || !r.u16(&batch) || !r.u8(&order) || !r.u32(&vacation))
         return false;
     if (order > static_cast<uint8_t>(ReviewOrder::LowerLevelsFirst)) return false;
     u->level = level;
@@ -231,6 +233,7 @@ bool decodeUser(Reader& r, User* u) {
     u->maxLevelGranted = maxLevel;
     u->lessonsBatchSize = batch;
     u->reviewsOrder = static_cast<ReviewOrder>(order);
+    u->vacationStartedAt = vacation;
     return true;
 }
 

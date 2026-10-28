@@ -1,5 +1,7 @@
 #include "wk/User.h"
 
+#include "wk/Time.h"
+
 namespace kk {
 
 namespace {
@@ -23,6 +25,10 @@ bool parseUser(const JsonValue& root, User* out) {
         if (const JsonValue* a = sub->find("active"); a && a->type == JsonType::Bool)
             out->subscriptionActive = a->boolean;
         out->maxLevelGranted = intField(sub, "max_level_granted", out->maxLevelGranted);
+    }
+    if (const JsonValue* vacation = data->find("current_vacation_started_at");
+        vacation && vacation->isString()) {
+        parseIso8601(vacation->string, &out->vacationStartedAt);
     }
     const JsonValue* prefs = data->find("preferences");
     if (prefs && prefs->isObject()) {

@@ -258,8 +258,8 @@ WaniKani subjects and mnemonics.
 - Upload: `S` starts a one-shot HTTP server on port 8080 and
   `tools/device.py push` writes the file with `curl -T`; 2.9 MB transferred
   reliably. The USB `up` path uses 8 KiB ACKed chunks and is a fallback.
-- Offline cache: `/state/cache.bin` (LittleFS, `KKCA` v4) and
-  `/kanikey/cache/subjects.bin` (SD, `KKCS` v4), with the summary
+- Offline cache: `/state/cache.bin` (LittleFS, `KKCA` v5) and
+  `/kanikey/cache/subjects.bin` (SD, `KKCS` v5), with the summary
   `data_updated_at`, 24 h stale state and manual clear/sync. A synthetic-cache
   run on 2026-10-28 restored Home offline, ran a cached session, kept the
   completed review in the outbox and restored both after a reboot. Real-account
@@ -272,5 +272,6 @@ WaniKani subjects and mnemonics.
 - Radical-only lesson on a low-level account.
 - Study-material notes and `lower_levels_first` on a configured account.
 - A reboot with Wi-Fi actually unavailable (offline boot).
+- Vacation mode with an account that is actually on vacation.
 - Ways to dismiss rejected outbox items.
 - Real renderer/UI font instead of the M5GFX text calls.

@@ -336,10 +336,11 @@ snapshot fits LittleFS. The token fingerprint discards another account's data.
 
 **Implications:** boot restores Home and a cached batch before any Wi-Fi
 request; completed items are pruned from the cache and stay in the outbox.
-`KKCA`/`KKCS` v4 add the study-material notes and the review presentation
-order, store the summary `data_updated_at`, mark caches older than 24 h as
-stale, and Settings exposes `Sync now`/`Clear cache`. The real online fetch →
-offline → reconnect E2E (CACHE-07) still needs a deliberate live run.
+`KKCA`/`KKCS` v5 add the study-material notes, the review presentation order
+and the vacation timestamp, store the summary `data_updated_at`, mark caches
+older than 24 h as stale, and Settings exposes `Sync now`/`Clear cache`. The
+real online fetch → offline → reconnect E2E (CACHE-07) still needs a deliberate
+live run.
 
 ---
 
@@ -354,7 +355,7 @@ missing study-materials permission does not fail the batch.
 for them. Merging keeps one object for the checker, the lesson card, the review
 feedback and the offline cache instead of a second lookup table.
 
-**Implications:** `KKCS` v4 carries `meaning_note`/`reading_note`; older caches
+**Implications:** `KKCS` v5 carries `meaning_note`/`reading_note`; older caches
 are discarded. Notes appear on the lesson card and after a correct review
 answer. The full item-detail screen (UI-04/WK-08) can reuse the same fields.
 
@@ -371,8 +372,23 @@ reading-first.
 toggle, and the local setting already means something else. Sorting after the
 shuffle keeps variety inside a level.
 
-**Implications:** `KKCA` v4 stores the order; older caches are discarded.
+**Implications:** `KKCA` v5 stores the order; older caches are discarded.
 Offline sessions keep the last known order.
+
+---
+
+## 2026-10-28 — Vacation notice is a Home status line
+
+**Decision:** `User` parses and caches `current_vacation_started_at`; Home shows
+`Vacation mode` in the status line only when no sync/outbox/offline message is
+more urgent.
+
+**Why:** vacation mode changes what the user expects from reviews and lessons,
+but it must not block the session or hide a real sync problem.
+
+**Implications:** the timestamp is part of `KKCA` v5, so the notice works
+offline. The account used for hardware tests is not on vacation, so the notice
+is covered by native parsing/cache tests only.
 
 ---
 

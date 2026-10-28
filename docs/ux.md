@@ -302,6 +302,8 @@ Home ──L──► Lessons ──Enter──► Lesson card
   - **Offline:** line in `warn`: `Offline · 18 cached · 4 to sync`.
   - **Empty:** `All caught up` + `Next review 18:00`; `Enter` opens the
     forecast detail.
+  - **Vacation:** `Vacation mode` in amber in the status line when no more
+    urgent sync/outbox/offline message is shown.
   - **Error:** Home shows `Auth: token rejected`, `Auth: missing permissions`,
   `Rate limited; retry later` or `WaniKani error; retry`. Boot shows distinct
   `Token rejected` / `Missing permissions` / `Rate limited` / `WaniKani error`

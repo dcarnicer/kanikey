@@ -423,12 +423,12 @@ alters the SRS stage and the user's statistics. We prefer to leave the item as
 - Never delete the outbox before the POST is confirmed.
 
 **Implementation (2026-10-28).** The Home/user/batch snapshot is
-`/state/cache.bin` (`KKCA`, version 4); the batch subjects are
-`/kanikey/cache/subjects.bin` (`KKCS`, version 4) on SD. Version 3 added the
-study-material notes to each cached subject and version 4 adds the review
-presentation order to the cached user; older files are discarded. Both carry
-the save time, an FNV-1a fingerprint of the API token, the payload length and
-CRC32.
+`/state/cache.bin` (`KKCA`, version 5); the batch subjects are
+`/kanikey/cache/subjects.bin` (`KKCS`, version 5) on SD. Version 3 added the
+study-material notes to each cached subject, version 4 added the review
+presentation order and version 5 adds the vacation timestamp to the cached
+user; older files are discarded. Both carry the save time, an FNV-1a
+fingerprint of the API token, the payload length and CRC32.
 The snapshot also stores the summary's `data_updated_at`; assignments keep
 their own `data_updated_at` for outbox reconciliation. Loading a snapshot
 written for another token or an older version discards both files. The cached
