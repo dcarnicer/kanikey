@@ -426,7 +426,8 @@ design.
 
 - Open with `Esc` from Home, or `Esc` in a review → Pause → Settings.
 - Implemented rows: `Brightness`, `Dim after`, `Blank after`, `Sleep after`,
-  `Review batch`, `Order`, `Lesson batch`, `Setup portal`, `Sync now`, `About`.
+  `Review batch`, `Order`, `Lesson batch`, `Setup portal`, `Sync now`, `About`,
+  `Clear cache`, `Sign out`.
 - `Brightness` cycles 64/128/192/255; the timings cycle presets and `off`.
   Review batch cycles 10/20/30, lesson batch 3/5/10, and order toggles
   meaning-first / reading-first. All are stored in NVS and applied without a
@@ -437,8 +438,10 @@ design.
 - About shows the firmware version, build date, pack status, cached batch,
   last sync, Wi-Fi, whether a token is configured, time zone and heap.
 - `↑↓` moves, `Enter` changes, `Esc` goes back.
-- Not yet: account/sign-out, study preferences (meaning order, session size,
-  strictness), clear cache and licenses.
+- `Clear cache` removes the snapshot/subjects for the next boot; `Sign out`
+  confirms, then removes the token, cache and pending outbox and keeps Wi-Fi.
+- Not yet: licenses and attributions, strict answers and clear-cache/sign-out
+  from elsewhere.
 
 ### 5.12 Stats (phase 2)
 

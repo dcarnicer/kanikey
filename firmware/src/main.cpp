@@ -126,6 +126,7 @@ bool gSettingsActive = false;
 int gSettingsIndex = 0;
 SettingsOrigin gSettingsOrigin = SettingsOrigin::Home;
 bool gAboutActive = false;
+bool gSignOutConfirm = false;
 char gSettingsNote[48] = "";
 uint16_t gSettingsNoteColor = kFaint;
 #ifdef KANIKEY_DEV
@@ -146,6 +147,7 @@ void startSync();
 void drawPause();
 void drawSettings();
 void drawAbout();
+void drawSignOutConfirm();
 void openPause();
 
 uint32_t currentAccountKey() {
@@ -997,6 +999,7 @@ void endReview() {
     gPauseActive = false;
     gSettingsActive = false;
     gAboutActive = false;
+    gSignOutConfirm = false;
     gReviewActive = false;
     gReviewSummary = false;
     gShowHome = true;
@@ -1042,6 +1045,7 @@ void startReview() {
     gPauseActive = false;
     gSettingsActive = false;
     gAboutActive = false;
+    gSignOutConfirm = false;
     gFeedback = false;
     gFeedbackCompleted = false;
     gNeedsSubmit = false;
@@ -1307,7 +1311,7 @@ void lessonKey(const KeyEvent& e) {
     }
 }
 
-constexpr int kSettingsRows = 10;
+constexpr int kSettingsRows = 12;
 
 void setSettingsNote(const char* text, uint16_t color = kFaint) {
     snprintf(gSettingsNote, sizeof gSettingsNote, "%s", text ? text : "");
@@ -1317,6 +1321,7 @@ void setSettingsNote(const char* text, uint16_t color = kFaint) {
 void openSettings(SettingsOrigin origin) {
     gSettingsActive = true;
     gAboutActive = false;
+    gSignOutConfirm = false;
     gPauseActive = false;
     gSettingsOrigin = origin;
     gSettingsIndex = 0;
@@ -1328,6 +1333,7 @@ void openSettings(SettingsOrigin origin) {
 void closeSettings() {
     gSettingsActive = false;
     gAboutActive = false;
+    gSignOutConfirm = false;
     gSettingsNote[0] = 0;
     if (gSettingsOrigin == SettingsOrigin::Pause)
         gPauseActive = true;
@@ -1342,6 +1348,7 @@ void openPause() {
     gPauseIndex = 0;
     gSettingsActive = false;
     gAboutActive = false;
+    gSignOutConfirm = false;
     gDirty = true;
 }
 
@@ -1434,12 +1441,61 @@ void settingsAction() {
             gAboutActive = true;
             gSettingsNote[0] = 0;
             break;
+        case 10:
+            kk::cacheClearSnapshot();
+            if (gSdOk) kk::cacheClearSubjects(SD);
+            gCacheSavedAt = 0;
+            setSettingsNote("Cache cleared; next boot is cold", kOk);
+            break;
+        case 11:
+            gSignOutConfirm = true;
+            gSettingsNote[0] = 0;
+            break;
     }
     gDirty = true;
 }
 
 void settingsKey(const KeyEvent& e) {
     if (!e.down) return;
+    if (gSignOutConfirm) {
+        if (e.key == Key::Esc) {
+            gSignOutConfirm = false;
+            gDirty = true;
+        } else if (e.key == Key::Enter) {
+            kk::DevToken::clear();
+            kk::cacheClearSnapshot();
+            if (gSdOk) kk::cacheClearSubjects(SD);
+            gOutbox.clear();
+            saveOutbox();
+            gUser = kk::User{};
+            gSummary = kk::Summary{};
+            gHaveUser = false;
+            gHaveSummary = false;
+            gBatch = kk::ReviewBatch{};
+            gQueue = kk::ReviewQueue{};
+            gDueReviews = 0;
+            gLessons = 0;
+            gCacheSavedAt = 0;
+            gOffline = false;
+            gSyncing = false;
+            gSyncAttempted = false;
+            gReviewActive = false;
+            gReviewSummary = false;
+            gFeedback = false;
+            gNeedsSubmit = false;
+            gPauseActive = false;
+            gSettingsActive = false;
+            gAboutActive = false;
+            gSignOutConfirm = false;
+            gShowHome = false;
+            snprintf(gSyncClock, sizeof gSyncClock, "--:--");
+            snprintf(gNextReview, sizeof gNextReview, "--:--");
+            snprintf(gNetLine, sizeof gNetLine, "Signed out");
+            Serial.println("[setup] signed out; token, cache and outbox cleared");
+            gDirty = true;
+        }
+        return;
+    }
     if (e.key == Key::Esc) {
         if (gAboutActive) {
             gAboutActive = false;
@@ -1763,6 +1819,7 @@ bool startSetupPortal() {
     gPauseActive = false;
     gSettingsActive = false;
     gAboutActive = false;
+    gSignOutConfirm = false;
 
     // With a saved network, go straight to the station page so the user can
     // change the token without re-entering Wi-Fi. If it cannot join, fall back
@@ -2012,7 +2069,7 @@ void drawSettings() {
 
     static const char* kLabels[] = {"Brightness", "Dim after", "Blank after", "Sleep after",
                                     "Review batch", "Order", "Lesson batch", "Setup portal",
-                                    "Sync now", "About"};
+                                    "Sync now", "About", "Clear cache", "Sign out"};
     String values[kSettingsRows];
     values[0] = String(kk::settingsBrightness());
     values[1] = secondsLabel(kk::settingsDimSeconds());
@@ -2024,6 +2081,8 @@ void drawSettings() {
     values[7] = "open";
     values[8] = "run";
     values[9] = "info";
+    values[10] = "clear";
+    values[11] = "out";
 
     constexpr int kVisibleRows = 7;
     int top = gSettingsIndex - kVisibleRows / 2;
@@ -2058,6 +2117,36 @@ void drawSettings() {
     d.setTextFont(0);
     d.setTextColor(gSettingsNote[0] ? gSettingsNoteColor : kFaint, kBg);
     d.drawString(gSettingsNote[0] ? gSettingsNote : "Enter: change  Esc: back", 8, 123);
+    d.endWrite();
+    present();
+}
+
+void drawSignOutConfirm() {
+    if (!gDisp) return;
+    auto& d = target();
+    d.startWrite();
+    d.fillScreen(kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+    d.setTextFont(2);
+    d.setTextSize(1);
+    d.setTextColor(kBrand, kBg);
+    d.drawString("KaniKey", 6, 2);
+    d.setTextFont(1);
+    d.setTextColor(kErr, kBg);
+    d.drawString("sign out", 7, 22);
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(kText, kBg);
+    d.drawString("Token, cache and", 8, 46);
+    d.drawString("pending reviews will", 8, 60);
+    d.drawString("be removed.", 8, 74);
+    d.setTextFont(0);
+    d.setTextColor(kDim, kBg);
+    d.drawString("Wi-Fi stays saved.", 8, 92);
+    d.setTextColor(kFaint, kBg);
+    d.drawString("Enter: sign out", 8, 112);
+    d.drawString("Esc: cancel", 8, 125);
     d.endWrite();
     present();
 }
@@ -2198,15 +2287,15 @@ void drawBoot() {
             break;
         case BootState::NoToken:
             title = "Token needed";
-            line1 = "Connect USB and send:";
-            line2 = "k <token>";
-            action = "Then press Enter";
+            line1 = "Press Enter for setup";
+            line2 = "Wi-Fi and token from your phone";
+            action = "Enter: setup";
             break;
         case BootState::NoWifi:
             title = "Wi-Fi needed";
-            line1 = "Connect USB and send:";
-            line2 = "w <ssid>|<password>";
-            action = "Then press Enter";
+            line1 = "Press Enter for setup";
+            line2 = "Join KaniKey-XXXX on your phone";
+            action = "Enter: setup";
             break;
         case BootState::NotSynced:
             title = "Not synced";
@@ -2514,6 +2603,10 @@ void draw() {
         drawSetupPortal();
         return;
     }
+    if (gSignOutConfirm) {
+        drawSignOutConfirm();
+        return;
+    }
     if (gAboutActive) {
         drawAbout();
         return;
@@ -2558,8 +2651,8 @@ void draw() {
 }
 
 void drawStatus() {
-    if (!gDisp || gPortalActive || gAboutActive || gSettingsActive || gPauseActive || gShowHome ||
-        gReviewActive || gReviewSummary || gLessonActive)
+    if (!gDisp || gPortalActive || gSignOutConfirm || gAboutActive || gSettingsActive ||
+        gPauseActive || gShowHome || gReviewActive || gReviewSummary || gLessonActive)
         return;
 #ifdef KANIKEY_DEV
     if (gShowDebug) drawDebug();

@@ -171,8 +171,8 @@ E (221) esp_core_dump_flash: No core dump partition found!
 - `Esc` in a review opens Continue / End session / Settings; `Esc` from Home
   opens Settings.
 - Brightness, dim/blank/sleep timings, review batch/order, lesson batch,
-  Setup portal, Sync now and About are stored in NVS and applied without a
-  reboot.
+  Setup portal, Sync now, About, Clear cache and Sign out are stored/executed
+  on device; values persist in NVS.
 - About reads the live pack, cache batch, heap, Wi-Fi/token presence, time zone
   and last sync.
 - The screens compile in both images; a physical key/visual pass is pending.

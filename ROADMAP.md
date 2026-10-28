@@ -54,8 +54,8 @@ Working on hardware:
   sleep, screenshot capture.
 - 37 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,346,253 B / 1,835,008 B flash (73.4%)**, **93,768 B /
-327,680 B static RAM (28.6%)**. The dev image is 1,351,581 B. Removing
+Current build: **1,347,413 B / 1,835,008 B flash (73.4%)**, **93,776 B /
+327,680 B static RAM (28.6%)**. The dev image is 1,352,669 B. Removing
 `efontJA_16` freed ~468 KB and leaves ~490 KB of flash headroom.
 
 ## Priority summary
@@ -67,7 +67,7 @@ Current build: **1,346,253 B / 1,835,008 B flash (73.4%)**, **93,768 B /
 | 3 | Complete lesson flow | Card + start exists; list, components, quiz and preferences do not | Partial | LESSON-01, LESSON-03 |
 | 4 | WaniKani data and preferences | Synonyms, item detail, SRS feedback, stats and preferences are missing | Not started | WK-01, WK-03 |
 | 5 | Outbox and API robustness | Rejected items, 429 and invalid auth have no user path | Partial | API-01, API-02 |
-| 6 | Setup, settings and pause | Setup, pause and core device settings work | Partial: sign-out and error screens | SETUP-05, SETUP-07 |
+| 6 | Setup, settings and pause | Setup, pause and settings work | Partial: low battery and error screens | SETUP-06, SETUP-07 |
 | 7 | UI, stats and sync | Missing SRS bar, sync progress, accuracy and item detail | Partial | UI-01, UI-02 |
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal ported; OTA/widgets pending | TNG-02, TNG-03 |
 | 9 | Technical debt, CI and release | Maintainability and shipping | Ongoing | TECH-01, TECH-04 |
@@ -264,10 +264,10 @@ the device; account/study preferences and clear error actions remain.
   three-row pause screen; Continue preserves the session, End session queues
   the current item and leaves, Settings opens the menu.
 - **SETUP-05 — Settings.** Brightness, dim/blank/sleep timings, timezone,
-  review/lesson preferences and About/version. **Partial:** brightness,
-  timings, review batch size/order, lesson batch size, time zone (via the setup
-  portal), Setup portal shortcut, Sync now and About are implemented and stored
-  in NVS. Account sign-out and clear-cache are pending.
+  review/lesson preferences and About/version. **Done (2026-10-28):** brightness, timings, review batch size/order, lesson
+  batch size, time zone (via the setup portal), Setup portal shortcut, Sync now,
+  About, clear cache and sign-out are implemented. Sign-out clears the token,
+  cache and outbox after a confirmation and keeps the Wi-Fi credentials.
 - **SETUP-06 — Low battery.** Show a low-battery state and confirm before
   starting a long session.
 - **SETUP-07 — Manual sync and errors.** Sync now, retry, and clear
