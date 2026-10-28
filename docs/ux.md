@@ -406,15 +406,34 @@ and `Tab`/`Esc` returns to feedback.
 
 ![Summary](screens/summary.png)
 
-- `SESSION`.
-- Three columns: reviews, accuracy, time.
-- `8 items moved up` (or `No stage changes`). The live build shows the last
-  parsed stage as `SRS 3 -> 4` when the POST returned it, and appends the last
-  item's lifetime accuracy (`History 18 reviews, 89%`) when statistics are
-  cached.
-- `Next review 18:00` and, if applicable, `All caught up for now`.
-- If there's an outbox: `4 reviews waiting to sync` in `warn`.
-- `Enter done`, `R review more`.
+- Header `SESSION`.
+- Three columns at x=8/84/164 with 32 px values and 8 px labels:
+  - `REVIEWS`: completed reviews.
+  - `ACCURACY`: final correct answers / (final answers + wrong attempts),
+    rounded. Each required meaning/reading part counts once.
+  - `TIME`: elapsed wall-clock time, e.g. `42s`, `12m`, `1h 5m`.
+- Divider, then:
+  - `8 items moved up` in green, or `No stage changes` in faint. A successful
+    `POST /reviews` counts only when its new stage is above the stage recorded
+    when the review was queued; the response carries the new stage, not the old
+    one.
+  - `3 mistakes` on the left and the outbox state on the right: `4 pending` in
+    amber, `1 need attention` in red, or `All reviews sent` in faint.
+  - The item line combines two sources. The stage comes from the last
+    successful `POST /reviews` (`gStageChange`; its previous stage is the one
+    tracked in the pending assignment), while the lifetime accuracy/history
+    comes from the last completed item (`gCompletedItem`). They can differ when
+    that item's POST is still pending. Examples: `SRS 3 -> 4  86%`,
+    `SRS 3  86%`, or `History 18 reviews, 89%`.
+- `Enter: home`.
+
+**Implementation note (2026-10-28).** The values use the built-in 32 px font
+and fall back to 16 px if one would cross its column. Accuracy and duration
+live in native-tested `wk/SessionStats.h`; the session start is a `millis()`
+timestamp and the final duration is latched when the summary opens. It is not
+persisted. Offline completions do not count as stage changes because there is
+no POST response; they still become `gCompletedItem` and can update the
+history/accuracy side of the item line.
 
 ### 5.8 Lessons
 

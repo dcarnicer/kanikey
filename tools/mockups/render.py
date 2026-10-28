@@ -307,20 +307,21 @@ def screen_lesson() -> Image.Image:
 def screen_summary() -> Image.Image:
     im = Image.new("RGB", (W, H), BG)
     d = ImageDraw.Draw(im)
-    header(d, "SESSION", "done", pct=84)
+    header(d, "SESSION", pct=84)
 
     cols = [("24", "REVIEWS"), ("92%", "ACCURACY"), ("12m", "TIME")]
-    xs = [8, 84, 160]
+    xs = [8, 84, 164]
     for (value, label), x in zip(cols, xs):
-        text(d, (x, 28), value, 28, TEXT, medium=True)
-        text(d, (x, 60), label, 8, DIM)
-    rect(d, 8, 76, 224, 1, LINE)
+        text(d, (x, 28), value, 32, TEXT, medium=True)
+        text(d, (x, 66), label, 8, DIM)
+    rect(d, 8, 77, 224, 1, LINE)
 
     text(d, (8, 84), "8 items moved up", 11, OK)
-    text(d, (8, 100), "Next review  18:00", 11, DIM)
-    text(d, (8, 114), "All caught up for now.", 9, FAINT)
+    text(d, (8, 98), "3 mistakes", 10, DIM)
+    text(d, (232, 98), "4 pending", 10, WARN, anchor="ra")
+    text(d, (8, 112), "SRS 3 -> 4  86%", 10, OK)
 
-    hints(d, [("Enter", "done"), ("R", "review more")], [])
+    hints(d, [("Enter", "home")], [])
     return im
 
 

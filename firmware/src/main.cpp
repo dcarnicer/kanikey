@@ -42,6 +42,7 @@
 #include "wk/ReviewQueue.h"
 #include "wk/ReviewResponse.h"
 #include "wk/RomajiIme.h"
+#include "wk/SessionStats.h"
 #include "wk/Time.h"
 #include "wk/Utf8.h"
 
@@ -117,6 +118,9 @@ struct StageChange {
 StageChange gStageChange;
 uint32_t gPendingStageAssignment = 0;
 uint8_t gPendingStageFrom = 0;
+uint32_t gStageUps = 0;        // successful upward moves in the current session
+uint32_t gReviewStartMs = 0;   // millis() when the current session started
+uint32_t gReviewElapsedMs = 0; // latched when the summary is entered
 std::string gMeaningInput;
 std::string gDirectReading;  // test/serial reading input, bypasses the romaji IME
 kk::RomajiIme gIme;
@@ -1204,36 +1208,73 @@ void drawReviewSummary() {
     d.startWrite();
     d.fillScreen(kBg);
     d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+
     d.setTextFont(1);
     d.setTextSize(1);
     d.setTextColor(kDim, kBg);
     d.drawString("SESSION", 6, 3);
-    d.setTextFont(2);
-    d.setTextSize(2);
-    d.setTextColor(kText, kBg);
-    char n[20];
-    snprintf(n, sizeof n, "%u", static_cast<unsigned>(gQueue.completedCount()));
-    d.drawString(n, 8, 30);
+
+    const kk::SessionStats stats = kk::summarizeSession(gQueue.completed());
+    char reviews[16];
+    snprintf(reviews, sizeof reviews, "%u", static_cast<unsigned>(gQueue.completedCount()));
+    char accuracy[16];
+    snprintf(accuracy, sizeof accuracy, "%u%%", static_cast<unsigned>(stats.accuracy));
+    char duration[16];
+    kk::formatSessionDuration(gReviewElapsedMs, duration, sizeof duration);
+
+    // 32 px values; a value that is too wide for its column falls back to 16 px
+    // so the three columns never collide.
+    auto value = [&d](const char* text, int x, int maxWidth) {
+        d.setTextFont(2);
+        d.setTextSize(2);
+        if (d.textWidth(text) > maxWidth) d.setTextSize(1);
+        d.setTextColor(kText, kBg);
+        d.drawString(text, x, 30);
+    };
+    value(reviews, 8, 72);
+    value(accuracy, 84, 74);
+    value(duration, 164, 72);
+
     d.setTextFont(0);
     d.setTextSize(1);
     d.setTextColor(kDim, kBg);
     d.drawString("REVIEWS", 8, 66);
-    unsigned mistakes = 0;
-    for (const kk::SessionItem& it : gQueue.completed())
-        mistakes += it.incorrectMeaning + it.incorrectReading;
-    char m[40];
-    snprintf(m, sizeof m, "%u mistakes", mistakes);
-    d.drawString(m, 8, 84);
+    d.drawString("ACCURACY", 84, 66);
+    d.drawString("TIME", 164, 66);
+
+    d.drawFastHLine(8, 77, 224, kLine);
+
+    char line[48];
+    if (gStageUps) {
+        snprintf(line, sizeof line, "%u item%s moved up", static_cast<unsigned>(gStageUps),
+                 gStageUps == 1 ? "" : "s");
+        d.setTextColor(kOk, kBg);
+    } else {
+        snprintf(line, sizeof line, "No stage changes");
+        d.setTextColor(kFaint, kBg);
+    }
+    d.drawString(line, 8, 84);
+
+    snprintf(line, sizeof line, "%u mistake%s", static_cast<unsigned>(stats.mistakes),
+             stats.mistakes == 1 ? "" : "s");
+    d.setTextColor(kDim, kBg);
+    d.drawString(line, 8, 98);
+
     const size_t pending = kk::outboxPendingCount(gOutbox);
     const size_t rejected = kk::outboxRejectedCount(gOutbox);
+    char outbox[40];
     if (rejected)
-        snprintf(m, sizeof m, "%u need attention", static_cast<unsigned>(rejected));
+        snprintf(outbox, sizeof outbox, "%u need attention", static_cast<unsigned>(rejected));
     else if (pending)
-        snprintf(m, sizeof m, "%u pending", static_cast<unsigned>(pending));
+        snprintf(outbox, sizeof outbox, "%u pending", static_cast<unsigned>(pending));
     else
-        snprintf(m, sizeof m, "All reviews sent");
+        snprintf(outbox, sizeof outbox, "All reviews sent");
     d.setTextColor(rejected ? kErr : pending ? kWarn : kFaint, kBg);
-    d.drawString(m, 8, 98);
+    d.setTextDatum(lgfx::top_right);
+    d.drawString(outbox, 232, 98);
+    d.setTextDatum(lgfx::top_left);
+
     const kk::Subject* lastSubject =
         gCompletedItem.subjectId ? subjectById(gCompletedItem.subjectId) : nullptr;
     if (gStageChange.valid || (lastSubject && lastSubject->hasReviewStats)) {
@@ -1353,6 +1394,7 @@ bool sendOutboxItem(uint32_t seq) {
                 gStageChange.to = update.srsStage;
                 gStageChange.from =
                     update.assignmentId == gPendingStageAssignment ? gPendingStageFrom : 0;
+                if (gStageChange.from && gStageChange.to > gStageChange.from) ++gStageUps;
                 if (gSrs.valid && gStageChange.from && gStageChange.to)
                     gSrs.moveStage(gStageChange.from, gStageChange.to);
                 Serial.printf("[review] assignment %u SRS %u -> %u\n",
@@ -1463,6 +1505,7 @@ void advanceFeedback() {
     gFeedbackCompleted = false;
     clearReviewInput();
     if (gQueue.empty()) {
+        gReviewElapsedMs = millis() - gReviewStartMs;
         gReviewActive = false;
         gReviewSummary = true;
     }
@@ -1513,6 +1556,8 @@ void startReview() {
     gStageChange = StageChange{};
     gPendingStageAssignment = 0;
     gPendingStageFrom = 0;
+    gStageUps = 0;
+    gReviewElapsedMs = 0;
     if (!gLowBatteryConfirmed && lowBatteryNow()) {
         requestLowBatteryConfirm(1);
         return;
@@ -1555,6 +1600,7 @@ void startReview() {
     }
     gReviewActive = true;
     gReviewSummary = false;
+    gReviewStartMs = millis();
     gShowHome = false;
     gPauseActive = false;
     gSettingsActive = false;

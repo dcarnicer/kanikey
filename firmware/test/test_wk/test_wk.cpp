@@ -22,6 +22,7 @@
 #include "wk/ReviewResponse.h"
 #include "wk/ReviewStatistics.h"
 #include "wk/RomajiIme.h"
+#include "wk/SessionStats.h"
 #include "wk/SrsCounts.h"
 #include "wk/Text.h"
 
@@ -415,6 +416,46 @@ static void test_session_lower_levels_first() {
     TEST_ASSERT_EQUAL(1, q.queue()[0].level);
     TEST_ASSERT_EQUAL(5, q.queue()[1].level);
     TEST_ASSERT_EQUAL(9, q.queue()[2].level);
+}
+
+static void test_session_stats_accuracy() {
+    SessionItem bothMistakes;
+    bothMistakes.needsMeaning = true;
+    bothMistakes.needsReading = true;
+    bothMistakes.incorrectMeaning = 1;
+    bothMistakes.incorrectReading = 1;
+    SessionItem meaningOnly;
+    meaningOnly.needsMeaning = true;
+    meaningOnly.needsReading = false;
+    SessionItem secondMeaningOnly;
+    secondMeaningOnly.needsMeaning = true;
+    secondMeaningOnly.needsReading = false;
+    const SessionStats stats =
+        summarizeSession({bothMistakes, meaningOnly, secondMeaningOnly});
+    TEST_ASSERT_EQUAL_UINT32(4, stats.parts);
+    TEST_ASSERT_EQUAL_UINT32(2, stats.mistakes);
+    TEST_ASSERT_EQUAL_UINT32(67, stats.accuracy);
+
+    TEST_ASSERT_EQUAL_UINT32(0, sessionAccuracyPercent(0, 0));
+    TEST_ASSERT_EQUAL_UINT32(0, sessionAccuracyPercent(0, 4));
+    TEST_ASSERT_EQUAL_UINT32(100, sessionAccuracyPercent(5, 0));
+    TEST_ASSERT_EQUAL_UINT32(75, sessionAccuracyPercent(3, 1));
+    TEST_ASSERT_EQUAL_UINT32(67, sessionAccuracyPercent(2, 1));
+    TEST_ASSERT_EQUAL_UINT32(33, sessionAccuracyPercent(1, 2));
+}
+
+static void test_session_duration_text() {
+    char out[16];
+    formatSessionDuration(0, out, sizeof out);
+    TEST_ASSERT_EQUAL_STRING("0s", out);
+    formatSessionDuration(42900, out, sizeof out);
+    TEST_ASSERT_EQUAL_STRING("42s", out);
+    formatSessionDuration((12u * 60u + 59u) * 1000u, out, sizeof out);
+    TEST_ASSERT_EQUAL_STRING("12m", out);
+    formatSessionDuration((1u * 3600u + 5u * 60u) * 1000u, out, sizeof out);
+    TEST_ASSERT_EQUAL_STRING("1h 5m", out);
+    formatSessionDuration(3600u * 1000u, out, sizeof out);
+    TEST_ASSERT_EQUAL_STRING("1h 0m", out);
 }
 
 
@@ -1118,6 +1159,8 @@ int main(int, char**) {
     RUN_TEST(test_session_filters_and_limit);
     RUN_TEST(test_session_skip);
     RUN_TEST(test_session_lower_levels_first);
+    RUN_TEST(test_session_stats_accuracy);
+    RUN_TEST(test_session_duration_text);
     RUN_TEST(test_cardputer_characters);
     RUN_TEST(test_cardputer_modifiers);
     RUN_TEST(test_cardputer_event_fields);
