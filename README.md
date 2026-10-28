@@ -21,9 +21,11 @@
 > header shows the current SRS stage and lifetime accuracy; the session summary
 > shows the stage returned by `POST /reviews` and the last item's review
 > history. `/level_progressions` is cached and Home shows when the current
-> level unlocked. `Tab` on review feedback opens the item detail card with
-> meanings, readings, mnemonics, notes, components, related subjects and, for
-> vocabulary, parts of speech and context sentences.
+> level unlocked. The Home SRS bar splits the cached assignment counts into
+> Apprentice/Guru/Master/Enlightened/Burned buckets, filled by five small
+> `/assignments` count requests. `Tab` on review feedback opens the item
+> detail card with meanings, readings, mnemonics, notes, components, related
+> subjects and, for vocabulary, parts of speech and context sentences.
 > Japanese prompts and readings come entirely from the microSD visual pack at
 > 64/32/20 px: 7,269 glyphs + 498 radical bitmaps in 3.7 MB, generated locally
 > with the user's token. No WaniKani content is in the repository.
@@ -35,7 +37,7 @@
 > reads `/user`. `Esc` opens Pause in a review and Settings from Home, with
 > brightness/timings, Sync now, the setup portal and About. Normal boots show
 > setup/sync states; the M0 debug screen is only in the development build.
-> Dismissing rejected outbox items and the item detail screen are next.
+> Dismissing rejected outbox items and the sync screen are next.
 >
 > KaniKey is an **unofficial** third-party app for WaniKani. It is not
 > affiliated with, endorsed by or sponsored by WaniKani or Tofugu LLC. WaniKani

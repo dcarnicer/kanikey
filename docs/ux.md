@@ -286,17 +286,21 @@ Home ──L──► Lessons ──Enter──► Lesson card
 
 ![Home](screens/home.png)
 
-- Header: `KaniKey` (16 px brand), battery.
+- Header: `KaniKey` (16 px brand), `Synced 14:47` (8 px, dim), battery.
 - `LEVEL 12` in gold and the username next to it (12 px).
 - Due reviews (`28`) at 32 px and the `REVIEWS DUE` label at 8 px.
 - Lessons (`5`) at 32 px and `LESSONS` at 8 px.
-- `Next review 18:00` and `Synced 14:47`, with right-aligned values (12 px).
+- `Next review 18:00` at 8 px, with a right-aligned value.
+- SRS distribution: five segments at y=100 (3 px high, 224 px wide) in
+  apprentice/guru/master/enlightened/burned colors, with `A 42`, `G 18`,
+  `M 9`, `E 4`, `B 2` and 4 px swatches below. The counts come from the last
+  sync and are cached; if they are missing, the line reads
+  `SRS: sync for counts`.
 - If the outbox is not empty, `Outbox: N pending` in amber or
   `N need attention` in red at 8 px.
 - Hint: `Enter: reviews  L: lessons  Esc: menu` (8 px). The M0 debug screen and
   the `Tab: debug` shortcut only exist in the `cardputer-adv-dev` build; the
-  shortcut is no longer advertised on Home. The SRS distribution bar arrives
-  with a later revision.
+  shortcut is no longer advertised on Home.
 - States:
   - **Sync:** `Syncing…` with spinner and progress in the header.
   - **Offline:** line in `warn`: `Offline · 18 cached · 4 to sync`.
@@ -495,7 +499,7 @@ the mnemonic.
 ### 5.13 Stats (phase 2)
 
 - Current level and level progress.
-- SRS distribution with bars and counts.
+- SRS distribution detail with bars and counts (Home already shows the bar).
 - Session and global accuracy (if cached).
 - Streak and reviews from the last 7 days.
 - `Esc` goes back.

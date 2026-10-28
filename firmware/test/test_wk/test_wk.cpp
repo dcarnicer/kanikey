@@ -22,6 +22,7 @@
 #include "wk/ReviewResponse.h"
 #include "wk/ReviewStatistics.h"
 #include "wk/RomajiIme.h"
+#include "wk/SrsCounts.h"
 #include "wk/Text.h"
 
 using namespace kk;
@@ -548,6 +549,60 @@ static void test_summary_parse_and_counts() {
 
 
 // ---------------------------------------------------------------- API records
+static void test_srs_total_count_and_groups() {
+    JsonParser p;
+    JsonValue v;
+    const char* text =
+        "{\"object\":\"collection\",\"pages\":{\"per_page\":500,\"next_url\":null,"
+        "\"previous_url\":null},\"total_count\":42,\"data\":[]}";
+    TEST_ASSERT_TRUE(p.parse(text, &v));
+    uint32_t total = 0;
+    TEST_ASSERT_TRUE(parseCollectionTotal(v, &total));
+    TEST_ASSERT_EQUAL_UINT32(42, total);
+
+    const SrsCounts counts{42, 18, 9, 4, 2, true};
+    TEST_ASSERT_EQUAL_UINT32(75, counts.total());
+    TEST_ASSERT_EQUAL_UINT32(42, counts.group(SrsGroup::Apprentice));
+    TEST_ASSERT_EQUAL_UINT32(18, counts.group(SrsGroup::Guru));
+    TEST_ASSERT_EQUAL_UINT32(9, counts.group(SrsGroup::Master));
+    TEST_ASSERT_EQUAL_UINT32(4, counts.group(SrsGroup::Enlightened));
+    TEST_ASSERT_EQUAL_UINT32(2, counts.group(SrsGroup::Burned));
+    TEST_ASSERT_EQUAL_UINT32(0, counts.group(SrsGroup::Count));
+
+    TEST_ASSERT_EQUAL(SrsGroup::Apprentice, srsGroupForStage(1));
+    TEST_ASSERT_EQUAL(SrsGroup::Apprentice, srsGroupForStage(4));
+    TEST_ASSERT_EQUAL(SrsGroup::Guru, srsGroupForStage(5));
+    TEST_ASSERT_EQUAL(SrsGroup::Guru, srsGroupForStage(6));
+    TEST_ASSERT_EQUAL(SrsGroup::Master, srsGroupForStage(7));
+    TEST_ASSERT_EQUAL(SrsGroup::Enlightened, srsGroupForStage(8));
+    TEST_ASSERT_EQUAL(SrsGroup::Burned, srsGroupForStage(9));
+    TEST_ASSERT_EQUAL(SrsGroup::Count, srsGroupForStage(0));
+    TEST_ASSERT_EQUAL(SrsGroup::Count, srsGroupForStage(10));
+
+    SrsCounts moved{42, 18, 9, 4, 2, true};
+    TEST_ASSERT_TRUE(moved.moveStage(4, 5));
+    TEST_ASSERT_EQUAL_UINT32(41, moved.apprentice);
+    TEST_ASSERT_EQUAL_UINT32(19, moved.guru);
+    TEST_ASSERT_EQUAL_UINT32(75, moved.total());
+    TEST_ASSERT_TRUE(moved.moveStage(5, 6));  // same bucket
+    TEST_ASSERT_EQUAL_UINT32(41, moved.apprentice);
+    TEST_ASSERT_EQUAL_UINT32(19, moved.guru);
+    TEST_ASSERT_TRUE(moved.moveStage(8, 9));
+    TEST_ASSERT_EQUAL_UINT32(3, moved.enlightened);
+    TEST_ASSERT_EQUAL_UINT32(3, moved.burned);
+    TEST_ASSERT_FALSE(moved.moveStage(0, 1));
+    TEST_ASSERT_FALSE(moved.moveStage(9, 10));
+    SrsCounts empty;
+    TEST_ASSERT_FALSE(empty.moveStage(1, 2));
+
+    JsonValue missing;
+    TEST_ASSERT_TRUE(p.parse("{\"data\":[]}", &missing));
+    TEST_ASSERT_FALSE(parseCollectionTotal(missing, &total));
+    JsonValue negative;
+    TEST_ASSERT_TRUE(p.parse("{\"total_count\":-1}", &negative));
+    TEST_ASSERT_FALSE(parseCollectionTotal(negative, &total));
+}
+
 static void test_assignment_parse() {
     JsonParser p;
     JsonValue v;
@@ -906,6 +961,7 @@ static void test_cache_snapshot_round_trip() {
     in.levelProgress.unlockedAt = 1759900000u;
     in.levelProgress.startedAt = 1759900100u;
     in.levelProgress.valid = true;
+    in.srs = SrsCounts{42, 18, 9, 4, 2, true};
     Assignment a;
     a.id = 100;
     a.subjectId = 42;
@@ -941,6 +997,13 @@ static void test_cache_snapshot_round_trip() {
     TEST_ASSERT_EQUAL(8, out.levelProgress.level);
     TEST_ASSERT_EQUAL_UINT32(1759900000u, out.levelProgress.unlockedAt);
     TEST_ASSERT_TRUE(out.levelProgress.valid);
+    TEST_ASSERT_TRUE(out.srs.valid);
+    TEST_ASSERT_EQUAL_UINT32(42, out.srs.apprentice);
+    TEST_ASSERT_EQUAL_UINT32(18, out.srs.guru);
+    TEST_ASSERT_EQUAL_UINT32(9, out.srs.master);
+    TEST_ASSERT_EQUAL_UINT32(4, out.srs.enlightened);
+    TEST_ASSERT_EQUAL_UINT32(2, out.srs.burned);
+    TEST_ASSERT_EQUAL_UINT32(75, out.srs.total());
     TEST_ASSERT_EQUAL(1, out.assignments.size());
     TEST_ASSERT_EQUAL_UINT32(100, out.assignments[0].id);
     TEST_ASSERT_EQUAL_UINT32(42, out.assignments[0].subjectId);
@@ -1066,6 +1129,7 @@ int main(int, char**) {
     RUN_TEST(test_summary_text_parser);
     RUN_TEST(test_review_response_parse);
     RUN_TEST(test_level_progressions_parse);
+    RUN_TEST(test_srs_total_count_and_groups);
     RUN_TEST(test_assignment_parse);
     RUN_TEST(test_subject_parse);
     RUN_TEST(test_summary_subject_ids);

@@ -70,7 +70,8 @@ def parse_shot(text: str, table: list[bytes]) -> Image.Image:
     return Image.frombytes("RGB", (width, height), bytes(pixels))
 
 
-def capture(port: str, timeout: float = 60.0, before: str | None = None) -> Image.Image:
+def capture(port: str, timeout: float = 60.0, before: str | None = None,
+            marker: str = "home drawn") -> Image.Image:
     table = rgb565_table()
     with serial.Serial(port, 115200, timeout=0.3) as s:
         s.dtr = False
@@ -85,7 +86,7 @@ def capture(port: str, timeout: float = 60.0, before: str | None = None) -> Imag
                 log += chunk
                 if not sent:
                     text = log.decode("utf-8", "replace")
-                    if "home drawn" in text or "alive heap" in text:
+                    if marker in text:
                         if before:
                             s.write((before + "\n").encode())
                             s.flush()
@@ -120,9 +121,11 @@ def main() -> int:
     ap.add_argument("--out", type=Path, default=Path("tools/screenshots/out/home.png"))
     ap.add_argument("--scale", type=int, default=4, help="also save NAME@Nx.png")
     ap.add_argument("--before", help="send this serial command before the screenshot")
+    ap.add_argument("--marker", default="home drawn",
+                    help="wait for this serial log text before pressing p")
     args = ap.parse_args()
 
-    img = capture(args.port, before=args.before)
+    img = capture(args.port, before=args.before, marker=args.marker)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     img.save(args.out)
     print(args.out)

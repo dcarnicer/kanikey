@@ -119,6 +119,14 @@ Filters that are used:
 | `hidden=false` | Exclude hidden |
 | `subject_ids=...` | Refresh specific assignments |
 | `levels=...` | Limit to allowed levels |
+| `srs_stages=...` | Home distribution buckets |
+
+The Home distribution makes five small collection requests with
+`srs_stages=1,2,3,4`, `5,6`, `7`, `8`, `9`, `hidden=false` and
+`page_after_id=999999999`; the cursor is past the last assignment, so `data` is
+empty and the response is ~350 bytes. It reads only the top-level
+`total_count`. A partial failure keeps the previous cached counts instead of
+replacing the bar with a mixed snapshot.
 
 Fields:
 
@@ -471,13 +479,14 @@ alters the SRS stage and the user's statistics. We prefer to leave the item as
 - Never delete the outbox before the POST is confirmed.
 
 **Implementation (2026-10-28).** The Home/user/batch snapshot is
-`/state/cache.bin` (`KKCA`, version 9); the batch subjects are
-`/kanikey/cache/subjects.bin` (`KKCS`, version 9) on SD. Version 3 added the
+`/state/cache.bin` (`KKCA`, version 10); the batch subjects are
+`/kanikey/cache/subjects.bin` (`KKCS`, version 10) on SD. Version 3 added the
 study-material notes to each cached subject, version 4 added the review
 presentation order, version 5 added the vacation timestamp, version 6 added the
 per-subject review statistics, version 7 added the level progression, version 8
-added vocabulary parts of speech/context sentences and version 9 adds the
-related-subject IDs; older files are discarded. Both carry the save time, an
+added vocabulary parts of speech/context sentences, version 9 added the
+related-subject IDs and version 10 adds the Home SRS distribution counts;
+older files are discarded. Both carry the save time, an
 FNV-1a fingerprint of the API token, the payload length and CRC32.
 The snapshot also stores the summary's `data_updated_at`; assignments keep
 their own `data_updated_at` for outbox reconciliation. Loading a snapshot

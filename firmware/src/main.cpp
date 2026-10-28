@@ -35,6 +35,7 @@
 #include "platform/WkLessons.h"
 #include "platform/WkLevelProgress.h"
 #include "platform/WkReview.h"
+#include "platform/WkSrsCounts.h"
 #include "wk/AnswerChecker.h"
 #include "wk/LessonQuiz.h"
 #include "wk/Outbox.h"
@@ -83,6 +84,7 @@ String gSerialLine;
 kk::User gUser;
 kk::Summary gSummary;
 kk::LevelProgress gLevelProgress;
+kk::SrsCounts gSrs;
 bool gHaveUser = false;
 bool gHaveSummary = false;
 bool gShowHome = false;
@@ -269,6 +271,7 @@ void saveCacheSnapshot() {
     snapshot.summary = gSummary;
     if (gHaveUser) snapshot.user = gUser;
     snapshot.levelProgress = gLevelProgress;
+    snapshot.srs = gSrs;
     if (gBatch.ok) snapshot.assignments = gBatch.assignments;
     if (!kk::cacheSaveSnapshot(snapshot)) {
         Serial.println("[cache] snapshot save failed");
@@ -314,6 +317,7 @@ bool loadCache() {
     gHaveUser = !snapshot.user.username.empty() && snapshot.user.level > 0;
     if (gHaveUser) gUser = std::move(snapshot.user);
     gLevelProgress = snapshot.levelProgress;
+    gSrs = snapshot.srs;
 
     gBatch = kk::ReviewBatch{};
     if (!snapshot.assignments.empty()) {
@@ -353,6 +357,12 @@ bool loadCache() {
                   static_cast<unsigned>(gBatch.assignments.size()),
                   static_cast<unsigned>(gBatch.subjects.size()),
                   static_cast<unsigned>(gDueReviews), static_cast<unsigned>(gCacheSavedAt));
+    if (gSrs.valid)
+        Serial.printf("[cache] srs A %u, G %u, M %u, E %u, B %u\n",
+                      static_cast<unsigned>(gSrs.apprentice), static_cast<unsigned>(gSrs.guru),
+                      static_cast<unsigned>(gSrs.master),
+                      static_cast<unsigned>(gSrs.enlightened),
+                      static_cast<unsigned>(gSrs.burned));
     return true;
 }
 
@@ -551,6 +561,16 @@ void runLevelProgress() {
     localDate(gLevelProgress.unlockedAt ? gLevelProgress.unlockedAt : gLevelProgress.startedAt,
               date, sizeof date);
     Serial.printf("[level] %u since %s\n", static_cast<unsigned>(gLevelProgress.level), date);
+}
+
+void runSrsCounts() {
+    kk::SrsCounts counts;
+    if (!kk::fetchSrsCounts(kk::DevToken::load(), &counts)) {
+        Serial.println("[srs] distribution unavailable; keeping the cached counts");
+        return;
+    }
+    gSrs = counts;
+    saveCacheSnapshot();
 }
 
 bool runBatch() {
@@ -1307,6 +1327,8 @@ bool sendOutboxItem(uint32_t seq) {
                 gStageChange.to = update.srsStage;
                 gStageChange.from =
                     update.assignmentId == gPendingStageAssignment ? gPendingStageFrom : 0;
+                if (gSrs.valid && gStageChange.from && gStageChange.to)
+                    gSrs.moveStage(gStageChange.from, gStageChange.to);
                 Serial.printf("[review] assignment %u SRS %u -> %u\n",
                               static_cast<unsigned>(assignmentId),
                               static_cast<unsigned>(gStageChange.from),
@@ -2478,6 +2500,7 @@ void settingsKey(const KeyEvent& e) {
             gUser = kk::User{};
             gSummary = kk::Summary{};
             gLevelProgress = kk::LevelProgress{};
+            gSrs = kk::SrsCounts{};
             gHaveUser = false;
             gHaveSummary = false;
             gBatch = kk::ReviewBatch{};
@@ -2800,6 +2823,13 @@ void startSync() {
     drawBoot();
     runSummary();
     runLevelProgress();
+    if (gSyncIssue == SyncIssue::None) {
+        snprintf(gNetLine, sizeof gNetLine, "SRS: syncing");
+        drawBoot();
+        runSrsCounts();
+    } else {
+        Serial.println("[srs] skipped after a sync error");
+    }
     gSyncing = false;
     gDirty = true;
 }
@@ -3006,15 +3036,21 @@ void drawHome() {
     d.setTextColor(kBrand, kBg);
     d.drawString("KaniKey", 6, 2);
 
+    char sync[24];
+    snprintf(sync, sizeof sync, "Synced %s", gSyncClock);
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextDatum(lgfx::top_right);
+    d.setTextColor(gOffline ? kWarn : kDim, kBg);
+    d.drawString(sync, 198, 5);
+
     const int bat = tgc::board::batteryPercent();
     char right[20];
     if (bat >= 0)
         snprintf(right, sizeof right, "%d%%", bat);
     else
         snprintf(right, sizeof right, "USB");
-    d.setTextFont(1);
     d.setTextColor(bat >= 0 && bat < 20 ? kWarn : kDim, kBg);
-    d.setTextDatum(lgfx::top_right);
     d.drawString(right, 233, 5);
 
     d.setTextDatum(lgfx::top_left);
@@ -3041,18 +3077,53 @@ void drawHome() {
     d.drawString("REVIEWS DUE", 8, 73);
     d.drawString("LESSONS", 164, 73);
 
-    d.drawFastHLine(4, 85, 232, kLine);
     d.setTextFont(1);
     d.setTextSize(1);
     d.setTextColor(gOffline ? kWarn : kDim, kBg);
-    d.drawString("Next review", 8, 91);
-    d.drawString(gOffline ? "Offline" : "Synced", 8, 105);
+    d.drawString("Next review", 8, 86);
     d.setTextDatum(lgfx::top_right);
     d.setTextColor(kText, kBg);
-    d.drawString(gNextReview, 232, 91);
-    d.setTextColor(gOffline ? kWarn : kFaint, kBg);
-    d.drawString(gSyncClock, 232, 105);
+    d.drawString(gNextReview, 232, 86);
     d.setTextDatum(lgfx::top_left);
+
+    // SRS distribution: one segment per stage group, then A/G/M/E/B counts.
+    d.setTextFont(0);
+    d.setTextSize(1);
+    if (gSrs.valid) {
+        const uint32_t bucket[5] = {gSrs.apprentice, gSrs.guru, gSrs.master,
+                                    gSrs.enlightened, gSrs.burned};
+        const uint16_t colors[5] = {kErr, kWarn, kAccentHi, kReading, kFaint};
+        const char label[5] = {'A', 'G', 'M', 'E', 'B'};
+        const uint32_t total = gSrs.total();
+        if (total > 0) {
+            int x = 8;
+            for (int i = 0; i < 5; ++i) {
+                int w = 0;
+                if (i == 4) {
+                    w = 232 - x;
+                } else {
+                    w = static_cast<int>((static_cast<uint64_t>(bucket[i]) * 224u + total / 2u) /
+                                         total);
+                    if (bucket[i] > 0 && w < 3) w = 3;
+                }
+                if (w > 232 - x) w = 232 - x;
+                if (w > 0) d.fillRect(x, 100, w - 1, 3, colors[i]);
+                x += w;
+            }
+        }
+        int x = 8;
+        for (int i = 0; i < 5; ++i) {
+            d.fillRect(x, 107, 4, 4, colors[i]);
+            d.setTextColor(kDim, kBg);
+            char count[16];
+            snprintf(count, sizeof count, "%c %u", label[i], static_cast<unsigned>(bucket[i]));
+            d.drawString(count, x + 5, 106);
+            x += 43;
+        }
+    } else {
+        d.setTextColor(kFaint, kBg);
+        d.drawString("SRS: sync for counts", 8, 106);
+    }
 
     d.setTextFont(0);
     d.setTextSize(1);
@@ -3718,6 +3789,7 @@ void seedDevCache() {
     snapshot.levelProgress.unlockedAt = stamp - 7 * 86400;
     snapshot.levelProgress.startedAt = stamp - 7 * 86400;
     snapshot.levelProgress.valid = true;
+    snapshot.srs = kk::SrsCounts{42, 18, 9, 4, 2, true};
 
     const auto addAssignment = [&snapshot, stamp](uint32_t id, uint32_t subjectId,
                                                   kk::SubjectType type) {
@@ -3802,6 +3874,7 @@ void clearDevCache() {
     gHaveSummary = false;
     gHaveUser = false;
     gBatch = kk::ReviewBatch{};
+    gSrs = kk::SrsCounts{};
     gDueReviews = 0;
     gLessons = 0;
     gOffline = false;

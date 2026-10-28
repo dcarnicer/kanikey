@@ -14,13 +14,14 @@
 #include <vector>
 
 #include "wk/LevelProgress.h"
+#include "wk/SrsCounts.h"
 #include "wk/Summary.h"
 #include "wk/Types.h"
 #include "wk/User.h"
 
 namespace kk {
 
-constexpr uint16_t kCacheVersion = 9;
+constexpr uint16_t kCacheVersion = 10;
 constexpr size_t kCacheHeaderBytes = 24;
 
 struct CacheMeta {
@@ -33,6 +34,7 @@ struct CacheSnapshot {
     Summary summary;
     User user;
     LevelProgress levelProgress;
+    SrsCounts srs;
     std::vector<Assignment> assignments;
 };
 

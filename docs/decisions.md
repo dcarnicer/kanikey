@@ -547,3 +547,26 @@ losing a session on a stray `Esc`, and a sync can be requested deliberately.
 **Implications:** changing settings never calls WaniKani. `Sync now` may flush
 the existing outbox and is a user action. Account/study preferences, clear-cache
 and the auth/rate-limit screens are still open (SETUP-05/07).
+
+---
+
+## 2026-10-28 — Home SRS distribution uses five `total_count` requests
+
+**Decision:** sync requests `/assignments` five times with
+`page_after_id=999999999&hidden=false` and one `srs_stages` bucket per request
+(`1,2,3,4`, `5,6`, `7`, `8`, `9`). The cursor is past the last assignment, so
+`data` is empty and only the collection's top-level `total_count` is parsed.
+The five counts are cached in `KKCA` v10 and Home draws a 224 px segmented bar
+with A/G/M/E/B labels.
+
+**Why:** `/summary` has no stage breakdown and downloading all assignments to
+count them would need multiple 500-item pages and a large JSON DOM. Five tiny
+requests fit the existing client and keep the distribution available offline.
+
+**Implications:** a sync adds five short requests (~350 B each) after the user,
+summary and level requests; they are skipped when the sync already failed. A
+partial failure keeps the previous cached counts, and a cache without counts
+shows `SRS: sync for counts`. A successful live review moves one count between
+buckets; the next sync replaces the whole distribution. The review queue still
+comes from `/summary` and the per-batch `/assignments` request; the bar is
+display-only.

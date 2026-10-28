@@ -81,7 +81,7 @@ later allocation.
   fallback was removed on 2026-10-28; the build dropped from 1,741,705 B to
   1,273,425 B before the cache work. A missing glyph shows `no glyph`.
 - The Home layout was rebalanced after a live screenshot: 16 px brand, 32 px
-  counters, 8 px labels, 12 px lower rows. `tools/shot.py` reads the 240×135
+  counters, 8 px labels and 8 px lower rows. `tools/shot.py` reads the 240×135
   RGB332 canvas over USB and writes a PNG.
 - A physical key-press pass still needs to be recorded here.
 
@@ -294,3 +294,19 @@ WaniKani subjects and mnemonics.
 - Vacation mode with an account that is actually on vacation.
 - Ways to dismiss rejected outbox items.
 - Real renderer/UI font instead of the M5GFX text calls.
+
+### Hardware verification 2026-10-28 (UI-01)
+
+- `/v2/assignments` does not accept `per_page`; the count requests use
+  `srs_stages=<bucket>&hidden=false&page_after_id=999999999`. The cursor past
+  the last assignment leaves `data` empty while `total_count` still reports the
+  full filtered collection. Each response was 335-360 B.
+- The five requests returned Apprentice 145, Guru 143, Master 81,
+  Enlightened 147 and Burned 586 (1,102 assignments). Home drew the segmented
+  224 px bar and the `A/G/M/E/B` labels; the layout is bar y=100, labels y=106,
+  status y=117 and hint y=125.
+- The sync clock moved to the header (`Synced 20:39`) with a gap before the
+  battery. The counts were stored in `KKCA` v10; the next boot logged
+  `[cache] srs A 145, G 143, M 81, E 147, B 586`, so the bar also has cached
+  data offline. A live screenshot was captured in `tools/screenshots/out/`
+  (not committed because it contains user data).

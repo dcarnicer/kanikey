@@ -53,6 +53,11 @@ Working on hardware:
 - Level progress: `/level_progressions` is fetched on sync and cached. Home
   shows the current level's unlock date in the low-priority status line
   (`L8 since 03 Feb`); the real request returned 200 on hardware.
+- SRS distribution: sync fetches five `/assignments` buckets by `srs_stages`
+  and reads `total_count` only; Home draws the Apprentice/Guru/Master/
+  Enlightened/Burned bar with counts. The counts are cached, so the bar works
+  offline. The five requests add ~350 B each to a sync and are skipped after a
+  sync error.
 - Item detail: review batches now keep mnemonics/hints and fetch their
   component subjects; `Tab` on feedback opens a detail card (meanings/readings/
   synonyms, meaning mnemonic, reading mnemonic, notes, components). Vocabulary
@@ -87,11 +92,11 @@ Working on hardware:
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 47 native tests pass. GitHub Actions runs gitleaks on `main`.
+- 48 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,387,057 B / 1,835,008 B flash (75.6%)**, **94,288 B /
-327,680 B static RAM (28.8%)**. The dev image is 1,394,225 B. Removing
-`efontJA_16` freed ~468 KB and leaves ~447 KB of flash headroom.
+Current build: **1,389,657 B / 1,835,008 B flash (75.7%)**, **94,312 B /
+327,680 B static RAM (28.8%)**. The dev image is 1,396,841 B. Removing
+`efontJA_16` freed ~468 KB and leaves ~445 KB of flash headroom.
 
 ## Priority summary
 
@@ -103,7 +108,7 @@ Current build: **1,387,057 B / 1,835,008 B flash (75.6%)**, **94,288 B /
 | 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; review history and audio remain | Partial | WK-11, EXT-06 |
 | 5 | Outbox and API robustness | Rejected items, 429 and invalid auth have no user path | Partial | API-01, API-02 |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
-| 7 | UI, stats and sync | Missing SRS bar, sync progress and accuracy; item detail is live | Partial | UI-01, UI-02 |
+| 7 | UI, stats and sync | Missing sync progress and accuracy; the SRS bar and item detail are live | Partial | UI-02, UI-03 |
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal ported; OTA/widgets pending | TNG-02, TNG-03 |
 | 9 | Technical debt, CI and release | Maintainability and shipping | Ongoing | TECH-01, TECH-04 |
 | 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | Not started | EXT-01, EXT-03 |
@@ -122,7 +127,7 @@ lesson flow.
 | 3 | Setup and device UX | TNG-02 | OTA release path (setup/settings complete) |
 | 4 | WaniKani data and detail | WK-11 (WK-01/03/04/05/06/07/08/09/10 done) | Review history and progress |
 | 5 | API robustness | API-01 → API-07 | Recoverable rejected, rate-limited and auth errors |
-| 6 | UI, stats and sync | UI-01 → UI-08 (UI-04 done) | SRS bar, sync screen, accuracy and polish |
+| 6 | UI, stats and sync | UI-02 → UI-08 (UI-01/UI-04 done) | Sync screen, accuracy and polish |
 | 7 | Technical debt and release | TECH-01 → TECH-07 | CI, refactor, version, OTA and license |
 | 8 | Kakehashi-inspired extras | EXT-01 → EXT-09 | Practice modes, critical items, audio and stats |
 
@@ -362,7 +367,16 @@ the device; account/study preferences and clear error actions remain.
 ## 7. UI, stats and sync (M5)
 
 - **UI-01 — Home SRS distribution bar.** Apprentice/Guru/Master/Enlightened/
-  Burned counts and visual bars.
+  Burned counts and visual bars. **Done (2026-10-28):** sync asks for five
+  `/assignments` buckets (`srs_stages=1,2,3,4`, `5,6`, `7`, `8`, `9`) with
+  `page_after_id=999999999&hidden=false` and reads only `total_count`; the
+  counts are stored in `KKCA` v10. Home draws the segmented 224 px bar at
+  y=100 with 3 px segments and A/G/M/E/B labels; the sync clock moved to the
+  header. A missing distribution shows `SRS: sync for counts`, and an offline
+  boot keeps the cached bar. A successful live review moves one count between
+  buckets; the next sync is authoritative. Native-tested and hardware-verified
+  (2026-10-28): counts A 145 / G 143 / M 81 / E 147 / B 586; each count request
+  returned ~350 B.
 - **UI-02 — Sync screen.** Progress, cancel and a clear offline/error state.
 - **UI-03 — Session summary.** Accuracy, time, completed items, mistakes and
   SRS stage changes, not only counts.
