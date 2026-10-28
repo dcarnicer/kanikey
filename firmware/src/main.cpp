@@ -468,11 +468,12 @@ bool runBatch() {
         Serial.println("[review] no summary yet");
         return false;
     }
+    const size_t limit = static_cast<size_t>(kk::settingsReviewBatchSize());
     const uint32_t now = effectiveNow();
-    const std::vector<uint32_t> ids = gSummary.dueSubjectIds(now, 20);
+    const std::vector<uint32_t> ids = gSummary.dueSubjectIds(now, limit);
     Serial.printf("[review] %u due subject ids\n", static_cast<unsigned>(ids.size()));
     gFreeCanvasForRequest = true;
-    kk::ReviewBatch batch = kk::fetchReviewBatch(kk::DevToken::load(), ids, now, 20);
+    kk::ReviewBatch batch = kk::fetchReviewBatch(kk::DevToken::load(), ids, now, limit);
     gFreeCanvasForRequest = false;
     if (!batch.ok) {
         Serial.printf("[review] batch failed: %s\n", batch.error.c_str());
@@ -1007,8 +1008,12 @@ void endReview() {
 
 void startReview() {
     if (!gHaveSummary) return;
+    const size_t reviewLimit = static_cast<size_t>(kk::settingsReviewBatchSize());
     if (gBatch.assignments.empty()) {
-        drawLoading("Fetching reviews...", "20 due items, please wait");
+        char subtitle[48];
+        snprintf(subtitle, sizeof subtitle, "%u due items, please wait",
+                 static_cast<unsigned>(reviewLimit));
+        drawLoading("Fetching reviews...", subtitle);
         flushOutbox();
         if (!runBatch()) {
             drawLoading("Could not load reviews", gNetLine);
@@ -1025,7 +1030,8 @@ void startReview() {
         if (outboxHasAssignment(a.id)) continue;
         if (subjectById(a.subjectId)) due.push_back(a);
     }
-    gQueue.build(due, gBatch.subjects, now, 20);
+    gQueue.setMeaningFirst(kk::settingsMeaningFirst());
+    gQueue.build(due, gBatch.subjects, now, reviewLimit);
     if (gQueue.empty()) {
         Serial.println("[review] no reviewable items");
         return;
@@ -1231,9 +1237,14 @@ void drawLesson() {
 
 void startLessons() {
     if (!gHaveSummary) return;
-    drawLoading("Fetching lessons...", "5 at a time, please wait");
+    const size_t lessonLimit = static_cast<size_t>(kk::settingsLessonBatchSize());
+    char subtitle[48];
+    snprintf(subtitle, sizeof subtitle, "%u at a time, please wait",
+             static_cast<unsigned>(lessonLimit));
+    drawLoading("Fetching lessons...", subtitle);
     gFreeCanvasForRequest = true;
-    gLessonBatch = kk::fetchLessonBatch(kk::DevToken::load(), gSummary.lessonSubjectIds(5), 5);
+    gLessonBatch = kk::fetchLessonBatch(kk::DevToken::load(),
+                                        gSummary.lessonSubjectIds(lessonLimit), lessonLimit);
     gFreeCanvasForRequest = false;
     if (!gLessonBatch.ok) {
         Serial.printf("[lesson] failed: %s\n", gLessonBatch.error.c_str());
@@ -1296,7 +1307,7 @@ void lessonKey(const KeyEvent& e) {
     }
 }
 
-constexpr int kSettingsRows = 7;
+constexpr int kSettingsRows = 10;
 
 void setSettingsNote(const char* text, uint16_t color = kFaint) {
     snprintf(gSettingsNote, sizeof gSettingsNote, "%s", text ? text : "");
@@ -1381,7 +1392,27 @@ void settingsAction() {
             setSettingsNote((String("Sleep after ") + secondsLabel(value)).c_str(), kOk);
             break;
         }
-        case 4:
+        case 4: {
+            static const int kSizes[] = {10, 20, 30};
+            const int value = nextPreset(kSizes, 3, kk::settingsReviewBatchSize());
+            kk::settingsSetReviewBatchSize(value);
+            setSettingsNote((String("Review batch ") + String(value)).c_str(), kOk);
+            break;
+        }
+        case 5: {
+            const bool meaning = !kk::settingsMeaningFirst();
+            kk::settingsSetMeaningFirst(meaning);
+            setSettingsNote(meaning ? "Meaning first" : "Reading first", kOk);
+            break;
+        }
+        case 6: {
+            static const int kLessons[] = {3, 5, 10};
+            const int value = nextPreset(kLessons, 3, kk::settingsLessonBatchSize());
+            kk::settingsSetLessonBatchSize(value);
+            setSettingsNote((String("Lesson batch ") + String(value)).c_str(), kOk);
+            break;
+        }
+        case 7:
             if (gReviewActive) {
                 setSettingsNote("End the review session first", kWarn);
                 break;
@@ -1390,7 +1421,7 @@ void settingsAction() {
             gShowHome = false;
             startSetupPortal();
             break;
-        case 5:
+        case 8:
             if (!gSdOk || !gPack.ready() || !kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
                 setSettingsNote("Configure Wi-Fi, token and pack", kWarn);
                 break;
@@ -1399,7 +1430,7 @@ void settingsAction() {
             gShowHome = false;
             startSync();
             break;
-        case 6:
+        case 9:
             gAboutActive = true;
             gSettingsNote[0] = 0;
             break;
@@ -1980,20 +2011,29 @@ void drawSettings() {
     d.drawFastHLine(4, 36, 232, kLine);
 
     static const char* kLabels[] = {"Brightness", "Dim after", "Blank after", "Sleep after",
-                                    "Setup portal", "Sync now", "About"};
+                                    "Review batch", "Order", "Lesson batch", "Setup portal",
+                                    "Sync now", "About"};
     String values[kSettingsRows];
     values[0] = String(kk::settingsBrightness());
     values[1] = secondsLabel(kk::settingsDimSeconds());
     values[2] = secondsLabel(kk::settingsBlankSeconds());
     values[3] = secondsLabel(kk::settingsSleepSeconds());
-    values[4] = "open";
-    values[5] = "run";
-    values[6] = "info";
+    values[4] = String(kk::settingsReviewBatchSize());
+    values[5] = kk::settingsMeaningFirst() ? "Meaning" : "Reading";
+    values[6] = String(kk::settingsLessonBatchSize());
+    values[7] = "open";
+    values[8] = "run";
+    values[9] = "info";
 
-    for (int i = 0; i < kSettingsRows; ++i) {
-        const int y = 42 + i * 11;
+    constexpr int kVisibleRows = 7;
+    int top = gSettingsIndex - kVisibleRows / 2;
+    if (top < 0) top = 0;
+    if (top > kSettingsRows - kVisibleRows) top = kSettingsRows - kVisibleRows;
+    for (int row = 0; row < kVisibleRows; ++row) {
+        const int i = top + row;
+        const int y = 42 + row * 11;
         if (i == gSettingsIndex) {
-            d.fillRect(4, y - 2, 232, 11, kSurfaceHi);
+            d.fillRect(4, y - 2, 228, 11, kSurfaceHi);
             d.fillRect(4, y - 2, 2, 11, kAccent);
         }
         d.setTextFont(0);
@@ -2004,9 +2044,16 @@ void drawSettings() {
         d.setTextDatum(lgfx::top_right);
         d.setTextColor(i == gSettingsIndex ? kAccentHi : kFaint,
                        i == gSettingsIndex ? kSurfaceHi : kBg);
-        d.drawString(values[i].c_str(), 230, y);
+        d.drawString(values[i].c_str(), 228, y);
         d.setTextDatum(lgfx::top_left);
     }
+    // Scroll thumb when there are more rows than fit.
+    constexpr int kTrackY = 42;
+    constexpr int kTrackH = 66;
+    d.fillRect(235, kTrackY, 2, kTrackH, kLine);
+    const int thumbH = std::max(10, kTrackH * kVisibleRows / kSettingsRows);
+    const int thumbY = kTrackY + (kTrackH - thumbH) * top / (kSettingsRows - kVisibleRows);
+    d.fillRect(235, thumbY, 2, thumbH, kAccentHi);
 
     d.setTextFont(0);
     d.setTextColor(gSettingsNote[0] ? gSettingsNoteColor : kFaint, kBg);

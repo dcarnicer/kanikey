@@ -364,8 +364,8 @@ deck catalog, upload, OTA and progress-restore routes are deliberately dropped.
 ## 2026-10-28 — Pause and settings are local-only
 
 **Decision:** `Esc` in a review opens Continue / End session / Settings; `Esc`
-from Home opens Settings. Brightness, dim/blank/sleep timings, Setup portal,
-Sync now and About are on the device and stored in NVS.
+from Home opens Settings. Brightness, dim/blank/sleep timings, review batch/order, lesson batch,
+Setup portal, Sync now and About are on the device and stored in NVS.
 
 **Why:** the setup portal removed the serial cable, so the same session should
 also expose the device controls without one. Pausing instead of ending avoids

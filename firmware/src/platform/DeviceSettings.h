@@ -28,6 +28,14 @@ int settingsBlankSeconds();
 bool settingsSetBlankSeconds(int seconds);
 int settingsSleepSeconds();
 bool settingsSetSleepSeconds(int seconds);
+// Study preferences: review session size, lesson batch size and whether the
+// meaning or the reading is asked first.
+int settingsReviewBatchSize();
+bool settingsSetReviewBatchSize(int count);
+int settingsLessonBatchSize();
+bool settingsSetLessonBatchSize(int count);
+bool settingsMeaningFirst();
+bool settingsSetMeaningFirst(bool meaningFirst);
 
 // "<+01>-1" / "<-0330>3:30": a fixed offset east of UTC, used when the browser
 // cannot provide a DST-aware rule.

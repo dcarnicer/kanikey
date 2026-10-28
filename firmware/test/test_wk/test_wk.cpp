@@ -228,6 +228,21 @@ static void test_session_meaning_then_reading() {
     TEST_ASSERT_EQUAL(1, q.completedCount());
 }
 
+static void test_session_reading_first() {
+    const Subject s = kanji();
+    ReviewQueue q;
+    q.setMeaningFirst(false);
+    q.build({assignment(12, s.id, 3, 100)}, {s}, 1000);
+    TEST_ASSERT_EQUAL(ReviewPart::Reading, q.part());
+    AnswerOutcome o = q.answer(AnswerStatus::Correct);
+    TEST_ASSERT_TRUE(o.advanced);
+    TEST_ASSERT_FALSE(o.completed);
+    TEST_ASSERT_EQUAL(ReviewPart::Meaning, q.part());
+    o = q.answer(AnswerStatus::Correct);
+    TEST_ASSERT_TRUE(o.completed);
+    TEST_ASSERT_TRUE(q.empty());
+}
+
 static void test_session_wrong_parts_requeue_and_count() {
     const Subject s = kanji();
     ReviewQueue q;
@@ -711,6 +726,7 @@ int main(int, char**) {
     RUN_TEST(test_vocabulary_and_radical_rules);
     RUN_TEST(test_empty_and_non_kana_readings);
     RUN_TEST(test_session_meaning_then_reading);
+    RUN_TEST(test_session_reading_first);
     RUN_TEST(test_session_wrong_parts_requeue_and_count);
     RUN_TEST(test_session_warning_does_not_advance);
     RUN_TEST(test_session_radical_only_meaning);

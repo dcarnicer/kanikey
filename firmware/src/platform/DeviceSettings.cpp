@@ -16,12 +16,18 @@ constexpr const char* kKeyBrightness = "bright";
 constexpr const char* kKeyDim = "dim";
 constexpr const char* kKeyBlank = "blank";
 constexpr const char* kKeySleep = "sleep";
+constexpr const char* kKeyReviewSize = "revsize";
+constexpr const char* kKeyLessonSize = "lessonsz";
+constexpr const char* kKeyMeaningFirst = "order";
 
 struct DisplaySettings {
     int brightness = 128;
     int dim = 30;
     int blank = 60;
     int sleep = 120;
+    int reviewSize = 20;
+    int lessonSize = 5;
+    bool meaningFirst = true;
 };
 
 DisplaySettings& displaySettings() {
@@ -35,10 +41,15 @@ DisplaySettings& displaySettings() {
     values.dim = p.getInt(kKeyDim, values.dim);
     values.blank = p.getInt(kKeyBlank, values.blank);
     values.sleep = p.getInt(kKeySleep, values.sleep);
+    values.reviewSize = p.getInt(kKeyReviewSize, values.reviewSize);
+    values.lessonSize = p.getInt(kKeyLessonSize, values.lessonSize);
+    values.meaningFirst = p.getInt(kKeyMeaningFirst, values.meaningFirst ? 1 : 0) != 0;
     p.end();
     if (values.brightness < 8 || values.brightness > 255) values.brightness = 128;
     for (int* v : {&values.dim, &values.blank, &values.sleep})
         if (*v < 0 || *v > 3600) *v = 0;
+    if (values.reviewSize < 5 || values.reviewSize > 50) values.reviewSize = 20;
+    if (values.lessonSize < 1 || values.lessonSize > 10) values.lessonSize = 5;
     return values;
 }
 
@@ -134,6 +145,31 @@ bool settingsSetSleepSeconds(int seconds) {
     DisplaySettings& v = displaySettings();
     v.sleep = seconds;
     return saveInt(kKeySleep, seconds);
+}
+
+int settingsReviewBatchSize() { return displaySettings().reviewSize; }
+bool settingsSetReviewBatchSize(int count) {
+    if (count < 5) count = 5;
+    if (count > 50) count = 50;
+    DisplaySettings& v = displaySettings();
+    v.reviewSize = count;
+    return saveInt(kKeyReviewSize, count);
+}
+
+int settingsLessonBatchSize() { return displaySettings().lessonSize; }
+bool settingsSetLessonBatchSize(int count) {
+    if (count < 1) count = 1;
+    if (count > 10) count = 10;
+    DisplaySettings& v = displaySettings();
+    v.lessonSize = count;
+    return saveInt(kKeyLessonSize, count);
+}
+
+bool settingsMeaningFirst() { return displaySettings().meaningFirst; }
+bool settingsSetMeaningFirst(bool meaningFirst) {
+    DisplaySettings& v = displaySettings();
+    v.meaningFirst = meaningFirst;
+    return saveInt(kKeyMeaningFirst, meaningFirst ? 1 : 0);
 }
 
 String formatFixedTimeZone(int offsetMinutes) {

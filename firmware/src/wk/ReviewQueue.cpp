@@ -50,12 +50,22 @@ void ReviewQueue::build(const std::vector<Assignment>& assignments,
 }
 
 void ReviewQueue::setPart(SessionItem& item) {
-    if (item.needsMeaning && !item.meaningDone) {
-        part_ = ReviewPart::Meaning;
-    } else if (item.needsReading && !item.readingDone) {
-        part_ = ReviewPart::Reading;
+    if (meaningFirst_) {
+        if (item.needsMeaning && !item.meaningDone) {
+            part_ = ReviewPart::Meaning;
+        } else if (item.needsReading && !item.readingDone) {
+            part_ = ReviewPart::Reading;
+        } else {
+            part_ = ReviewPart::None;
+        }
     } else {
-        part_ = ReviewPart::None;
+        if (item.needsReading && !item.readingDone) {
+            part_ = ReviewPart::Reading;
+        } else if (item.needsMeaning && !item.meaningDone) {
+            part_ = ReviewPart::Meaning;
+        } else {
+            part_ = ReviewPart::None;
+        }
     }
 }
 
@@ -131,10 +141,7 @@ AnswerOutcome ReviewQueue::answer(AnswerStatus status) {
     }
 
     // Move to the part that still needs an answer.
-    if (item.needsMeaning && !item.meaningDone)
-        part_ = ReviewPart::Meaning;
-    else if (item.needsReading && !item.readingDone)
-        part_ = ReviewPart::Reading;
+    setPart(item);
     out.advanced = true;
     return out;
 }

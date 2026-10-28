@@ -51,6 +51,10 @@ public:
     const SessionItem* current() const { return queue_.empty() ? nullptr : &queue_.front(); }
     ReviewPart part() const { return part_; }
 
+    // Order of the two parts within an item. Call before build(); defaults to
+    // meaning first. Reading-first is a user preference.
+    void setMeaningFirst(bool meaningFirst) { meaningFirst_ = meaningFirst; }
+
     // Applies one answer to the current part. Warning leaves the item and the
     // part untouched (the UI retries the same answer). Incorrect increments the
     // counter and either switches to the other part or requeues the item.
@@ -70,6 +74,7 @@ private:
     std::deque<SessionItem> queue_;
     std::vector<SessionItem> completed_;
     ReviewPart part_ = ReviewPart::None;
+    bool meaningFirst_ = true;
 };
 
 }  // namespace kk

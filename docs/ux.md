@@ -426,9 +426,12 @@ design.
 
 - Open with `Esc` from Home, or `Esc` in a review → Pause → Settings.
 - Implemented rows: `Brightness`, `Dim after`, `Blank after`, `Sleep after`,
-  `Setup portal`, `Sync now`, `About`.
+  `Review batch`, `Order`, `Lesson batch`, `Setup portal`, `Sync now`, `About`.
 - `Brightness` cycles 64/128/192/255; the timings cycle presets and `off`.
-  They are stored in NVS and applied without a reboot.
+  Review batch cycles 10/20/30, lesson batch 3/5/10, and order toggles
+  meaning-first / reading-first. All are stored in NVS and applied without a
+  reboot.
+- The list scrolls when there are more rows than fit (7 visible, scroll bar).
 - `Setup portal` reopens the Wi-Fi/token/time page; it is disabled during a
   review so the session is not lost. `Sync now` starts a manual sync.
 - About shows the firmware version, build date, pack status, cached batch,

@@ -11,10 +11,11 @@ KaniKey firmware for the M5Stack Cardputer ADV.
 - Mounts a FAT32 microSD on SPI3 and prints its size.
 - Shows every key event on screen and over serial: TCA8418 code, grid position,
   action and character on the main/Shift layer.
-- `Esc` from Home opens Settings: brightness, dim/blank/sleep timings, Setup
-  portal, Sync now and About (version, pack, cache, heap, last sync, zone).
-  Values persist in NVS. In a review, `Esc` opens Pause (Continue / End session
-  / Settings) instead of quitting immediately.
+- `Esc` from Home opens Settings: brightness, dim/blank/sleep timings, review
+  batch size/order, lesson batch size, Setup portal, Sync now and About
+  (version, pack, cache, heap, last sync, zone). Values persist in NVS. In a
+  review, `Esc` opens Pause (Continue / End session / Settings) instead of
+  quitting immediately.
 - On first boot, or when Wi-Fi/token are missing, starts a WPA2 setup access
   point `KaniKey-XXXX` (password on screen). The phone saves the home Wi-Fi,
   the device joins it and serves the second setup page at its station IP.
