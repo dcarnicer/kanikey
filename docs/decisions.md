@@ -338,3 +338,23 @@ snapshot fits LittleFS. The token fingerprint discards another account's data.
 request; completed items are pruned from the cache and stay in the outbox.
 `data_updated_at` refresh and manual-sync invalidation remain open (CACHE-05),
 as does the real online fetch → offline → reconnect E2E (CACHE-07).
+
+---
+
+## 2026-10-28 — Two-phase setup portal, no lesson writes
+
+**Decision:** first boot starts a WPA2 `KaniKey-XXXX` AP. The phone saves the
+home Wi-Fi there; the device joins it and serves the second page at its station
+IP. The token is validated with `GET /user` on that page, the browser sends the
+clock and POSIX time-zone rule, and the pack can be re-checked. Setup ends with
+**Start KaniKey** and the first sync.
+
+**Why:** the AP-only page cannot reach WaniKani to validate the token. The
+station page gives real validation without keeping the AP open, and the browser
+is a reliable clock/zone source on a device without an RTC.
+
+**Implications:** the token and Wi-Fi password are never logged or shown back.
+Setup only reads `/user`; it never calls `PUT /assignments/{id}/start`, so it
+cannot move lessons. The normal first sync afterwards may flush reviews already
+waiting in the outbox. Tangocho's
+deck catalog, upload, OTA and progress-restore routes are deliberately dropped.

@@ -11,8 +11,15 @@ KaniKey firmware for the M5Stack Cardputer ADV.
 - Mounts a FAT32 microSD on SPI3 and prints its size.
 - Shows every key event on screen and over serial: TCA8418 code, grid position,
   action and character on the main/Shift layer.
-- If Tangocho already saved Wi-Fi credentials in NVS namespace `net`, joins that
-  network, syncs time with SNTP and calls `GET /v2/user` and `GET /summary`.
+- On first boot, or when Wi-Fi/token are missing, starts a WPA2 setup access
+  point `KaniKey-XXXX` (password on screen). The phone saves the home Wi-Fi,
+  the device joins it and serves the second setup page at its station IP.
+- On that page the WaniKani token is validated with `GET /user`, the browser
+  sets the clock/time zone, and the visual pack can be checked. Setup only
+  reads `/user`; it never starts lessons. The first sync after Finish may flush
+  the existing outbox.
+- Joins the saved network, syncs time with SNTP and calls `GET /v2/user` and
+  `GET /summary`.
 - With a token, the Home screen shows the account level, due reviews, lessons,
   next review and last sync.
 - Measures internal heap before and after each TLS request.
@@ -159,6 +166,7 @@ prints or stores the password. `token` prompts for the WaniKani token, sends
 | `x` | Queue a synthetic review (test persistence) |
 | `z` | Clear the outbox (test only) |
 | `b` | Fetch a 20-item review batch (logs only) |
+| `P` | Open the setup portal (Wi-Fi/token/time/pack) |
 | `v` | Fetch (if needed) and start a review session |
 | `l` | Fetch and show the first lesson card |
 | `g` | Next mnemonic page in a lesson |
@@ -167,12 +175,25 @@ prints or stores the password. `token` prompts for the WaniKani token, sends
 | `q` | Quit the review session |
 | `r` | Restart |
 
-## Wi-Fi for this milestone
+## Setup portal
 
-The setup portal is not built yet. This build reads the credentials Tangocho
-already stores in NVS (`net` / `ssid` / `pass`). Flashing an app-only image keeps
-NVS, so a Cardputer previously configured with Tangocho should join the same
-network. A production KaniKey will use its own setup flow.
+On first boot, or after pressing `P`, the device starts a WPA2 access point:
+
+1. The screen shows the network (`KaniKey-XXXX`), its password and
+   `http://192.168.4.1/`.
+2. The phone joins it and saves the home Wi-Fi. The AP then closes; the device
+   joins the home network and shows its station IP.
+3. The phone moves to the same home network and opens that IP. The page stores
+   the WaniKani token only after `GET /user` succeeds, sets the clock and POSIX
+   time zone from the browser, and can re-check `/kanikey/glyphs.kgp`.
+4. **Start KaniKey** closes the portal and runs the first sync.
+
+The token and Wi-Fi password are never logged, never shown back on the page and
+never written to the repository. The portal does not call
+`PUT /assignments/{id}/start`, so setup does not move lessons in WaniKani. The
+normal first sync after **Start KaniKey** may flush the existing outbox. There
+is no deck catalog, OTA or progress restore; those Tangocho routes were
+dropped.
 
 ## Notes
 

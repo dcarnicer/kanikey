@@ -146,12 +146,25 @@ E (221) esp_core_dump_flash: No core dump partition found!
   That reconciliation has unit-level coverage but not a hardware timeout test.
 - Rejected records stay until a user-facing way to dismiss them exists; for
   now the dev command `z` clears the outbox.
-- Flash headroom is now ~92 KB; the efont fallback still costs ~468 KB and is
-  the next thing to replace once radical images exist.
+- Flash headroom is now ~498 KB after removing the efont fallback; the next
+  large blocks are lessons and settings.
 - Home shows `Outbox: N pending` or `N need attention` below the sync time.
 - Power: dim after 30 s, blank after 60 s, deep sleep after 2 min only when no
   review is active and the device is on battery. A key wakes the panel; the
   first key on a blank screen only wakes it.
+
+### Setup portal (M5)
+
+- First boot with a missing Wi-Fi/token starts a WPA2 AP `KaniKey-XXXX`; the
+  screen shows the key and `http://192.168.4.1/`.
+- The AP page was served and rendered correctly on hardware on 2026-10-28:
+  pack status, browser clock/zone and the home-Wi-Fi form.
+- After saving Wi-Fi the device joins the network and serves the station page at
+  its IP; the token is validated with `GET /user` and stored only on success.
+- Setup makes no `PUT /assignments/{id}/start` calls, so it does not move
+  lessons. The normal first sync afterwards may flush the existing outbox.
+- Hardware test: the page reached a laptop on the setup AP; the station phase
+  finished setup on the same session. The AP is closed afterwards.
 
 ### Lessons (M4 start)
 

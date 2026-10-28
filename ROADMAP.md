@@ -6,10 +6,11 @@ plan. Product scope and UX live in [docs/design.md](docs/design.md),
 [docs/ux.md](docs/ux.md) and [docs/api-sync.md](docs/api-sync.md).
 
 The review loop works on hardware. The main v1 gaps are the complete lesson
-flow, WaniKani preferences/study materials, setup and settings on the device,
-and API robustness. The persistent offline cache now restores Home, the user
-and a cached review batch after a reboot without network; the real
-fetch → offline → reconnect path still needs a configured account.
+flow, WaniKani preferences/study materials, device settings and API
+robustness. The persistent offline cache restores Home, the user and a cached
+review batch after a reboot without network, and first boot now uses an
+on-device setup portal for Wi-Fi, the validated WaniKani token, browser time
+and the visual-pack check.
 
 ## Where we are
 
@@ -36,15 +37,21 @@ Working on hardware:
   (`/state/cache.bin`), subjects on SD (`/kanikey/cache/subjects.bin`), with
   version, token fingerprint, CRC32 and `.bak` recovery. Completed reviews are
   pruned from the cache and stay in the outbox.
+- Setup portal: first boot brings up a WPA2 `KaniKey-XXXX` access point with
+  the password on screen. The phone saves the home Wi-Fi; the device joins it
+  and serves the second page at its station IP, where the token is validated
+  with `GET /user`, the browser sets the clock/time zone and the pack can be
+  checked again. Setup only reads `/user` during validation; it never starts lessons.
+  The normal first sync afterwards may flush the existing outbox.
 - User-facing boot states for missing SD/pack, token or Wi-Fi and sync
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
 - 37 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,289,593 B / 1,835,008 B flash (70.3%)**, **93,224 B /
-327,680 B static RAM (28.4%)**. The dev image is 1,294,793 B. Removing
-`efontJA_16` freed ~468 KB and leaves ~545 KB of flash headroom.
+Current build: **1,337,425 B / 1,835,008 B flash (72.9%)**, **93,672 B /
+327,680 B static RAM (28.6%)**. The dev image is 1,342,561 B. Removing
+`efontJA_16` freed ~468 KB and leaves ~498 KB of flash headroom.
 
 ## Priority summary
 
@@ -55,9 +62,9 @@ Current build: **1,289,593 B / 1,835,008 B flash (70.3%)**, **93,224 B /
 | 3 | Complete lesson flow | Card + start exists; list, components, quiz and preferences do not | Partial | LESSON-01, LESSON-03 |
 | 4 | WaniKani data and preferences | Synonyms, item detail, SRS feedback, stats and preferences are missing | Not started | WK-01, WK-03 |
 | 5 | Outbox and API robustness | Rejected items, 429 and invalid auth have no user path | Partial | API-01, API-02 |
-| 6 | Setup, settings and pause | Wi-Fi/token still need a serial cable | Partial: boot states done | SETUP-01, SETUP-04 |
+| 6 | Setup, settings and pause | First-boot portal works; settings/pause remain | Partial: setup done | SETUP-04, SETUP-05 |
 | 7 | UI, stats and sync | Missing SRS bar, sync progress, accuracy and item detail | Partial | UI-01, UI-02 |
-| 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Not started | TNG-01, TNG-04 |
+| 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal ported; OTA/widgets pending | TNG-02, TNG-03 |
 | 9 | Technical debt, CI and release | Maintainability and shipping | Ongoing | TECH-01, TECH-04 |
 | 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | Not started | EXT-01, EXT-03 |
 
@@ -72,7 +79,7 @@ lesson flow.
 | 0 | Close radicals (parallel) | RAD-02, RAD-04 | Real radical prompts on a configured account |
 | 1 | Offline cache | CACHE-05 → CACHE-07, TNG-04, TNG-05 | Review and Home work after reboot without network |
 | 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | List, understand, quiz and start lessons |
-| 3 | Setup and device UX | SETUP-01 → SETUP-08, TNG-01, TNG-02 | Wi-Fi/token/time/settings without a cable |
+| 3 | Setup and device UX | SETUP-04 → SETUP-08, TNG-02 | Settings, pause and OTA without a cable |
 | 4 | WaniKani data and detail | WK-01, WK-03 → WK-11 | Synonyms, item detail, SRS and progress |
 | 5 | API robustness | API-01 → API-07 | Recoverable rejected, rate-limited and auth errors |
 | 6 | UI, stats and sync | UI-01 → UI-08 | SRS bar, sync screen, accuracy and polish |
@@ -225,17 +232,26 @@ Home pending/attention counts. Remaining:
 
 ## 6. Setup, settings and pause (M5)
 
-Today Wi-Fi and the token are configured over serial into NVS. That is fine for
-development, not for a device someone else can use. The boot states are in
-place; the setup flow and settings are not.
+First boot no longer needs a serial cable. The device starts a WPA2 setup
+network, saves the home Wi-Fi, joins it, then serves the station page where the
+token is validated with `GET /user`, the browser sets the clock/time zone and
+the pack can be checked again. Settings screens, the pause menu and manual
+sync are still missing.
 
 - **SETUP-01 — First-boot setup portal.** Wi-Fi scan/password, token entry
   (masked, never logged), timezone and visual-pack check. Port the applicable
-  parts of Tangocho's portal (TNG-01).
+  parts of Tangocho's portal (TNG-01). **Done (2026-10-28):** WPA2 AP
+  `KaniKey-XXXX`, two-phase AP → station page, Wi-Fi suggestions, token form,
+  browser time/zone and pack check. The token and password are never logged or
+  shown back.
 - **SETUP-02 — Token validation.** Validate the token with `/user` before
-  storing it; show scopes/permission errors clearly.
+  storing it; show scopes/permission errors clearly. **Done:** the station page
+  validates with `GET /user`; 401/403/TLS errors are shown and the token is
+  only saved on success. Setup makes no lesson-start calls; the first sync may flush the existing outbox.
 - **SETUP-03 — Time and pack check.** Timezone selection, SNTP result and
-  “copy glyphs.kgp / check again” state.
+  “copy glyphs.kgp / check again” state. **Done:** the browser posts its clock
+  and POSIX time-zone rule; the pack status and “Check pack again” button are
+  on both pages.
 - **SETUP-04 — Pause menu.** Continue / End session / Settings instead of the
   current direct `Esc` exit.
 - **SETUP-05 — Settings.** Brightness, dim/blank/sleep timings, timezone,
@@ -273,16 +289,20 @@ SRS and deck catalog remain intentionally dropped. See
 [docs/reuse-tangocho.md](docs/reuse-tangocho.md) for the module matrix.
 
 - **TNG-01 — `WifiPortal`.** Adapt the Wi-Fi portal for first-boot setup and
-  token entry (SETUP-01).
+  token entry (SETUP-01). **Done (2026-10-28):** reduced to KaniKey setup in
+  `platform/SetupPortal`; no deck catalog or progress-restore routes.
 - **TNG-02 — `Ota`.** Port manifest download, SHA-256 verification, update and
   rollback (TECH-06).
 - **TNG-03 — UI primitives.** Port/adapt `Widgets`, `ListView`, `HintBar`,
   `TextLayout`, `UiFont` and `Icons` before adding more screens; the current UI
   is hand-drawn.
 - **TNG-04 — Storage layer.** Adapt LittleFS/SD paths and atomic writes for the
-  assignment/subject cache (CACHE-01/CACHE-02).
+  assignment/subject cache (CACHE-01/CACHE-02). **Done:** `platform/CacheStore`
+  with `.tmp`/`.bak` and CRC32.
 - **TNG-05 — Power and sleep.** Save the cache and outbox before dim, blank or
-  deep sleep; restore on wake (CACHE-08).
+  deep sleep; restore on wake (CACHE-08). **Done:** cache saves after sync,
+  batch, review/lesson changes and before deep sleep; the outbox already saves
+  before each request.
 - **TNG-06 — Serial remote.** Extend the screenshot/remote workflow for text
   input and the new screens.
 - **TNG-07 — Clock/time helpers.** Adapt ISO 8601, timezone and SNTP helpers

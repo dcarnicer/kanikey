@@ -79,7 +79,7 @@ maintaining it now.
 | `platform/Storage` | LittleFS + SD, paths | **Adapted** | `/kanikey/...` paths; assignments/outbox |
 | `platform/HomeWifi` | Home Wi-Fi in NVS | **Stays** | No changes |
 | `platform/NetFetch` | HTTP/TLS, streaming to sink | **Adapted** | API client with JSON streaming |
-| `platform/WifiPortal` | HTTP portal | **Adapted** | Setup: Wi-Fi + token + time; WPA2 |
+| `platform/WifiPortal` | HTTP portal | **Ported, reduced** | Setup: Wi-Fi + token + time + pack; no decks/OTA |
 | `platform/Ota` | OTA with manifest | **Stays** | KaniKey manifest |
 | `platform/RootCerts` | Root CAs | **Stays** | Add WaniKani's if missing |
 | `platform/Psram` | PSRAM detection | **Stays** | Cardputer doesn't have it; don't assume |

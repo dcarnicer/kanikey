@@ -1,8 +1,8 @@
-# KaniKey — setup (design)
+# KaniKey — setup
 
-> This document describes how KaniKey will be configured once the firmware
-> exists. The tools and commands are part of the design and are not yet
-> implemented.
+> **Implemented 2026-10-28.** First boot starts a WPA2 setup portal on the
+> device. The token is validated with `GET /user`; setup makes no lesson or
+> review writes. The visual pack is still generated on a computer.
 
 ---
 
@@ -90,19 +90,33 @@ The card must be FAT32. If the system doesn't mount it, format it as FAT32
 ## 4. First boot
 
 1. Insert the card and turn on the Cardputer.
-2. If no Wi-Fi is configured, KaniKey brings up a temporary WPA2 network
-   `KaniKey-XXXX` with a key on screen.
-3. On your phone, connect to that network and open the URL shown on the screen
-   (usually `http://192.168.4.1/`).
-4. The portal asks for:
-   - SSID and password for your home Wi-Fi.
-   - WaniKani token (validated with `GET /user`).
-   - Time (from the browser).
-5. On save, the Cardputer connects to your Wi-Fi, syncs and closes the
-   portal.
-6. Check the visual pack. If it is missing or incomplete:
+2. If Wi-Fi or the token is missing, KaniKey brings up a temporary **WPA2**
+   network `KaniKey-XXXX`. The screen shows its password and
+   `http://192.168.4.1/`.
+3. On your phone, connect to that network and open the URL. The page shows the
+   visual-pack status and can re-check the card; the browser also sends its
+   clock and time zone.
+4. Save the SSID and password for your home Wi-Fi. The setup AP closes, the
+   Cardputer joins your network and the screen switches to
+   `setup · Wi-Fi` with the station address (for example
+   `http://192.168.1.23/`).
+5. Move the phone to the same home network and open that address. The station
+   page asks for the WaniKani token:
+   - it is validated with `GET /user` before being stored;
+   - a 401/403/TLS error is shown and nothing is saved;
+   - the token is never logged or shown back.
+6. **Start KaniKey** closes the portal and runs the first sync.
+7. Check the visual pack. If it is missing or incomplete:
    `Visual pack missing · Copy glyphs.kgp to /kanikey/`.
-7. Go back to the home screen. You should see your reviews and lessons.
+8. Go back to the home screen. You should see your reviews and lessons.
+
+The portal only reads `/user` and does not call
+`PUT /assignments/{id}/start`, so configuring the device does not move lessons
+in WaniKani. The normal first sync after **Start KaniKey** may flush reviews that
+were already waiting in the outbox.
+
+If setup is interrupted, press `P` over USB serial (or restart with Wi-Fi/token
+missing) to open the portal again.
 
 ---
 

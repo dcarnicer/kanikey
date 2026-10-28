@@ -23,9 +23,11 @@
 
 #include "board/Board.h"
 #include "platform/CacheStore.h"
+#include "platform/DeviceSettings.h"
 #include "platform/DevToken.h"
 #include "platform/DevWifi.h"
 #include "platform/GlyphPack.h"
+#include "platform/SetupPortal.h"
 #include "platform/WkProbe.h"
 #include "platform/OutboxStore.h"
 #include "platform/WkClient.h"
@@ -112,6 +114,9 @@ bool gSyncing = false;
 bool gSyncAttempted = false;
 bool gOffline = false;
 uint32_t gCacheSavedAt = 0;
+kk::SetupPortal gSetupPortal;
+kk::SetupPortalHooks gSetupHooks;
+bool gPortalActive = false;
 #ifdef KANIKEY_DEV
 bool gShowDebug = false;
 bool gShowRadicalTest = false;
@@ -124,6 +129,8 @@ void drawLoading(const char* title, const char* subtitle);
 void drawLesson();
 void drawBoot();
 void retryBoot();
+bool startSetupPortal();
+bool mountSd();
 
 uint32_t currentAccountKey() {
     const String token = kk::DevToken::load();
@@ -1269,6 +1276,16 @@ void lessonKey(const KeyEvent& e) {
 
 void onKey(const KeyEvent& e) {
     updateModifier(e.x, e.y, e.down);
+    if (gPortalActive) {
+        if (e.down && e.key == Key::Esc) {
+            gSetupPortal.end(false);
+            gPortalActive = false;
+            gShowHome = false;
+            snprintf(gNetLine, sizeof gNetLine, "Setup cancelled");
+            gDirty = true;
+        }
+        return;
+    }
 #ifdef KANIKEY_DEV
     if (gShowRadicalTest) {
         if (e.down && e.key == Key::Esc) {
@@ -1408,18 +1425,19 @@ void startSync() {
     }
     gSyncing = true;
     gSyncAttempted = true;
-    snprintf(gNetLine, sizeof gNetLine, "NET: joining %s",
-             kk::DevWifi::savedSsid().c_str());
-    drawBoot();
-    if (!kk::DevWifi::connect(30000)) {
-        snprintf(gNetLine, sizeof gNetLine, "NET: join failed");
-        gSyncing = false;
-        gDirty = true;
-        return;
+    if (!kk::DevWifi::connected()) {
+        snprintf(gNetLine, sizeof gNetLine, "NET: joining %s",
+                 kk::DevWifi::savedSsid().c_str());
+        drawBoot();
+        if (!kk::DevWifi::connect(30000)) {
+            snprintf(gNetLine, sizeof gNetLine, "NET: join failed");
+            gSyncing = false;
+            gDirty = true;
+            return;
+        }
     }
     snprintf(gNetLine, sizeof gNetLine, "NET: %s", kk::DevWifi::ip().c_str());
-    setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
-    tzset();
+    kk::settingsApplyTimeZone();
     configTime(0, 0, "pool.ntp.org", "time.cloudflare.com");
     const uint32_t ntpStart = millis();
     while (time(nullptr) < 1700000000 && millis() - ntpStart < 5000) delay(100);
@@ -1435,6 +1453,114 @@ void startSync() {
     runSummary();
     gSyncing = false;
     gDirty = true;
+}
+
+bool portalValidateToken(const String& token, String* username, int* level, String* error) {
+    if (!kk::DevWifi::connected()) {
+        if (error) *error = "Wi-Fi is not connected yet.";
+        return false;
+    }
+    gFreeCanvasForRequest = true;
+    const kk::WkProbeResult r = kk::probeWaniKaniUser(token);
+    gFreeCanvasForRequest = false;
+    if (r.parsed) {
+        if (username) *username = r.user.username.c_str();
+        if (level) *level = r.user.level;
+        return true;
+    }
+    if (error) {
+        if (r.httpCode == 401 || r.httpCode == 403)
+            *error = "WaniKani rejected the token (HTTP " + String(r.httpCode) + ").";
+        else if (r.httpCode)
+            *error = "WaniKani answered HTTP " + String(r.httpCode) + ".";
+        else if (!r.connected)
+            *error = "Network/TLS error " + String(r.tlsError) + ".";
+        else
+            *error = "WaniKani returned an invalid response.";
+    }
+    return false;
+}
+
+bool portalRecheckPack() {
+    if (!gSdOk) gSdOk = mountSd();
+    if (gSdOk) gPack.open(SD, "/kanikey/glyphs.kgp");
+    return gPack.ready();
+}
+
+String portalPackStatus() { return String(gPack.statusLine()); }
+
+void portalSwitchToStation() {
+    const String ssid = kk::DevWifi::savedSsid();
+    gSetupPortal.end(false);
+    gPortalActive = false;
+    drawLoading("Connecting Wi-Fi...", ssid.c_str());
+    if (!kk::DevWifi::connect(30000)) {
+        const String notice = "Could not join \"" + ssid + "\". Check the password and try again.";
+        gPortalActive = gSetupPortal.beginAp(gSetupHooks, notice);
+        gDirty = true;
+        return;
+    }
+    const bool ok = gSetupPortal.beginStation(
+        gSetupHooks, "Wi-Fi connected. Enter your WaniKani token and press Finish when ready.");
+    gPortalActive = ok;
+    if (!ok) snprintf(gNetLine, sizeof gNetLine, "Setup portal failed");
+    gDirty = true;
+}
+
+void portalFinish() {
+    gSetupPortal.end(true);
+    gPortalActive = false;
+    gShowHome = false;
+    drawLoading("Setup complete", "Syncing...");
+    startSync();
+    gDirty = true;
+}
+
+bool startSetupPortal() {
+    if (gPortalActive) return true;
+    if (gReviewActive || gLessonActive) return false;
+    tgc::board::setDisplayOn(true);
+    tgc::board::setBrightness(128);
+    gDimmed = false;
+    gScreenOff = false;
+    gSetupHooks.validateToken = portalValidateToken;
+    gSetupHooks.recheckPack = portalRecheckPack;
+    gSetupHooks.packStatus = portalPackStatus;
+    gSetupHooks.onSwitchToStation = portalSwitchToStation;
+    gSetupHooks.onFinish = portalFinish;
+    gShowHome = false;
+    gReviewSummary = false;
+    gFeedback = false;
+
+    // With a saved network, go straight to the station page so the user can
+    // change the token without re-entering Wi-Fi. If it cannot join, fall back
+    // to the setup access point.
+    if (kk::DevWifi::hasSaved()) {
+        if (!kk::DevWifi::connected()) {
+            drawLoading("Connecting Wi-Fi...", kk::DevWifi::savedSsid().c_str());
+            kk::DevWifi::connect(30000);
+        }
+        if (kk::DevWifi::connected() &&
+            gSetupPortal.beginStation(gSetupHooks,
+                                      "Enter your WaniKani token and press Finish when ready.")) {
+            gPortalActive = true;
+            gLastInputAt = millis();
+            gDirty = true;
+            return true;
+        }
+    }
+
+    drawLoading("Starting setup...", "Scanning Wi-Fi...");
+    kk::DevWifi::disconnect();
+    gPortalActive = gSetupPortal.beginAp(
+        gSetupHooks, "Connect your phone to this setup network to configure KaniKey.");
+    gLastInputAt = millis();
+    gDirty = true;
+    if (!gPortalActive) {
+        snprintf(gNetLine, sizeof gNetLine, "Setup: AP failed");
+        Serial.println("[setup] could not start the access point");
+    }
+    return gPortalActive;
 }
 
 void retryBoot() {
@@ -1456,6 +1582,10 @@ void retryBoot() {
     }
     if (gSdOk && gPack.ready() && !gHaveSummary && kk::DevToken::has() && loadCache()) {
         gDirty = true;
+        return;
+    }
+    if (!kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
+        startSetupPortal();
         return;
     }
     if (!gSdOk) {
@@ -1716,6 +1846,74 @@ void drawBoot() {
     present();
 }
 
+void drawSetupPortal() {
+    if (!gDisp) return;
+    auto& d = target();
+    d.startWrite();
+    d.fillScreen(kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+
+    d.setTextFont(2);
+    d.setTextSize(1);
+    d.setTextColor(kBrand, kBg);
+    d.drawString("KaniKey", 6, 2);
+    d.setTextFont(1);
+    d.setTextColor(kDim, kBg);
+    d.drawString(gSetupPortal.mode() == kk::SetupPortal::Mode::Ap ? "setup" : "setup · Wi-Fi",
+                 7, 22);
+
+    const int bat = tgc::board::batteryPercent();
+    char right[16];
+    if (bat >= 0)
+        snprintf(right, sizeof right, "%d%%", bat);
+    else
+        snprintf(right, sizeof right, "USB");
+    d.setTextFont(1);
+    d.setTextColor(bat >= 0 && bat < 20 ? kWarn : kDim, kBg);
+    d.setTextDatum(lgfx::top_right);
+    d.drawString(right, 233, 5);
+    d.setTextDatum(lgfx::top_left);
+
+    auto line = [&d](const String& text, int y, uint16_t fg, uint8_t font = 1) {
+        d.setTextFont(font);
+        d.setTextSize(1);
+        d.setTextColor(fg, kBg);
+        String s = text;
+        while (s.length() > 1 && d.textWidth(s.c_str()) > 228) s.remove(s.length() - 1);
+        d.drawString(s.c_str(), 8, y);
+    };
+
+    if (gSetupPortal.mode() == kk::SetupPortal::Mode::Ap) {
+        line("Join this Wi-Fi", 38, kDim);
+        line(gSetupPortal.ssid(), 52, kText, 2);
+        line("Password", 74, kDim);
+        line(gSetupPortal.apPassword(), 86, kText);
+        line("Open", 100, kDim);
+        line(gSetupPortal.url(), 110, kAccentHi);
+        line("Esc: cancel", 125, kFaint, 0);
+    } else {
+        line("Connected", 38, kOk);
+        line(gSetupPortal.ssid(), 52, kText, 2);
+        line("Open on this network", 74, kDim);
+        line(gSetupPortal.url(), 84, kAccentHi);
+        if (gSetupPortal.tokenValidated())
+            line("Token OK: " + String(gSetupPortal.tokenUser()) + " L" +
+                     String(gSetupPortal.tokenLevel()),
+                 100, kOk);
+        else if (kk::DevToken::has())
+            line("Token stored: validate on the page", 100, kDim);
+        else
+            line("Token needed: enter it on the page", 100, kWarn);
+        const String message = gSetupPortal.message();
+        line(message.length() ? message : String("Pack: ") + gSetupPortal.packStatus(), 114,
+             kFaint, 0);
+        line("Finish on the web page  Esc: cancel", 125, kFaint, 0);
+    }
+    d.endWrite();
+    present();
+}
+
 #ifdef KANIKEY_DEV
 void drawDebug() {
     if (!gDisp) return;
@@ -1907,6 +2105,10 @@ void clearDevCache() {
 #endif
 
 void draw() {
+    if (gPortalActive) {
+        drawSetupPortal();
+        return;
+    }
 #ifdef KANIKEY_DEV
     if (gShowRadicalTest) {
         drawRadicalTest();
@@ -1939,7 +2141,8 @@ void draw() {
 }
 
 void drawStatus() {
-    if (!gDisp || gShowHome || gReviewActive || gReviewSummary || gLessonActive) return;
+    if (!gDisp || gPortalActive || gShowHome || gReviewActive || gReviewSummary || gLessonActive)
+        return;
 #ifdef KANIKEY_DEV
     if (gShowDebug) drawDebug();
 #endif
@@ -2340,6 +2543,8 @@ void handleSerial() {
             } else {
                 runSummary();
             }
+        } else if (gSerialLine == "P") {
+            startSetupPortal();
         } else if (gSerialLine == "p") {
             dumpCanvas();
         } else if (gSerialLine == "h") {
@@ -2402,6 +2607,7 @@ void setup() {
     gDisp = &tgc::board::display();
     gDisp->setRotation(1);
     gDisp->setBrightness(128);
+    kk::settingsApplyTimeZone();
 
     ensureCanvas();
     kk::wkSetRequestHooks(requestBefore, requestAfter);
@@ -2447,13 +2653,11 @@ void setup() {
         snprintf(gNetLine, sizeof gNetLine, "SD: not mounted");
     } else if (!gPack.ready()) {
         snprintf(gNetLine, sizeof gNetLine, "Pack: %s", gPack.statusLine());
-    } else if (!kk::DevToken::has()) {
-        snprintf(gNetLine, sizeof gNetLine, "Token: not configured");
-    } else if (!kk::DevWifi::hasSaved()) {
+    } else if (!kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
         if (cacheLoaded)
             snprintf(gNetLine, sizeof gNetLine, "NET: offline (cached)");
         else
-            snprintf(gNetLine, sizeof gNetLine, "Wi-Fi: not configured");
+            startSetupPortal();
     } else {
         startSync();
     }
@@ -2465,7 +2669,8 @@ void setup() {
 void loop() {
     tgc::board::update();
     handleSerial();
-    serviceAssetServer();
+    if (gPortalActive) gSetupPortal.poll();
+    if (!gPortalActive) serviceAssetServer();
 
     const uint32_t now = millis();
     if (gScreenOff) {
@@ -2527,16 +2732,16 @@ void loop() {
         Serial.println("[key] G0 held");
     }
 
-    if (!gDimmed && now - gLastInputAt > 30000) {
+    if (!gPortalActive && !gDimmed && now - gLastInputAt > 30000) {
         tgc::board::setBrightness(20);
         gDimmed = true;
     }
-    if (!gScreenOff && now - gLastInputAt > 60000) {
+    if (!gPortalActive && !gScreenOff && now - gLastInputAt > 60000) {
         tgc::board::setDisplayOn(false);
         gScreenOff = true;
     }
-    if (!gReviewActive && !gReviewSummary && !gFeedback && !gLessonActive && !gAssetServerActive &&
-        now - gLastInputAt > 120000 && !tgc::board::externalPower()) {
+    if (!gPortalActive && !gReviewActive && !gReviewSummary && !gFeedback && !gLessonActive &&
+        !gAssetServerActive && now - gLastInputAt > 120000 && !tgc::board::externalPower()) {
         Serial.println("[power] idle sleep");
         saveCacheSnapshot();
         tgc::board::deepSleep();

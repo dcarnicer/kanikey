@@ -137,12 +137,17 @@ doing something else.
 **D. First-time setup**
 
 1. Wi-Fi: the Cardputer brings up a temporary WPA2 network with a key on screen.
-2. The phone opens the portal, saves the Wi-Fi, and pastes the WaniKani token.
-3. The portal validates `GET /user`, shows the user/level, and closes the
-   network.
+2. The phone saves the home Wi-Fi. The AP closes and the device serves the
+   second page on the home network at the station IP shown on screen.
+3. The phone enters the WaniKani token; the portal validates `GET /user`, shows
+   the user/level, and closes the network.
 4. The Cardputer syncs and checks the visual pack on the microSD.
 5. If the pack is missing, it shows how to generate it on the computer and copy
    it.
+
+Setup is read-only against WaniKani: it never calls
+`PUT /assignments/{id}/start`, so it does not move lessons. The normal first
+sync afterwards may flush reviews already waiting in the outbox.
 
 ---
 
@@ -601,8 +606,9 @@ request. After 20 subjects the free heap is ~134 KB and the largest block
 
 - HTTPS with certificate verification against a set of root CAs, like Tangocho.
   Never `setInsecure()`.
-- The setup portal is temporary: a WPA2 network with a random key shown on
-  screen, only during setup; it isn't served on the home network.
+- The setup portal is temporary: a WPA2 network with a key shown on screen, then
+  the station page on the home network while setup finishes. It is never
+  reachable after setup and makes no lesson or review writes.
 - There's no telemetry and no own server. Requests go directly to
   `api.wanikani.com` and to WaniKani's CDN for radical images (only in the pack
   generator).

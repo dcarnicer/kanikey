@@ -13,8 +13,12 @@
 > Japanese prompts and readings come entirely from the microSD visual pack at
 > 64/32/20 px: 7,269 glyphs + 498 radical bitmaps in 3.7 MB, generated locally
 > with the user's token. No WaniKani content is in the repository.
-> `efontJA_16` has been removed; missing glyphs show an explicit state. Normal
-> boots show setup/sync states; the M0 debug screen is only in the development
+> `efontJA_16` has been removed; missing glyphs show an explicit state. First
+> boot brings up a WPA2 setup portal (`KaniKey-XXXX`, key on screen): the phone
+> saves the Wi-Fi, the device joins it, and the station page validates the
+> WaniKani token with `GET /user`, sets the clock/time zone from the browser and
+> checks the visual pack. Setup makes no lesson-start calls; validation only reads `/user`. Normal boots
+> show setup/sync states; the M0 debug screen is only in the development
 > build. The lesson list/components and dismissing rejected outbox items are
 > next.
 >
