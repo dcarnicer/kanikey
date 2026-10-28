@@ -111,6 +111,7 @@ WiFiServer gAssetServer(8080);
 bool gAssetServerActive = false;
 bool gLessonActive = false;
 bool gLessonListActive = false;
+bool gLessonEmptyActive = false;
 size_t gLessonIndex = 0;
 size_t gLessonPage = 0;
 bool gSyncing = false;
@@ -147,6 +148,7 @@ void draw();
 void drawLoading(const char* title, const char* subtitle);
 void drawLesson();
 void drawLessonList();
+void drawLessonEmpty();
 void drawBoot();
 void retryBoot();
 bool startSetupPortal();
@@ -1043,6 +1045,8 @@ void endReview() {
     gSettingsActive = false;
     gAboutActive = false;
     gSignOutConfirm = false;
+    gLessonEmptyActive = false;
+    gLessonListActive = false;
     gLowBatteryPrompt = false;
     gLowBatteryConfirmed = false;
     gReviewActive = false;
@@ -1319,6 +1323,36 @@ void drawLessonList() {
     present();
 }
 
+void drawLessonEmpty() {
+    if (!gDisp) return;
+    auto& d = target();
+    d.startWrite();
+    d.fillScreen(kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(kDim, kBg);
+    d.drawString("LESSONS", 6, 3);
+    d.setTextFont(4);
+    d.setTextSize(1);
+    d.setTextColor(kText, kBg);
+    d.drawString("No lessons now", 8, 38);
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(kDim, kBg);
+    String next = "Next review  ";
+    next += gNextReview;
+    d.drawString(next.c_str(), 8, 82);
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextColor(kFaint, kBg);
+    d.drawString("New lessons unlock as you level up.", 8, 102);
+    d.drawString("Esc: home", 8, 125);
+    d.endWrite();
+    present();
+}
+
 void drawLesson() {
     if (!gDisp) return;
     const kk::Subject* s = currentLessonSubject();
@@ -1438,11 +1472,20 @@ void drawLesson() {
 
 void startLessons() {
     if (!gHaveSummary) return;
+    if (gSummary.totalLessons() == 0) {
+        gLessonEmptyActive = true;
+        gLessonListActive = false;
+        gLessonActive = false;
+        gShowHome = false;
+        gDirty = true;
+        return;
+    }
     if (!gLowBatteryConfirmed && lowBatteryNow()) {
         requestLowBatteryConfirm(2);
         return;
     }
     gLowBatteryConfirmed = false;
+    gLessonEmptyActive = false;
     const size_t lessonLimit = static_cast<size_t>(kk::settingsLessonBatchSize());
     const size_t candidateLimit = std::max<size_t>(lessonLimit, 10);
     char subtitle[48];
@@ -1455,6 +1498,12 @@ void startLessons() {
     gFreeCanvasForRequest = false;
     if (!gLessonBatch.ok) {
         Serial.printf("[lesson] failed: %s\n", gLessonBatch.error.c_str());
+        if (gLessonBatch.error == "no due lessons" || gLessonBatch.error == "no lessons") {
+            gLessonEmptyActive = true;
+            gShowHome = false;
+            gDirty = true;
+            return;
+        }
         drawLoading("No lessons available", gLessonBatch.error.c_str());
         gShowHome = true;
         gDirty = true;
@@ -1868,6 +1917,14 @@ void onKey(const KeyEvent& e) {
         return;
     }
 #endif
+    if (gLessonEmptyActive) {
+        if (e.down && (e.key == Key::Enter || e.key == Key::Esc)) {
+            gLessonEmptyActive = false;
+            gShowHome = true;
+            gDirty = true;
+        }
+        return;
+    }
     if (gLessonListActive) {
         lessonListKey(e);
         return;
@@ -2101,7 +2158,7 @@ void portalFinish() {
 
 bool startSetupPortal() {
     if (gPortalActive) return true;
-    if (gReviewActive || gLessonActive || gLessonListActive) return false;
+    if (gReviewActive || gLessonActive || gLessonListActive || gLessonEmptyActive) return false;
     tgc::board::setDisplayOn(true);
     tgc::board::setBrightness(kk::settingsBrightness());
     gDimmed = false;
@@ -2118,6 +2175,8 @@ bool startSetupPortal() {
     gSettingsActive = false;
     gAboutActive = false;
     gSignOutConfirm = false;
+    gLessonEmptyActive = false;
+    gLessonListActive = false;
     gLowBatteryPrompt = false;
     gLowBatteryConfirmed = false;
 
@@ -3034,6 +3093,10 @@ void draw() {
         drawReviewSummary();
         return;
     }
+    if (gLessonEmptyActive) {
+        drawLessonEmpty();
+        return;
+    }
     if (gLessonListActive) {
         drawLessonList();
         return;
@@ -3058,7 +3121,7 @@ void draw() {
 void drawStatus() {
     if (!gDisp || gPortalActive || gLowBatteryPrompt || gSignOutConfirm || gAboutActive ||
         gSettingsActive || gPauseActive || gShowHome || gReviewActive || gReviewSummary ||
-        gLessonListActive || gLessonActive)
+        gLessonListActive || gLessonEmptyActive || gLessonActive)
         return;
 #ifdef KANIKEY_DEV
     if (gShowDebug) drawDebug();
@@ -3212,7 +3275,7 @@ void serviceAssetServer() {
 }
 
 void startAssetServer() {
-    if (gReviewActive || gLessonActive || gLessonListActive) {
+    if (gReviewActive || gLessonActive || gLessonListActive || gLessonEmptyActive) {
         Serial.println("[asset] finish the review/lesson first");
         return;
     }
@@ -3440,7 +3503,11 @@ void handleSerial() {
                 else checkCurrent();
             }
         } else if (gSerialLine == "q") {
-            if (gLessonListActive) {
+            if (gLessonEmptyActive) {
+                gLessonEmptyActive = false;
+                gShowHome = true;
+                gDirty = true;
+            } else if (gLessonListActive) {
                 gLessonListActive = false;
                 gShowHome = true;
                 gDirty = true;
@@ -3677,7 +3744,8 @@ void loop() {
         gScreenOff = true;
     }
     if (!gPortalActive && !gReviewActive && !gReviewSummary && !gFeedback && !gLessonActive &&
-        !gLessonListActive && !gPauseActive && !gSettingsActive && !gAboutActive &&
+        !gLessonListActive && !gLessonEmptyActive && !gPauseActive && !gSettingsActive &&
+        !gAboutActive &&
         !gLowBatteryPrompt && !gAssetServerActive && sleepMs &&
         now - gLastInputAt > sleepMs && !tgc::board::externalPower()) {
         Serial.println("[power] idle sleep");

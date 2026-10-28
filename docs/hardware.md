@@ -200,7 +200,8 @@ E (221) esp_core_dump_flash: No core dump partition found!
   with prompts and meanings, and no lesson was started. The component subjects
   are fetched separately (one batch, 10 ids in the test) and their meanings plus
   hints appear on the last card page.
-- Still missing: components on the card and a lesson quiz.
+- The no-lessons screen uses the local summary and needs no request; it shows
+  the next review time. Still missing: a lesson quiz.
 
 ### Visual pack on microSD (M5)
 

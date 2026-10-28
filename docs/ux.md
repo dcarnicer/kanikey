@@ -398,7 +398,8 @@ design.
   meaning.
 - `↑↓` moves, `Enter` opens, `Esc` goes back.
 - Each row: `休 · KANJI · L5 · rest`.
-- If there are no lessons: `No lessons right now` + `Next unlock at level 13`.
+- If there are no lessons: `No lessons now` + the next review time from
+  `/summary`; the next unlock is not known to v1.
 - The list is sorted by level and `lesson_position`.
 
 **Implementation note (2026-10-28).** The list and picker are live: a scrolling

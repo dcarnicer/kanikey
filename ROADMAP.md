@@ -56,8 +56,8 @@ Working on hardware:
   sleep, screenshot capture.
 - 37 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,357,701 B / 1,835,008 B flash (74.0%)**, **93,800 B /
-327,680 B static RAM (28.6%)**. The dev image is 1,362,925 B. Removing
+Current build: **1,358,357 B / 1,835,008 B flash (74.0%)**, **93,800 B /
+327,680 B static RAM (28.6%)**. The dev image is 1,363,561 B. Removing
 `efontJA_16` freed ~468 KB and leaves ~490 KB of flash headroom.
 
 ## Priority summary
@@ -66,7 +66,7 @@ Current build: **1,357,701 B / 1,835,008 B flash (74.0%)**, **93,800 B /
 |---:|---|---|---|---|
 | 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Done except real-prompt hardware check | RAD-02, RAD-04 |
 | 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Core landed; real-account E2E pending | CACHE-05, CACHE-07 |
-| 3 | Complete lesson flow | List/picker, card, components and start exist; quiz does not | Partial | LESSON-04, LESSON-05 |
+| 3 | Complete lesson flow | List/picker, card, components, empty state and start exist; quiz does not | Partial | LESSON-04, LESSON-05 |
 | 4 | WaniKani data and preferences | Synonyms, item detail, SRS feedback, stats and preferences are missing | Not started | WK-01, WK-03 |
 | 5 | Outbox and API robustness | Rejected items, 429 and invalid auth have no user path | Partial | API-01, API-02 |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
@@ -187,8 +187,8 @@ optional practice before `PUT /start` unless real use shows otherwise.
   show progress through the batch. **Partial:** the local lesson batch size is
   used and the card shows position; WaniKani `lessons_batch_size` is not merged.
 - **LESSON-06 — No lessons state.** Show the next unlock or the next review
-  time when there are no lessons. **Partial:** the fetch error/empty state is
-  shown; the next unlock/review is not computed.
+  time when there are no lessons. **Done (2026-10-28):** a local `No lessons
+  now` screen shows the next review time from `/summary`; Enter/Esc returns Home.
 - **LESSON-07 — Radical-only lessons.** Already included in code; verify on
   hardware with RAD-01/RAD-02.
 - **LESSON-08 — Ordering.** Respect level and `lesson_position`; do not rely
