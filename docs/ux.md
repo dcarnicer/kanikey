@@ -303,6 +303,8 @@ Home ──L──► Lessons ──Enter──► Lesson card
   - **Empty:** `All caught up` + `Next review 18:00`; `Enter` opens the
     forecast detail.
   - **Error:** `Can't reach WaniKani` + `Enter retry` / `S sync`.
+- **Low battery:** below 20% on battery, starting reviews or lessons asks for
+  confirmation; USB power skips the prompt.
 - No side menus or cards covering the numbers are shown.
 
 ### 5.4 Review

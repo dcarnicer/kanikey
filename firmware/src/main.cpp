@@ -127,6 +127,9 @@ int gSettingsIndex = 0;
 SettingsOrigin gSettingsOrigin = SettingsOrigin::Home;
 bool gAboutActive = false;
 bool gSignOutConfirm = false;
+bool gLowBatteryPrompt = false;
+int gLowBatteryAction = 0;  // 1 = review, 2 = lessons
+bool gLowBatteryConfirmed = false;
 char gSettingsNote[48] = "";
 uint16_t gSettingsNoteColor = kFaint;
 #ifdef KANIKEY_DEV
@@ -148,6 +151,7 @@ void drawPause();
 void drawSettings();
 void drawAbout();
 void drawSignOutConfirm();
+void drawLowBattery();
 void openPause();
 
 uint32_t currentAccountKey() {
@@ -1000,6 +1004,8 @@ void endReview() {
     gSettingsActive = false;
     gAboutActive = false;
     gSignOutConfirm = false;
+    gLowBatteryPrompt = false;
+    gLowBatteryConfirmed = false;
     gReviewActive = false;
     gReviewSummary = false;
     gShowHome = true;
@@ -1009,8 +1015,25 @@ void endReview() {
     gDirty = true;
 }
 
+bool lowBatteryNow() {
+    const int battery = tgc::board::batteryPercent();
+    return battery >= 0 && battery < 20 && !tgc::board::externalPower();
+}
+
+void requestLowBatteryConfirm(int action) {
+    gLowBatteryPrompt = true;
+    gLowBatteryAction = action;
+    gLowBatteryConfirmed = false;
+    gDirty = true;
+}
+
 void startReview() {
     if (!gHaveSummary) return;
+    if (!gLowBatteryConfirmed && lowBatteryNow()) {
+        requestLowBatteryConfirm(1);
+        return;
+    }
+    gLowBatteryConfirmed = false;
     const size_t reviewLimit = static_cast<size_t>(kk::settingsReviewBatchSize());
     if (gBatch.assignments.empty()) {
         char subtitle[48];
@@ -1241,6 +1264,11 @@ void drawLesson() {
 
 void startLessons() {
     if (!gHaveSummary) return;
+    if (!gLowBatteryConfirmed && lowBatteryNow()) {
+        requestLowBatteryConfirm(2);
+        return;
+    }
+    gLowBatteryConfirmed = false;
     const size_t lessonLimit = static_cast<size_t>(kk::settingsLessonBatchSize());
     char subtitle[48];
     snprintf(subtitle, sizeof subtitle, "%u at a time, please wait",
@@ -1487,6 +1515,8 @@ void settingsKey(const KeyEvent& e) {
             gSettingsActive = false;
             gAboutActive = false;
             gSignOutConfirm = false;
+            gLowBatteryPrompt = false;
+            gLowBatteryConfirmed = false;
             gShowHome = false;
             snprintf(gSyncClock, sizeof gSyncClock, "--:--");
             snprintf(gNextReview, sizeof gNextReview, "--:--");
@@ -1555,6 +1585,26 @@ void onKey(const KeyEvent& e) {
             gPortalActive = false;
             gShowHome = false;
             snprintf(gNetLine, sizeof gNetLine, "Setup cancelled");
+            gDirty = true;
+        }
+        return;
+    }
+    if (gLowBatteryPrompt) {
+        if (e.down && e.key == Key::Enter) {
+            const int action = gLowBatteryAction;
+            gLowBatteryPrompt = false;
+            gLowBatteryAction = 0;
+            gLowBatteryConfirmed = true;
+            if (action == 1)
+                startReview();
+            else if (action == 2)
+                startLessons();
+            gDirty = true;
+        } else if (e.down && e.key == Key::Esc) {
+            gLowBatteryPrompt = false;
+            gLowBatteryAction = 0;
+            gLowBatteryConfirmed = false;
+            gShowHome = true;
             gDirty = true;
         }
         return;
@@ -1820,6 +1870,8 @@ bool startSetupPortal() {
     gSettingsActive = false;
     gAboutActive = false;
     gSignOutConfirm = false;
+    gLowBatteryPrompt = false;
+    gLowBatteryConfirmed = false;
 
     // With a saved network, go straight to the station page so the user can
     // change the token without re-entering Wi-Fi. If it cannot join, fall back
@@ -2117,6 +2169,45 @@ void drawSettings() {
     d.setTextFont(0);
     d.setTextColor(gSettingsNote[0] ? gSettingsNoteColor : kFaint, kBg);
     d.drawString(gSettingsNote[0] ? gSettingsNote : "Enter: change  Esc: back", 8, 123);
+    d.endWrite();
+    present();
+}
+
+void drawLowBattery() {
+    if (!gDisp) return;
+    auto& d = target();
+    d.startWrite();
+    d.fillScreen(kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+    d.setTextFont(2);
+    d.setTextSize(1);
+    d.setTextColor(kBrand, kBg);
+    d.drawString("KaniKey", 6, 2);
+    d.setTextFont(1);
+    d.setTextColor(kWarn, kBg);
+    d.drawString("battery low", 7, 22);
+
+    const int battery = tgc::board::batteryPercent();
+    char pct[16];
+    snprintf(pct, sizeof pct, "%d%%", battery >= 0 ? battery : 0);
+    d.setTextFont(4);
+    d.setTextSize(1);
+    d.setTextColor(kWarn, kBg);
+    d.setTextDatum(lgfx::middle_center);
+    d.drawString(pct, 120, 62);
+    d.setTextDatum(lgfx::top_left);
+
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(kText, kBg);
+    d.drawString(gLowBatteryAction == 2 ? "A lesson batch may not finish." : "A review session may not finish.",
+                 8, 86);
+    d.setTextFont(0);
+    d.setTextColor(kDim, kBg);
+    d.drawString("Connect power or continue anyway.", 8, 102);
+    d.setTextColor(kFaint, kBg);
+    d.drawString("Enter: continue  Esc: cancel", 8, 125);
     d.endWrite();
     present();
 }
@@ -2603,6 +2694,10 @@ void draw() {
         drawSetupPortal();
         return;
     }
+    if (gLowBatteryPrompt) {
+        drawLowBattery();
+        return;
+    }
     if (gSignOutConfirm) {
         drawSignOutConfirm();
         return;
@@ -2651,8 +2746,9 @@ void draw() {
 }
 
 void drawStatus() {
-    if (!gDisp || gPortalActive || gSignOutConfirm || gAboutActive || gSettingsActive ||
-        gPauseActive || gShowHome || gReviewActive || gReviewSummary || gLessonActive)
+    if (!gDisp || gPortalActive || gLowBatteryPrompt || gSignOutConfirm || gAboutActive ||
+        gSettingsActive || gPauseActive || gShowHome || gReviewActive || gReviewSummary ||
+        gLessonActive)
         return;
 #ifdef KANIKEY_DEV
     if (gShowDebug) drawDebug();
@@ -3255,8 +3351,9 @@ void loop() {
         gScreenOff = true;
     }
     if (!gPortalActive && !gReviewActive && !gReviewSummary && !gFeedback && !gLessonActive &&
-        !gPauseActive && !gSettingsActive && !gAboutActive && !gAssetServerActive && sleepMs &&
-        now - gLastInputAt > sleepMs && !tgc::board::externalPower()) {
+        !gPauseActive && !gSettingsActive && !gAboutActive && !gLowBatteryPrompt &&
+        !gAssetServerActive && sleepMs && now - gLastInputAt > sleepMs &&
+        !tgc::board::externalPower()) {
         Serial.println("[power] idle sleep");
         saveCacheSnapshot();
         tgc::board::deepSleep();
