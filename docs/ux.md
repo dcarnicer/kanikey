@@ -302,7 +302,10 @@ Home ──L──► Lessons ──Enter──► Lesson card
   - **Offline:** line in `warn`: `Offline · 18 cached · 4 to sync`.
   - **Empty:** `All caught up` + `Next review 18:00`; `Enter` opens the
     forecast detail.
-  - **Error:** `Can't reach WaniKani` + `Enter retry` / `S sync`.
+  - **Error:** Home shows `Auth: token rejected`, `Auth: missing permissions`,
+  `Rate limited; retry later` or `WaniKani error; retry`. Boot shows distinct
+  `Token rejected` / `Missing permissions` / `Rate limited` / `WaniKani error`
+  screens; `Enter` retries or opens setup. `Esc` → Settings → `Sync now` retries.
 - **Low battery:** below 20% on battery, starting reviews or lessons asks for
   confirmation; USB power skips the prompt.
 - No side menus or cards covering the numbers are shown.

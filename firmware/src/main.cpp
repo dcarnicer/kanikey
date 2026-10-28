@@ -115,6 +115,8 @@ bool gSyncing = false;
 bool gSyncAttempted = false;
 bool gOffline = false;
 uint32_t gCacheSavedAt = 0;
+enum class SyncIssue : uint8_t { None, Network, Auth, Forbidden, RateLimit, Server, Other };
+SyncIssue gSyncIssue = SyncIssue::None;
 kk::SetupPortal gSetupPortal;
 kk::SetupPortalHooks gSetupHooks;
 bool gPortalActive = false;
@@ -415,6 +417,39 @@ void updateModifier(uint8_t x, uint8_t y, bool down) {
     }
 }
 
+void setSyncIssue(int httpCode, bool connected, int tlsError, const char* what) {
+    if (!connected) {
+        gSyncIssue = SyncIssue::Network;
+        if (tlsError)
+            snprintf(gNetLine, sizeof gNetLine, "%s: network/TLS %d", what, tlsError);
+        else
+            snprintf(gNetLine, sizeof gNetLine, "%s: network unreachable", what);
+        return;
+    }
+    if (httpCode == 401) {
+        gSyncIssue = SyncIssue::Auth;
+        snprintf(gNetLine, sizeof gNetLine, "%s: token rejected (401)", what);
+    } else if (httpCode == 403) {
+        gSyncIssue = SyncIssue::Forbidden;
+        snprintf(gNetLine, sizeof gNetLine, "%s: missing permissions (403)", what);
+    } else if (httpCode == 429) {
+        gSyncIssue = SyncIssue::RateLimit;
+        snprintf(gNetLine, sizeof gNetLine, "%s: rate limited (429)", what);
+    } else if (httpCode >= 500) {
+        gSyncIssue = SyncIssue::Server;
+        snprintf(gNetLine, sizeof gNetLine, "%s: WaniKani error (%d)", what, httpCode);
+    } else if (httpCode == 200) {
+        gSyncIssue = SyncIssue::Other;
+        snprintf(gNetLine, sizeof gNetLine, "%s: invalid response", what);
+    } else if (httpCode > 0) {
+        gSyncIssue = SyncIssue::Other;
+        snprintf(gNetLine, sizeof gNetLine, "%s: HTTP %d", what, httpCode);
+    } else {
+        gSyncIssue = SyncIssue::Other;
+        snprintf(gNetLine, sizeof gNetLine, "%s: invalid response", what);
+    }
+}
+
 void runProbe() {
     const String token = kk::DevToken::load();
     snprintf(gNetLine, sizeof gNetLine, "API: probing...");
@@ -423,16 +458,16 @@ void runProbe() {
     if (r.parsed) {
         gUser = r.user;
         gHaveUser = true;
+        gSyncIssue = SyncIssue::None;
+    } else {
+        setSyncIssue(r.httpCode, r.connected, r.tlsError, "API");
     }
     if (r.connected) {
         if (r.httpCode == 200 && r.parsed)
             snprintf(gNetLine, sizeof gNetLine, "API: 200 %s L%d", r.user.username.c_str(),
                      r.user.level);
-        else
-            snprintf(gNetLine, sizeof gNetLine, "API: %d  TLS %ums", r.httpCode,
-                     static_cast<unsigned>(r.ms));
-    } else {
-        snprintf(gNetLine, sizeof gNetLine, "API: TLS failed (%d)", r.tlsError);
+        else if (!r.parsed)
+            Serial.printf("[api] HTTP %d, parsed=%d\n", r.httpCode, r.parsed ? 1 : 0);
     }
     gDirty = true;
 }
@@ -444,6 +479,7 @@ void runSummary() {
     if (r.parsed) {
         gSummary = r.summary;
         gHaveSummary = true;
+        gSyncIssue = SyncIssue::None;
         gSyncedAt = now >= 1700000000u ? now : 0;
         if (gSyncedAt) localHm(gSyncedAt, gSyncClock, sizeof gSyncClock);
         pruneBatchToSummary(now);
@@ -462,10 +498,8 @@ void runSummary() {
         snprintf(gNetLine, sizeof gNetLine, "Summary: %ur %ul",
                  static_cast<unsigned>(r.summary.totalReviews()),
                  static_cast<unsigned>(r.summary.totalLessons()));
-    else if (r.connected)
-        snprintf(gNetLine, sizeof gNetLine, "Summary: HTTP %d", r.httpCode);
     else
-        snprintf(gNetLine, sizeof gNetLine, "Summary: TLS failed (%d)", r.tlsError);
+        setSyncIssue(r.httpCode, r.connected, r.tlsError, "Summary");
     gDirty = true;
 }
 
@@ -1507,6 +1541,7 @@ void settingsKey(const KeyEvent& e) {
             gOffline = false;
             gSyncing = false;
             gSyncAttempted = false;
+            gSyncIssue = SyncIssue::None;
             gReviewActive = false;
             gReviewSummary = false;
             gFeedback = false;
@@ -1760,11 +1795,13 @@ void startSync() {
     }
     gSyncing = true;
     gSyncAttempted = true;
+    gSyncIssue = SyncIssue::None;
     if (!kk::DevWifi::connected()) {
         snprintf(gNetLine, sizeof gNetLine, "NET: joining %s",
                  kk::DevWifi::savedSsid().c_str());
         drawBoot();
         if (!kk::DevWifi::connect(30000)) {
+            gSyncIssue = SyncIssue::Network;
             snprintf(gNetLine, sizeof gNetLine, "NET: join failed");
             gSyncing = false;
             gDirty = true;
@@ -1925,6 +1962,10 @@ void retryBoot() {
         gDirty = true;
         return;
     }
+    if (gSyncIssue == SyncIssue::Auth || gSyncIssue == SyncIssue::Forbidden) {
+        startSetupPortal();
+        return;
+    }
     if (!kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
         startSetupPortal();
         return;
@@ -2031,7 +2072,19 @@ void drawHome() {
     d.setTextSize(1);
     const size_t pending = kk::outboxPendingCount(gOutbox);
     const size_t rejected = kk::outboxRejectedCount(gOutbox);
-    if (rejected) {
+    if (gSyncIssue == SyncIssue::Auth) {
+        d.setTextColor(kErr, kBg);
+        d.drawString("Auth: token rejected", 8, 117);
+    } else if (gSyncIssue == SyncIssue::Forbidden) {
+        d.setTextColor(kErr, kBg);
+        d.drawString("Auth: missing permissions", 8, 117);
+    } else if (gSyncIssue == SyncIssue::RateLimit) {
+        d.setTextColor(kWarn, kBg);
+        d.drawString("Rate limited; retry later", 8, 117);
+    } else if (gSyncIssue == SyncIssue::Server || gSyncIssue == SyncIssue::Other) {
+        d.setTextColor(kWarn, kBg);
+        d.drawString("WaniKani error; retry", 8, 117);
+    } else if (rejected) {
         char line[40];
         snprintf(line, sizeof line, "Outbox: %u need attention",
                  static_cast<unsigned>(rejected));
@@ -2309,6 +2362,10 @@ enum class BootState : uint8_t {
     NoWifi,
     NotSynced,
     Syncing,
+    AuthError,
+    Forbidden,
+    RateLimited,
+    ServerError,
     Failed,
     Ready
 };
@@ -2319,6 +2376,11 @@ BootState bootState() {
     if (!kk::DevToken::has()) return BootState::NoToken;
     if (!kk::DevWifi::hasSaved()) return BootState::NoWifi;
     if (gSyncing) return BootState::Syncing;
+    if (gSyncIssue == SyncIssue::Auth) return BootState::AuthError;
+    if (gSyncIssue == SyncIssue::Forbidden) return BootState::Forbidden;
+    if (gSyncIssue == SyncIssue::RateLimit) return BootState::RateLimited;
+    if (gSyncIssue == SyncIssue::Server || gSyncIssue == SyncIssue::Other)
+        return BootState::ServerError;
     if (!gHaveSummary) return gSyncAttempted ? BootState::Failed : BootState::NotSynced;
     return BootState::Ready;
 }
@@ -2400,6 +2462,30 @@ void drawBoot() {
             line2 = "First sync can take a few seconds";
             action = "";
             break;
+        case BootState::AuthError:
+            title = "Token rejected";
+            line1 = "The WaniKani token is invalid";
+            line2 = "Press Enter to open setup";
+            action = "Enter: setup";
+            break;
+        case BootState::Forbidden:
+            title = "Missing permissions";
+            line1 = "Edit the token in WaniKani";
+            line2 = "Press Enter to open setup";
+            action = "Enter: setup";
+            break;
+        case BootState::RateLimited:
+            title = "Rate limited";
+            line1 = "WaniKani asked KaniKey to wait";
+            line2 = "Press Enter to retry";
+            action = "Enter: retry";
+            break;
+        case BootState::ServerError:
+            title = "WaniKani error";
+            line1 = gNetLine;
+            line2 = "Press Enter to retry";
+            action = "Enter: retry";
+            break;
         case BootState::Failed:
             title = "Sync failed";
             line1 = gNetLine;
@@ -2414,6 +2500,8 @@ void drawBoot() {
     }
 
     const bool warn = st == BootState::NoSd || st == BootState::NoPack ||
+                      st == BootState::AuthError || st == BootState::Forbidden ||
+                      st == BootState::RateLimited || st == BootState::ServerError ||
                       st == BootState::Failed;
     d.setTextFont(4);
     d.setTextSize(1);

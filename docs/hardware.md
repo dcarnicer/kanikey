@@ -177,6 +177,8 @@ E (221) esp_core_dump_flash: No core dump partition found!
   and last sync.
 - Below 20% on battery, starting reviews or lessons opens a confirmation; USB
   power skips it.
+- 401/403, 429, 5xx/other and network failures have distinct boot/Home states;
+  Enter retries or opens setup and a successful sync clears the notice.
 - The screens compile in both images; a physical key/visual pass is pending.
 
 ### Lessons (M4 start)

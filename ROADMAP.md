@@ -6,11 +6,10 @@ plan. Product scope and UX live in [docs/design.md](docs/design.md),
 [docs/ux.md](docs/ux.md) and [docs/api-sync.md](docs/api-sync.md).
 
 The review loop works on hardware. The main v1 gaps are the complete lesson
-flow, WaniKani preferences/study materials, device settings and API
-robustness. The persistent offline cache restores Home, the user and a cached
-review batch after a reboot without network, and first boot now uses an
-on-device setup portal for Wi-Fi, the validated WaniKani token, browser time
-and the visual-pack check.
+flow, WaniKani preferences/study materials and API robustness. The persistent
+offline cache restores Home, the user and a cached review batch after a reboot
+without network; first boot now uses an on-device setup portal, and Settings
+covers display/power/study preferences plus sync, cache and sign-out.
 
 ## Where we are
 
@@ -54,8 +53,8 @@ Working on hardware:
   sleep, screenshot capture.
 - 37 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,348,205 B / 1,835,008 B flash (73.5%)**, **93,776 B /
-327,680 B static RAM (28.6%)**. The dev image is 1,353,409 B. Removing
+Current build: **1,349,073 B / 1,835,008 B flash (73.5%)**, **93,784 B /
+327,680 B static RAM (28.6%)**. The dev image is 1,354,341 B. Removing
 `efontJA_16` freed ~468 KB and leaves ~490 KB of flash headroom.
 
 ## Priority summary
@@ -67,7 +66,7 @@ Current build: **1,348,205 B / 1,835,008 B flash (73.5%)**, **93,776 B /
 | 3 | Complete lesson flow | Card + start exists; list, components, quiz and preferences do not | Partial | LESSON-01, LESSON-03 |
 | 4 | WaniKani data and preferences | Synonyms, item detail, SRS feedback, stats and preferences are missing | Not started | WK-01, WK-03 |
 | 5 | Outbox and API robustness | Rejected items, 429 and invalid auth have no user path | Partial | API-01, API-02 |
-| 6 | Setup, settings and pause | Setup, pause, settings and low battery work | Partial: error screens | SETUP-07 |
+| 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
 | 7 | UI, stats and sync | Missing SRS bar, sync progress, accuracy and item detail | Partial | UI-01, UI-02 |
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal ported; OTA/widgets pending | TNG-02, TNG-03 |
 | 9 | Technical debt, CI and release | Maintainability and shipping | Ongoing | TECH-01, TECH-04 |
@@ -84,7 +83,7 @@ lesson flow.
 | 0 | Close radicals (parallel) | RAD-02, RAD-04 | Real radical prompts on a configured account |
 | 1 | Offline cache | CACHE-05 → CACHE-07, TNG-04, TNG-05 | Review and Home work after reboot without network |
 | 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | List, understand, quiz and start lessons |
-| 3 | Setup and device UX | SETUP-05, SETUP-07, SETUP-08, TNG-02 | Remaining settings, error actions and OTA |
+| 3 | Setup and device UX | TNG-02 | OTA release path (setup/settings complete) |
 | 4 | WaniKani data and detail | WK-01, WK-03 → WK-11 | Synonyms, item detail, SRS and progress |
 | 5 | API robustness | API-01 → API-07 | Recoverable rejected, rate-limited and auth errors |
 | 6 | UI, stats and sync | UI-01 → UI-08 | SRS bar, sync screen, accuracy and polish |
@@ -272,8 +271,9 @@ the device; account/study preferences and clear error actions remain.
   starting a long session. **Done (2026-10-28):** below 20% on battery, Enter/L
   opens a confirmation before reviews or lessons; USB power skips it.
 - **SETUP-07 — Manual sync and errors.** Sync now, retry, and clear
-  offline/auth/rate-limit screens. **Partial:** Sync now is in Settings; the
-  auth/rate-limit error screens are still pending.
+  offline/auth/rate-limit screens. **Done (2026-10-28):** Sync now is in
+  Settings; 401/403, 429, 5xx/other and network failures have distinct boot/Home
+  states; Enter retries or opens setup, and a successful sync clears them.
 - **SETUP-08 — About.** Firmware version, pack status, cache status, heap and
   last sync. **Done (2026-10-28):** version, build date, pack, cached batch,
   last sync/offline, Wi-Fi/IP, token presence, time zone and heap.

@@ -28,6 +28,8 @@ KaniKey firmware for the M5Stack Cardputer ADV.
   `GET /summary`.
 - With a token, the Home screen shows the account level, due reviews, lessons,
   next review and last sync.
+- Shows distinct `Token rejected`, `Missing permissions`, `Rate limited` and
+  `WaniKani error` states; `Enter` retries or opens setup.
 - Measures internal heap before and after each TLS request.
 - Draws Japanese prompts and readings from the microSD visual pack
   (`/kanikey/glyphs.kgp`); the token pack on the card has 7,269 glyphs at
