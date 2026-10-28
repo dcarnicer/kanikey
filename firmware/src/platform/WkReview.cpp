@@ -34,6 +34,10 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
         return batch;
     }
     const size_t want = std::min(limit, dueSubjectIds.size());
+    // Reserve before the subject DOMs start fragmenting the heap: growing this
+    // vector while a 15 KB subject page is alive can throw bad_alloc.
+    batch.assignments.reserve(want);
+    batch.subjects.reserve(want);
     String path = "/v2/assignments?subject_ids=" + idList(dueSubjectIds, 0, want);
     Serial.printf("[review] assignments for %u subjects\n", static_cast<unsigned>(want));
     const WkResponse ar = wkGetRetry(path, token, 32768, 12000);
@@ -47,6 +51,7 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
         return batch;
     }
     const std::vector<Assignment> parsed = parseAssignments(av);
+    av = JsonValue{};  // the assignment DOM is not needed while subjects load
     for (const Assignment& a : parsed) {
         if (a.hidden || a.srsStage < 1 || a.srsStage > 8) continue;
         if (a.availableAt != 0 && a.availableAt > now) continue;
@@ -83,6 +88,7 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
             return batch;
         }
         std::vector<Subject> part = parseSubjects(sv);
+        sv = JsonValue{};  // free the page before growing the subject vector
         for (Subject& s : part) batch.subjects.push_back(std::move(s));
         Serial.printf("[review] subjects %u/%u, total %u\n", static_cast<unsigned>(end),
                       static_cast<unsigned>(ids.size()),

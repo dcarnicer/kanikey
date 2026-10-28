@@ -21,17 +21,20 @@ Working on hardware:
   checking, feedback and requeue. The session follows WaniKani
   `reviews_presentation_order` (`shuffled` or `lower_levels_first`); the local
   `Order` setting still selects meaning-first or reading-first.
-- `POST /v2/reviews` with a persistent LittleFS outbox; the full offline path
-  (Wi-Fi off → review → reboot → reconnect → 201) is verified.
+- `POST /v2/reviews` with a persistent LittleFS outbox. The real-account path
+  online fetch → Wi-Fi off → review → reconnect → 201 is verified; the cached
+  Home/batch also restore at boot. A deliberate offline boot still needs a
+  network-off reboot.
 - Lessons: a list/picker with character, type, level and main meaning, sorted
   by level and `lesson_position`; the card shows meaning/reading, paged
   mnemonic, component meanings and hints, and `PUT /assignments/{id}/start`
-  returns 200. Tests so far use only GETs; no live lesson was started by this
-  work.
+  returns 200. The list, card and quiz are hardware-verified; tests so far use
+  only GETs and no live lesson was started by this work.
 - Lesson quiz: `Q` on a lesson card opens an optional local meaning/reading
   quiz with typed answers, incorrect-answer feedback, retries and a completion
   screen. It is read-only: the quiz itself never calls `/start`; Enter on the
-  card still starts the lesson. Native-tested; hardware run pending.
+  card still starts the lesson. Hardware-verified; the completion screen says
+  `No /start sent.`
 - Study materials: `GET /study_materials` is fetched for review and lesson
   subjects, user synonyms are accepted by the answer checker, and meaning/
   reading notes appear on the lesson card and review feedback. They are part of
@@ -41,9 +44,9 @@ Working on hardware:
   asset upload also works.
 - Radical prompts render from the pack's 96 px bitmaps; radical-only lessons
   and reviews are no longer filtered out. `efontJA_16` is gone: missing glyphs
-  show an explicit state instead. The hardware renderer and missing state are
-  verified with the dev `R <id>` test; actual review/lesson prompts and
-  radical-only lessons still need a configured token/Wi-Fi.
+  show an explicit state instead. A real radical review prompt (radical 鳥) was
+  verified on hardware on 2026-10-28; a radical-only lesson still needs a
+  low-level account.
 - Offline cache: Home counts, the user and the cached review batch are
   restored at boot without network. Assignments live in LittleFS
   (`/state/cache.bin`), subjects on SD (`/kanikey/cache/subjects.bin`), with
@@ -66,9 +69,9 @@ Working on hardware:
   sleep, screenshot capture.
 - 43 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,370,093 B / 1,835,008 B flash (74.7%)**, **94,168 B /
-327,680 B static RAM (28.7%)**. The dev image is 1,375,189 B. Removing
-`efontJA_16` freed ~468 KB and leaves ~465 KB of flash headroom.
+Current build: **1,371,625 B / 1,835,008 B flash (74.7%)**, **94,168 B /
+327,680 B static RAM (28.7%)**. The dev image is 1,376,713 B. Removing
+`efontJA_16` freed ~468 KB and leaves ~463 KB of flash headroom.
 
 ## Priority summary
 
@@ -106,19 +109,19 @@ lesson flow.
 ## 1. Radicals and remove `efontJA_16` (v1 blocker)
 
 The card has the token pack with 7,269 glyphs and 498 radical bitmaps
-(3,698,476 B), generated and uploaded on 2026-10-27. The renderer and the
-missing-glyph state have been verified on hardware with the dev `R <id>` test.
-The last verification step is the real review/lesson prompt and a radical-only
-lesson, which need a configured token and Wi-Fi.
+(3,698,476 B), generated and uploaded on 2026-10-27. The renderer, the
+missing-glyph state and a real radical review prompt have been verified on
+hardware. The last verification step is a radical-only lesson, which needs a
+low-level account.
 
 - **RAD-01 — Generate the radical pack.** Use the user's token and the radical
   SVG URLs (`cairosvg`), including the 16-byte radical entries. **Done
   (2026-10-27):** 498 radical entries, no empty bitmaps, uploaded to the card.
 - **RAD-02 — Verify radical rendering on hardware.** Check review and lesson
   prompts at 64/32 px, radical-only lessons and the missing-glyph state.
-  **Partial:** the 96 px bitmap, 62 px scaling and missing state are verified
-  with subjects 1 and 8820; real prompts/radical-only lessons pending token and
-  Wi-Fi.
+  **Done except radical-only lessons (2026-10-28):** the 96 px bitmap, scaling,
+  missing state and a real radical review prompt (radical 鳥) are verified with
+  the configured account. Radical-only lessons remain in RAD-04.
 - **RAD-03 — Remove `efontJA_16`.** Replace the remaining fallbacks with the
   pack + missing state, then confirm the flash drop. **Done (2026-10-28):**
   readings and feedback use the pack at 32/20 px, missing text shows “no
@@ -166,10 +169,10 @@ validation.
   summary drops assignments that are no longer due, `startReview` filters the
   outbox, and a successful/reconciled send also prunes the cache.
 - **CACHE-07 — End-to-end test.** Online fetch → reboot with Wi-Fi off →
-  complete a review → reconnect → outbox 201. **Partial:** the synthetic-cache
-  hardware path (restore → offline review → outbox pending → reboot) passes;
-  the real online fetch and reconnect/201 halves still need credentials and a
-  deliberate review submission.
+  complete a review → reconnect → outbox 201. **Done except the offline boot
+  (2026-10-28):** with the real account, online fetch → Wi-Fi off → review →
+  outbox pending → reconnect → 201 is verified, and the cached Home/batch
+  restore at boot. A reboot with Wi-Fi actually unavailable is still untested.
 - **CACHE-08 — Save before sleep.** Persist the cache/outbox before dim,
   blank or deep sleep (coordinate with TNG-05). **Done:** the snapshot is saved
   after sync, batch fetch, review completion and lesson start, and again before
@@ -196,6 +199,7 @@ optional practice before `PUT /start` unless real use shows otherwise.
   `Q` on a lesson card opens an optional typed quiz; wrong answers are counted
   and retried, warnings retry the same part, and a completion screen returns to
   the card. The quiz never calls `/start`; only Enter on the card does.
+  Hardware-verified on 2026-10-28 (meaning, reading and completion).
 - **LESSON-05 — Batch size and progress.** Respect `lessons_batch_size` and
   show progress through the batch. **Done (2026-10-28):** the local setting is
   clamped to WaniKani `lessons_batch_size`; the list and card show position.
@@ -203,7 +207,8 @@ optional practice before `PUT /start` unless real use shows otherwise.
   time when there are no lessons. **Done (2026-10-28):** a local `No lessons
   now` screen shows the next review time from `/summary`; Enter/Esc returns Home.
 - **LESSON-07 — Radical-only lessons.** Already included in code; verify on
-  hardware with RAD-01/RAD-02.
+  hardware with RAD-01/RAD-02. **Pending:** the configured level-8 account has
+  no radical-only lesson in its current batch; a low-level account is needed.
 - **LESSON-08 — Ordering.** Respect level and `lesson_position`; do not rely
   on the summary order. **Partial:** candidates are sorted before trimming; the
   summary still supplies the first 10 candidates.
@@ -220,6 +225,9 @@ preferences still need work.
   `subject_ids`, merge them into the cached subject, accept synonyms as
   meanings, and show the notes on the lesson card and review feedback. A token
   without the study-materials permission still reviews/lessons without notes.
+  Hardware-verified on 2026-10-28: 4 materials (synonyms) applied to a review
+  batch. The account has no meaning/reading notes, so note display is
+  native-tested only.
 - **WK-02 — `lessons_batch_size`.** `User` already parses it; use it for
   `fetchLessonBatch` and progress. **Done:** the lesson batch is clamped to it.
 - **WK-03 — `reviews_presentation_order`.** Apply `shuffled` /
@@ -227,7 +235,8 @@ preferences still need work.
   `User` parses the preference, the cache keeps it, and the review queue
   stable-sorts by subject level when it is `lower_levels_first` (the shuffle
   stays inside each level). The local `Order` setting remains meaning/reading
-  order.
+  order. Hardware-verified `shuffled`; `lower_levels_first` is native-tested
+  because this account's WaniKani preference is `shuffled`.
 - **WK-04 — SRS indicator.** Show the SRS stage after completing an item and on
   the Home/detail screens where useful.
 - **WK-05 — Vacation notice.** Read `current_vacation_started_at` and show a

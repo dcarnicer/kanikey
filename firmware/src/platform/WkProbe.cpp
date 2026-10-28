@@ -28,9 +28,12 @@ WkProbeResult probeWaniKaniUser(const String& token) {
         JsonValue v;
         if (parseBody(http.body, &v)) r.parsed = parseUser(v, &r.user);
         if (r.parsed)
-            Serial.printf("[user] %s level %d, max level %d, batch %d\n",
+            Serial.printf("[user] %s level %d, max level %d, batch %d, order %s\n",
                           r.user.username.c_str(), r.user.level, r.user.maxLevelGranted,
-                          r.user.lessonsBatchSize);
+                          r.user.lessonsBatchSize,
+                          r.user.reviewsOrder == ReviewOrder::LowerLevelsFirst
+                              ? "lower_levels_first"
+                              : "shuffled");
         else
             Serial.println("[user] 200 but the JSON did not parse");
     }

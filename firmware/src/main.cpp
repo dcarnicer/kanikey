@@ -663,6 +663,17 @@ void drawMissingGlyph(lgfx::LovyanGFX& d, int cx, int cy) {
     d.setTextDatum(lgfx::top_left);
 }
 
+// 20 px text that fits, or right-aligned when the reading is too wide. A
+// missing glyph is different from a long reading; only the former says
+// "no glyph".
+bool drawJapaneseFit(lgfx::LovyanGFX& d, const std::string& text, int x, int right, int y,
+                     int maxWidth, uint16_t fg, uint16_t bg, const kk::ClipRect& clip) {
+    if (gPack.drawTextFit(d, text, x, y, 20, maxWidth, fg, bg, clip)) return true;
+    if (gPack.covers(text, 20))
+        return gPack.drawTextRight(d, text, right, y, 20, fg, bg, clip);
+    return false;
+}
+
 void drawReview() {
     if (!gDisp) return;
     const kk::SessionItem* item = gQueue.current();
@@ -762,64 +773,66 @@ void drawReview() {
         d.setTextFont(0);
         d.setTextSize(1);
         d.setTextColor(kFaint, kBg);
-        d.drawString("You typed", 100, 38);
         const bool japanese = part == kk::ReviewPart::Reading;
         std::string typed = gFeedbackInput;
-        bool typedDrawn = false;
-        if (japanese && !typed.empty())
-            typedDrawn = gPack.drawTextFit(d, typed, 100, 64, 20, 136, kDim, kBg,
-                                           kk::ClipRect{100, 44, 236, 68}) != 0;
-        if (!typedDrawn) {
-            if (japanese) {
-                d.setTextFont(1);
-                d.setTextSize(1);
-                d.setTextColor(kWarn, kBg);
-                d.drawString(typed.empty() ? "-" : "no glyph", 100, 47);
-            } else {
-                d.setTextFont(1);
-                d.setTextSize(1);
-                d.setTextColor(kDim, kBg);
-                while (typed.size() > 1 && d.textWidth(typed.c_str()) > 136)
-                    typed.erase(0, 1);
-                d.drawString(typed.empty() ? "-" : typed.c_str(), 100, 47);
-            }
-        }
-        d.setTextFont(0);
-        d.setTextSize(1);
-        d.setTextColor(kFaint, kBg);
-        d.drawString("Answer", 100, 65);
         std::string answer = correctAnswer(*s, part);
-        bool answerDrawn = false;
-        if (japanese)
-            answerDrawn = gPack.drawTextFit(d, answer, 100, 90, 20, 136,
-                                            ok ? kOk : warn ? kWarn : kErr, kBg,
-                                            kk::ClipRect{100, 70, 236, 94}) != 0;
-        if (!answerDrawn) {
-            if (japanese) {
+        if (japanese) {
+            // One-letter side labels leave the full panel width for long kana.
+            d.drawString("Y", 100, 40);
+            bool typedDrawn = false;
+            if (!typed.empty())
+                typedDrawn = drawJapaneseFit(d, typed, 108, 232, 56, 128, kDim, kBg,
+                                             kk::ClipRect{108, 38, 236, 58});
+            if (!typedDrawn) {
                 d.setTextFont(1);
                 d.setTextSize(1);
                 d.setTextColor(kWarn, kBg);
-                d.drawString("no glyph", 100, 74);
-            } else {
+                d.drawString(typed.empty() ? "-" : "no glyph", 108, 44);
+            }
+            d.setTextFont(0);
+            d.setTextSize(1);
+            d.setTextColor(kFaint, kBg);
+            d.drawString("A", 100, 72);
+            bool answerDrawn = drawJapaneseFit(
+                d, answer, 108, 232, 86, 128, ok ? kOk : warn ? kWarn : kErr, kBg,
+                kk::ClipRect{108, 68, 236, 88});
+            if (!answerDrawn) {
                 d.setTextFont(1);
                 d.setTextSize(1);
-                d.setTextColor(ok ? kOk : warn ? kWarn : kErr, kBg);
-                if (d.textWidth(answer.c_str()) > 136) d.setTextFont(0);
-                while (answer.size() > 1 && d.textWidth(answer.c_str()) > 136) answer.pop_back();
-                if (answer.size() < correctAnswer(*s, part).size()) answer += "...";
-                d.drawString(answer.c_str(), 100, 74);
+                d.setTextColor(kWarn, kBg);
+                d.drawString("no glyph", 108, 74);
             }
-        }
-        if (gCheck.status == kk::AnswerStatus::Correct) {
-            const std::string& note =
-                part == kk::ReviewPart::Meaning ? s->meaningNote : s->readingNote;
-            if (!note.empty()) {
-                const std::string label =
-                    part == kk::ReviewPart::Meaning ? "Note: " : "Reading note: ";
-                drawWrapped(d, label + note, 100, 92, 136, 2, kFaint, kBg);
+            if (gCheck.status == kk::AnswerStatus::Correct) {
+                if (!s->readingNote.empty())
+                    drawWrapped(d, "Reading note: " + s->readingNote, 100, 96, 136, 2, kFaint,
+                                kBg);
+            } else {
+                drawWrapped(d, gCheck.message, 100, 96, 136, 2, kFaint, kBg);
             }
         } else {
-            drawWrapped(d, gCheck.message, 100, 92, 136, 2, kFaint, kBg);
+            d.drawString("You typed", 100, 38);
+            d.setTextFont(1);
+            d.setTextSize(1);
+            d.setTextColor(kDim, kBg);
+            while (typed.size() > 1 && d.textWidth(typed.c_str()) > 136) typed.erase(0, 1);
+            d.drawString(typed.empty() ? "-" : typed.c_str(), 100, 47);
+            d.setTextFont(0);
+            d.setTextSize(1);
+            d.setTextColor(kFaint, kBg);
+            d.drawString("Answer", 100, 65);
+            d.setTextFont(1);
+            d.setTextSize(1);
+            d.setTextColor(ok ? kOk : warn ? kWarn : kErr, kBg);
+            if (d.textWidth(answer.c_str()) > 136) d.setTextFont(0);
+            while (answer.size() > 1 && d.textWidth(answer.c_str()) > 136) answer.pop_back();
+            if (answer.size() < correctAnswer(*s, part).size()) answer += "...";
+            d.drawString(answer.c_str(), 100, 74);
+            if (gCheck.status == kk::AnswerStatus::Correct) {
+                if (!s->meaningNote.empty())
+                    drawWrapped(d, "Note: " + s->meaningNote, 100, 92, 136, 2, kFaint, kBg);
+            } else {
+                drawWrapped(d, gCheck.message, 100, 92, 136, 2, kFaint, kBg);
+            }
         }
     }
 
@@ -1122,6 +1135,11 @@ void startReview() {
     gQueue.setLowerLevelsFirst(gHaveUser &&
                                gUser.reviewsOrder == kk::ReviewOrder::LowerLevelsFirst);
     gQueue.build(due, gBatch.subjects, now, reviewLimit);
+    Serial.printf("[review] order %s, first levels",
+                  gQueue.lowerLevelsFirst() ? "lower_levels_first" : "shuffled");
+    for (size_t i = 0; i < gQueue.queue().size() && i < 8; ++i)
+        Serial.printf(" %u", static_cast<unsigned>(gQueue.queue()[i].level));
+    Serial.println();
     if (gQueue.empty()) {
         Serial.println("[review] no reviewable items");
         return;
@@ -1439,8 +1457,8 @@ void drawLesson() {
     if (!reading.empty()) {
         if (!gPack.drawTextFit(d, reading, 86, 80, 32, 148, kReading, kBg,
                                kk::ClipRect{86, 50, 236, 88}) &&
-            !gPack.drawTextFit(d, reading, 86, 80, 20, 148, kReading, kBg,
-                               kk::ClipRect{86, 50, 236, 88})) {
+            !drawJapaneseFit(d, reading, 86, 232, 80, 148, kReading, kBg,
+                             kk::ClipRect{86, 50, 236, 88})) {
             d.setTextFont(1);
             d.setTextSize(1);
             d.setTextColor(kWarn, kBg);
@@ -1589,59 +1607,64 @@ void drawLessonQuiz() {
         d.setTextFont(0);
         d.setTextSize(1);
         d.setTextColor(kFaint, kBg);
-        d.drawString("You typed", 86, 38);
         const bool japanese = !meaning;
         std::string typed = japanese
                                 ? (!gLessonQuizDirectReading.empty() ? gLessonQuizDirectReading
                                                                     : gLessonQuizIme.text())
                                 : gLessonQuizInput;
-        bool typedDrawn = false;
-        if (japanese && !typed.empty())
-            typedDrawn = gPack.drawTextFit(d, typed, 86, 60, 20, 150, kDim, kBg,
-                                           kk::ClipRect{86, 44, 236, 68}) != 0;
-        if (!typedDrawn) {
-            if (japanese) {
-                d.setTextFont(1);
-                d.setTextSize(1);
-                d.setTextColor(kWarn, kBg);
-                d.drawString(typed.empty() ? "-" : "no glyph", 86, 47);
-            } else {
-                d.setTextFont(1);
-                d.setTextSize(1);
-                d.setTextColor(kDim, kBg);
-                while (typed.size() > 1 && d.textWidth(typed.c_str()) > 150)
-                    typed.erase(0, 1);
-                d.drawString(typed.empty() ? "-" : typed.c_str(), 86, 47);
-            }
-        }
-        d.setTextFont(0);
-        d.setTextSize(1);
-        d.setTextColor(kFaint, kBg);
-        d.drawString("Answer", 86, 65);
         const kk::ReviewPart part =
             meaning ? kk::ReviewPart::Meaning : kk::ReviewPart::Reading;
         std::string answer = correctAnswer(s, part);
-        bool answerDrawn = false;
-        if (japanese)
-            answerDrawn = gPack.drawTextFit(d, answer, 86, 86, 20, 150,
-                                            ok ? kOk : warn ? kWarn : kErr, kBg,
-                                            kk::ClipRect{86, 70, 236, 94}) != 0;
-        if (!answerDrawn) {
-            if (japanese) {
+        if (japanese) {
+            d.drawString("Y", 86, 40);
+            bool typedDrawn = false;
+            if (!typed.empty())
+                typedDrawn = drawJapaneseFit(d, typed, 94, 232, 56, 142, kDim, kBg,
+                                             kk::ClipRect{94, 38, 236, 58});
+            if (!typedDrawn) {
                 d.setTextFont(1);
                 d.setTextSize(1);
                 d.setTextColor(kWarn, kBg);
-                d.drawString("no glyph", 86, 74);
-            } else {
+                d.drawString(typed.empty() ? "-" : "no glyph", 94, 44);
+            }
+            d.setTextFont(0);
+            d.setTextSize(1);
+            d.setTextColor(kFaint, kBg);
+            d.drawString("A", 86, 72);
+            bool answerDrawn = drawJapaneseFit(
+                d, answer, 94, 232, 86, 142, ok ? kOk : warn ? kWarn : kErr, kBg,
+                kk::ClipRect{94, 68, 236, 88});
+            if (!answerDrawn) {
                 d.setTextFont(1);
                 d.setTextSize(1);
-                d.setTextColor(ok ? kOk : warn ? kWarn : kErr, kBg);
-                while (answer.size() > 1 && d.textWidth(answer.c_str()) > 150)
-                    answer.pop_back();
-                d.drawString(answer.c_str(), 86, 74);
+                d.setTextColor(kWarn, kBg);
+                d.drawString("no glyph", 94, 74);
             }
+            if (!ok)
+                drawWrapped(d, result.message, 86, 96, 150, 2, kFaint, kBg);
+            else if (!s.readingNote.empty())
+                drawWrapped(d, "Reading note: " + s.readingNote, 86, 96, 150, 2, kFaint, kBg);
+        } else {
+            d.drawString("You typed", 86, 38);
+            d.setTextFont(1);
+            d.setTextSize(1);
+            d.setTextColor(kDim, kBg);
+            while (typed.size() > 1 && d.textWidth(typed.c_str()) > 150) typed.erase(0, 1);
+            d.drawString(typed.empty() ? "-" : typed.c_str(), 86, 47);
+            d.setTextFont(0);
+            d.setTextSize(1);
+            d.setTextColor(kFaint, kBg);
+            d.drawString("Answer", 86, 65);
+            d.setTextFont(1);
+            d.setTextSize(1);
+            d.setTextColor(ok ? kOk : warn ? kWarn : kErr, kBg);
+            while (answer.size() > 1 && d.textWidth(answer.c_str()) > 150) answer.pop_back();
+            d.drawString(answer.c_str(), 86, 74);
+            if (!ok)
+                drawWrapped(d, result.message, 86, 96, 150, 2, kFaint, kBg);
+            else if (!s.meaningNote.empty())
+                drawWrapped(d, "Note: " + s.meaningNote, 86, 96, 150, 2, kFaint, kBg);
         }
-        if (!ok) drawWrapped(d, result.message, 86, 96, 150, 2, kFaint, kBg);
         d.setTextFont(0);
         d.setTextSize(1);
         d.setTextColor(kFaint, kBg);

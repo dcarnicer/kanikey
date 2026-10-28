@@ -203,9 +203,34 @@ E (221) esp_core_dump_flash: No core dump partition found!
 - The no-lessons screen uses the local summary and needs no request; it shows
   the next review time.
 - Lesson quiz (2026-10-28): `Q` opens a local meaning/reading quiz with typed
-  answers, retries and a completion screen. Native tests cover the state
-  machine; a hardware run is still pending. The quiz makes no network or
-  `/start` call.
+  answers, retries and a completion screen. Hardware-verified: 欠点/けってん
+  answered correctly for meaning and reading, completion showed
+  `No /start sent.`. The quiz makes no network or `/start` call.
+
+### Hardware verification 2026-10-28 (WK-01/WK-03/LESSON-04)
+
+- Review batch: 20 assignments and 20 subjects fetched. Four study materials
+  were applied (subjects 2556, 3406, 4071 and 7679); all are synonyms and this
+  account has no meaning/reading notes.
+- Real radical prompt: radical 舌 (Tongue) rendered at 64 px from the 96 px
+  bitmap; the feedback screen showed `CORRECT` for `Tongue`.
+- Review order: the account preference is `shuffled`; the log showed
+  `order shuffled, first levels 7 7 7 7 7 7 3 7`. `lower_levels_first` remains
+  native-tested until the account preference is changed.
+- Offline review: fetched 20 items, disconnected Wi-Fi, completed 舌, saw the
+  outbox item pending (`HTTP 0`), reconnected and flushed with `f` ->
+  `POST /v2/reviews` **201**. The cache kept 19 assignments / 399 due. One real
+  review was submitted during this test.
+- Lesson flow: 5 VOCAB L7 rows, card 欠点 / けってん, and the quiz meaning and
+  reading both correct. No `/start` call was made.
+- Long readings: feedback uses `Y`/`A` side labels and a right-aligned 20 px
+  fallback, so かつようけい fits without clipping.
+- Crash found and fixed: growing `batch.subjects` while a subject page DOM was
+  alive threw `std::bad_alloc` at 15/20. Reserving the vectors and clearing each
+  page DOM before appending fixed it; a 20/20 fetch then passed.
+- Still pending: a reboot with Wi-Fi actually unavailable, a radical-only lesson
+  on a low-level account, `lower_levels_first` with the account setting, and
+  note display (this account has no notes).
 
 ### Visual pack on microSD (M5)
 
@@ -244,9 +269,8 @@ WaniKani subjects and mnemonics.
 
 ### Next
 
-- Real review/lesson prompts and a radical-only lesson on a configured account.
-- Study-material synonyms/notes and `lower_levels_first` on a configured account.
-- Optional lesson quiz on hardware (the quiz itself makes no `/start` call).
-- Lesson list/components.
+- Radical-only lesson on a low-level account.
+- Study-material notes and `lower_levels_first` on a configured account.
+- A reboot with Wi-Fi actually unavailable (offline boot).
 - Ways to dismiss rejected outbox items.
 - Real renderer/UI font instead of the M5GFX text calls.

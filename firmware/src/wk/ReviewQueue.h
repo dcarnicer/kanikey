@@ -59,6 +59,7 @@ public:
     // WaniKani `reviews_presentation_order`. Call before build(); shuffled is
     // the default. lower_levels_first keeps the shuffle inside each level.
     void setLowerLevelsFirst(bool lowerLevelsFirst) { lowerLevelsFirst_ = lowerLevelsFirst; }
+    bool lowerLevelsFirst() const { return lowerLevelsFirst_; }
 
     // Applies one answer to the current part. Warning leaves the item and the
     // part untouched (the UI retries the same answer). Incorrect increments the
