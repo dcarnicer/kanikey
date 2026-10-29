@@ -39,6 +39,13 @@ The device reads the latest release:
 https://github.com/dcarnicer/kanikey/releases/latest/download/kanikey-firmware.txt
 ```
 
+> The default URL only works when the repository and its releases are
+> **public**. While `dcarnicer/kanikey` is private, a release build cannot read
+> the manifest (GitHub answers 404 without authentication). Update over USB, or
+> use a `KANIKEY_DEV` build with the local `U <url>` override. Once the
+> repository is made public, the same published release works without a
+> rebuild.
+
 A development build may point at another manifest with the serial `U <url>`
 command; `http://` is accepted only in a `KANIKEY_DEV` build, for a local test
 server. Release builds require HTTPS.
