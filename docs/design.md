@@ -386,9 +386,12 @@ plus `drawBootScreen`), `LoadingScreen` (`LoadingView` plus
 `drawAboutScreen`, including the 226 px truncation), `OutboxScreen`
 (`OutboxView`, `OutboxRowView`, `OutboxReasonKind` plus `drawOutboxScreen`,
 including the empty state, 7-row scrolling list with scrollbar, reason colors
-and discard confirmation) and `SettingsScreen` (`SettingsView`,
+and discard confirmation), `SettingsScreen` (`SettingsView`,
 `SettingsRowView` plus `drawSettingsScreen`, including the 7 visible rows of
-12, selection highlight, scrollbar and note line), each drawn between the
+12, selection highlight, scrollbar and note line) and `ModalScreens`
+(`PauseView`, `LowBatteryView` plus `drawPauseScreen`, `drawLowBatteryScreen`
+and `drawSignOutScreen`, including the pause progress and selection rows, the
+battery percentage and both confirmation bodies), each drawn between the
 caller's `startWrite()`/`present()`; `ui/Theme.h` is the shared RGB332 palette and
 `ui/Text.h` holds the shared wrapped-text helper. The other screens still live
 in `main.cpp`.

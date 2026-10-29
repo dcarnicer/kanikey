@@ -117,8 +117,8 @@ Working on hardware:
 - 72 native tests and the `cardputer-adv` build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests.
 
-Current build: **1,417,193 B / 1,835,008 B flash (77.2%)**, **94,704 B /
-327,680 B static RAM (28.9%)**. The dev image is 1,424,801 B. Removing
+Current build: **1,417,413 B / 1,835,008 B flash (77.2%)**, **94,704 B /
+327,680 B static RAM (28.9%)**. The dev image is 1,424,989 B. Removing
 `efontJA_16` freed ~468 KB and leaves ~420 KB of flash headroom.
 
 ## Priority summary
@@ -566,7 +566,7 @@ SRS and deck catalog remain intentionally dropped. See
   `docs/hardware.md`). 72 native tests pass; release build 1,412,341 B flash /
   94,704 B static RAM, dev build 1,419,953 B / 94,728 B.
 - **TECH-02 — Refactor `main.cpp`.** **Partial (2026-10-29).** The Home,
-  Sync, Boot, Loading, About, Outbox and Settings screens and the shared
+  Sync, Boot, Loading, About, Outbox, Settings and modal screens and the shared
   palette/text helpers are extracted: `app/HomeScreen` takes an explicit
   `HomeView` and draws the whole Home frame, `app/SyncScreen` takes a `SyncView`
   (six `SyncRowView`s, completion count, failure issue) and draws the whole Sync
@@ -577,11 +577,13 @@ SRS and deck catalog remain intentionally dropped. See
   frame including the empty state, 7-row scrolling list and confirmation,
   `app/SettingsScreen` takes a `SettingsView` (`SettingsRowView`) and draws the
   whole Settings frame including the 7 visible rows of 12, selection highlight,
-  scrollbar and note line, `ui/Theme.h` holds the common colors and `ui/Text`
-  holds `drawWrapped`. Review, Lesson, portal, debug and modal screens, the
-  remaining drawing helpers, session state and services still live in
-  `main.cpp`. 72 native tests pass; release build 1,417,193 B flash /
-  94,704 B static RAM, dev build 1,424,801 B / 94,728 B.
+  scrollbar and note line, and `app/ModalScreens` takes `PauseView` and
+  `LowBatteryView` (or no view for sign-out) and draws the Pause, low battery
+  and sign-out frames; `main.cpp` keeps their key handlers, state and actions.
+  `ui/Theme.h` holds the common colors and `ui/Text` holds `drawWrapped`.
+  Review, Lesson, portal, debug, the remaining drawing helpers, session state
+  and services still live in `main.cpp`. 72 native tests pass; release build
+  1,417,413 B flash / 94,704 B static RAM, dev build 1,424,989 B / 94,728 B.
 - **TECH-03 — Dev hooks.** `KANIKEY_DEV` now covers the M0 screen and Tab
   shortcut; put `gDirectReading`, synthetic outbox commands and other serial
   helpers behind the same flag.

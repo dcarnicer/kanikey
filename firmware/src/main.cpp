@@ -25,6 +25,7 @@
 #include "app/BootScreen.h"
 #include "app/HomeScreen.h"
 #include "app/LoadingScreen.h"
+#include "app/ModalScreens.h"
 #include "app/OutboxScreen.h"
 #include "app/SettingsScreen.h"
 #include "app/SyncScreen.h"
@@ -61,9 +62,11 @@ using tgc::Key;
 using tgc::KeyEvent;
 using namespace kk::ui;
 using kk::app::kSyncRowCount;
+using kk::app::LowBatteryView;
 using kk::app::OutboxReasonKind;
 using kk::app::OutboxRowView;
 using kk::app::OutboxView;
+using kk::app::PauseView;
 using kk::app::SettingsRowView;
 using kk::app::SettingsView;
 using kk::app::SyncIssueKind;
@@ -3768,44 +3771,16 @@ void drawHome() {
 
 void drawPause() {
     if (!gDisp) return;
+
+    const int total = static_cast<int>(gQueue.completedCount() + gQueue.remaining());
+    PauseView view;
+    view.selectedIndex = gPauseIndex;
+    view.completed = static_cast<unsigned>(gQueue.completedCount());
+    view.total = static_cast<unsigned>(total);
+
     auto& d = target();
     d.startWrite();
-    d.fillScreen(kBg);
-    d.setTextDatum(lgfx::top_left);
-    d.setTextWrap(false);
-    d.setTextFont(2);
-    d.setTextSize(1);
-    d.setTextColor(kBrand, kBg);
-    d.drawString("KaniKey", 6, 2);
-    d.setTextFont(1);
-    d.setTextColor(kDim, kBg);
-    d.drawString("paused", 7, 22);
-
-    char progress[24];
-    const int total = static_cast<int>(gQueue.completedCount() + gQueue.remaining());
-    snprintf(progress, sizeof progress, "%u/%u", static_cast<unsigned>(gQueue.completedCount()),
-             static_cast<unsigned>(total));
-    d.setTextDatum(lgfx::top_right);
-    d.setTextColor(kFaint, kBg);
-    d.drawString(progress, 232, 5);
-    d.setTextDatum(lgfx::top_left);
-
-    static const char* kRows[] = {"Continue", "End session", "Settings"};
-    for (int i = 0; i < 3; ++i) {
-        const int y = 40 + i * 20;
-        if (i == gPauseIndex) {
-            d.fillRect(4, y - 2, 232, 16, kSurfaceHi);
-            d.fillRect(4, y - 2, 2, 16, kAccent);
-        }
-        d.setTextFont(1);
-        d.setTextSize(1);
-        d.setTextColor(i == gPauseIndex ? kText : kDim, i == gPauseIndex ? kSurfaceHi : kBg);
-        d.drawString(kRows[i], 12, y);
-    }
-    d.setTextFont(0);
-    d.setTextSize(1);
-    d.setTextColor(kFaint, kBg);
-    d.drawString("Enter: select  Esc: continue", 8, 125);
+    kk::app::drawPauseScreen(d, view);
     d.endWrite();
     present();
 }
@@ -3892,39 +3867,14 @@ void drawOutbox() {
 
 void drawLowBattery() {
     if (!gDisp) return;
+
+    LowBatteryView view;
+    view.batteryPercent = tgc::board::batteryPercent();
+    view.lessonAction = gLowBatteryAction == 2;
+
     auto& d = target();
     d.startWrite();
-    d.fillScreen(kBg);
-    d.setTextDatum(lgfx::top_left);
-    d.setTextWrap(false);
-    d.setTextFont(2);
-    d.setTextSize(1);
-    d.setTextColor(kBrand, kBg);
-    d.drawString("KaniKey", 6, 2);
-    d.setTextFont(1);
-    d.setTextColor(kWarn, kBg);
-    d.drawString("battery low", 7, 22);
-
-    const int battery = tgc::board::batteryPercent();
-    char pct[16];
-    snprintf(pct, sizeof pct, "%d%%", battery >= 0 ? battery : 0);
-    d.setTextFont(4);
-    d.setTextSize(1);
-    d.setTextColor(kWarn, kBg);
-    d.setTextDatum(lgfx::middle_center);
-    d.drawString(pct, 120, 62);
-    d.setTextDatum(lgfx::top_left);
-
-    d.setTextFont(1);
-    d.setTextSize(1);
-    d.setTextColor(kText, kBg);
-    d.drawString(gLowBatteryAction == 2 ? "A lesson batch may not finish." : "A review session may not finish.",
-                 8, 86);
-    d.setTextFont(0);
-    d.setTextColor(kDim, kBg);
-    d.drawString("Connect power or continue anyway.", 8, 102);
-    d.setTextColor(kFaint, kBg);
-    d.drawString("Enter: continue  Esc: cancel", 8, 125);
+    kk::app::drawLowBatteryScreen(d, view);
     d.endWrite();
     present();
 }
@@ -3933,28 +3883,7 @@ void drawSignOutConfirm() {
     if (!gDisp) return;
     auto& d = target();
     d.startWrite();
-    d.fillScreen(kBg);
-    d.setTextDatum(lgfx::top_left);
-    d.setTextWrap(false);
-    d.setTextFont(2);
-    d.setTextSize(1);
-    d.setTextColor(kBrand, kBg);
-    d.drawString("KaniKey", 6, 2);
-    d.setTextFont(1);
-    d.setTextColor(kErr, kBg);
-    d.drawString("sign out", 7, 22);
-    d.setTextFont(1);
-    d.setTextSize(1);
-    d.setTextColor(kText, kBg);
-    d.drawString("Token, cache and", 8, 46);
-    d.drawString("pending reviews will", 8, 60);
-    d.drawString("be removed.", 8, 74);
-    d.setTextFont(0);
-    d.setTextColor(kDim, kBg);
-    d.drawString("Wi-Fi stays saved.", 8, 92);
-    d.setTextColor(kFaint, kBg);
-    d.drawString("Enter: sign out", 8, 112);
-    d.drawString("Esc: cancel", 8, 125);
+    kk::app::drawSignOutScreen(d);
     d.endWrite();
     present();
 }
