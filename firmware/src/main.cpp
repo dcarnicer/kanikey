@@ -85,6 +85,10 @@ String gSerialLine;
 kk::User gUser;
 kk::Summary gSummary;
 kk::LevelProgress gLevelProgress;
+bool gLevelUpNotice = false;
+uint8_t gLevelUpFrom = 0;
+uint8_t gLevelUpTo = 0;
+uint32_t gLevelUpAt = 0;
 kk::SrsCounts gSrs;
 bool gHaveUser = false;
 bool gHaveSummary = false;
@@ -227,6 +231,13 @@ void drawSignOutConfirm();
 void drawLowBattery();
 void drawOutbox();
 void openPause();
+
+void clearLevelUpNotice() {
+    gLevelUpNotice = false;
+    gLevelUpFrom = 0;
+    gLevelUpTo = 0;
+    gLevelUpAt = 0;
+}
 
 uint32_t currentAccountKey() {
     const String token = kk::DevToken::load();
@@ -565,12 +576,21 @@ void clearOutboxAuthIssue() {
 
 void runProbe() {
     const String token = kk::DevToken::load();
+    const uint8_t previousLevel = gHaveUser ? gUser.level : 0;
     snprintf(gNetLine, sizeof gNetLine, "API: probing...");
     gDirty = true;
     const kk::WkProbeResult r = kk::probeWaniKaniUser(token);
     if (r.parsed) {
         gUser = r.user;
         gHaveUser = true;
+        if (previousLevel && r.user.level > previousLevel) {
+            gLevelUpFrom = previousLevel;
+            gLevelUpTo = static_cast<uint8_t>(r.user.level);
+            gLevelUpAt = effectiveNow();
+            gLevelUpNotice = true;
+        } else if (!previousLevel || r.user.level < previousLevel) {
+            clearLevelUpNotice();
+        }
         gSyncIssue = SyncIssue::None;
         gOutboxAuthIssue = false;
     } else {
@@ -618,6 +638,29 @@ void runSummary() {
     gDirty = true;
 }
 
+void formatLevelProgressLine(char* out, size_t n) {
+    if (!out || n == 0) return;
+    out[0] = 0;
+    if (!gLevelProgress.valid) return;
+    char date[16];
+    localDate(gLevelProgress.unlockedAt ? gLevelProgress.unlockedAt : gLevelProgress.startedAt,
+              date, sizeof date);
+    const uint8_t percent =
+        kk::levelKanjiPercent(gLevelProgress.kanjiPassed, gLevelProgress.kanjiTotal);
+    if (gLevelProgress.kanjiTotal) {
+        if (date[0])
+            snprintf(out, n, "L%u %u%% since %s", static_cast<unsigned>(gLevelProgress.level),
+                     static_cast<unsigned>(percent), date);
+        else
+            snprintf(out, n, "L%u %u%%", static_cast<unsigned>(gLevelProgress.level),
+                     static_cast<unsigned>(percent));
+    } else if (date[0]) {
+        snprintf(out, n, "L%u since %s", static_cast<unsigned>(gLevelProgress.level), date);
+    } else {
+        snprintf(out, n, "Level %u", static_cast<unsigned>(gLevelProgress.level));
+    }
+}
+
 void runLevelProgress() {
     if (!gHaveUser) return;
     const kk::LevelProgress p = kk::fetchLevelProgress(kk::DevToken::load(), gUser.level);
@@ -627,7 +670,10 @@ void runLevelProgress() {
     char date[16];
     localDate(gLevelProgress.unlockedAt ? gLevelProgress.unlockedAt : gLevelProgress.startedAt,
               date, sizeof date);
-    Serial.printf("[level] %u since %s\n", static_cast<unsigned>(gLevelProgress.level), date);
+    Serial.printf("[level] %u %u%% since %s\n", static_cast<unsigned>(gLevelProgress.level),
+                  static_cast<unsigned>(kk::levelKanjiPercent(gLevelProgress.kanjiPassed,
+                                                               gLevelProgress.kanjiTotal)),
+                  date);
 }
 
 bool runSrsCounts() {
@@ -2865,6 +2911,7 @@ void settingsKey(const KeyEvent& e) {
             gUser = kk::User{};
             gSummary = kk::Summary{};
             gLevelProgress = kk::LevelProgress{};
+            clearLevelUpNotice();
             gSrs = kk::SrsCounts{};
             gHaveUser = false;
             gHaveSummary = false;
@@ -3437,17 +3484,8 @@ void startSync() {
         setSyncIssue(429, true, 0, "Level");
         syncRowWarn(SyncLevel, "rate limited");
     } else if (gLevelProgress.valid) {
-        char date[16];
-        localDate(gLevelProgress.unlockedAt ? gLevelProgress.unlockedAt
-                                            : gLevelProgress.startedAt,
-                  date, sizeof date);
         char level[40];
-        if (date[0])
-            snprintf(level, sizeof level, "L%u since %s",
-                     static_cast<unsigned>(gLevelProgress.level), date);
-        else
-            snprintf(level, sizeof level, "Level %u",
-                     static_cast<unsigned>(gLevelProgress.level));
+        formatLevelProgressLine(level, sizeof level);
         syncRowDone(SyncLevel, level);
     } else {
         syncRowWarn(SyncLevel, "unavailable");
@@ -3494,11 +3532,18 @@ bool portalValidateToken(const String& token, String* username, int* level, Stri
         if (error) *error = "Wi-Fi is not connected yet.";
         return false;
     }
+    const bool tokenChanged = kk::DevToken::load() != token;
     kk::wkClearAuthBlock();
     gFreeCanvasForRequest = true;
     const kk::WkProbeResult r = kk::probeWaniKaniUser(token);
     gFreeCanvasForRequest = false;
     if (r.parsed) {
+        if (tokenChanged) {
+            // A new token must not inherit the previous account's level as the
+            // baseline for a level-up notice.
+            clearLevelUpNotice();
+            gHaveUser = false;
+        }
         gDeferredAuthIssue = SyncIssue::None;
         gSyncIssue = SyncIssue::None;
         gOutboxAuthIssue = false;
@@ -3827,20 +3872,18 @@ void drawHome() {
         cacheStatusLine(line, sizeof line);
         d.setTextColor(cacheIsStale() ? kErr : kWarn, kBg);
         d.drawString(line, 8, 117);
+    } else if (gLevelUpNotice) {
+        char line[40];
+        snprintf(line, sizeof line, "Level up! L%u -> L%u",
+                 static_cast<unsigned>(gLevelUpFrom), static_cast<unsigned>(gLevelUpTo));
+        d.setTextColor(kOk, kBg);
+        d.drawString(line, 8, 117);
     } else if (gHaveUser && gUser.vacationStartedAt) {
         d.setTextColor(kWarn, kBg);
         d.drawString("Vacation mode", 8, 117);
     } else if (gLevelProgress.valid) {
         char line[40];
-        char date[16];
-        localDate(gLevelProgress.unlockedAt ? gLevelProgress.unlockedAt
-                                            : gLevelProgress.startedAt,
-                  date, sizeof date);
-        if (date[0])
-            snprintf(line, sizeof line, "L%u since %s",
-                     static_cast<unsigned>(gLevelProgress.level), date);
-        else
-            snprintf(line, sizeof line, "Level %u", static_cast<unsigned>(gLevelProgress.level));
+        formatLevelProgressLine(line, sizeof line);
         d.setTextColor(kFaint, kBg);
         d.drawString(line, 8, 117);
     }
@@ -5301,7 +5344,12 @@ void handleSerial() {
         } else if (gSerialLine.startsWith("k ")) {
             String token = gSerialLine.substring(2);
             token.trim();
+            const String previousToken = kk::DevToken::load();
             if (kk::DevToken::save(token)) {
+                if (previousToken != token) {
+                    clearLevelUpNotice();
+                    gHaveUser = false;
+                }
                 Serial.printf("[auth] token saved (%u chars)\n", static_cast<unsigned>(token.length()));
                 gDeferredAuthIssue = SyncIssue::None;
                 gOutboxAuthIssue = false;
@@ -5319,6 +5367,8 @@ void handleSerial() {
             kk::wkClearAuthBlock();
             gDeferredAuthIssue = SyncIssue::None;
             gOutboxAuthIssue = false;
+            clearLevelUpNotice();
+            gHaveUser = false;
             Serial.println("[auth] token cleared");
             snprintf(gNetLine, sizeof gNetLine, "API: token cleared");
         } else if (gSerialLine == "d") {

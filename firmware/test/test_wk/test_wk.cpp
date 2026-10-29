@@ -882,6 +882,16 @@ static void test_level_progressions_parse() {
     TEST_ASSERT_EQUAL(9, highest.level);
 }
 
+static void test_level_kanji_percent() {
+    TEST_ASSERT_EQUAL(0, levelKanjiPercent(0, 0));
+    TEST_ASSERT_EQUAL(0, levelKanjiPercent(0, 40));
+    TEST_ASSERT_EQUAL(43, levelKanjiPercent(17, 40));
+    TEST_ASSERT_EQUAL(33, levelKanjiPercent(1, 3));
+    TEST_ASSERT_EQUAL(67, levelKanjiPercent(2, 3));
+    TEST_ASSERT_EQUAL(100, levelKanjiPercent(40, 40));
+    TEST_ASSERT_EQUAL(100, levelKanjiPercent(41, 40));
+}
+
 static void test_review_statistics_parse_and_merge() {
     JsonParser p;
     JsonValue v;
@@ -1111,6 +1121,8 @@ static void test_cache_snapshot_round_trip() {
     in.levelProgress.level = 8;
     in.levelProgress.unlockedAt = 1759900000u;
     in.levelProgress.startedAt = 1759900100u;
+    in.levelProgress.kanjiTotal = 40;
+    in.levelProgress.kanjiPassed = 17;
     in.levelProgress.valid = true;
     in.srs = SrsCounts{42, 18, 9, 4, 2, true};
     Assignment a;
@@ -1147,6 +1159,8 @@ static void test_cache_snapshot_round_trip() {
     TEST_ASSERT_EQUAL_UINT32(1759900000u, out.user.vacationStartedAt);
     TEST_ASSERT_EQUAL(8, out.levelProgress.level);
     TEST_ASSERT_EQUAL_UINT32(1759900000u, out.levelProgress.unlockedAt);
+    TEST_ASSERT_EQUAL(40, out.levelProgress.kanjiTotal);
+    TEST_ASSERT_EQUAL(17, out.levelProgress.kanjiPassed);
     TEST_ASSERT_TRUE(out.levelProgress.valid);
     TEST_ASSERT_TRUE(out.srs.valid);
     TEST_ASSERT_EQUAL_UINT32(42, out.srs.apprentice);
@@ -1288,6 +1302,7 @@ int main(int, char**) {
     RUN_TEST(test_summary_text_parser_empty);
     RUN_TEST(test_review_response_parse);
     RUN_TEST(test_level_progressions_parse);
+    RUN_TEST(test_level_kanji_percent);
     RUN_TEST(test_srs_total_count_and_groups);
     RUN_TEST(test_assignment_parse);
     RUN_TEST(test_subject_parse);

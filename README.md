@@ -23,7 +23,8 @@
 > header shows the current SRS stage and lifetime accuracy; the session summary
 > shows the stage returned by `POST /reviews` and the last item's review
 > history. `/level_progressions` is cached and Home shows when the current
-> level unlocked. The Home SRS bar splits the cached assignment counts into
+> level unlocked, the percentage of the level's kanji passed and a level-up
+> notice after a sync. The Home SRS bar splits the cached assignment counts into
 > Apprentice/Guru/Master/Enlightened/Burned buckets, filled by five small
 > `/assignments` count requests. Sync runs on a six-row screen (Wi-Fi, Outbox,
 > Account, Summary, Level, SRS) with a progress bar and `Esc` cancel; failures

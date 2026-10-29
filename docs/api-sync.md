@@ -67,13 +67,16 @@ ISO 8601 in UTC, with microseconds and `Z`. KaniKey only needs seconds.
 |---|---|---|---|
 | GET | `/user` | User, level, subscription, preferences | Every sync (boot or manual) |
 | GET | `/summary` | Reviews/lessons per hour, `next_reviews_at` | Every sync (boot or manual) |
-| GET | `/assignments` | Stages, `available_at`, assignment IDs | Per review/lesson batch; five SRS count requests per sync |
-| GET | `/subjects` | Meanings, readings, components, mnemonics | When the batch IDs need data |
+| GET | `/assignments` | Stages, `available_at`, assignment IDs | Per review/lesson batch; five SRS count requests, plus one of the two level count requests (passed kanji) per sync |
+| GET | `/subjects` | Meanings, readings, components, mnemonics | When the batch IDs need data; plus one of the two level count requests (kanji total) per sync |
 | GET | `/study_materials` | User synonyms and notes | Per review/lesson batch |
 | GET | `/review_statistics` | Per-subject accuracy and streaks | Per review batch |
 | GET | `/level_progressions` | Current level and level-up timestamps | Every sync |
 | POST | `/reviews` | Send a completed review | Per item |
 | PUT | `/assignments/{id}/start` | Start a lesson | Per lesson |
+
+The Level step makes two collection count requests: `/subjects` for the level's
+kanji total and `/assignments` for the kanji that passed (Guru or later).
 
 There is no ETag/conditional-request path in the current client; `304` is listed
 below for completeness only.
@@ -124,12 +127,13 @@ Filters used by the current client:
 |---|---|
 | `subject_ids=...` | Fetch the assignment for a review/lesson batch |
 | `srs_stages=...` | Home distribution buckets |
-| `hidden=false` | Exclude hidden from the distribution counts |
-| `page_after_id=999999999` | Ask for an empty data page in the distribution counts |
+| `levels`, `subject_types` | Passed kanji count for the current level |
+| `hidden=false` | Exclude hidden from the distribution and level counts |
+| `page_after_id=999999999` | Ask for an empty data page in the count requests |
 
-`immediately_available_for_review`, `immediately_available_for_lessons`,
-`updated_after` and `levels` remain design filters for a future global sync;
-the current queue comes from `/summary` and is resolved by `subject_ids`.
+`immediately_available_for_review`, `immediately_available_for_lessons` and
+`updated_after` remain design filters for a future global sync; the current
+queue comes from `/summary` and is resolved by `subject_ids`.
 
 The Home distribution makes five small collection requests with
 `srs_stages=1,2,3,4`, `5,6`, `7`, `8`, `9`, `hidden=false` and
@@ -137,6 +141,11 @@ The Home distribution makes five small collection requests with
 empty and the response is ~350 bytes. It reads only the top-level
 `total_count`. A partial failure keeps the previous cached counts instead of
 replacing the bar with a mixed snapshot.
+
+The Level step makes one more count request for the current level:
+`/assignments?levels=<level>&subject_types=kanji&srs_stages=5,6,7,8,9&hidden=false&page_after_id=999999999`.
+A passed kanji is Guru or later (stages 5-9). If this or the `/subjects` total
+fails, both level counts stay 0 and the cached timestamps remain valid.
 
 Fields:
 
@@ -156,8 +165,9 @@ available_at, resurrected_at, hidden, data_updated_at
 
 ### 3.4 `/subjects`
 
-Filters: `ids=...` is used by the current batches; `types=...`, `levels=...`
-and `updated_after=...` remain design filters.
+Filters: `ids=...` is used by the current batches; `levels=...`, `types=...`,
+`hidden=false` and `page_after_id=999999999` are used for the current level's
+kanji total. `updated_after=...` remains a design filter.
 
 Common fields:
 
@@ -196,6 +206,11 @@ detail page; `pronunciation_audios` remains phase 2 (EXT-06). The related IDs
 (`visually_similar_subject_ids`, `amalgamation_subject_ids`, up to 32 each) are
 stored and the detail card adds a related page with counts and any meanings
 already present in the batch.
+
+The Level step requests `/subjects?levels=<level>&types=kanji&hidden=false&page_after_id=999999999`
+and reads only the top-level `total_count` for the level's kanji denominator;
+the cursor is past the last subject, so `data` is empty and the response is a
+few hundred bytes.
 
 ### 3.5 `/study_materials`
 
@@ -280,12 +295,21 @@ without the accuracy display.
 Fields used: `level`, `unlocked_at`, `started_at`, `passed_at`, `completed_at`,
 `abandoned_at`.
 
-**Implementation (2026-10-28).** Sync fetches the collection once and keeps the
-entry for the current level (falling back to the highest level). The snapshot
-stores the timestamps; Home shows the low-priority status line
-`L8 since 03 Feb` when no sync/outbox/offline/vacation message is more urgent.
-A token without the level-progressions permission keeps the previous cached
-value.
+**Implementation (2026-10-29).** Sync fetches the collection once and keeps the
+entry for the current level (falling back to the highest level). It then makes
+two tiny `total_count` requests for that level: `/subjects?levels=<level>&types=kanji&hidden=false&page_after_id=999999999`
+for the kanji total, and
+`/assignments?levels=<level>&subject_types=kanji&srs_stages=5,6,7,8,9&hidden=false&page_after_id=999999999`
+for the kanji passed (Guru or later). If either count fails, both are stored as
+0 and the timestamps remain valid; the counts never fail the Level step on
+their own. The snapshot stores the timestamps and counts in `KKCA` v11. Home
+shows the low-priority status line `L8 42% since 03 Feb` (rounded
+`passed * 100 / total`, 0 when the total is unknown) when no
+sync/outbox/offline/level-up message is more urgent; without counts it keeps
+`L8 since 03 Feb`. The level-up notice is not shown without a previous level,
+is cleared when a new token is saved or the parsed level decreases, and lasts
+until sign-out. A token without the level-progressions permission keeps the
+previous cached value.
 
 ---
 
@@ -353,6 +377,7 @@ value.
 3. GET /user                     → user, level, max_level_granted
 4. GET /summary                  → counters (streaming parser)
 5. GET /level_progressions       → current level timestamps
+   GET /subjects + /assignments  → level kanji total and passed counts
 6. Five GET /assignments count requests for the SRS bar
 7. The summary/level/SRS steps save the snapshot as they succeed
 ```
@@ -567,14 +592,15 @@ confirmation.
 - On startup, if the main file fails CRC, use `.bak` and warn.
 - Never delete the outbox before the POST is confirmed.
 
-**Implementation (2026-10-28).** The Home/user/batch snapshot is
-`/state/cache.bin` (`KKCA`, version 10); the batch subjects are
-`/kanikey/cache/subjects.bin` (`KKCS`, version 10) on SD. Version 3 added the
+**Implementation (2026-10-29).** The Home/user/batch snapshot is
+`/state/cache.bin` (`KKCA`, version 11); the batch subjects are
+`/kanikey/cache/subjects.bin` (`KKCS`, version 11) on SD. Version 3 added the
 study-material notes to each cached subject, version 4 added the review
 presentation order, version 5 added the vacation timestamp, version 6 added the
 per-subject review statistics, version 7 added the level progression, version 8
 added vocabulary parts of speech/context sentences, version 9 added the
-related-subject IDs and version 10 adds the Home SRS distribution counts;
+related-subject IDs, version 10 added the Home SRS distribution counts and
+version 11 adds the level kanji total/passed counts;
 older files are discarded. Both carry the save time, an
 FNV-1a fingerprint of the API token, the payload length and CRC32.
 The snapshot also stores the summary's `data_updated_at`; assignments keep
@@ -767,7 +793,7 @@ Both `KKCA` (LittleFS) and `KKCS` (SD) start with the same 24-byte header:
 
 ```
 0   magic         4 B   "KKCA" or "KKCS"
-4   version       u16   currently 10
+4   version       u16   currently 11
 6   reserved      u16   0
 8   saved_at      u32   UTC epoch; 0 when the clock was not trusted
 12  account_key   u32   FNV-1a of the API token
@@ -809,8 +835,8 @@ Minimal fixtures, hand-written, with attribution:
 
 Tests (current native coverage):
 
-- Fixture parsing into the models; cache snapshot/subject round trips and CRC
-  rejection.
+- Fixture parsing into the models; cache snapshot/subject round trips, CRC
+  rejection and the level kanji percentage rounding.
 - JSON values, escapes and bad input; summary buckets, IDs and a valid empty
   summary.
 - Outbox model counts, HTTP code default, attempt cap and stuck add/remove.

@@ -65,9 +65,11 @@ Working on hardware:
   (`SRS 1 86%`) and the session summary combines the stage from the last
   successful `POST /reviews` with the last completed item's history
   (`History 18 reviews, 89%`).
-- Level progress: `/level_progressions` is fetched on sync and cached. Home
-  shows the current level's unlock date in the low-priority status line
-  (`L8 since 03 Feb`); the real request returned 200 on hardware.
+- Level progress: `/level_progressions` and two kanji count requests are
+  fetched on sync and cached. Home shows `L8 42% since 03 Feb` in the
+  low-priority status line and a session `Level up! L8 -> L9` notice after a
+  level increase. The `/level_progressions` request returned 200 on hardware;
+  the percentage and real level-up transition still need a hardware pass.
 - SRS distribution: sync fetches five `/assignments` buckets by `srs_stages`
   and reads `total_count` only; Home draws the Apprentice/Guru/Master/
   Enlightened/Burned bar with counts. The counts are cached, so the bar works
@@ -112,12 +114,12 @@ Working on hardware:
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 60 native tests and the `cardputer-adv` build run in GitHub Actions alongside
+- 61 native tests and the `cardputer-adv` build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests.
 
-Current build: **1,402,013 B / 1,835,008 B flash (76.4%)**, **94,696 B /
-327,680 B static RAM (28.9%)**. The dev image is 1,409,545 B. Removing
-`efontJA_16` freed ~468 KB and leaves ~425 KB of flash headroom.
+Current build: **1,403,645 B / 1,835,008 B flash (76.5%)**, **94,704 B /
+327,680 B static RAM (28.9%)**. The dev image is 1,411,545 B. Removing
+`efontJA_16` freed ~468 KB and leaves ~421 KB of flash headroom.
 
 ## Priority summary
 
@@ -129,7 +131,7 @@ Current build: **1,402,013 B / 1,835,008 B flash (76.4%)**, **94,696 B /
 | 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; review history and audio remain | Partial | WK-11, EXT-06 |
 | 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Code and docs done; hardware check pending for the final OUTBOX screen (API-01) and API-02…05 | — |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
-| 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen and item detail are live | Partial | UI-05 |
+| 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen, item detail and level progress are live | Partial | UI-07 |
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal ported; OTA/widgets pending | TNG-02, TNG-03 |
 | 9 | Technical debt, CI and release | Maintainability and shipping | Ongoing | TECH-01, TECH-02 |
 | 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | Partially started (EXT-01/02 done) | EXT-03, EXT-04 |
@@ -149,7 +151,7 @@ OTA/release, with the remaining UI and API hardware verification alongside.
 | 3 | Setup and device UX | TNG-02 | OTA release path (setup/settings complete) |
 | 4 | WaniKani data and detail | WK-11 (WK-01/03/04/05/06/07/08/09/10 done) | Review history and progress |
 | 5 | API robustness | API-07 (API-01/02/03/04/05/06 done) | Done; hardware verification of API-01's final OUTBOX screen and API-02…05 still pending |
-| 6 | UI, stats and sync | UI-05 → UI-08 (UI-01/02/03/04/06 done) | Polish |
+| 6 | UI, stats and sync | UI-07 → UI-08 (UI-01/02/03/04/05/06 done) | Polish |
 | 7 | Technical debt and release | TECH-01 → TECH-07 (TECH-04 done) | Refactor, version, OTA and license |
 | 8 | Kakehashi-inspired extras | EXT-01 → EXT-09 | Practice modes, critical items, audio and stats |
 
@@ -208,7 +210,7 @@ reboot with Wi-Fi unavailable.
   `Stale cache`; a missing cache keeps the `Not synced` boot state.
 - **CACHE-05 — Invalidation.** Define cache version, token/account change,
   server `data_updated_at` and manual sync invalidation. **Done (2026-10-28):**
-  versioned `KKCA`/`KKCS` files (currently v10), token fingerprint at load,
+  versioned `KKCA`/`KKCS` files (currently v11), token fingerprint at load,
   summary `data_updated_at` stored, assignments keep theirs, 24 h stale state,
   Settings `Sync now` and `Clear cache`. Sign-out clears account state.
 - **CACHE-06 — Keep the outbox coherent.** Flush/reconcile pending reviews
@@ -302,9 +304,11 @@ live; review history, audio and the remaining preferences still need work.
   `History N reviews, NN%` in the summary. The account has no statistics
   permission issue; hardware-verified with a synthetic cached review.
 - **WK-07 — `GET /level_progressions`.** Level progress, current level and
-  level-up time. **Done (2026-10-28):** sync fetches `/level_progressions`,
-  caches the current level's timestamps and Home shows `L8 since 03 Feb` in the
-  low-priority status line. The real request returned 200 on hardware.
+  level-up time. **Done (2026-10-28; UI-05 update 2026-10-29):** sync fetches
+  `/level_progressions`, caches the current level's timestamps and shows
+  `L8 42% since 03 Feb` in Home's low-priority status line, with a session
+  `Level up! L8 -> L9` notice when the level increases. The real request
+  returned 200 on hardware.
 - **WK-08 — Item detail data.** Mnemonics, hints, components, user notes and
   synonyms for the review detail screen. **Done (2026-10-28):** review subjects
   are parsed with details, component subjects are fetched in small pages and
@@ -395,7 +399,7 @@ host-inspected only.
   with the implementation. **Done (2026-10-29):** audited `README.md`,
   `ROADMAP.md`, `docs/api-sync.md`, `docs/ux.md`, `docs/design.md`,
   `docs/setup.md`, `docs/hardware.md` and `docs/decisions.md` against the
-  current firmware: sync steps, cache v10, outbox states/attempts/age, 401/403
+  current firmware: sync steps, cache v11, outbox states/attempts/age, 401/403
   and 429 gates, parse retries, `/summary` empty behavior, Home/Sync/Outbox/
   Summary/Lesson wording, CI and remaining hardware checks. A follow-up pass
   fixed the 13 contradictions reported by the tester (cache E2E status, lesson
@@ -484,7 +488,19 @@ device.
   opens a 5-page card; `Space` pages, `Tab`/`Esc` returns. Verified on hardware
   with a synthetic cached review.
 - **UI-05 — Level progress.** Current level, progress to next level and
-  level-up feedback (with WK-07).
+  level-up feedback (with WK-07). **Done (2026-10-29):** the Level step asks for
+  the current level's kanji total
+  (`/subjects?levels=<level>&types=kanji&hidden=false&page_after_id=999999999`) and passed
+  kanji (`/assignments?levels=<level>&subject_types=kanji&srs_stages=5,6,7,8,9&hidden=false&page_after_id=999999999`),
+  reading only `total_count`. Home shows `L8 42% since 03 Feb` (rounded, 0 when
+  the total is unknown) and keeps `L8 since 03 Feb` when the counts fail; both
+  counts and the timestamps are cached in `KKCA` v11. A sync that raises the
+  level shows `Level up! L8 -> L9` in green after auth/outbox/offline and before
+  vacation for the rest of the session; it is not shown on the first sync
+  without a previous level and is cleared on sign-out, a new token or a level
+  decrease.
+  Native-tested (61 tests); both firmware builds pass. Hardware check pending:
+  real counts on the card and a real level-up transition.
 - **UI-06 — Lesson layout fixes.** Page counter, hint bar spacing and the
   `drawLoading` Japanese subtitle that can be blank. **Done (2026-10-29):**
   the header keeps `2/5` and adds `p1/3` to its right with an 8 px gap, well

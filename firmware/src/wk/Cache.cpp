@@ -244,13 +244,16 @@ void encodeLevelProgress(Writer& w, const LevelProgress& p) {
     w.u32(p.startedAt);
     w.u32(p.passedAt);
     w.u32(p.completedAt);
+    w.u16(p.kanjiTotal);
+    w.u16(p.kanjiPassed);
     w.u8(p.valid ? 1 : 0);
 }
 
 bool decodeLevelProgress(Reader& r, LevelProgress* p) {
     uint8_t valid = 0;
     if (!r.u8(&p->level) || !r.u32(&p->unlockedAt) || !r.u32(&p->startedAt) ||
-        !r.u32(&p->passedAt) || !r.u32(&p->completedAt) || !r.u8(&valid))
+        !r.u32(&p->passedAt) || !r.u32(&p->completedAt) || !r.u16(&p->kanjiTotal) ||
+        !r.u16(&p->kanjiPassed) || !r.u8(&valid))
         return false;
     p->valid = valid != 0;
     return true;

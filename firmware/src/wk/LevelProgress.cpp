@@ -53,4 +53,10 @@ bool parseLevelProgressions(const JsonValue& root, uint8_t currentLevel, LevelPr
     return out->valid;
 }
 
+uint8_t levelKanjiPercent(uint16_t passed, uint16_t total) {
+    if (total == 0) return 0;
+    const uint32_t percent = (static_cast<uint32_t>(passed) * 100u + total / 2u) / total;
+    return static_cast<uint8_t>(percent > 100u ? 100u : percent);
+}
+
 }  // namespace kk

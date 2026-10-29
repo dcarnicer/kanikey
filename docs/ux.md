@@ -20,7 +20,9 @@
    `CORRECT`. Incorrect isn't just red; it has ✗ and `NOT QUITE`.
 5. **Offline is stated.** One status line carries the most urgent state, such
    as `Offline - 2h old` or `Outbox: 4 pending`; outbox pending/attention
-   replaces the offline/stale/vacation/level line. Never a generic error.
+   replaces the offline/stale/vacation/level line. A level-up notice is shown
+   after sync/outbox/offline and before vacation and level details. Never a
+   generic error.
 6. **Short texts.** The screen is 240×135; long sentences wrap onto several
    lines or move to a detail screen.
 
@@ -313,6 +315,14 @@ Home ──L──► Lessons ──Enter──► Lesson card
   replacing the offline/stale/vacation/level line. The attention
   count is rejected + stuck; pending does not include either. When items need
   attention, the hint swaps `L: lessons` for `O: outbox` (§5.13).
+- Priority of the status line: auth/rate/server error, outbox, offline/stale,
+  level-up notice, vacation, level line. A level-up notice keeps priority over
+  vacation and level until sign-out.
+- Level line: `L8 42% since 03 Feb`, or `L8 42%` when the date is unavailable.
+  The percentage is the rounded `passed kanji * 100 / total kanji` for the
+  level (0 when the total is unknown); passed means Guru or later (SRS stages
+  5-9). When the counts could not be fetched, the existing `L8 since 03 Feb`
+  line is kept.
 - Hint: `Enter: reviews  L: lessons  S: sync` (8 px). With rejected or stuck
   items the hint becomes `O: outbox  Enter: reviews  S: sync`, dropping entries
   from the middle when it would not fit; `O: outbox` is kept. `Esc` still opens
@@ -328,9 +338,14 @@ Home ──L──► Lessons ──Enter──► Lesson card
     `all clear`); there is no separate “All caught up” screen or forecast
     detail yet.
   - **Vacation:** `Vacation mode` in amber in the status line when no more
-    urgent sync/outbox/offline message is shown.
-  - **Level:** `L8 since 03 Feb` in faint text in the status line when nothing
-    more urgent is shown.
+    urgent sync/outbox/offline/level-up message is shown.
+  - **Level:** `L8 42% since 03 Feb` (or `L8 42%`) in faint text in the status
+    line when nothing more urgent is shown. The counts are cached with the
+    level timestamps; without counts it falls back to `L8 since 03 Feb`.
+  - **Level up:** after a sync raises the account level, the status line shows
+    `Level up! L8 -> L9` in green instead of the level line. It is not shown on
+    the first sync without a known previous level, stays for the session and is
+    cleared on sign-out, a new token or a level decrease.
   - **Error:** Home shows `Auth: token rejected`, `Auth: missing permissions`,
   `Rate limited; retry later` or `WaniKani error; retry`. Boot shows distinct
   `Token rejected` / `Missing permissions` / `Rate limited` / `WaniKani error`

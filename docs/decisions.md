@@ -2,7 +2,7 @@
 
 Short log of design decisions. Status: **accepted** (2026-10-25). Format:
 date, decision, why and what it implies. Cache versions named in dated entries
-are the version at that date; the current files are `KKCA`/`KKCS` v10.
+are the version at that date; the current files are `KKCA`/`KKCS` v11.
 
 ---
 
