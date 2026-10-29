@@ -100,7 +100,8 @@ Working on hardware:
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 56 native tests pass. GitHub Actions runs gitleaks on `main`.
+- 56 native tests and the release build run in GitHub Actions alongside
+  gitleaks on pushes to `main` and on pull requests.
 
 Current build: **1,399,633 B / 1,835,008 B flash (76.3%)**, **94,680 B /
 327,680 B static RAM (28.9%)**. The dev image is 1,407,069 B. Removing
@@ -118,7 +119,7 @@ Current build: **1,399,633 B / 1,835,008 B flash (76.3%)**, **94,680 B /
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
 | 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen and item detail are live | Partial | UI-05 |
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal ported; OTA/widgets pending | TNG-02, TNG-03 |
-| 9 | Technical debt, CI and release | Maintainability and shipping | Ongoing | TECH-01, TECH-04 |
+| 9 | Technical debt, CI and release | Maintainability and shipping | Ongoing | TECH-01, TECH-02 |
 | 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | Not started | EXT-01, EXT-03 |
 
 ## Execution order
@@ -136,7 +137,7 @@ lesson flow.
 | 4 | WaniKani data and detail | WK-11 (WK-01/03/04/05/06/07/08/09/10 done) | Review history and progress |
 | 5 | API robustness | API-03 → API-07 (API-01/02 done) | Recoverable rate-limited and auth errors |
 | 6 | UI, stats and sync | UI-05 → UI-08 (UI-01/02/03/04 done) | Polish |
-| 7 | Technical debt and release | TECH-01 → TECH-07 | CI, refactor, version, OTA and license |
+| 7 | Technical debt and release | TECH-01 → TECH-07 (TECH-04 done) | Refactor, version, OTA and license |
 | 8 | Kakehashi-inspired extras | EXT-01 → EXT-09 | Practice modes, critical items, audio and stats |
 
 ## 1. Radicals and remove `efontJA_16` (v1 blocker)
@@ -469,8 +470,10 @@ SRS and deck catalog remain intentionally dropped. See
 - **TECH-03 — Dev hooks.** `KANIKEY_DEV` now covers the M0 screen and Tab
   shortcut; put `gDirectReading`, synthetic outbox commands and other serial
   helpers behind the same flag.
-- **TECH-04 — PlatformIO CI.** Add `pio run -e cardputer-adv` and
-  `pio test -e native` to GitHub Actions alongside gitleaks.
+- **TECH-04 — PlatformIO CI. Done (2026-10-29).** The `firmware` workflow
+  (`.github/workflows/firmware.yml`) runs `pio test -e native` and the
+  `cardputer-adv` release build; PlatformIO and pip caches are keyed by
+  `firmware/platformio.ini`.
 - **TECH-05 — Host tests.** Add pack/RLE reader tests and more outbox/HTTP edge
   cases.
 - **TECH-06 — Release.** Decide the license, finalize third-party notices,

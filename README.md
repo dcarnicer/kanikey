@@ -138,10 +138,12 @@ By default the script reuses the Noto Sans JP font that Tangocho downloads into
 KANIKEY_FONT=/path/NotoSansJP-Regular.otf python3 tools/mockups/render.py
 ```
 
-## Secret scanning
+## CI and secret scanning
 
-GitHub Actions runs [gitleaks](https://github.com/gitleaks/gitleaks) on every
-push to `main` and on pull requests, scanning the full history. Locally:
+GitHub Actions runs [gitleaks](https://github.com/gitleaks/gitleaks),
+the native tests (`pio test -e native`) and the Cardputer firmware build
+(`pio run -e cardputer-adv`) on every push to `main` and on pull requests.
+Gitleaks scans the full history. Locally:
 
 ```sh
 brew install gitleaks

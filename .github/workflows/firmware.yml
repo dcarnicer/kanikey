@@ -1,0 +1,36 @@
+name: firmware
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Cache PlatformIO and pip
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: ${{ runner.os }}-pio-${{ hashFiles('firmware/platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-
+      - name: Install PlatformIO Core
+        run: pip install platformio==6.1.19
+      - name: Run native tests
+        run: pio test -e native
+        working-directory: firmware
+      - name: Build Cardputer firmware
+        run: pio run -e cardputer-adv
+        working-directory: firmware
