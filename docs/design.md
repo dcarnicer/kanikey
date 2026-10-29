@@ -728,9 +728,10 @@ account; Enter fetches the batch.
 - Persistent outbox with CRC, `.bak` recovery, retries and ambiguous-request
   reconciliation: implemented and tested with a real 201, a synthetic 422 and
   the full offline path (Wi-Fi off → review → reboot → 201).
-- Home shows pending/attention counts; power management dims/blanks/sleeps.
-- User-facing rejected-item dismissal and rate-limit handling remain.
-- Boot without network and the sync screen remain.
+- Home shows pending/attention counts; rejected items can be inspected and
+  dismissed from the `OUTBOX` screen (`O` on Home).
+- Rate-limit backoff and a few API edge cases remain.
+- Boot without network and the sync screen have landed.
 
 **Output:** review on the subway and sync when you get out.
 

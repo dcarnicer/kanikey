@@ -170,7 +170,7 @@ If only a few are missing, you can regenerate just the partial pack with `--ids`
 | `Offline` | No Wi-Fi or DNS | Check the network; offline review continues |
 | `WaniKani is busy` (429) | Rate limit | Wait; KaniKey retries |
 | `Clock not set` | No SNTP and no portal time | Connect once or set the time |
-| `Review already changed` (422) | The item was reviewed elsewhere | KaniKey reconciles and refreshes |
+| `Review already changed` (422) | The item was reviewed elsewhere | KaniKey marks it rejected and keeps it; open `O: outbox` to inspect and dismiss it |
 
 ---
 

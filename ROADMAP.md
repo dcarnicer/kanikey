@@ -97,11 +97,11 @@ Working on hardware:
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 50 native tests pass. GitHub Actions runs gitleaks on `main`.
+- 51 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,393,601 B / 1,835,008 B flash (75.9%)**, **94,616 B /
-327,680 B static RAM (28.9%)**. The dev image is 1,400,641 B. Removing
-`efontJA_16` freed ~468 KB and leaves ~441 KB of flash headroom.
+Current build: **1,397,741 B / 1,835,008 B flash (76.2%)**, **94,664 B /
+327,680 B static RAM (28.9%)**. The dev image is 1,405,157 B. Removing
+`efontJA_16` freed ~468 KB and leaves ~437 KB of flash headroom.
 
 ## Priority summary
 
@@ -111,7 +111,7 @@ Current build: **1,393,601 B / 1,835,008 B flash (75.9%)**, **94,616 B /
 | 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Core landed; real-account E2E pending | CACHE-05, CACHE-07 |
 | 3 | Complete lesson flow | List/picker, card, components, quiz, empty state and start exist; ordering/hardware remain | Partial | LESSON-08, RAD-04 |
 | 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; review history and audio remain | Partial | WK-11, EXT-06 |
-| 5 | Outbox and API robustness | Rejected items, 429 and invalid auth have no user path | Partial | API-01, API-02 |
+| 5 | Outbox and API robustness | Rejected items now have a user discard path; 429 and invalid auth remain | Partial | API-02, API-03 |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
 | 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen and item detail are live | Partial | UI-05 |
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal ported; OTA/widgets pending | TNG-02, TNG-03 |
@@ -131,7 +131,7 @@ lesson flow.
 | 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | List, understand, quiz and start lessons |
 | 3 | Setup and device UX | TNG-02 | OTA release path (setup/settings complete) |
 | 4 | WaniKani data and detail | WK-11 (WK-01/03/04/05/06/07/08/09/10 done) | Review history and progress |
-| 5 | API robustness | API-01 → API-07 | Recoverable rejected, rate-limited and auth errors |
+| 5 | API robustness | API-02 → API-07 (API-01 done) | Recoverable rate-limited and auth errors |
 | 6 | UI, stats and sync | UI-05 → UI-08 (UI-01/02/03/04 done) | Polish |
 | 7 | Technical debt and release | TECH-01 → TECH-07 | CI, refactor, version, OTA and license |
 | 8 | Kakehashi-inspired extras | EXT-01 → EXT-09 | Practice modes, critical items, audio and stats |
@@ -307,10 +307,16 @@ live; review history, audio and the remaining preferences still need work.
 ## 5. Outbox and API robustness (finish M3)
 
 Already done: CRC/`.bak`, ambiguous-request reconciliation, offline end-to-end,
-Home pending/attention counts. Remaining:
+Home pending/attention counts, and a user-facing path for rejected items.
+Remaining:
 
 - **API-01 — Dismiss `Rejected` items.** User-facing action with confirmation
-  and a clear reason; today only the dev `z` command clears the outbox.
+  and a clear reason. **Done (2026-10-28):** the HTTP code is stored in the two
+  reserved bytes at record offset 22 (still 24 B, still file version 1, old
+  files load with 0). Home shows `O: outbox` when attention is needed; the
+  OUTBOX screen lists rejected items with their reason, scrolls, and confirms a
+  discard of exactly that sequence. Pending/ambiguous items and the cache are
+  untouched. Dev `J` seeds a 422 and a 409 item. Native-tested.
 - **API-02 — 429 backoff.** Wait for `RateLimit-Reset` and back off instead of
   retrying immediately. A 429 currently becomes `Pending` with no delay.
 - **API-03 — 401/403 auth state.** Surface “token invalid/expired” and

@@ -734,12 +734,28 @@ static void test_outbox_model() {
     TEST_ASSERT_NOT_NULL(outboxFind(box, 1));
     TEST_ASSERT_NULL(outboxFind(box, 3));
     box[0].state = OutboxState::Rejected;
+    box[0].httpCode = 422;
     TEST_ASSERT_EQUAL(1, outboxRejectedCount(box));
     TEST_ASSERT_EQUAL(1, outboxPendingCount(box));
     TEST_ASSERT_TRUE(outboxRemove(box, 1));
     TEST_ASSERT_FALSE(outboxRemove(box, 1));
     TEST_ASSERT_EQUAL(1, box.size());
+    TEST_ASSERT_EQUAL_UINT32(2, box[0].seq);
+    TEST_ASSERT_EQUAL_UINT16(0, box[0].httpCode);
+    TEST_ASSERT_EQUAL(1, outboxPendingCount(box));
     TEST_ASSERT_EQUAL_UINT32(3, outboxAdd(box, 103, 12, 0, 0, 0));
+}
+
+static void test_outbox_http_code_default() {
+    OutboxItem item;
+    TEST_ASSERT_EQUAL_UINT16(0, item.httpCode);
+    std::vector<OutboxItem> box;
+    const uint32_t seq = outboxAdd(box, 201, 20, 0, 0, 0);
+    TEST_ASSERT_EQUAL_UINT32(1, seq);
+    TEST_ASSERT_EQUAL_UINT16(0, box[0].httpCode);
+    box[0].state = OutboxState::Rejected;
+    box[0].httpCode = 409;
+    TEST_ASSERT_EQUAL_UINT16(409, box[0].httpCode);
 }
 
 
@@ -1182,6 +1198,7 @@ int main(int, char**) {
     RUN_TEST(test_review_statistics_parse_and_merge);
     RUN_TEST(test_crc32_known_vector);
     RUN_TEST(test_outbox_model);
+    RUN_TEST(test_outbox_http_code_default);
     RUN_TEST(test_cache_account_key);
     RUN_TEST(test_cache_snapshot_round_trip);
     RUN_TEST(test_cache_corruption_is_rejected);

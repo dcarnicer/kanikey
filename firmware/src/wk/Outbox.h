@@ -22,6 +22,7 @@ struct OutboxItem {
     uint32_t createdAt = 0;  // Unix seconds; 0 = omit created_at
     OutboxState state = OutboxState::Pending;
     uint8_t attempts = 0;
+    uint16_t httpCode = 0;  // rejection reason; 0 = unknown
 };
 
 constexpr size_t kOutboxMax = 128;

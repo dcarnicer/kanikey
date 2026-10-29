@@ -72,6 +72,7 @@ bool parse(const std::vector<uint8_t>& bytes, std::vector<OutboxItem>* out) {
         item.createdAt = get32(p + 16);
         item.state = static_cast<OutboxState>(p[20]);
         item.attempts = p[21];
+        item.httpCode = get16(p + 22);
         out->push_back(item);
     }
     return true;
@@ -116,6 +117,7 @@ bool outboxSave(const std::vector<OutboxItem>& items) {
         put32(p + 16, it.createdAt);
         p[20] = static_cast<uint8_t>(it.state);
         p[21] = it.attempts;
+        put16(p + 22, it.httpCode);  // bytes 22-23 were reserved in v1
     }
     put32(bytes.data() + 8, crc32(bytes.data() + kHeaderBytes, n * kRecordBytes));
 

@@ -343,7 +343,9 @@ value.
   server already reflect the reviews that were sent.
 - If the flush fails due to network, it switches to offline and no assignments
   are requested.
-- If the flush fails with 422, the item is reconciled and it continues.
+- If the flush hits 422/409, that item is marked `rejected` with its HTTP code
+  and kept for the Outbox screen; the flush continues with the next pending
+  item.
 - `updated_after` may return changes to assignments that are not in the queue
   (because they were reviewed on another device); they are applied.
 
@@ -386,8 +388,9 @@ setting is separate and only selects meaning-first or reading-first.
 
 - `summary` is refreshed; local counters are recalculated.
 - If the server returns new assignments, the home screen shows `N new reviews`.
-- If an outbox item was rejected (422), it is deleted, the assignment is
-  refreshed and `1 review could not be saved` is shown.
+- If an outbox item was rejected (422/409), it is marked `rejected` with its
+  HTTP code and kept; it is not deleted or reconciled automatically. Home shows
+  `N need attention` and `O: outbox` opens the list to review or discard it.
 - If the token expires, the outbox is kept and reauthentication is requested.
 
 ---
@@ -397,21 +400,30 @@ setting is separate and only selects meaning-first or reading-first.
 ### 6.1 Record
 
 ```
-seq              u32   local monotonic
-assignment_id    u32
-subject_id       u32
-incorrect_meaning u16
-incorrect_reading u16
-created_at       u32   UTC epoch; 0 = omit
-state            u8    pending | sending | ambiguous | rejected
-attempts         u8
-crc32            u32
+offset  field              type
+0       seq                u32   local monotonic
+4       assignment_id      u32
+8       subject_id         u32
+12      incorrect_meaning  u16
+14      incorrect_reading  u16
+16      created_at         u32   UTC epoch; 0 = omit
+20      state              u8    pending | sending | ambiguous | rejected
+21      attempts           u8
+22      http_code          u16   0 = unknown; rejection reason
+        (record size 24 B)
 ```
 
-- It is written to LittleFS with `temp + rename` and a `.bak` copy.
+- It is written to LittleFS with `temp + rename` and a `.bak` copy; the file
+  header carries the CRC32 over the records.
+- `http_code` uses the two reserved bytes at offset 22; the record and the file
+  version do not change. Files written before this field load with `0`.
 - `sending` is marked before the POST; if there is a power cut, on startup it is
   treated as `ambiguous`, not blindly as `pending`.
-- `rejected` is kept until the user sees it; then it is deleted.
+- `rejected` is kept until the user sees it; the Home status line shows
+  `N need attention` and `O: outbox` opens the list. Discarding is confirmed
+  and removes only the selected `seq`, never a pending or ambiguous item.
+- `http_code` records 422/409 (or another rejection code) so the Outbox screen
+  can explain why the review was refused.
 
 ### 6.2 Flush
 
@@ -420,7 +432,8 @@ crc32            u32
    - POST.
    - 200: apply `resources_updated.assignment`; delete.
    - 401/403: stop and request auth.
-   - 422/409: mark `rejected`; reconcile.
+   - 422/409: mark `rejected` with the HTTP code; keep it for the Outbox
+     screen.
    - 429: wait for `RateLimit-Reset`; retry.
    - 5xx/timeout: mark `ambiguous`; stop the flush (do not continue with the
      following ones to avoid creating a mess).
@@ -438,6 +451,11 @@ The API does not accept an idempotency key. A timeout after the server has
 processed the review produces a duplicate if it is resent. Duplicating a review
 alters the SRS stage and the user's statistics. We prefer to leave the item as
 `ambiguous` and reconcile rather than risk it.
+
+A rejected review is never resent automatically. The user opens Outbox from
+Home, sees the stored HTTP code and either keeps the item or confirms a local
+discard. Dismissing only removes the unsent outbox record; it does not change
+WaniKani and does not touch the cache or assignments.
 
 ### 6.4 Limitations
 
@@ -558,8 +576,8 @@ with a DOM. It still needs a DOM and duplicates temporary storage.
 | 401 | Invalid token | Stop, request token |
 | 403 | No permissions / subscription | Stop, explain |
 | 404 | Resource does not exist | Discard, refresh |
-| 409 | Conflict | Reconcile |
-| 422 | Validation | Reconcile, do not retry |
+| 409 | Conflict | Mark rejected; keep until the user discards in Outbox |
+| 422 | Validation | Mark rejected, do not retry; keep until the user discards in Outbox |
 | 429 | Rate limit | Wait for `RateLimit-Reset` |
 | 5xx | Server | Retry with backoff |
 | timeout / DNS / TLS | Network | 2 retries, then offline |

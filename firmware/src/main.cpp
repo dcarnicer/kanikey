@@ -181,6 +181,10 @@ int gSettingsIndex = 0;
 SettingsOrigin gSettingsOrigin = SettingsOrigin::Home;
 bool gAboutActive = false;
 bool gSignOutConfirm = false;
+bool gOutboxScreen = false;
+bool gOutboxConfirm = false;
+uint32_t gOutboxSelectedSeq = 0;
+char gOutboxNote[40] = "";
 bool gLowBatteryPrompt = false;
 int gLowBatteryAction = 0;  // 1 = review, 2 = lessons
 bool gLowBatteryConfirmed = false;
@@ -215,6 +219,7 @@ void drawSettings();
 void drawAbout();
 void drawSignOutConfirm();
 void drawLowBattery();
+void drawOutbox();
 void openPause();
 
 uint32_t currentAccountKey() {
@@ -1416,8 +1421,10 @@ bool sendOutboxItem(uint32_t seq) {
         item->state = kk::OutboxState::Ambiguous;  // may have been accepted
     else if (r.httpCode == 401 || r.httpCode == 403 || r.httpCode == 429)
         item->state = kk::OutboxState::Pending;
-    else
+    else {
         item->state = kk::OutboxState::Rejected;
+        item->httpCode = static_cast<uint16_t>(r.httpCode);
+    }
     saveOutbox();
     Serial.printf("[outbox] assignment %u -> HTTP %d, state %u\n",
                   static_cast<unsigned>(item->assignmentId), r.httpCode,
@@ -1458,6 +1465,140 @@ void flushOutbox() {
     Serial.printf("[outbox] %u pending, %u rejected\n",
                   static_cast<unsigned>(kk::outboxPendingCount(gOutbox)),
                   static_cast<unsigned>(kk::outboxRejectedCount(gOutbox)));
+}
+
+std::vector<const kk::OutboxItem*> rejectedOutboxItems() {
+    std::vector<const kk::OutboxItem*> items;
+    for (const kk::OutboxItem& it : gOutbox)
+        if (it.state == kk::OutboxState::Rejected) items.push_back(&it);
+    return items;
+}
+
+const kk::OutboxItem* selectedOutboxItem() {
+    const kk::OutboxItem* selected = kk::outboxFind(gOutbox, gOutboxSelectedSeq);
+    if (selected && selected->state == kk::OutboxState::Rejected) return selected;
+    for (const kk::OutboxItem& it : gOutbox) {
+        if (it.state != kk::OutboxState::Rejected) continue;
+        gOutboxSelectedSeq = it.seq;
+        return &it;
+    }
+    gOutboxSelectedSeq = 0;
+    return nullptr;
+}
+
+std::string outboxItemLabel(const kk::OutboxItem& item) {
+    const kk::Subject* subject = subjectById(item.subjectId);
+    if (subject) {
+        const std::string meaning = subjectMainMeaning(*subject);
+        if (!meaning.empty()) {
+            if (subject->level) {
+                char level[12];
+                snprintf(level, sizeof level, " L%u", static_cast<unsigned>(subject->level));
+                return meaning + level;
+            }
+            return meaning;
+        }
+    }
+    char fallback[32];
+    if (item.assignmentId)
+        snprintf(fallback, sizeof fallback, "assignment %u",
+                 static_cast<unsigned>(item.assignmentId));
+    else
+        snprintf(fallback, sizeof fallback, "subject %u",
+                 static_cast<unsigned>(item.subjectId));
+    return fallback;
+}
+
+void outboxReasonShort(const kk::OutboxItem& item, char* out, size_t n) {
+    if (item.httpCode)
+        snprintf(out, n, "HTTP %u", static_cast<unsigned>(item.httpCode));
+    else
+        snprintf(out, n, "rejected");
+}
+
+void outboxReasonDetail(const kk::OutboxItem& item, char* out, size_t n) {
+    if (item.httpCode == 422)
+        snprintf(out, n, "WaniKani rejected this review (HTTP 422).");
+    else if (item.httpCode == 409)
+        snprintf(out, n, "Conflict (409); it may have changed.");
+    else if (item.httpCode)
+        snprintf(out, n, "WaniKani rejected this review (HTTP %u).",
+                 static_cast<unsigned>(item.httpCode));
+    else
+        snprintf(out, n, "WaniKani rejected this review.");
+}
+
+void moveOutboxSelection(int delta) {
+    const std::vector<const kk::OutboxItem*> items = rejectedOutboxItems();
+    if (items.empty()) return;
+    int index = -1;
+    for (size_t i = 0; i < items.size(); ++i)
+        if (items[i]->seq == gOutboxSelectedSeq) index = static_cast<int>(i);
+    if (index < 0) index = 0;
+    index = (index + delta + static_cast<int>(items.size())) %
+            static_cast<int>(items.size());
+    gOutboxSelectedSeq = items[static_cast<size_t>(index)]->seq;
+    gDirty = true;
+}
+
+void openOutbox() {
+    if (kk::outboxRejectedCount(gOutbox) == 0) return;
+    gOutboxScreen = true;
+    gOutboxConfirm = false;
+    gOutboxSelectedSeq = 0;
+    gOutboxNote[0] = 0;
+    selectedOutboxItem();
+    gDirty = true;
+}
+
+void discardSelectedOutboxItem() {
+    const kk::OutboxItem* selected = selectedOutboxItem();
+    if (!selected) return;
+    const uint32_t seq = selected->seq;
+    const uint32_t assignmentId = selected->assignmentId;
+
+    int index = 0;
+    bool found = false;
+    for (const kk::OutboxItem& it : gOutbox) {
+        if (it.state != kk::OutboxState::Rejected) continue;
+        if (it.seq == seq) {
+            found = true;
+            break;
+        }
+        ++index;
+    }
+    if (!found) return;
+
+    // Dismiss only after the new file is safely written. A failed save keeps
+    // the in-memory item and shows a note instead of pretending it is gone.
+    std::vector<kk::OutboxItem> next = gOutbox;
+    if (!kk::outboxRemove(next, seq)) return;
+    if (!kk::outboxSave(next)) {
+        snprintf(gOutboxNote, sizeof gOutboxNote, "Could not save outbox");
+        Serial.println("[outbox] discard save failed");
+        gDirty = true;
+        return;
+    }
+
+    std::vector<uint32_t> remaining;
+    for (const kk::OutboxItem& it : next)
+        if (it.state == kk::OutboxState::Rejected) remaining.push_back(it.seq);
+
+    gOutbox = std::move(next);
+    gOutboxConfirm = false;
+    gOutboxNote[0] = 0;
+    if (remaining.empty()) {
+        gOutboxScreen = false;
+        gOutboxSelectedSeq = 0;
+        gShowHome = true;
+    } else {
+        if (index >= static_cast<int>(remaining.size()))
+            index = static_cast<int>(remaining.size()) - 1;
+        gOutboxSelectedSeq = remaining[static_cast<size_t>(index)];
+    }
+    Serial.printf("[outbox] discarded seq %u assignment %u\n", static_cast<unsigned>(seq),
+                  static_cast<unsigned>(assignmentId));
+    gDirty = true;
 }
 
 void checkCurrent() {
@@ -2655,6 +2796,48 @@ void pauseKey(const KeyEvent& e) {
     }
 }
 
+void outboxKey(const KeyEvent& e) {
+    if (!e.down) return;
+    if (gOutboxConfirm) {
+        if (e.key == Key::Esc) {
+            gOutboxConfirm = false;
+            gOutboxNote[0] = 0;
+            gDirty = true;
+        } else if (e.key == Key::Enter) {
+            discardSelectedOutboxItem();
+        }
+        return;
+    }
+    if (e.key == Key::Esc) {
+        gOutboxScreen = false;
+        gOutboxConfirm = false;
+        gOutboxNote[0] = 0;
+        gShowHome = true;
+        gDirty = true;
+        return;
+    }
+    if (e.key == Key::Up) {
+        gOutboxNote[0] = 0;
+        moveOutboxSelection(-1);
+    } else if (e.key == Key::Down) {
+        gOutboxNote[0] = 0;
+        moveOutboxSelection(1);
+    } else if (e.key == Key::Enter) {
+        if (selectedOutboxItem()) {
+            gOutboxConfirm = true;
+            gOutboxNote[0] = 0;
+            gDirty = true;
+        }
+    } else if (e.key == Key::Other) {
+        const char c = tgc::cardputerCharAt(e.x, e.y, gShift);
+        if ((c == 'd' || c == 'D') && selectedOutboxItem()) {
+            gOutboxConfirm = true;
+            gOutboxNote[0] = 0;
+            gDirty = true;
+        }
+    }
+}
+
 void syncScreenKey(const KeyEvent& e) {
     if (!e.down) return;
     if (!gSyncFinished) {
@@ -2712,6 +2895,10 @@ void onKey(const KeyEvent& e) {
     }
     if (gSyncScreen) {
         syncScreenKey(e);
+        return;
+    }
+    if (gOutboxScreen) {
+        outboxKey(e);
         return;
     }
     if (gSettingsActive) {
@@ -2775,6 +2962,12 @@ void onKey(const KeyEvent& e) {
             startReview();
         else
             retryBoot();
+        return;
+    }
+    if (e.down && gShowHome && e.key == Key::Other &&
+        (tgc::cardputerCharAt(e.x, e.y, gShift) == 'o' ||
+         tgc::cardputerCharAt(e.x, e.y, gShift) == 'O')) {
+        openOutbox();
         return;
     }
     if (e.down && gShowHome && e.key == Key::Other &&
@@ -3447,7 +3640,13 @@ void drawHome() {
         d.drawString(line, 8, 117);
     }
     d.setTextColor(kFaint, kBg);
-    d.drawString("Enter: reviews  L: lessons  Esc: menu", 8, 125);
+    const char* hint = "Enter: reviews  L: lessons  Esc: menu";
+    if (rejected) {
+        hint = "O: outbox  Enter: reviews  L: lessons  Esc: menu";
+        if (d.textWidth(hint) > 224) hint = "O: outbox  Enter: reviews  Esc: menu";
+        if (d.textWidth(hint) > 224) hint = "O: outbox  Esc: menu";
+    }
+    d.drawString(hint, 8, 125);
     d.endWrite();
     present();
 }
@@ -3567,6 +3766,155 @@ void drawSettings() {
     d.setTextFont(0);
     d.setTextColor(gSettingsNote[0] ? gSettingsNoteColor : kFaint, kBg);
     d.drawString(gSettingsNote[0] ? gSettingsNote : "Enter: change  Esc: back", 8, 123);
+    d.endWrite();
+    present();
+}
+
+void drawOutbox() {
+    if (!gDisp) return;
+    auto& d = target();
+    d.startWrite();
+    d.fillScreen(kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+
+    auto fitBack = [&d](std::string& text, int maxWidth) {
+        while (text.size() > 1 && d.textWidth(text.c_str()) > maxWidth) {
+            const char* begin = text.c_str();
+            const char* last = begin;
+            const char* p = begin;
+            while (*p) {
+                last = p;
+                kk::utf8Next(&p);
+            }
+            if (last == begin) break;
+            text.erase(static_cast<size_t>(last - begin));
+        }
+    };
+
+    auto drawNote = [&d]() {
+        if (!gOutboxNote[0]) return;
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(kErr, kBg);
+        d.drawString(gOutboxNote, 8, 112);
+    };
+
+    const size_t total = kk::outboxRejectedCount(gOutbox);
+    d.setTextFont(2);
+    d.setTextSize(1);
+    d.setTextColor(kBrand, kBg);
+    d.drawString("OUTBOX", 6, 2);
+    char count[32];
+    snprintf(count, sizeof count, "%u need attention", static_cast<unsigned>(total));
+    d.setTextFont(0);
+    d.setTextDatum(lgfx::top_right);
+    d.setTextColor(kErr, kBg);
+    d.drawString(count, 232, 5);
+    d.setTextDatum(lgfx::top_left);
+
+    const kk::OutboxItem* selected = selectedOutboxItem();
+    if (!selected) {
+        d.drawFastHLine(4, 22, 232, kLine);
+        d.setTextFont(1);
+        d.setTextColor(kDim, kBg);
+        d.drawString("No rejected reviews", 8, 52);
+        d.setTextFont(0);
+        d.setTextColor(kFaint, kBg);
+        d.drawString("Esc: back", 8, 124);
+        d.endWrite();
+        present();
+        return;
+    }
+
+    if (gOutboxConfirm) {
+        d.setTextFont(1);
+        d.setTextColor(kErr, kBg);
+        d.drawString("discard review", 7, 22);
+        d.drawFastHLine(4, 36, 232, kLine);
+
+        std::string label = outboxItemLabel(*selected);
+        fitBack(label, 224);
+        d.setTextFont(1);
+        d.setTextColor(kText, kBg);
+        d.drawString(label.c_str(), 8, 42);
+
+        char reason[64];
+        outboxReasonDetail(*selected, reason, sizeof reason);
+        drawWrapped(d, reason, 8, 60, 224, 3, kDim, kBg);
+
+        drawWrapped(d,
+                    "Dismissing only removes the local unsent review and does not change "
+                    "WaniKani.",
+                    8, 88, 224, 3, kFaint, kBg);
+        drawNote();
+
+        d.setTextFont(0);
+        d.setTextColor(kFaint, kBg);
+        d.drawString("Enter: discard  Esc: cancel", 8, 124);
+        d.endWrite();
+        present();
+        return;
+    }
+
+    d.drawFastHLine(4, 22, 232, kLine);
+
+    const std::vector<const kk::OutboxItem*> items = rejectedOutboxItems();
+    int selectedIndex = 0;
+    for (size_t i = 0; i < items.size(); ++i)
+        if (items[i]->seq == gOutboxSelectedSeq) selectedIndex = static_cast<int>(i);
+
+    constexpr int kVisibleRows = 7;
+    constexpr int kRowY = 28;
+    constexpr int kRowH = 12;
+    int top = selectedIndex - kVisibleRows / 2;
+    if (top < 0) top = 0;
+    const int maxTop = std::max(0, static_cast<int>(items.size()) - kVisibleRows);
+    if (top > maxTop) top = maxTop;
+
+    for (int row = 0; row < kVisibleRows; ++row) {
+        const int index = top + row;
+        if (index >= static_cast<int>(items.size())) break;
+        const kk::OutboxItem& item = *items[static_cast<size_t>(index)];
+        const bool focus = index == selectedIndex;
+        const int y = kRowY + row * kRowH;
+        if (focus) {
+            d.fillRect(4, y - 2, 228, kRowH, kSurfaceHi);
+            d.fillRect(4, y - 2, 2, kRowH, kAccent);
+        }
+
+        char reason[16];
+        outboxReasonShort(item, reason, sizeof reason);
+        const int reasonWidth = d.textWidth(reason);
+        std::string label = outboxItemLabel(item);
+        fitBack(label, 212 - reasonWidth);
+
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(focus ? kText : kDim, focus ? kSurfaceHi : kBg);
+        d.drawString(label.c_str(), 10, y);
+        d.setTextDatum(lgfx::top_right);
+        d.setTextColor(item.httpCode ? kErr : kFaint, focus ? kSurfaceHi : kBg);
+        d.drawString(reason, 228, y);
+        d.setTextDatum(lgfx::top_left);
+    }
+
+    if (items.size() > kVisibleRows) {
+        constexpr int kTrackY = kRowY;
+        constexpr int kTrackH = kVisibleRows * kRowH - 4;
+        d.fillRect(235, kTrackY, 2, kTrackH, kLine);
+        const int thumbH =
+            std::max(10, kTrackH * kVisibleRows / static_cast<int>(items.size()));
+        const int thumbY = kTrackY + (kTrackH - thumbH) * top /
+                                         (static_cast<int>(items.size()) - kVisibleRows);
+        d.fillRect(235, thumbY, 2, thumbH, kAccentHi);
+    }
+
+    drawNote();
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextColor(kFaint, kBg);
+    d.drawString("Enter: review  D: discard  Esc: back", 8, 124);
     d.endWrite();
     present();
 }
@@ -4273,6 +4621,53 @@ void clearDevCache() {
     gDirty = true;
     Serial.println("[cache] dev cache cleared");
 }
+
+// Dev-only `J`: two fixed rejected items for the outbox screen. Reusing the
+// assignment IDs updates an earlier seed instead of piling up duplicates.
+void seedDevRejectedOutbox() {
+    struct Seed {
+        uint32_t assignmentId;
+        uint32_t subjectId;
+        uint16_t httpCode;
+    };
+    static const Seed kSeeds[] = {
+        {999999901, 999999001, 422},
+        {999999902, 999999002, 409},
+    };
+    for (const Seed& seed : kSeeds) {
+        kk::OutboxItem* item = nullptr;
+        for (kk::OutboxItem& it : gOutbox)
+            if (it.assignmentId == seed.assignmentId) {
+                item = &it;
+                break;
+            }
+        if (!item) {
+            const uint32_t seq = kk::outboxAdd(gOutbox, seed.assignmentId, seed.subjectId, 0, 0,
+                                               static_cast<uint32_t>(time(nullptr)));
+            if (!seq) {
+                Serial.println("[outbox] seed failed: full");
+                continue;
+            }
+            item = kk::outboxFind(gOutbox, seq);
+        }
+        if (!item) continue;
+        item->state = kk::OutboxState::Rejected;
+        item->httpCode = seed.httpCode;
+        if (item->attempts == 0) item->attempts = 1;
+        Serial.printf("[outbox] synthetic rejected assignment %u HTTP %u\n",
+                      static_cast<unsigned>(seed.assignmentId),
+                      static_cast<unsigned>(seed.httpCode));
+    }
+    saveOutbox();
+    if (!gReviewActive && !gReviewSummary && !gLessonActive && !gLessonListActive &&
+        !gLessonQuizActive && !gSyncScreen && !gSettingsActive && !gPauseActive &&
+        !gPortalActive) {
+        gOutboxScreen = false;
+        gOutboxConfirm = false;
+        gShowHome = true;
+    }
+    gDirty = true;
+}
 #endif
 
 void draw() {
@@ -4290,6 +4685,10 @@ void draw() {
     }
     if (gAboutActive) {
         drawAbout();
+        return;
+    }
+    if (gOutboxScreen) {
+        drawOutbox();
         return;
     }
     if (gSettingsActive) {
@@ -4354,7 +4753,8 @@ void draw() {
 void drawStatus() {
     if (!gDisp || gPortalActive || gLowBatteryPrompt || gSignOutConfirm || gAboutActive ||
         gSettingsActive || gPauseActive || gSyncScreen || gShowHome || gReviewActive ||
-        gReviewSummary || gLessonListActive || gLessonEmptyActive || gLessonActive)
+        gReviewSummary || gLessonListActive || gLessonEmptyActive || gLessonActive ||
+        gOutboxScreen)
         return;
 #ifdef KANIKEY_DEV
     if (gShowDebug) drawDebug();
@@ -4681,10 +5081,11 @@ void handleSerial() {
         } else if (gSerialLine == "o") {
             Serial.printf("[outbox] %u items\n", static_cast<unsigned>(gOutbox.size()));
             for (const kk::OutboxItem& it : gOutbox)
-                Serial.printf("[outbox] seq %u assignment %u state %u attempts %u\n",
+                Serial.printf("[outbox] seq %u assignment %u state %u attempts %u http %u\n",
                               static_cast<unsigned>(it.seq),
                               static_cast<unsigned>(it.assignmentId),
-                              static_cast<unsigned>(it.state), static_cast<unsigned>(it.attempts));
+                              static_cast<unsigned>(it.state), static_cast<unsigned>(it.attempts),
+                              static_cast<unsigned>(it.httpCode));
         } else if (gSerialLine == "f") {
             if (!kk::DevWifi::connected() && !kk::DevWifi::connect(30000)) {
                 snprintf(gNetLine, sizeof gNetLine, "Outbox: no Wi-Fi");
@@ -4830,6 +5231,8 @@ void handleSerial() {
             seedDevCache();
         } else if (gSerialLine == "X") {
             clearDevCache();
+        } else if (gSerialLine == "J") {
+            seedDevRejectedOutbox();
         } else if (gSerialLine.startsWith("R")) {
             String arg = gSerialLine.substring(1);
             arg.trim();
@@ -4861,7 +5264,12 @@ void handleSerial() {
             delay(100);
             ESP.restart();
         } else if (!gSerialLine.isEmpty()) {
-            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload\n");
+#ifdef KANIKEY_DEV
+            const char* rejectedCmd = " J=rejected-outbox";
+#else
+            const char* rejectedCmd = "";
+#endif
+            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear%s k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload\n", rejectedCmd);
         }
         gSerialLine = "";
         gDirty = true;
@@ -5017,7 +5425,7 @@ void loop() {
     }
     if (!gPortalActive && !gReviewActive && !gReviewSummary && !gFeedback && !gLessonActive &&
         !gLessonListActive && !gLessonEmptyActive && !gPauseActive && !gSettingsActive &&
-        !gAboutActive &&
+        !gAboutActive && !gOutboxScreen &&
         !gLowBatteryPrompt && !gAssetServerActive && sleepMs &&
         now - gLastInputAt > sleepMs && !tgc::board::externalPower()) {
         Serial.println("[power] idle sleep");

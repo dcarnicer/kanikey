@@ -150,6 +150,7 @@ the field is active.
 | `Space` | Next page in lessons; space in text |
 | `R` | Reviews (home) |
 | `L` | Lessons (home) |
+| `O` | Outbox of rejected reviews (home) |
 | `S` | Sync (home) |
 | `Ctrl+S` | Sync from any menu |
 | `G0` | Back / pause (holding it in the review opens the session menu) |
@@ -298,10 +299,13 @@ Home ──L──► Lessons ──Enter──► Lesson card
   sync and are cached; if they are missing, the line reads
   `SRS: sync for counts`.
 - If the outbox is not empty, `Outbox: N pending` in amber or
-  `N need attention` in red at 8 px.
-- Hint: `Enter: reviews  L: lessons  Esc: menu` (8 px). The M0 debug screen and
-  the `Tab: debug` shortcut only exist in the `cardputer-adv-dev` build; the
-  shortcut is no longer advertised on Home.
+  `N need attention` in red at 8 px. When items were rejected, the hint adds
+  `O: outbox` (§5.13).
+- Hint: `Enter: reviews  L: lessons  Esc: menu` (8 px). With rejected items the
+  hint becomes `O: outbox  Enter: reviews  L: lessons  Esc: menu`, dropping
+  entries from the middle when it would not fit; `O: outbox` and `Esc: menu`
+  are kept. The M0 debug screen and the `Tab: debug` shortcut only exist in the
+  `cardputer-adv-dev` build; the shortcut is no longer advertised on Home.
 - States:
   - **Sync:** the Sync screen (§5.11) replaces Home while a sync runs.
   - **Offline:** line in `warn`: `Offline · 18 cached · 4 to sync`.
@@ -526,7 +530,29 @@ the mnemonic.
 - Not yet: licenses and attributions, strict answers and clear-cache/sign-out
   from elsewhere.
 
-### 5.13 Stats (phase 2)
+### 5.13 Outbox
+
+- Open with `O` from Home when at least one review was rejected; the key is
+  ignored when there is nothing to review.
+- Header `OUTBOX` and `N need attention`; only `rejected` items are listed.
+- Up to seven visible rows scroll with `↑↓`. A row shows the subject's English
+  main meaning and level (for example `day L1`) when it is still in the cached
+  batch, otherwise `assignment <id>` (or `subject <id>`). The reason is
+  right-aligned: `HTTP 422`, `HTTP 409` or `rejected` when the code is unknown.
+- `Enter: review` or `D: discard` opens the confirmation; `Esc: back` returns
+  to Home.
+- Confirmation shows the same identifier, the reason
+  (`WaniKani rejected this review (HTTP 422).`,
+  `Conflict (409); it may have changed.`, or a generic fallback) and the
+  warning that dismissing only removes the local unsent review and does not
+  change WaniKani.
+- `Enter: discard` removes exactly that sequence, saves the outbox and returns
+  to the list, or to Home when no rejected items remain. `Esc: cancel` returns
+  to the list. Pending and ambiguous items are never removed here, and the
+  cache/assignments are not touched. If the outbox file cannot be written, the
+  item stays and the screen shows `Could not save outbox`.
+
+### 5.14 Stats (phase 2)
 
 - Current level and level progress.
 - SRS distribution detail with bars and counts (Home already shows the bar).
@@ -534,7 +560,7 @@ the mnemonic.
 - Streak and reviews from the last 7 days.
 - `Esc` goes back.
 
-### 5.14 Errors and empty states
+### 5.15 Errors and empty states
 
 - **Not configured:** `Welcome to KaniKey` + `Enter setup`.
 - **No SD:** `No SD card` + `Insert a FAT32 card` + `Enter retry`.

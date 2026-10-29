@@ -144,8 +144,9 @@ E (221) esp_core_dump_flash: No core dump partition found!
 - Ambiguous requests (timeout/5xx after the request was sent) are marked
   `Ambiguous` and reconciled with `GET /assignments?ids=...` before retrying.
   That reconciliation has unit-level coverage but not a hardware timeout test.
-- Rejected records stay until a user-facing way to dismiss them exists; for
-  now the dev command `z` clears the outbox.
+- Rejected records stay until the user opens `O: outbox` on Home, inspects the
+  HTTP reason and confirms a per-item discard; the dev command `z` still clears
+  the whole outbox.
 - Flash headroom is now ~498 KB after removing the efont fallback; the next
   large blocks are lessons and settings.
 - Home shows `Outbox: N pending` or `N need attention` below the sync time.
@@ -292,7 +293,6 @@ WaniKani subjects and mnemonics.
 - Study-material notes and `lower_levels_first` on a configured account.
 - A reboot with Wi-Fi actually unavailable (offline boot).
 - Vacation mode with an account that is actually on vacation.
-- Ways to dismiss rejected outbox items.
 - Real renderer/UI font instead of the M5GFX text calls.
 
 ### Hardware verification 2026-10-28 (UI-01)
