@@ -390,16 +390,28 @@ and discard confirmation), `SettingsScreen` (`SettingsView`,
 `SettingsRowView` plus `drawSettingsScreen`, including the 7 visible rows of
 12, selection highlight, scrollbar and note line), `SetupScreen` (`SetupView`
 plus `drawSetupScreen`, including the AP and station layouts, battery state,
-228 px truncation and token/pack status) and `ModalScreens`
-(`PauseView`, `LowBatteryView` plus `drawPauseScreen`, `drawLowBatteryScreen`
-and `drawSignOutScreen`, including the pause progress and selection rows, the
-battery percentage and both confirmation bodies), each drawn between the
-caller's `startWrite()`/`present()`; `ui/Theme.h` is the shared RGB332 palette,
+228 px truncation and token/pack status), `ModalScreens` (`PauseView`,
+`LowBatteryView` plus `drawPauseScreen`, `drawLowBatteryScreen` and
+`drawSignOutScreen`, including the pause progress and selection rows, the
+battery percentage and both confirmation bodies), `ReviewScreens`
+(`ReviewView`, `ReviewDetailView`, `ReviewSummaryView` plus
+`drawReviewScreen`, `drawReviewDetailScreen`, `drawReviewSummaryScreen`,
+including the prompt/feedback panels, the five-to-seven item detail pages and
+the session summary columns), `LessonScreens` (`LessonListView`,
+`LessonRowView`, `LessonEmptyView`, `LessonCardView`, `LessonQuizView` plus
+`drawLessonListScreen`, `drawLessonEmptyScreen`, `drawLessonCardScreen`,
+`drawLessonQuizScreen`, including the 5-row list with scrollbar, the paged
+card and the local quiz) and, for `KANIKEY_DEV` builds, `DebugScreens`
+(`DebugView`, `RadicalTestView` plus `drawDebugScreen` and
+`drawRadicalTestScreen`), each drawn between the caller's
+`startWrite()`/`present()`; `ui/Theme.h` is the shared RGB332 palette,
 `ui/Text.h` holds the shared wrapped-text helper and `ui/Widgets.h` holds the
 shared drawing widgets (`drawPill`, `trimFrontToWidth`, `drawSubjectPrompt`,
-`drawMissingGlyph`, `drawJapaneseFit`); the three glyph helpers take an explicit
-`GlyphPack`.
-The other screens still live in `main.cpp`.
+`drawMissingGlyph`, `drawJapaneseFit`); the three glyph helpers take an
+explicit `GlyphPack`. `app/App.cpp` holds the application and session state,
+the screen adapters, the key handlers, the cache/sync/outbox/portal services,
+the serial console and the asset server; `main.cpp` only forwards `setup()`
+and `loop()` to `kk::app`.
 
 Rule: `wk/`, `store/`, and the logic in `ui/` compile and are tested in
 PlatformIO's `native` environment without Arduino headers. It's the same

@@ -117,9 +117,9 @@ Working on hardware:
 - 72 native tests and the `cardputer-adv` build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests.
 
-Current build: **1,418,401 B / 1,835,008 B flash (77.3%)**, **94,704 B /
-327,680 B static RAM (28.9%)**. The dev image is 1,426,001 B. Removing
-`efontJA_16` freed ~468 KB and leaves ~420 KB of flash headroom.
+Current build: **1,421,589 B / 1,835,008 B flash (77.5%)**, **94,704 B /
+327,680 B static RAM (28.9%)**. The dev image is 1,429,505 B. Removing
+`efontJA_16` freed ~468 KB and leaves ~413 KB of flash headroom.
 
 ## Priority summary
 
@@ -133,7 +133,7 @@ Current build: **1,418,401 B / 1,835,008 B flash (77.3%)**, **94,704 B /
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
 | 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen, item detail and level progress are live | Partial | UI-07 |
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal ported; OTA/widgets pending | TNG-02, TNG-03 |
-| 9 | Technical debt, CI and release | Maintainability and shipping | Ongoing | TECH-01, TECH-02 |
+| 9 | Technical debt, CI and release | Maintainability and shipping | Ongoing | TECH-03, TECH-06, TECH-07 |
 | 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | Partially started (EXT-01/02 done) | EXT-03, EXT-04 |
 
 ## Execution order
@@ -152,7 +152,7 @@ OTA/release, with the remaining UI and API hardware verification alongside.
 | 4 | WaniKani data and detail | WK-11 (WK-01/03/04/05/06/07/08/09/10 done) | Review history and progress |
 | 5 | API robustness | API-07 (API-01/02/03/04/05/06 done) | Done; hardware verification of API-01's final OUTBOX screen and API-02…05 still pending |
 | 6 | UI, stats and sync | UI-07 → UI-08 (UI-01/02/03/04/05/06 done) | Polish |
-| 7 | Technical debt and release | TECH-01/TECH-04 done → TECH-07 | Refactor, version, OTA and license |
+| 7 | Technical debt and release | TECH-03 → TECH-07 (TECH-01/02/04/05 done) | Version, OTA and license |
 | 8 | Kakehashi-inspired extras | EXT-01 → EXT-09 | Practice modes, critical items, audio and stats |
 
 ## 1. Radicals and remove `efontJA_16` (v1 blocker)
@@ -565,31 +565,25 @@ SRS and deck catalog remain intentionally dropped. See
   without `bad_alloc`; the largest free block stayed >=35 KB (see
   `docs/hardware.md`). 72 native tests pass; release build 1,412,341 B flash /
   94,704 B static RAM, dev build 1,419,953 B / 94,728 B.
-- **TECH-02 — Refactor `main.cpp`.** **Partial (2026-10-29).** The Home,
-  Sync, Boot, Loading, About, Outbox, Settings, setup portal and modal screens
-  and the shared palette/text helpers are extracted: `app/HomeScreen` takes an
-  explicit `HomeView` and draws the whole Home frame, `app/SyncScreen` takes a
-  `SyncView` (six `SyncRowView`s, completion count, failure issue) and draws
-  the whole Sync frame, `app/BootScreen` takes a `BootView` and keeps the state
-  text in `main.cpp`, `app/LoadingScreen` takes a `LoadingView`, `app/AboutScreen`
-  takes an `AboutView` with explicit `AboutLine`s, `app/OutboxScreen` takes an
-  `OutboxView` (`OutboxRowView`, `OutboxReasonKind`) and draws the whole Outbox
-  frame including the empty state, 7-row scrolling list and confirmation,
-  `app/SettingsScreen` takes a `SettingsView` (`SettingsRowView`) and draws the
-  whole Settings frame including the 7 visible rows of 12, selection highlight,
-  scrollbar and note line, `app/SetupScreen` takes a `SetupView` and draws the
-  whole setup portal frame including the AP and station layouts, battery state,
-  228 px truncation and token/pack status, and `app/ModalScreens` takes
-  `PauseView` and `LowBatteryView` (or no view for sign-out) and draws the
-  Pause, low battery and sign-out frames; `main.cpp` keeps their key handlers,
-  state and actions. `ui/Theme.h` holds the common colors, `ui/Text` holds
-  `drawWrapped` and `ui/Widgets` holds the shared `drawPill`,
-  `trimFrontToWidth`, `drawSubjectPrompt`, `drawMissingGlyph` and
-  `drawJapaneseFit`; the three glyph helpers take an explicit `GlyphPack`.
-  Review, Lesson,
-  debug, session state and services still live in `main.cpp`. 72 native tests
-  pass; release build 1,418,401 B flash / 94,704 B static RAM, dev build
-  1,426,001 B / 94,728 B.
+- **TECH-02 — Refactor `main.cpp`. Done (2026-10-29).** `main.cpp` is now only
+  the Arduino entry points (`setup()`/`loop()` forwarding to `kk::app`). The
+  Home, Sync, Boot, Loading, About, Outbox, Settings, setup portal, modal,
+  Review, Lesson and dev screens are separate `app/*Screen` views drawn from
+  explicit view data: `HomeView`, `SyncView`, `BootView`, `LoadingView`,
+  `AboutView`, `OutboxView`, `SettingsView`, `SetupView`, `PauseView`/
+  `LowBatteryView`, `ReviewView`/`ReviewDetailView`/`ReviewSummaryView`,
+  `LessonListView`/`LessonEmptyView`/`LessonCardView`/`LessonQuizView` and
+  (dev only) `DebugView`/`RadicalTestView`. `app/App.cpp` holds the application
+  and session state, the screen adapters and router, the key handlers, the
+  cache/sync/outbox/portal services, the serial console and the asset server.
+  `ui/Theme.h` holds the common palette, `ui/Text` holds `drawWrapped` and
+  `ui/Widgets` holds `drawPill`, `trimFrontToWidth`, `drawSubjectPrompt`,
+  `drawMissingGlyph` and `drawJapaneseFit`; the three glyph helpers take an
+  explicit `GlyphPack`. 72 native tests pass; release build 1,421,589 B flash /
+  94,704 B static RAM, dev build 1,429,505 B / 94,728 B. The extracted Review,
+  Lesson and dev frames were re-checked on hardware on 2026-10-29; only the
+  lesson-list capture is blocked by the pre-existing canvas recreation limit
+  (see `docs/hardware.md`).
 - **TECH-03 — Dev hooks.** `KANIKEY_DEV` now covers the M0 screen and Tab
   shortcut; put `gDirectReading`, synthetic outbox commands and other serial
   helpers behind the same flag.

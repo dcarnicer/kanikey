@@ -376,3 +376,26 @@ WaniKani subjects and mnemonics.
   line. The level-count requests hit a transient network error in that run, so
   the status line correctly fell back to `L8 since 03 Feb` instead of a
   percentage. The 72 native tests and both firmware builds passed.
+
+### 2026-10-29 — TECH-02 phase 2 (Review, Lesson and dev screens)
+
+- Flashed the extracted release build (1,421,589 B) and captured Home, the
+  review prompt, wrong-answer feedback, both detail pages, the session summary,
+  the empty lesson state, the lesson card and its second page, the lesson quiz
+  prompt/feedback, the radical test and the dev debug frame. Layout, colors,
+  glyphs, counters, notes and hints matched the pre-refactor captures.
+- The review summary used the dev cache seed: three synthetic items were
+  answered offline with Wi-Fi disconnected, then the synthetic outbox was
+  cleared. No real review or `PUT /start` was sent.
+- The lesson list frame could not be captured: the lesson fetch releases the
+  sprite canvas and the largest free block afterwards is ~31.7 KB, below the
+  32,400 B canvas. The canvas recreation failure is reproducible on the
+  pre-refactor baseline (`42684ea`), so it is not a regression from this
+  extraction. The lesson card/quiz captures came from a release session where
+  the canvas reallocated successfully after the fetch.
+- The `KANIKEY_DEV` build also reproduces a pre-existing `loopTask` stack
+  overflow during the same lesson fetch on the baseline; the release build
+  completes the fetch and draws the lesson card/quiz. The extraction adds about
+  112 B to the lesson-list/card draw stack, so this claim is limited to the
+  fetch path, not the draw frames. Both issues remain for the release-hardening
+  pass.
