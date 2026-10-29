@@ -1,6 +1,6 @@
 # KaniKey roadmap
 
-Status snapshot: **2026-10-28**. This is the working backlog after the offline
+Status snapshot: **2026-10-29**. This is the working backlog after the offline
 cache and the `efontJA_16` removal landed, not the original product
 plan. Product scope and UX live in [docs/design.md](docs/design.md),
 [docs/ux.md](docs/ux.md) and [docs/api-sync.md](docs/api-sync.md).
@@ -25,6 +25,9 @@ Working on hardware:
   online fetch → Wi-Fi off → review → reconnect → 201 is verified; the cached
   Home/batch also restore at boot. A deliberate offline boot still needs a
   network-off reboot.
+- 429 handling: `RateLimit-Reset` / `RateLimit-Remaining` are parsed and one
+  shared gate blocks every request until the reset; Boot, Home and the sync
+  error line show the remaining seconds.
 - Lessons: a list/picker with character, type, level and main meaning, sorted
   by level and `lesson_position`; the card shows meaning/reading, paged
   mnemonic, component meanings and hints, and `PUT /assignments/{id}/start`
@@ -97,11 +100,11 @@ Working on hardware:
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 51 native tests pass. GitHub Actions runs gitleaks on `main`.
+- 56 native tests pass. GitHub Actions runs gitleaks on `main`.
 
-Current build: **1,397,741 B / 1,835,008 B flash (76.2%)**, **94,664 B /
-327,680 B static RAM (28.9%)**. The dev image is 1,405,157 B. Removing
-`efontJA_16` freed ~468 KB and leaves ~437 KB of flash headroom.
+Current build: **1,399,633 B / 1,835,008 B flash (76.3%)**, **94,680 B /
+327,680 B static RAM (28.9%)**. The dev image is 1,407,069 B. Removing
+`efontJA_16` freed ~468 KB and leaves ~425 KB of flash headroom.
 
 ## Priority summary
 
@@ -111,7 +114,7 @@ Current build: **1,397,741 B / 1,835,008 B flash (76.2%)**, **94,664 B /
 | 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Core landed; real-account E2E pending | CACHE-05, CACHE-07 |
 | 3 | Complete lesson flow | List/picker, card, components, quiz, empty state and start exist; ordering/hardware remain | Partial | LESSON-08, RAD-04 |
 | 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; review history and audio remain | Partial | WK-11, EXT-06 |
-| 5 | Outbox and API robustness | Rejected items now have a user discard path; 429 and invalid auth remain | Partial | API-02, API-03 |
+| 5 | Outbox and API robustness | Rejected items have a user discard path and 429 backoff is in; invalid auth remains | Partial | API-03 |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
 | 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen and item detail are live | Partial | UI-05 |
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal ported; OTA/widgets pending | TNG-02, TNG-03 |
@@ -131,7 +134,7 @@ lesson flow.
 | 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | List, understand, quiz and start lessons |
 | 3 | Setup and device UX | TNG-02 | OTA release path (setup/settings complete) |
 | 4 | WaniKani data and detail | WK-11 (WK-01/03/04/05/06/07/08/09/10 done) | Review history and progress |
-| 5 | API robustness | API-02 → API-07 (API-01 done) | Recoverable rate-limited and auth errors |
+| 5 | API robustness | API-03 → API-07 (API-01/02 done) | Recoverable rate-limited and auth errors |
 | 6 | UI, stats and sync | UI-05 → UI-08 (UI-01/02/03/04 done) | Polish |
 | 7 | Technical debt and release | TECH-01 → TECH-07 | CI, refactor, version, OTA and license |
 | 8 | Kakehashi-inspired extras | EXT-01 → EXT-09 | Practice modes, critical items, audio and stats |
@@ -307,8 +310,8 @@ live; review history, audio and the remaining preferences still need work.
 ## 5. Outbox and API robustness (finish M3)
 
 Already done: CRC/`.bak`, ambiguous-request reconciliation, offline end-to-end,
-Home pending/attention counts, and a user-facing path for rejected items.
-Remaining:
+Home pending/attention counts, a user-facing path for rejected items and the
+shared 429 gate. Remaining:
 
 - **API-01 — Dismiss `Rejected` items.** User-facing action with confirmation
   and a clear reason. **Done (2026-10-28):** the HTTP code is stored in the two
@@ -318,7 +321,15 @@ Remaining:
   discard of exactly that sequence. Pending/ambiguous items and the cache are
   untouched. Dev `J` seeds a 422 and a 409 item. Native-tested.
 - **API-02 — 429 backoff.** Wait for `RateLimit-Reset` and back off instead of
-  retrying immediately. A 429 currently becomes `Pending` with no delay.
+  retrying immediately. **Done (2026-10-29):** `RateLimit-Reset` and
+  `RateLimit-Remaining` are parsed case-insensitively. A 429 arms one shared
+  monotonic gate that answers every GET/POST/PUT with a synthetic local 429
+  until the deadline, so there is no immediate retry. The wait is the reset
+  delta capped at 120 s, with a 60 s fallback when the header is absent/past or
+  the clock is untrusted. Boot, Home and the sync error line show the remaining
+  seconds; an outbox POST 429 stays `Pending`. Native-tested (5 cases). The
+  countdown refreshes each second, Level/SRS 429s remain row warnings, batch
+  loops stop on 429 and ambiguous reconciliation is not downgraded.
 - **API-03 — 401/403 auth state.** Surface “token invalid/expired” and
   “missing permissions”; do not retry forever.
 - **API-04 — Retry parse failures.** Retry truncated or parse-failed responses,

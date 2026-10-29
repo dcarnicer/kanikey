@@ -41,6 +41,10 @@ std::vector<ReviewStatistic> fetchReviewStatistics(const String& token,
                 Serial.println("[stats] continuing without review statistics");
                 break;
             }
+            if (r.httpCode == 429) {
+                Serial.println("[stats] rate limited; stopping batches");
+                break;
+            }
             continue;
         }
         JsonValue v;

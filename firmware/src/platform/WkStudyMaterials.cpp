@@ -43,6 +43,10 @@ std::vector<StudyMaterial> fetchStudyMaterials(const String& token,
                 Serial.println("[study] continuing without notes");
                 break;
             }
+            if (r.httpCode == 429) {
+                Serial.println("[study] rate limited; stopping batches");
+                break;
+            }
             continue;
         }
         JsonValue v;

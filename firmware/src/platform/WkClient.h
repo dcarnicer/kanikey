@@ -15,6 +15,10 @@ struct WkResponse {
     size_t bytes = 0;  // body bytes
     bool truncated = false;
     String statusLine;
+    // 429 details parsed from RateLimit-Reset / RateLimit-Remaining.
+    uint32_t retryAfter = 0;         // seconds to wait
+    uint32_t rateLimitReset = 0;     // UTC epoch, 0 when absent
+    int32_t rateLimitRemaining = -1; // requests left, -1 when absent
     // Points into a static 32 KB buffer owned by WkClient. It stays valid until
     // the next request, which is enough because callers parse it immediately.
     std::string_view body;
@@ -35,5 +39,10 @@ WkResponse wkPost(const String& path, const String& token, const String& body,
                   size_t maxBodyBytes, uint32_t timeoutMs = 20000);
 WkResponse wkPut(const String& path, const String& token, const String& body,
                  size_t maxBodyBytes, uint32_t timeoutMs = 20000);
+
+// Whole seconds left in the shared 429 gate; 0 when requests may go out.
+// Safe across the millis() wrap. While the gate is active every request returns
+// a synthetic 429 without opening TLS, so callers can show a countdown.
+uint32_t wkRateLimitWaitSeconds();
 
 }  // namespace kk

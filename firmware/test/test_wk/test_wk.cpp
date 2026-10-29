@@ -11,6 +11,7 @@
 #include "wk/Json.h"
 #include "wk/LessonQuiz.h"
 #include "wk/LevelProgress.h"
+#include "wk/RateLimit.h"
 #include "wk/StudyMaterial.h"
 #include "wk/SubjectParser.h"
 #include "wk/Text.h"
@@ -539,6 +540,32 @@ static void test_iso8601_round_trip() {
     TEST_ASSERT_EQUAL_UINT32(0, e);
     TEST_ASSERT_FALSE(parseIso8601("2026-10-25 12:38:37", &e));
     TEST_ASSERT_FALSE(parseIso8601("2026-10-25T12:38:37+02:00", &e));
+}
+
+static void test_rate_limit_reset_in_42s() {
+    TEST_ASSERT_EQUAL_UINT32(42, rateLimitWaitSeconds(1760000042u, 1760000000u, true));
+}
+
+static void test_rate_limit_past_or_zero_falls_back() {
+    TEST_ASSERT_EQUAL_UINT32(kRateLimitFallbackSeconds,
+                             rateLimitWaitSeconds(0, 1760000000u, true));
+    TEST_ASSERT_EQUAL_UINT32(kRateLimitFallbackSeconds,
+                             rateLimitWaitSeconds(1759999999u, 1760000000u, true));
+}
+
+static void test_rate_limit_untrusted_clock_falls_back() {
+    TEST_ASSERT_EQUAL_UINT32(kRateLimitFallbackSeconds,
+                             rateLimitWaitSeconds(1760000042u, 1760000000u, false));
+}
+
+static void test_rate_limit_far_future_is_capped() {
+    TEST_ASSERT_EQUAL_UINT32(kRateLimitMaxSeconds,
+                             rateLimitWaitSeconds(1760003600u, 1760000000u, true));
+}
+
+static void test_rate_limit_exactly_now_falls_back() {
+    TEST_ASSERT_EQUAL_UINT32(kRateLimitFallbackSeconds,
+                             rateLimitWaitSeconds(1760000000u, 1760000000u, true));
 }
 
 static void test_user_parse() {
@@ -1183,6 +1210,11 @@ int main(int, char**) {
     RUN_TEST(test_json_values_and_escapes);
     RUN_TEST(test_json_rejects_bad_input);
     RUN_TEST(test_iso8601_round_trip);
+    RUN_TEST(test_rate_limit_reset_in_42s);
+    RUN_TEST(test_rate_limit_past_or_zero_falls_back);
+    RUN_TEST(test_rate_limit_untrusted_clock_falls_back);
+    RUN_TEST(test_rate_limit_far_future_is_capped);
+    RUN_TEST(test_rate_limit_exactly_now_falls_back);
     RUN_TEST(test_user_parse);
     RUN_TEST(test_summary_parse_and_counts);
     RUN_TEST(test_summary_text_parser);

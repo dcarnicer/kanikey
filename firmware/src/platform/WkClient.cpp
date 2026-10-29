@@ -5,8 +5,10 @@
 #include <algorithm>
 #include <cstring>
 #include <esp_heap_caps.h>
+#include <time.h>
 
 #include "platform/RootCerts.h"
+#include "wk/RateLimit.h"
 
 namespace kk {
 
@@ -17,6 +19,16 @@ WkMemHook gAfterRequest = nullptr;
 // Shared response buffer: keeping bodies out of the heap leaves the UI's frame
 // buffer block contiguous across the request that frees and restores it.
 char gBodyBuffer[32768];
+
+// Shared 429 gate: GET, POST and PUT all pass through request(), so once a 429
+// arms this deadline no request can reach the network before it expires.
+uint32_t gRateLimitDeadlineMs = 0;
+uint32_t gRateLimitResetEpoch = 0;
+bool gRateLimitGateActive = false;
+
+// The Cardputer has no RTC; anything earlier than this is a clock that has not
+// been set yet, so an epoch reset header cannot be compared against it.
+constexpr uint32_t kTrustedClockEpoch = 1700000000u;
 
 struct RequestHooks {
     RequestHooks() {
@@ -41,9 +53,35 @@ void wkSetRequestHooks(WkMemHook before, WkMemHook after) {
     gAfterRequest = after;
 }
 
+uint32_t wkRateLimitWaitSeconds() {
+    if (!gRateLimitGateActive) return 0;
+    const int32_t left = static_cast<int32_t>(gRateLimitDeadlineMs - millis());
+    if (left <= 0) {
+        gRateLimitGateActive = false;
+        return 0;
+    }
+    return (static_cast<uint32_t>(left) + 999u) / 1000u;
+}
+
 namespace {
 WkResponse request(const String& method, const String& path, const String& token,
                     const String& body, size_t maxBodyBytes, uint32_t timeoutMs) {
+    const uint32_t startMs = millis();
+    if (gRateLimitGateActive) {
+        const int32_t left = static_cast<int32_t>(gRateLimitDeadlineMs - startMs);
+        if (left > 0) {
+            WkResponse r;
+            r.connected = true;
+            r.httpCode = 429;
+            r.rateLimitReset = gRateLimitResetEpoch;
+            r.retryAfter = (static_cast<uint32_t>(left) + 999u) / 1000u;
+            Serial.printf("[http] %s blocked by rate limit, %u s left\n", path.c_str(),
+                          static_cast<unsigned>(r.retryAfter));
+            return r;
+        }
+        gRateLimitGateActive = false;
+    }
+
     WkResponse r;
     RequestHooks hooks;
     logHeap("before");
@@ -99,7 +137,15 @@ WkResponse request(const String& method, const String& path, const String& token
     while (client.connected() || client.available()) {
         String line = client.readStringUntil('\n');
         if (line == "\r" || line.isEmpty()) break;
-        if (line.startsWith("Content-Length:")) contentLength = line.substring(15).toInt();
+        String header = line;
+        header.toLowerCase();
+        if (header.startsWith("content-length:")) {
+            contentLength = header.substring(15).toInt();
+        } else if (header.startsWith("ratelimit-reset:")) {
+            r.rateLimitReset = static_cast<uint32_t>(header.substring(16).toInt());
+        } else if (header.startsWith("ratelimit-remaining:")) {
+            r.rateLimitRemaining = header.substring(20).toInt();
+        }
         if (millis() - t0 > timeoutMs) break;
     }
 
@@ -155,6 +201,20 @@ WkResponse request(const String& method, const String& path, const String& token
     Serial.printf("[http] %s -> %d, %u body bytes, %u ms, cl=%d%s\n", path.c_str(),
                   r.httpCode, static_cast<unsigned>(r.bytes), static_cast<unsigned>(r.ms),
                   contentLength, r.truncated ? " (truncated)" : "");
+    if (r.httpCode == 429) {
+        const time_t now = time(nullptr);
+        const uint32_t nowEpoch = now > 0 ? static_cast<uint32_t>(now) : 0;
+        const bool trusted = nowEpoch >= kTrustedClockEpoch;
+        const uint32_t wait = rateLimitWaitSeconds(r.rateLimitReset, nowEpoch, trusted);
+        r.retryAfter = wait;
+        gRateLimitResetEpoch = r.rateLimitReset;
+        gRateLimitDeadlineMs = millis() + wait * 1000u;
+        gRateLimitGateActive = true;
+        Serial.printf("[http] 429 rate limited: reset %u, remaining %d, wait %u s, clock %s\n",
+                      static_cast<unsigned>(r.rateLimitReset),
+                      static_cast<int>(r.rateLimitRemaining), static_cast<unsigned>(wait),
+                      trusted ? "ok" : "untrusted");
+    }
     client.stop();
     logHeap("after");
     return r;
@@ -171,10 +231,12 @@ WkResponse wkGetRetry(const String& path, const String& token, size_t maxBodyByt
     WkResponse r;
     for (uint8_t i = 0; i < attempts; ++i) {
         r = wkGet(path, token, maxBodyBytes, timeoutMs);
-        if (r.httpCode == 200 && !r.truncated) return r;
+        const bool retryable = (r.httpCode == 200 && r.truncated) || r.httpCode == 0 ||
+                               r.httpCode >= 500;
+        if (!retryable) return r;
         Serial.printf("[http] retry %s (%d, %u bytes%s)\n", path.c_str(), r.httpCode,
                       static_cast<unsigned>(r.bytes), r.truncated ? ", truncated" : "");
-        delay(300);
+        if (i + 1 < attempts) delay(300);
     }
     return r;
 }

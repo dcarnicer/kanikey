@@ -434,7 +434,8 @@ offset  field              type
    - 401/403: stop and request auth.
    - 422/409: mark `rejected` with the HTTP code; keep it for the Outbox
      screen.
-   - 429: wait for `RateLimit-Reset`; retry.
+   - 429: wait for `RateLimit-Reset`; leave pending. The shared gate makes the
+     next attempt local until the reset (no immediate retry).
    - 5xx/timeout: mark `ambiguous`; stop the flush (do not continue with the
      following ones to avoid creating a mess).
 3. `ambiguous` ones are resolved before retrying:
@@ -444,6 +445,8 @@ offset  field              type
    - If the assignment still has the same stage and `available_at` earlier than
      `created_at`, the POST did not arrive; set it back to `pending`.
    - If it cannot be decided, show `Needs attention` and do not duplicate.
+   - If the shared 429 gate is active during reconciliation, keep the item
+     `ambiguous` and stop rather than retrying the POST.
 
 ### 6.3 Why not retry blindly
 
@@ -578,15 +581,34 @@ with a DOM. It still needs a DOM and duplicates temporary storage.
 | 404 | Resource does not exist | Discard, refresh |
 | 409 | Conflict | Mark rejected; keep until the user discards in Outbox |
 | 422 | Validation | Mark rejected, do not retry; keep until the user discards in Outbox |
-| 429 | Rate limit | Wait for `RateLimit-Reset` |
+| 429 | Rate limit | Wait for `RateLimit-Reset`; shared gate, no immediate retry |
 | 5xx | Server | Retry with backoff |
 | timeout / DNS / TLS | Network | 2 retries, then offline |
 
 - Backoff: 1 s, 2 s, 4 s, 8 s, with jitter; maximum 60 s.
-- 429: use `RateLimit-Reset` (epoch) if present; otherwise 60 s.
+- 429: use `RateLimit-Reset` (epoch) if present; otherwise 60 s. A far-future
+  reset is capped at 120 s; no request starts before the gate deadline.
 - Budget: a normal sync < 30 s; a cold one < 2 min.
 - No requests are made in parallel. One at a time.
 - The radio is turned off when done.
+
+**Implementation (2026-10-29).** `WkClient` parses `RateLimit-Reset` and
+`RateLimit-Remaining` case-insensitively. Any 429 arms one shared monotonic gate
+(`millis()` deadline + reset epoch + wait); every GET/POST/PUT while it is active
+returns a synthetic 429 with `connected=true`, `rateLimitReset` and `retryAfter`,
+without opening TLS, calling the request hooks or touching the body buffer.
+`wkRateLimitWaitSeconds()` returns the remaining whole seconds, safely across the
+`millis()` wrap. `wkGetRetry` returns immediately on 429 and never retries a 4xx;
+it retries only a truncated 200, `httpCode == 0` or 5xx, with a short delay
+between attempts. The wait is the reset delta clamped to 120 s, or 60 s when the
+header is absent/past or the clock is untrusted. The boot screen, Home status line
+and sync error line show the countdown; an outbox POST 429 stays `Pending` and
+the next attempt is satisfied locally by the gate. The visible countdown is
+redrawn once per second while the gate is active and no blocking sync is
+running. A 429 on the non-critical Level or SRS step is a row warning but still
+sets the rate-limit state for Home/Boot. Study-material and review-statistic
+batch loops stop at the first 429. If reconciling an ambiguous outbox item is
+blocked by the gate, the item stays `ambiguous`.
 
 ---
 
@@ -685,7 +707,7 @@ Tests:
 - Outbox: ok, 429, timeout, 422, cut mid-write, `.bak`.
 - Reconciliation: assignment updated, not updated, ambiguous.
 - Clock: valid `created_at`, earlier than `available_at`, unreliable.
-- Rate limit: respects `Reset`.
+- Rate limit: respects `Reset` (42 s, fallback, untrusted clock, 120 s cap).
 
 ---
 

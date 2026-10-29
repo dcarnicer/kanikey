@@ -516,7 +516,12 @@ void setSyncIssue(int httpCode, bool connected, int tlsError, const char* what) 
         snprintf(gNetLine, sizeof gNetLine, "%s: missing permissions (403)", what);
     } else if (httpCode == 429) {
         gSyncIssue = SyncIssue::RateLimit;
-        snprintf(gNetLine, sizeof gNetLine, "%s: rate limited (429)", what);
+        const uint32_t wait = kk::wkRateLimitWaitSeconds();
+        if (wait)
+            snprintf(gNetLine, sizeof gNetLine, "%s: rate limited, %us", what,
+                     static_cast<unsigned>(wait));
+        else
+            snprintf(gNetLine, sizeof gNetLine, "%s: rate limited (429)", what);
     } else if (httpCode >= 500) {
         gSyncIssue = SyncIssue::Server;
         snprintf(gNetLine, sizeof gNetLine, "%s: WaniKani error (%d)", what, httpCode);
@@ -1359,6 +1364,15 @@ bool sendOutboxItem(uint32_t seq) {
         if (reconcileOutboxItem(*item)) return true;
         item = kk::outboxFind(gOutbox, seq);
         if (!item) return true;
+        if (kk::wkRateLimitWaitSeconds() > 0) {
+            // The GET was blocked by the shared 429 gate, so the POST may have
+            // succeeded earlier; keep it ambiguous instead of risking a resend.
+            item->state = kk::OutboxState::Ambiguous;
+            saveOutbox();
+            Serial.printf("[outbox] reconcile %u rate limited; keeping ambiguous\n",
+                          static_cast<unsigned>(item->assignmentId));
+            return false;
+        }
         item->state = kk::OutboxState::Pending;
         saveOutbox();
     }
@@ -3254,7 +3268,11 @@ void startSync() {
 
     syncRowBegin(SyncLevel, "fetching");
     runLevelProgress();
-    if (gLevelProgress.valid) {
+    if (kk::wkRateLimitWaitSeconds() > 0) {
+        // Non-critical step: keep syncing, but surface the countdown.
+        setSyncIssue(429, true, 0, "Level");
+        syncRowWarn(SyncLevel, "rate limited");
+    } else if (gLevelProgress.valid) {
         char date[16];
         localDate(gLevelProgress.unlockedAt ? gLevelProgress.unlockedAt
                                             : gLevelProgress.startedAt,
@@ -3276,7 +3294,11 @@ void startSync() {
     }
 
     syncRowBegin(SyncSrs, "fetching");
-    if (runSrsCounts()) {
+    const bool srsOk = runSrsCounts();
+    if (kk::wkRateLimitWaitSeconds() > 0) {
+        setSyncIssue(429, true, 0, "SRS");
+        syncRowWarn(SyncSrs, "rate limited");
+    } else if (srsOk) {
         char srs[40];
         snprintf(srs, sizeof srs, "A%u G%u M%u E%u B%u",
                  static_cast<unsigned>(gSrs.apprentice), static_cast<unsigned>(gSrs.guru),
@@ -3602,7 +3624,15 @@ void drawHome() {
         d.drawString("Auth: missing permissions", 8, 117);
     } else if (gSyncIssue == SyncIssue::RateLimit) {
         d.setTextColor(kWarn, kBg);
-        d.drawString("Rate limited; retry later", 8, 117);
+        const uint32_t wait = kk::wkRateLimitWaitSeconds();
+        if (wait) {
+            char line[40];
+            snprintf(line, sizeof line, "Rate limited; retry in %us",
+                     static_cast<unsigned>(wait));
+            d.drawString(line, 8, 117);
+        } else {
+            d.drawString("Rate limited; retry later", 8, 117);
+        }
     } else if (gSyncIssue == SyncIssue::Server || gSyncIssue == SyncIssue::Other) {
         d.setTextColor(kWarn, kBg);
         d.drawString("WaniKani error; retry", 8, 117);
@@ -4118,6 +4148,7 @@ void drawBoot() {
     const char* line1 = "";
     const char* line2 = "";
     const char* action = "";
+    char retryLine[32] = "";
     switch (st) {
         case BootState::NoSd:
             title = "No SD card";
@@ -4167,12 +4198,19 @@ void drawBoot() {
             line2 = "Press Enter to open setup";
             action = "Enter: setup";
             break;
-        case BootState::RateLimited:
+        case BootState::RateLimited: {
+            const uint32_t wait = kk::wkRateLimitWaitSeconds();
+            if (wait)
+                snprintf(retryLine, sizeof retryLine, "Retry in %us",
+                         static_cast<unsigned>(wait));
+            else
+                snprintf(retryLine, sizeof retryLine, "Press Enter to retry");
             title = "Rate limited";
             line1 = "WaniKani asked KaniKey to wait";
-            line2 = "Press Enter to retry";
+            line2 = retryLine;
             action = "Enter: retry";
             break;
+        }
         case BootState::ServerError:
             title = "WaniKani error";
             line1 = gNetLine;
@@ -4307,7 +4345,18 @@ void drawSync() {
     }
 
     if (gSyncFinished && gSyncIssue != SyncIssue::None) {
-        drawSyncText(d, gNetLine, 8, 112, kWarn, 224);
+        if (gSyncIssue == SyncIssue::RateLimit) {
+            char rateLine[48];
+            const uint32_t wait = kk::wkRateLimitWaitSeconds();
+            if (wait)
+                snprintf(rateLine, sizeof rateLine, "Rate limited; retry in %us",
+                         static_cast<unsigned>(wait));
+            else
+                snprintf(rateLine, sizeof rateLine, "Rate limited; retry later");
+            drawSyncText(d, rateLine, 8, 112, kWarn, 224);
+        } else {
+            drawSyncText(d, gNetLine, 8, 112, kWarn, 224);
+        }
     } else {
         d.fillRect(8, 113, 224, 3, kSurfaceHi);
         if (gSyncCompleted)
@@ -5401,6 +5450,15 @@ void loop() {
     if (now - gLastStatusMs >= 1000) {
         drawStatus();
         gLastStatusMs = now;
+        // Refresh the visible 429 countdown once per second, but not while a
+        // blocking sync owns the loop. The last tick also clears the display
+        // when the gate expires.
+        static uint32_t lastRateWait = 0;
+        const uint32_t rateWait = kk::wkRateLimitWaitSeconds();
+        if (!gSyncing && gSyncIssue == SyncIssue::RateLimit &&
+            (rateWait > 0 || lastRateWait > 0))
+            gDirty = true;
+        lastRateWait = rateWait;
     }
 
     // G0: a short press wakes the screen; a long press is the future power
