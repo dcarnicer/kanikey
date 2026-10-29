@@ -28,6 +28,7 @@
 #include "app/ModalScreens.h"
 #include "app/OutboxScreen.h"
 #include "app/SettingsScreen.h"
+#include "app/SetupScreen.h"
 #include "app/SyncScreen.h"
 #include "board/Board.h"
 #include "Version.h"
@@ -69,6 +70,7 @@ using kk::app::OutboxView;
 using kk::app::PauseView;
 using kk::app::SettingsRowView;
 using kk::app::SettingsView;
+using kk::app::SetupView;
 using kk::app::SyncIssueKind;
 using kk::app::SyncRowState;
 using kk::app::SyncView;
@@ -4098,68 +4100,23 @@ void drawSync() {
 
 void drawSetupPortal() {
     if (!gDisp) return;
+
+    SetupView view;
+    view.batteryPercent = tgc::board::batteryPercent();
+    view.apMode = gSetupPortal.mode() == kk::SetupPortal::Mode::Ap;
+    view.ssid = gSetupPortal.ssid();
+    view.apPassword = gSetupPortal.apPassword();
+    view.url = gSetupPortal.url();
+    view.tokenValidated = gSetupPortal.tokenValidated();
+    view.tokenUser = gSetupPortal.tokenUser();
+    view.tokenLevel = gSetupPortal.tokenLevel();
+    view.tokenConfigured = kk::DevToken::has();
+    view.message = gSetupPortal.message();
+    view.packStatus = gSetupPortal.packStatus().c_str();
+
     auto& d = target();
     d.startWrite();
-    d.fillScreen(kBg);
-    d.setTextDatum(lgfx::top_left);
-    d.setTextWrap(false);
-
-    d.setTextFont(2);
-    d.setTextSize(1);
-    d.setTextColor(kBrand, kBg);
-    d.drawString("KaniKey", 6, 2);
-    d.setTextFont(1);
-    d.setTextColor(kDim, kBg);
-    d.drawString(gSetupPortal.mode() == kk::SetupPortal::Mode::Ap ? "setup" : "setup · Wi-Fi",
-                 7, 22);
-
-    const int bat = tgc::board::batteryPercent();
-    char right[16];
-    if (bat >= 0)
-        snprintf(right, sizeof right, "%d%%", bat);
-    else
-        snprintf(right, sizeof right, "USB");
-    d.setTextFont(1);
-    d.setTextColor(bat >= 0 && bat < 20 ? kWarn : kDim, kBg);
-    d.setTextDatum(lgfx::top_right);
-    d.drawString(right, 233, 5);
-    d.setTextDatum(lgfx::top_left);
-
-    auto line = [&d](const String& text, int y, uint16_t fg, uint8_t font = 1) {
-        d.setTextFont(font);
-        d.setTextSize(1);
-        d.setTextColor(fg, kBg);
-        String s = text;
-        while (s.length() > 1 && d.textWidth(s.c_str()) > 228) s.remove(s.length() - 1);
-        d.drawString(s.c_str(), 8, y);
-    };
-
-    if (gSetupPortal.mode() == kk::SetupPortal::Mode::Ap) {
-        line("Join this Wi-Fi", 38, kDim);
-        line(gSetupPortal.ssid(), 52, kText, 2);
-        line("Password", 74, kDim);
-        line(gSetupPortal.apPassword(), 86, kText);
-        line("Open", 100, kDim);
-        line(gSetupPortal.url(), 110, kAccentHi);
-        line("Esc: cancel", 125, kFaint, 0);
-    } else {
-        line("Connected", 38, kOk);
-        line(gSetupPortal.ssid(), 52, kText, 2);
-        line("Open on this network", 74, kDim);
-        line(gSetupPortal.url(), 84, kAccentHi);
-        if (gSetupPortal.tokenValidated())
-            line("Token OK: " + String(gSetupPortal.tokenUser()) + " L" +
-                     String(gSetupPortal.tokenLevel()),
-                 100, kOk);
-        else if (kk::DevToken::has())
-            line("Token stored: validate on the page", 100, kDim);
-        else
-            line("Token needed: enter it on the page", 100, kWarn);
-        const String message = gSetupPortal.message();
-        line(message.length() ? message : String("Pack: ") + gSetupPortal.packStatus(), 114,
-             kFaint, 0);
-        line("Finish on the web page  Esc: cancel", 125, kFaint, 0);
-    }
+    kk::app::drawSetupScreen(d, view);
     d.endWrite();
     present();
 }

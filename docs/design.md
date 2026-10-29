@@ -388,7 +388,9 @@ plus `drawBootScreen`), `LoadingScreen` (`LoadingView` plus
 including the empty state, 7-row scrolling list with scrollbar, reason colors
 and discard confirmation), `SettingsScreen` (`SettingsView`,
 `SettingsRowView` plus `drawSettingsScreen`, including the 7 visible rows of
-12, selection highlight, scrollbar and note line) and `ModalScreens`
+12, selection highlight, scrollbar and note line), `SetupScreen` (`SetupView`
+plus `drawSetupScreen`, including the AP and station layouts, battery state,
+228 px truncation and token/pack status) and `ModalScreens`
 (`PauseView`, `LowBatteryView` plus `drawPauseScreen`, `drawLowBatteryScreen`
 and `drawSignOutScreen`, including the pause progress and selection rows, the
 battery percentage and both confirmation bodies), each drawn between the
