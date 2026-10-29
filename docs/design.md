@@ -382,10 +382,14 @@ Details are in [ux.md](ux.md). Map:
 `SyncScreen` (`SyncView`, `SyncRowView` plus `drawSyncScreen`, including the
 row statuses, progress bar and retry/setup hints), `BootScreen` (`BootView`
 plus `drawBootScreen`), `LoadingScreen` (`LoadingView` plus
-`drawLoadingScreen`) and `AboutScreen` (`AboutView`, `AboutLine` plus
-`drawAboutScreen`, including the 226 px truncation), each drawn between the
-caller's `startWrite()`/`present()`, and `ui/Theme.h` is the shared RGB332
-palette. The other screens still live in `main.cpp`.
+`drawLoadingScreen`), `AboutScreen` (`AboutView`, `AboutLine` plus
+`drawAboutScreen`, including the 226 px truncation) and `OutboxScreen`
+(`OutboxView`, `OutboxRowView`, `OutboxReasonKind` plus `drawOutboxScreen`,
+including the empty state, 7-row scrolling list with scrollbar, reason colors
+and discard confirmation), each drawn between the caller's
+`startWrite()`/`present()`; `ui/Theme.h` is the shared RGB332 palette and
+`ui/Text.h` holds the shared wrapped-text helper. The other screens still live
+in `main.cpp`.
 
 Rule: `wk/`, `store/`, and the logic in `ui/` compile and are tested in
 PlatformIO's `native` environment without Arduino headers. It's the same

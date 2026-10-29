@@ -25,6 +25,7 @@
 #include "app/BootScreen.h"
 #include "app/HomeScreen.h"
 #include "app/LoadingScreen.h"
+#include "app/OutboxScreen.h"
 #include "app/SyncScreen.h"
 #include "board/Board.h"
 #include "Version.h"
@@ -50,6 +51,7 @@
 #include "wk/SessionStats.h"
 #include "wk/Time.h"
 #include "wk/Utf8.h"
+#include "ui/Text.h"
 #include "ui/Theme.h"
 
 namespace {
@@ -58,6 +60,9 @@ using tgc::Key;
 using tgc::KeyEvent;
 using namespace kk::ui;
 using kk::app::kSyncRowCount;
+using kk::app::OutboxReasonKind;
+using kk::app::OutboxRowView;
+using kk::app::OutboxView;
 using kk::app::SyncIssueKind;
 using kk::app::SyncRowState;
 using kk::app::SyncView;
@@ -773,25 +778,6 @@ void drawPill(lgfx::LovyanGFX& d, int x, int y, const char* text, uint16_t fg, u
     d.fillRect(x, y, w, 13, bg);
     d.setTextColor(fg, bg);
     d.drawString(text, x + 4, y + 2);
-}
-
-void drawWrapped(lgfx::LovyanGFX& d, const std::string& text, int x, int y, int w, int maxLines,
-                 uint16_t fg, uint16_t bg) {
-    d.setTextFont(0);
-    d.setTextSize(1);
-    d.setTextColor(fg, bg);
-    size_t start = 0;
-    for (int line = 0; line < maxLines && start < text.size(); ++line) {
-        size_t end = text.size();
-        while (end > start && d.textWidth(text.substr(start, end - start).c_str()) > w) --end;
-        if (end < text.size()) {
-            const size_t sp = text.rfind(' ', end);
-            if (sp != std::string::npos && sp > start) end = sp;
-        }
-        d.drawString(text.substr(start, end - start).c_str(), x, y + line * 8);
-        start = end;
-        while (start < text.size() && text[start] == ' ') ++start;
-    }
 }
 
 void trimFrontToWidth(lgfx::LovyanGFX& d, std::string& text, int maxWidth) {
@@ -3900,150 +3886,39 @@ void drawOutbox() {
     if (!gDisp) return;
     auto& d = target();
     d.startWrite();
-    d.fillScreen(kBg);
-    d.setTextDatum(lgfx::top_left);
-    d.setTextWrap(false);
 
-    auto fitBack = [&d](std::string& text, int maxWidth) {
-        while (text.size() > 1 && d.textWidth(text.c_str()) > maxWidth) {
-            const char* begin = text.c_str();
-            const char* last = begin;
-            const char* p = begin;
-            while (*p) {
-                last = p;
-                kk::utf8Next(&p);
-            }
-            if (last == begin) break;
-            text.erase(static_cast<size_t>(last - begin));
-        }
-    };
-
-    auto drawNote = [&d]() {
-        if (!gOutboxNote[0]) return;
-        d.setTextFont(0);
-        d.setTextSize(1);
-        d.setTextColor(kErr, kBg);
-        d.drawString(gOutboxNote, 8, 112);
-    };
-
-    const size_t total = kk::outboxAttentionCount(gOutbox);
-    d.setTextFont(2);
-    d.setTextSize(1);
-    d.setTextColor(kBrand, kBg);
-    d.drawString("OUTBOX", 6, 2);
-    char count[32];
-    snprintf(count, sizeof count, "%u need attention", static_cast<unsigned>(total));
-    d.setTextFont(0);
-    d.setTextDatum(lgfx::top_right);
-    d.setTextColor(kErr, kBg);
-    d.drawString(count, 232, 5);
-    d.setTextDatum(lgfx::top_left);
-
-    const kk::OutboxItem* selected = selectedOutboxItem();
-    if (!selected) {
-        d.drawFastHLine(4, 22, 232, kLine);
-        d.setTextFont(1);
-        d.setTextColor(kDim, kBg);
-        d.drawString("No reviews need attention", 8, 52);
-        d.setTextFont(0);
-        d.setTextColor(kFaint, kBg);
-        d.drawString("Esc: back", 8, 124);
-        d.endWrite();
-        present();
-        return;
-    }
-
-    if (gOutboxConfirm) {
-        d.setTextFont(1);
-        d.setTextColor(kErr, kBg);
-        d.drawString("discard review", 7, 22);
-        d.drawFastHLine(4, 36, 232, kLine);
-
-        std::string label = outboxItemLabel(*selected);
-        fitBack(label, 224);
-        d.setTextFont(1);
-        d.setTextColor(kText, kBg);
-        d.drawString(label.c_str(), 8, 42);
-
-        char reason[128];
-        outboxReasonDetail(*selected, reason, sizeof reason);
-        drawWrapped(d, reason, 8, 60, 224, 3, kDim, kBg);
-
-        drawWrapped(d,
-                    "Dismissing only removes the local unsent review and does not change "
-                    "WaniKani.",
-                    8, 88, 224, 3, kFaint, kBg);
-        drawNote();
-
-        d.setTextFont(0);
-        d.setTextColor(kFaint, kBg);
-        d.drawString("Enter: discard  Esc: cancel", 8, 124);
-        d.endWrite();
-        present();
-        return;
-    }
-
-    d.drawFastHLine(4, 22, 232, kLine);
-
+    OutboxView view;
     const std::vector<const kk::OutboxItem*> items = attentionOutboxItems();
-    int selectedIndex = 0;
-    for (size_t i = 0; i < items.size(); ++i)
-        if (items[i]->seq == gOutboxSelectedSeq) selectedIndex = static_cast<int>(i);
-
-    constexpr int kVisibleRows = 7;
-    constexpr int kRowY = 28;
-    constexpr int kRowH = 12;
-    int top = selectedIndex - kVisibleRows / 2;
-    if (top < 0) top = 0;
-    const int maxTop = std::max(0, static_cast<int>(items.size()) - kVisibleRows);
-    if (top > maxTop) top = maxTop;
-
-    for (int row = 0; row < kVisibleRows; ++row) {
-        const int index = top + row;
-        if (index >= static_cast<int>(items.size())) break;
-        const kk::OutboxItem& item = *items[static_cast<size_t>(index)];
-        const bool focus = index == selectedIndex;
-        const int y = kRowY + row * kRowH;
-        if (focus) {
-            d.fillRect(4, y - 2, 228, kRowH, kSurfaceHi);
-            d.fillRect(4, y - 2, 2, kRowH, kAccent);
-        }
-
+    const kk::OutboxItem* selected = selectedOutboxItem();
+    view.total = static_cast<unsigned>(kk::outboxAttentionCount(gOutbox));
+    view.rows.reserve(items.size());
+    if (!items.empty()) view.selectedIndex = 0;
+    for (size_t i = 0; i < items.size(); ++i) {
+        const kk::OutboxItem& item = *items[i];
+        OutboxRowView row;
+        row.label = outboxItemLabel(item);
         char reason[16];
         outboxReasonShort(item, reason, sizeof reason);
-        const int reasonWidth = d.textWidth(reason);
-        std::string label = outboxItemLabel(item);
-        fitBack(label, 212 - reasonWidth);
-
-        d.setTextFont(0);
-        d.setTextSize(1);
-        d.setTextColor(focus ? kText : kDim, focus ? kSurfaceHi : kBg);
-        d.drawString(label.c_str(), 10, y);
-        d.setTextDatum(lgfx::top_right);
-        const uint16_t reasonColor = item.state == kk::OutboxState::Stuck
-                                         ? kWarn
-                                         : (item.httpCode ? kErr : kFaint);
-        d.setTextColor(reasonColor, focus ? kSurfaceHi : kBg);
-        d.drawString(reason, 228, y);
-        d.setTextDatum(lgfx::top_left);
+        row.reason = reason;
+        row.reasonKind = item.state == kk::OutboxState::Stuck
+                             ? OutboxReasonKind::Warn
+                             : (item.httpCode ? OutboxReasonKind::Err
+                                              : OutboxReasonKind::Faint);
+        view.rows.push_back(std::move(row));
+        if (item.seq == gOutboxSelectedSeq) view.selectedIndex = static_cast<int>(i);
     }
-
-    if (items.size() > kVisibleRows) {
-        constexpr int kTrackY = kRowY;
-        constexpr int kTrackH = kVisibleRows * kRowH - 4;
-        d.fillRect(235, kTrackY, 2, kTrackH, kLine);
-        const int thumbH =
-            std::max(10, kTrackH * kVisibleRows / static_cast<int>(items.size()));
-        const int thumbY = kTrackY + (kTrackH - thumbH) * top /
-                                         (static_cast<int>(items.size()) - kVisibleRows);
-        d.fillRect(235, thumbY, 2, thumbH, kAccentHi);
+    if (selected) {
+        view.confirm = gOutboxConfirm;
+        if (view.confirm) {
+            view.confirmLabel = outboxItemLabel(*selected);
+            char reason[128];
+            outboxReasonDetail(*selected, reason, sizeof reason);
+            view.confirmReason = reason;
+        }
     }
+    view.note = gOutboxNote;
 
-    drawNote();
-    d.setTextFont(0);
-    d.setTextSize(1);
-    d.setTextColor(kFaint, kBg);
-    d.drawString("Enter: review  D: discard  Esc: back", 8, 124);
+    drawOutboxScreen(d, view);
     d.endWrite();
     present();
 }
