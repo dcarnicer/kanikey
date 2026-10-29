@@ -499,8 +499,9 @@ device.
   vacation for the rest of the session; it is not shown on the first sync
   without a previous level and is cleared on sign-out, a new token or a level
   decrease.
-  Native-tested (61 tests); both firmware builds pass. Hardware check pending:
-  real counts on the card and a real level-up transition.
+  Native-tested (61 tests); both firmware builds pass. Hardware-verified
+  (2026-10-29): Home showed `L8 3% since 03 Feb` from the real count requests;
+  a real level-up transition is still pending.
 - **UI-06 — Lesson layout fixes.** Page counter, hint bar spacing and the
   `drawLoading` Japanese subtitle that can be blank. **Done (2026-10-29):**
   the header keeps `2/5` and adds `p1/3` to its right with an 8 px gap, well
@@ -509,9 +510,15 @@ device.
   y=125 hint bar holds `Space p  Q quiz` (90 px) left and
   `Enter start  Esc list` (126 px) right, leaving a 12 px gap in 228 px.
   `startCurrentLesson()` passes the English main meaning to `drawLoading`.
-  Mockups and docs updated; 60 native tests and both firmware builds pass.
+  Mockups and docs updated; 61 native tests and both firmware builds pass.
+  Hardware-verified (2026-10-29): a live lesson card showed `1/5 p1/2`, the
+  2 px bar and the full hint row without clipping; no `/start` was sent.
 - **UI-07 — Missing pack/glyph states.** The prompt state exists; finish the
-  full startup/setup wording and actions.
+  full startup/setup wording and actions. **Done (2026-10-29):** boot shows
+  `Pack missing` with the `/kanikey/glyphs.kgp` path and `Enter: check again`;
+  the setup portal shows the pack status and a re-check action; a missing
+  prompt glyph shows `no glyph` / `no pack` / `check SD`; About reports the
+  pack status.
 - **UI-08 — Palette and screenshots.** Revisit the RGB332 palette after real
   use; keep live screenshots with user content out of the repository.
 

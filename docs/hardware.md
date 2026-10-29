@@ -341,3 +341,16 @@ WaniKani subjects and mnemonics.
   as `Rejected`, and the offline flush. The final `OUTBOX` screen, attempts/age
   detail and per-item discard still need a hardware pass.
 - No firmware was flashed or changed for this documentation audit.
+
+### Hardware verification 2026-10-29 (UI-05/UI-06)
+
+- After a real sync, Home showed `L8 3% since 03 Feb`: the current level's
+  passed-kanji percentage came from the two `total_count` requests, and the
+  level timestamp still fit on the status line. No level-up occurred, so the
+  `Level up!` notice still needs a real transition.
+- Serial `l` fetched the lesson list and `e` opened the first card. The live
+  card showed `1/5` and `p1/2` in the header, the 2 px item bar at y=14 and
+  `Space p  Q quiz` / `Enter start  Esc list` at y=125 without clipping. No
+  `PUT /start` was sent; the card was only opened for the screenshot.
+- The final image was reflashed after the UI-05/UI-06 changes. Live captures
+  remain in `tools/screenshots/out/` and are not committed.
