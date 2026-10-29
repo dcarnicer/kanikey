@@ -21,7 +21,10 @@
 #include <algorithm>
 #include <cstring>
 
+#include "app/AboutScreen.h"
+#include "app/BootScreen.h"
 #include "app/HomeScreen.h"
+#include "app/LoadingScreen.h"
 #include "app/SyncScreen.h"
 #include "board/Board.h"
 #include "Version.h"
@@ -3251,25 +3254,12 @@ void localDate(uint32_t epoch, char* out, size_t n) {
 
 void drawLoading(const char* title, const char* subtitle) {
     if (!gDisp) return;
+    kk::app::LoadingView view;
+    view.title = title;
+    view.subtitle = subtitle;
     auto& d = target();
     d.startWrite();
-    d.fillScreen(kBg);
-    d.setTextDatum(lgfx::top_left);
-    d.setTextWrap(false);
-    d.setTextFont(2);
-    d.setTextSize(1);
-    d.setTextColor(kBrand, kBg);
-    d.drawString("KaniKey", 6, 2);
-    d.setTextFont(1);
-    d.setTextSize(1);
-    d.setTextColor(kText, kBg);
-    d.drawString(title, 8, 56);
-    d.setTextFont(0);
-    d.setTextSize(1);
-    d.setTextColor(kDim, kBg);
-    d.drawString(subtitle, 8, 76);
-    d.setTextColor(kFaint, kBg);
-    d.drawString("The first request can take a few seconds", 8, 98);
+    kk::app::drawLoadingScreen(d, view);
     d.endWrite();
     present();
 }
@@ -4129,60 +4119,42 @@ void drawSignOutConfirm() {
 
 void drawAbout() {
     if (!gDisp) return;
-    auto& d = target();
-    d.startWrite();
-    d.fillScreen(kBg);
-    d.setTextDatum(lgfx::top_left);
-    d.setTextWrap(false);
-    d.setTextFont(2);
-    d.setTextSize(1);
-    d.setTextColor(kBrand, kBg);
-    d.drawString("KaniKey", 6, 2);
-    d.setTextFont(1);
-    d.setTextColor(kDim, kBg);
-    d.drawString("about", 7, 22);
-    d.setTextFont(0);
-    d.setTextColor(kFaint, kBg);
-    d.setTextDatum(lgfx::top_right);
-    d.drawString("Esc: back", 232, 5);
-    d.setTextDatum(lgfx::top_left);
+    kk::app::AboutView view;
+    view.version = kk::kFirmwareVersion;
 
-    auto line = [&d](const String& text, int y, uint16_t fg) {
-        d.setTextFont(0);
-        d.setTextSize(1);
-        d.setTextColor(fg, kBg);
-        String s = text;
-        while (s.length() > 1 && d.textWidth(s.c_str()) > 226) s.remove(s.length() - 1);
-        d.drawString(s.c_str(), 7, y);
-    };
-
-    d.setTextFont(1);
-    d.setTextSize(1);
-    d.setTextColor(kText, kBg);
-    d.drawString(String("KaniKey ") + kk::kFirmwareVersion, 7, 34);
-
-    line(String("Build ") + __DATE__ + " " + __TIME__, 52, kFaint);
-    line(String("Pack: ") + gPack.statusLine(), 63, gPack.ready() ? kOk : kWarn);
+    view.lines.push_back({"Build " __DATE__ " " __TIME__, kFaint, 52});
+    view.lines.push_back({std::string("Pack: ") + gPack.statusLine(),
+                          gPack.ready() ? kOk : kWarn, 63});
     char cache[64];
-    snprintf(cache, sizeof cache, "Cache: %u batch, %u due", static_cast<unsigned>(gBatch.assignments.size()),
+    snprintf(cache, sizeof cache, "Cache: %u batch, %u due",
+             static_cast<unsigned>(gBatch.assignments.size()),
              static_cast<unsigned>(gDueReviews));
-    line(cache, 74, kDim);
-    line(String("Last sync: ") + gSyncClock + (gOffline ? " (offline)" : ""), 85,
-         gOffline ? kWarn : kDim);
-    String wifi = kk::DevWifi::hasSaved() ? kk::DevWifi::savedSsid() : String("not configured");
-    if (kk::DevWifi::connected()) wifi += " " + kk::DevWifi::ip();
-    line(String("Wi-Fi: ") + wifi, 96, kDim);
-    line(String("Token: ") + (kk::DevToken::has() ? "configured" : "missing"), 107,
-         kk::DevToken::has() ? kDim : kWarn);
-    String zone = kk::settingsTimeZoneName();
-    if (zone.isEmpty()) zone = kk::settingsTimeZoneRule();
-    line(String("Zone: ") + zone, 118, kFaint);
+    view.lines.push_back({cache, kDim, 74});
+    view.lines.push_back({std::string("Last sync: ") + gSyncClock +
+                              (gOffline ? " (offline)" : ""),
+                          gOffline ? kWarn : kDim, 85});
+    std::string wifi = kk::DevWifi::hasSaved() ? kk::DevWifi::savedSsid().c_str()
+                                                : "not configured";
+    if (kk::DevWifi::connected()) {
+        wifi += " ";
+        wifi += kk::DevWifi::ip().c_str();
+    }
+    view.lines.push_back({std::string("Wi-Fi: ") + wifi, kDim, 96});
+    view.lines.push_back({std::string("Token: ") + (kk::DevToken::has() ? "configured" : "missing"),
+                          kk::DevToken::has() ? kDim : kWarn, 107});
+    std::string zone = kk::settingsTimeZoneName().c_str();
+    if (zone.empty()) zone = kk::settingsTimeZoneRule().c_str();
+    view.lines.push_back({std::string("Zone: ") + zone, kFaint, 118});
     char heap[48];
     snprintf(heap, sizeof heap, "Heap: %u free / %u largest",
              static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
              static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL |
                                                                     MALLOC_CAP_8BIT)));
-    line(heap, 126, kFaint);
+    view.lines.push_back({heap, kFaint, 126});
+
+    auto& d = target();
+    d.startWrite();
+    kk::app::drawAboutScreen(d, view);
     d.endWrite();
     present();
 }
@@ -4217,40 +4189,8 @@ BootState bootState() {
     return BootState::Ready;
 }
 
-void drawBootLine(lgfx::LovyanGFX& d, const char* text, int x, int y, uint16_t fg) {
-    if (!text || !text[0]) return;
-    d.setTextFont(1);
-    d.setTextSize(1);
-    d.setTextColor(fg, kBg);
-    std::string s = text;
-    while (s.size() > 1 && d.textWidth(s.c_str()) > 224) s.pop_back();
-    d.drawString(s.c_str(), x, y);
-}
-
 void drawBoot() {
     if (!gDisp) return;
-    auto& d = target();
-    d.startWrite();
-    d.fillScreen(kBg);
-    d.setTextDatum(lgfx::top_left);
-    d.setTextWrap(false);
-
-    d.setTextFont(2);
-    d.setTextSize(1);
-    d.setTextColor(kBrand, kBg);
-    d.drawString("KaniKey", 6, 2);
-
-    const int bat = tgc::board::batteryPercent();
-    char right[24];
-    if (bat >= 0)
-        snprintf(right, sizeof right, "%d%%", bat);
-    else
-        snprintf(right, sizeof right, "USB");
-    d.setTextFont(1);
-    d.setTextColor(bat >= 0 && bat < 20 ? kWarn : kDim, kBg);
-    d.setTextDatum(lgfx::top_right);
-    d.drawString(right, 233, 5);
-    d.setTextDatum(lgfx::top_left);
 
     const BootState st = bootState();
     const char* title = "";
@@ -4339,22 +4279,20 @@ void drawBoot() {
             break;
     }
 
-    const bool warn = st == BootState::NoSd || st == BootState::NoPack ||
-                      st == BootState::AuthError || st == BootState::Forbidden ||
-                      st == BootState::RateLimited || st == BootState::ServerError ||
-                      st == BootState::Failed;
-    d.setTextFont(4);
-    d.setTextSize(1);
-    d.setTextColor(warn ? kWarn : kText, kBg);
-    d.drawString(title, 8, 38);
-    drawBootLine(d, line1, 8, 82, kDim);
-    drawBootLine(d, line2, 8, 96, kDim);
-    if (action[0]) {
-        d.setTextFont(0);
-        d.setTextSize(1);
-        d.setTextColor(kFaint, kBg);
-        d.drawString(action, 8, 120);
-    }
+    kk::app::BootView view;
+    view.batteryPercent = tgc::board::batteryPercent();
+    view.title = title;
+    view.line1 = line1;
+    view.line2 = line2;
+    view.action = action;
+    view.warn = st == BootState::NoSd || st == BootState::NoPack ||
+                st == BootState::AuthError || st == BootState::Forbidden ||
+                st == BootState::RateLimited || st == BootState::ServerError ||
+                st == BootState::Failed;
+
+    auto& d = target();
+    d.startWrite();
+    kk::app::drawBootScreen(d, view);
     d.endWrite();
     present();
 }

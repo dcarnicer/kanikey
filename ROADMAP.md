@@ -117,9 +117,9 @@ Working on hardware:
 - 72 native tests and the `cardputer-adv` build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests.
 
-Current build: **1,413,309 B / 1,835,008 B flash (77.0%)**, **94,704 B /
-327,680 B static RAM (28.9%)**. The dev image is 1,420,905 B. Removing
-`efontJA_16` freed ~468 KB and leaves ~422 KB of flash headroom.
+Current build: **1,414,773 B / 1,835,008 B flash (77.1%)**, **94,704 B /
+327,680 B static RAM (28.9%)**. The dev image is 1,422,377 B. Removing
+`efontJA_16` freed ~468 KB and leaves ~420 KB of flash headroom.
 
 ## Priority summary
 
@@ -565,15 +565,18 @@ SRS and deck catalog remain intentionally dropped. See
   without `bad_alloc`; the largest free block stayed >=35 KB (see
   `docs/hardware.md`). 72 native tests pass; release build 1,412,341 B flash /
   94,704 B static RAM, dev build 1,419,953 B / 94,728 B.
-- **TECH-02 — Refactor `main.cpp`.** **Partial (2026-10-29).** The Home and
-  Sync screens and the shared palette are extracted: `app/HomeScreen` takes an
-  explicit `HomeView` and draws the whole Home frame, `app/SyncScreen` takes a
-  `SyncView` (six `SyncRowView`s, completion count, failure issue) and draws
-  the whole Sync frame, and `ui/Theme.h` holds the common colors. Boot/Loading,
-  Review, Lesson, Settings, About, Outbox, portal, debug and modal screens, the
-  shared drawing helpers, session state and services still live in `main.cpp`.
-  72 native tests pass; release build 1,413,309 B flash / 94,704 B static RAM,
-  dev build 1,420,905 B / 94,728 B.
+- **TECH-02 — Refactor `main.cpp`.** **Partial (2026-10-29).** The Home,
+  Sync, Boot, Loading and About screens and the shared palette are extracted:
+  `app/HomeScreen` takes an explicit `HomeView` and draws the whole Home frame,
+  `app/SyncScreen` takes a `SyncView` (six `SyncRowView`s, completion count,
+  failure issue) and draws the whole Sync frame, `app/BootScreen` takes a
+  `BootView` and keeps the state text in `main.cpp`, `app/LoadingScreen` takes a
+  `LoadingView`, `app/AboutScreen` takes an `AboutView` with explicit
+  `AboutLine`s, and `ui/Theme.h` holds the common colors. Review, Lesson,
+  Settings, Outbox, portal, debug and modal screens, the shared drawing
+  helpers, session state and services still live in `main.cpp`.
+  72 native tests pass; release build 1,414,773 B flash / 94,704 B static RAM,
+  dev build 1,422,377 B / 94,728 B.
 - **TECH-03 — Dev hooks.** `KANIKEY_DEV` now covers the M0 screen and Tab
   shortcut; put `gDirectReading`, synthetic outbox commands and other serial
   helpers behind the same flag.

@@ -378,9 +378,12 @@ Details are in [ux.md](ux.md). Map:
 | `tools/glyph-pack/` | Visual pack generator (Python) | — |
 | `tools/screenshots/` | Serial remote for screenshots | — |
 
-`app/` now contains `HomeScreen` (`HomeView` plus `drawHomeScreen`) and
+`app/` now contains `HomeScreen` (`HomeView` plus `drawHomeScreen`),
 `SyncScreen` (`SyncView`, `SyncRowView` plus `drawSyncScreen`, including the
-row statuses, progress bar and retry/setup hints), each drawn between the
+row statuses, progress bar and retry/setup hints), `BootScreen` (`BootView`
+plus `drawBootScreen`), `LoadingScreen` (`LoadingView` plus
+`drawLoadingScreen`) and `AboutScreen` (`AboutView`, `AboutLine` plus
+`drawAboutScreen`, including the 226 px truncation), each drawn between the
 caller's `startWrite()`/`present()`, and `ui/Theme.h` is the shared RGB332
 palette. The other screens still live in `main.cpp`.
 
