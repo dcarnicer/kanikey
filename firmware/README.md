@@ -264,10 +264,9 @@ The serial `U <url>`, `F`, `I`, `V` and `Y` commands exist only in the
 development image. They point the device at a local manifest, run a check,
 install, open the Firmware screen and clear a rollback record.
 
-The default GitHub release URL requires a public repository. While the repo is
-private, a release build cannot read the manifest; use USB or the development
-image with a local manifest. The published release starts working over the air
-as soon as the repository is made public.
+The default GitHub release URL requires a public repository and release. A
+private fork must publish the manifest and image elsewhere and change the
+default URL, or test with the development image and a local manifest.
 
 ## Notes
 
