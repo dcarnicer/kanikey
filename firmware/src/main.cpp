@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cstring>
 
+#include "app/HomeScreen.h"
 #include "board/Board.h"
 #include "Version.h"
 #include "platform/CacheStore.h"
@@ -45,28 +46,13 @@
 #include "wk/SessionStats.h"
 #include "wk/Time.h"
 #include "wk/Utf8.h"
+#include "ui/Theme.h"
 
 namespace {
 
 using tgc::Key;
 using tgc::KeyEvent;
-
-constexpr uint16_t kBg = 0x0000;
-constexpr uint16_t kSurface = 0x0108;   // 8-bit: very dark teal-slate
-constexpr uint16_t kSurfaceHi = 0x2128; // 8-bit: dark navy
-constexpr uint16_t kLine = 0x2208;      // 8-bit: muted teal line
-constexpr uint16_t kText = 0xFFFF;
-constexpr uint16_t kDim = 0xA577;
-constexpr uint16_t kFaint = 0x636F;
-constexpr uint16_t kBrand = 0xE308;  // #FF7A59, 8-bit coral
-constexpr uint16_t kOk = 0x5EF1;
-constexpr uint16_t kOkBg = 0x0183;
-constexpr uint16_t kAccent = 0x2B1B;
-constexpr uint16_t kAccentHi = 0x7D5F;
-constexpr uint16_t kReading = 0x2D14;
-constexpr uint16_t kErr = 0xC945;
-constexpr uint16_t kErrBg = 0x3882;
-constexpr uint16_t kWarn = 0xFE26;
+using namespace kk::ui;
 
 lgfx::LGFX_Device* gDisp = nullptr;
 lgfx::LGFX_Sprite* gCanvas = nullptr;
@@ -3725,6 +3711,64 @@ void cacheStatusLine(char* out, size_t n) {
         snprintf(out, n, "Offline - %uh old", static_cast<unsigned>(age / 3600));
 }
 
+kk::app::HomeView buildHomeView() {
+    kk::app::HomeView view;
+    view.batteryPercent = tgc::board::batteryPercent();
+    view.signedIn = gHaveUser;
+    view.level = gHaveUser ? gUser.level : 0;
+    view.username = gHaveUser ? gUser.username.c_str() : "";
+    view.dueReviews = gDueReviews;
+    view.lessons = gLessons;
+    view.nextReview = gNextReview;
+    view.syncClock = gSyncClock;
+    view.offline = gOffline;
+    view.srs = gSrs;
+    view.outboxAttention = static_cast<uint32_t>(kk::outboxAttentionCount(gOutbox));
+    view.outboxPending = static_cast<uint32_t>(kk::outboxPendingCount(gOutbox));
+
+    // Status priority: API/auth, outbox, offline cache, then notices.
+    if (gSyncIssue == SyncIssue::Auth) {
+        snprintf(view.statusText, sizeof view.statusText, "Auth: token rejected");
+        view.statusColor = kErr;
+    } else if (gSyncIssue == SyncIssue::Forbidden) {
+        snprintf(view.statusText, sizeof view.statusText, "Auth: missing permissions");
+        view.statusColor = kErr;
+    } else if (gSyncIssue == SyncIssue::RateLimit) {
+        view.statusColor = kWarn;
+        const uint32_t wait = kk::wkRateLimitWaitSeconds();
+        if (wait)
+            snprintf(view.statusText, sizeof view.statusText, "Rate limited; retry in %us",
+                     static_cast<unsigned>(wait));
+        else
+            snprintf(view.statusText, sizeof view.statusText, "Rate limited; retry later");
+    } else if (gSyncIssue == SyncIssue::Server || gSyncIssue == SyncIssue::Other) {
+        snprintf(view.statusText, sizeof view.statusText, "WaniKani error; retry");
+        view.statusColor = kWarn;
+    } else if (view.outboxAttention) {
+        snprintf(view.statusText, sizeof view.statusText, "Outbox: %u need attention",
+                 static_cast<unsigned>(view.outboxAttention));
+        view.statusColor = kErr;
+    } else if (view.outboxPending) {
+        snprintf(view.statusText, sizeof view.statusText, "Outbox: %u pending",
+                 static_cast<unsigned>(view.outboxPending));
+        view.statusColor = kWarn;
+    } else if (gOffline) {
+        cacheStatusLine(view.statusText, sizeof view.statusText);
+        view.statusColor = cacheIsStale() ? kErr : kWarn;
+    } else if (gLevelUpNotice) {
+        snprintf(view.statusText, sizeof view.statusText, "Level up! L%u -> L%u",
+                 static_cast<unsigned>(gLevelUpFrom), static_cast<unsigned>(gLevelUpTo));
+        view.statusColor = kOk;
+        view.levelUp = true;
+    } else if (gHaveUser && gUser.vacationStartedAt) {
+        snprintf(view.statusText, sizeof view.statusText, "Vacation mode");
+        view.statusColor = kWarn;
+    } else if (gLevelProgress.valid) {
+        formatLevelProgressLine(view.levelLine, sizeof view.levelLine);
+    }
+    return view;
+}
+
 void drawHome() {
     if (!gDisp) return;
     static bool logged = false;
@@ -3732,171 +3776,10 @@ void drawHome() {
         logged = true;
         Serial.println("[kk] home drawn");
     }
+    const kk::app::HomeView view = buildHomeView();
     auto& d = target();
     d.startWrite();
-    d.fillScreen(kBg);
-    d.setTextDatum(lgfx::top_left);
-    d.setTextWrap(false);
-
-    d.setTextFont(2);
-    d.setTextSize(1);
-    d.setTextColor(kBrand, kBg);
-    d.drawString("KaniKey", 6, 2);
-
-    char sync[24];
-    snprintf(sync, sizeof sync, "Synced %s", gSyncClock);
-    d.setTextFont(1);
-    d.setTextSize(1);
-    d.setTextDatum(lgfx::top_right);
-    d.setTextColor(gOffline ? kWarn : kDim, kBg);
-    d.drawString(sync, 198, 5);
-
-    const int bat = tgc::board::batteryPercent();
-    char right[20];
-    if (bat >= 0)
-        snprintf(right, sizeof right, "%d%%", bat);
-    else
-        snprintf(right, sizeof right, "USB");
-    d.setTextColor(bat >= 0 && bat < 20 ? kWarn : kDim, kBg);
-    d.drawString(right, 233, 5);
-
-    d.setTextDatum(lgfx::top_left);
-    d.setTextColor(GOLD, kBg);
-    char lvl[16];
-    snprintf(lvl, sizeof lvl, "LEVEL %d", gHaveUser ? gUser.level : 0);
-    d.drawString(lvl, 7, 21);
-    d.setTextColor(kDim, kBg);
-    d.drawString(gHaveUser ? gUser.username.c_str() : "not signed in", 80, 21);
-
-    d.setTextFont(2);
-    d.setTextSize(2);
-    d.setTextColor(kText, kBg);
-    char due[16];
-    snprintf(due, sizeof due, "%u", static_cast<unsigned>(gDueReviews));
-    d.drawString(due, 8, 36);
-    char lessons[16];
-    snprintf(lessons, sizeof lessons, "%u", static_cast<unsigned>(gLessons));
-    d.drawString(lessons, 164, 36);
-
-    d.setTextFont(0);
-    d.setTextSize(1);
-    d.setTextColor(kDim, kBg);
-    d.drawString("REVIEWS DUE", 8, 73);
-    d.drawString("LESSONS", 164, 73);
-
-    d.setTextFont(1);
-    d.setTextSize(1);
-    d.setTextColor(gOffline ? kWarn : kDim, kBg);
-    d.drawString("Next review", 8, 86);
-    d.setTextDatum(lgfx::top_right);
-    d.setTextColor(kText, kBg);
-    d.drawString(gNextReview, 232, 86);
-    d.setTextDatum(lgfx::top_left);
-
-    // SRS distribution: one segment per stage group, then A/G/M/E/B counts.
-    d.setTextFont(0);
-    d.setTextSize(1);
-    if (gSrs.valid) {
-        const uint32_t bucket[5] = {gSrs.apprentice, gSrs.guru, gSrs.master,
-                                    gSrs.enlightened, gSrs.burned};
-        const uint16_t colors[5] = {kErr, kWarn, kAccentHi, kReading, kFaint};
-        const char label[5] = {'A', 'G', 'M', 'E', 'B'};
-        const uint32_t total = gSrs.total();
-        if (total > 0) {
-            int x = 8;
-            for (int i = 0; i < 5; ++i) {
-                int w = 0;
-                if (i == 4) {
-                    w = 232 - x;
-                } else {
-                    w = static_cast<int>((static_cast<uint64_t>(bucket[i]) * 224u + total / 2u) /
-                                         total);
-                    if (bucket[i] > 0 && w < 3) w = 3;
-                }
-                if (w > 232 - x) w = 232 - x;
-                if (w > 0) d.fillRect(x, 100, w - 1, 3, colors[i]);
-                x += w;
-            }
-        }
-        int x = 8;
-        for (int i = 0; i < 5; ++i) {
-            d.fillRect(x, 107, 4, 4, colors[i]);
-            d.setTextColor(kDim, kBg);
-            char count[16];
-            snprintf(count, sizeof count, "%c %u", label[i], static_cast<unsigned>(bucket[i]));
-            d.drawString(count, x + 5, 106);
-            x += 43;
-        }
-    } else {
-        d.setTextColor(kFaint, kBg);
-        d.drawString("SRS: sync for counts", 8, 106);
-    }
-
-    d.setTextFont(0);
-    d.setTextSize(1);
-    const size_t pending = kk::outboxPendingCount(gOutbox);
-    const size_t attention = kk::outboxAttentionCount(gOutbox);
-    if (gSyncIssue == SyncIssue::Auth) {
-        d.setTextColor(kErr, kBg);
-        d.drawString("Auth: token rejected", 8, 117);
-    } else if (gSyncIssue == SyncIssue::Forbidden) {
-        d.setTextColor(kErr, kBg);
-        d.drawString("Auth: missing permissions", 8, 117);
-    } else if (gSyncIssue == SyncIssue::RateLimit) {
-        d.setTextColor(kWarn, kBg);
-        const uint32_t wait = kk::wkRateLimitWaitSeconds();
-        if (wait) {
-            char line[40];
-            snprintf(line, sizeof line, "Rate limited; retry in %us",
-                     static_cast<unsigned>(wait));
-            d.drawString(line, 8, 117);
-        } else {
-            d.drawString("Rate limited; retry later", 8, 117);
-        }
-    } else if (gSyncIssue == SyncIssue::Server || gSyncIssue == SyncIssue::Other) {
-        d.setTextColor(kWarn, kBg);
-        d.drawString("WaniKani error; retry", 8, 117);
-    } else if (attention) {
-        char line[40];
-        snprintf(line, sizeof line, "Outbox: %u need attention",
-                 static_cast<unsigned>(attention));
-        d.setTextColor(kErr, kBg);
-        d.drawString(line, 8, 117);
-    } else if (pending) {
-        char line[40];
-        snprintf(line, sizeof line, "Outbox: %u pending", static_cast<unsigned>(pending));
-        d.setTextColor(kWarn, kBg);
-        d.drawString(line, 8, 117);
-    } else if (gOffline) {
-        char line[40];
-        cacheStatusLine(line, sizeof line);
-        d.setTextColor(cacheIsStale() ? kErr : kWarn, kBg);
-        d.drawString(line, 8, 117);
-    } else if (gLevelUpNotice) {
-        char line[40];
-        snprintf(line, sizeof line, "Level up! L%u -> L%u",
-                 static_cast<unsigned>(gLevelUpFrom), static_cast<unsigned>(gLevelUpTo));
-        d.setTextColor(kOk, kBg);
-        d.drawString(line, 8, 117);
-    } else if (gHaveUser && gUser.vacationStartedAt) {
-        d.setTextColor(kWarn, kBg);
-        d.drawString("Vacation mode", 8, 117);
-    } else if (gLevelProgress.valid) {
-        char line[40];
-        formatLevelProgressLine(line, sizeof line);
-        d.setTextColor(kFaint, kBg);
-        d.drawString(line, 8, 117);
-    }
-    d.setTextColor(kFaint, kBg);
-    const char* hint = "Enter: reviews  L: lessons  S: sync";
-    if (attention) {
-        hint = "O: outbox  Enter: reviews  S: sync";
-        if (d.textWidth(hint) > 224) hint = "O: outbox  Enter  L  S";
-        if (d.textWidth(hint) > 224) hint = "O: outbox  S: sync";
-    } else if (d.textWidth(hint) > 224) {
-        hint = "Enter  L  S";
-    }
-    d.drawString(hint, 8, 125);
+    kk::app::drawHomeScreen(d, view);
     d.endWrite();
     present();
 }

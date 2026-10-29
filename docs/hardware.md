@@ -368,3 +368,11 @@ WaniKani subjects and mnemonics.
   page. No crash or truncated JSON.
 - The session was only opened for the fetch and then exited; no review was
   submitted and no `PUT /start` was sent.
+
+### 2026-10-29 — TECH-02 phase 1 (Home screen extraction)
+
+- Home was moved to `app/HomeScreen` with `ui/Theme.h`; the live capture kept
+  the same brand, counters, next-review row, SRS bar, hint variants and status
+  line. The level-count requests hit a transient network error in that run, so
+  the status line correctly fell back to `L8 since 03 Feb` instead of a
+  percentage. The 72 native tests and both firmware builds passed.
