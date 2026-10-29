@@ -2990,6 +2990,12 @@ void onKey(const KeyEvent& e) {
         startLessons();
         return;
     }
+    if (e.down && gShowHome && !gSyncing && e.key == Key::Other &&
+        (tgc::cardputerCharAt(e.x, e.y, gShift) == 's' ||
+         tgc::cardputerCharAt(e.x, e.y, gShift) == 'S')) {
+        startSync();
+        return;
+    }
     const char c = tgc::cardputerCharAt(e.x, e.y, gShift);
 
     char line[44];
@@ -3670,11 +3676,13 @@ void drawHome() {
         d.drawString(line, 8, 117);
     }
     d.setTextColor(kFaint, kBg);
-    const char* hint = "Enter: reviews  L: lessons  Esc: menu";
+    const char* hint = "Enter: reviews  L: lessons  S: sync";
     if (rejected) {
-        hint = "O: outbox  Enter: reviews  L: lessons  Esc: menu";
-        if (d.textWidth(hint) > 224) hint = "O: outbox  Enter: reviews  Esc: menu";
-        if (d.textWidth(hint) > 224) hint = "O: outbox  Esc: menu";
+        hint = "O: outbox  Enter: reviews  S: sync";
+        if (d.textWidth(hint) > 224) hint = "O: outbox  Enter  L  S";
+        if (d.textWidth(hint) > 224) hint = "O: outbox  S: sync";
+    } else if (d.textWidth(hint) > 224) {
+        hint = "Enter  L  S";
     }
     d.drawString(hint, 8, 125);
     d.endWrite();

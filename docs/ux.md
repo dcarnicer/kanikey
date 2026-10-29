@@ -148,11 +148,9 @@ the field is active.
 | `↑` `↓` | Move focus; in text, `Fn` + arrows |
 | `←` `→` | Previous/next page in lessons |
 | `Space` | Next page in lessons; space in text |
-| `R` | Reviews (home) |
 | `L` | Lessons (home) |
 | `O` | Outbox of rejected reviews (home) |
 | `S` | Sync (home) |
-| `Ctrl+S` | Sync from any menu |
 | `G0` | Back / pause (holding it in the review opens the session menu) |
 
 `Esc` from Home opens Settings; in a review it opens Pause → Settings. In the
@@ -299,15 +297,17 @@ Home ──L──► Lessons ──Enter──► Lesson card
   sync and are cached; if they are missing, the line reads
   `SRS: sync for counts`.
 - If the outbox is not empty, `Outbox: N pending` in amber or
-  `N need attention` in red at 8 px. When items were rejected, the hint adds
-  `O: outbox` (§5.13).
-- Hint: `Enter: reviews  L: lessons  Esc: menu` (8 px). With rejected items the
-  hint becomes `O: outbox  Enter: reviews  L: lessons  Esc: menu`, dropping
-  entries from the middle when it would not fit; `O: outbox` and `Esc: menu`
-  are kept. The M0 debug screen and the `Tab: debug` shortcut only exist in the
-  `cardputer-adv-dev` build; the shortcut is no longer advertised on Home.
+  `N need attention` in red at 8 px. When items were rejected, the hint swaps
+  `L: lessons` for `O: outbox` (§5.13).
+- Hint: `Enter: reviews  L: lessons  S: sync` (8 px). With rejected items the
+  hint becomes `O: outbox  Enter: reviews  S: sync`, dropping entries from the
+  middle when it would not fit; `O: outbox` is kept. `Esc` still opens
+  Settings; the hint bar only shows the three primary actions. The M0 debug
+  screen and the `Tab: debug` shortcut only exist in the `cardputer-adv-dev`
+  build; the shortcut is no longer advertised on Home.
 - States:
-  - **Sync:** the Sync screen (§5.11) replaces Home while a sync runs.
+  - **Sync:** `S` starts the same sync as Settings › `Sync now`; the Sync
+    screen (§5.11) replaces Home while a sync runs.
   - **Offline:** line in `warn`: `Offline · 18 cached · 4 to sync`.
   - **Empty:** `All caught up` + `Next review 18:00`; `Enter` opens the
     forecast detail.

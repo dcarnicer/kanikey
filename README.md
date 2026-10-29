@@ -2,10 +2,10 @@
 
 **A pocket-sized review terminal for WaniKani, built for the M5Stack Cardputer ADV.**
 
-> **Status: firmware preview — offline cache (2026-10-28).** The Cardputer ADV
-> shows a live Home from `/user` + `/summary`, fetches a 20-item due batch,
-> runs a typed meaning/reading session and submits completed items with
-> `POST /v2/reviews` (201). Review order follows the account's
+> **Status: firmware preview — offline cache and manual sync (2026-10-29).**
+> The Cardputer ADV shows a live Home from `/user` + `/summary`, fetches a
+> 20-item due batch, runs a typed meaning/reading session and submits completed
+> items with `POST /v2/reviews` (201). Review order follows the account's
 > `reviews_presentation_order` (`shuffled` or `lower_levels_first`). A
 > persistent outbox makes reviews survive a reboot and offline sessions. Home,
 > the user and the review batch are now cached too:
@@ -37,9 +37,10 @@
 > WaniKani token with `GET /user`, sets the clock/time zone from the browser and
 > checks the visual pack. Setup makes no lesson-start calls; validation only
 > reads `/user`. `Esc` opens Pause in a review and Settings from Home, with
-> brightness/timings, Sync now, the setup portal and About. Normal boots show
-> setup/sync states; the M0 debug screen is only in the development build.
-> Dismissing rejected outbox items is next.
+> brightness/timings, Sync now, the setup portal and About; `S` on Home starts
+> the same sync. Normal boots show setup/sync states; the M0 debug screen is
+> only in the development build. The remaining v1 gaps are lesson hardware
+> verification and API robustness.
 >
 > KaniKey is an **unofficial** third-party app for WaniKani. It is not
 > affiliated with, endorsed by or sponsored by WaniKani or Tofugu LLC. WaniKani

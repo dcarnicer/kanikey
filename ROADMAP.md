@@ -92,8 +92,9 @@ Working on hardware:
   checked again. Setup only reads `/user` during validation; it never starts lessons.
   The normal first sync afterwards may flush the existing outbox.
 - Pause and settings: `Esc` in a review opens Continue / End session /
-  Settings; `Esc` from Home opens Settings. Brightness, dim/blank/sleep
-  timings, Setup portal, Sync now and About are live; values persist in NVS.
+  Settings; `Esc` from Home opens Settings and `S` starts the same manual sync
+  as Settings › `Sync now`. Brightness, dim/blank/sleep timings, Setup portal,
+  Sync now and About are live; values persist in NVS.
   About shows version, build, pack, cache, last sync, Wi-Fi, token state, zone
   and heap.
 - User-facing boot states for missing SD/pack, token or Wi-Fi and sync
@@ -103,8 +104,8 @@ Working on hardware:
 - 56 native tests and the release build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests.
 
-Current build: **1,399,633 B / 1,835,008 B flash (76.3%)**, **94,680 B /
-327,680 B static RAM (28.9%)**. The dev image is 1,407,069 B. Removing
+Current build: **1,399,717 B / 1,835,008 B flash (76.3%)**, **94,680 B /
+327,680 B static RAM (28.9%)**. The dev image is 1,407,137 B. Removing
 `efontJA_16` freed ~468 KB and leaves ~425 KB of flash headroom.
 
 ## Priority summary
@@ -115,7 +116,7 @@ Current build: **1,399,633 B / 1,835,008 B flash (76.3%)**, **94,680 B /
 | 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Core landed; real-account E2E pending | CACHE-05, CACHE-07 |
 | 3 | Complete lesson flow | List/picker, card, components, quiz, empty state and start exist; ordering/hardware remain | Partial | LESSON-08, RAD-04 |
 | 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; review history and audio remain | Partial | WK-11, EXT-06 |
-| 5 | Outbox and API robustness | Rejected items have a user discard path and 429 backoff is in; invalid auth remains | Partial | API-03 |
+| 5 | Outbox and API robustness | Rejected items, 429 backoff and Home/Settings manual sync are in; invalid auth remains | Partial | API-03 |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
 | 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen and item detail are live | Partial | UI-05 |
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal ported; OTA/widgets pending | TNG-02, TNG-03 |
@@ -135,7 +136,7 @@ lesson flow.
 | 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | List, understand, quiz and start lessons |
 | 3 | Setup and device UX | TNG-02 | OTA release path (setup/settings complete) |
 | 4 | WaniKani data and detail | WK-11 (WK-01/03/04/05/06/07/08/09/10 done) | Review history and progress |
-| 5 | API robustness | API-03 → API-07 (API-01/02 done) | Recoverable rate-limited and auth errors |
+| 5 | API robustness | API-03 → API-07 (API-01/02/06 done) | Recoverable rate-limited and auth errors |
 | 6 | UI, stats and sync | UI-05 → UI-08 (UI-01/02/03/04 done) | Polish |
 | 7 | Technical debt and release | TECH-01 → TECH-07 (TECH-04 done) | Refactor, version, OTA and license |
 | 8 | Kakehashi-inspired extras | EXT-01 → EXT-09 | Practice modes, critical items, audio and stats |
@@ -339,8 +340,12 @@ shared 429 gate. Remaining:
 - **API-05 — Attempts and age.** Cap attempts and show attempt/age information
   for stuck items.
 - **API-06 — Manual sync and retry.** A clear action from Home/Settings and the
-  error screens. **Partial:** Settings › Sync now works; Home/error-screen
-  actions are pending.
+  error screens. **Done (2026-10-29):** Home shows
+  `Enter: reviews  L: lessons  S: sync`; pressing `s` or `S` starts the same
+  `startSync()` and UI-02 sync screen as Settings › `Sync now`. The existing
+  prerequisite check and error screens are unchanged; the error screens already
+  retry, so no duplicate action was added. `Esc` still opens Settings; the UX
+  text documents that the hint bar omits it.
 - **API-07 — Keep docs in sync.** Update `api-sync.md` error table and screens
   with the implementation.
 
