@@ -26,6 +26,7 @@
 #include "app/HomeScreen.h"
 #include "app/LoadingScreen.h"
 #include "app/OutboxScreen.h"
+#include "app/SettingsScreen.h"
 #include "app/SyncScreen.h"
 #include "board/Board.h"
 #include "Version.h"
@@ -63,6 +64,8 @@ using kk::app::kSyncRowCount;
 using kk::app::OutboxReasonKind;
 using kk::app::OutboxRowView;
 using kk::app::OutboxView;
+using kk::app::SettingsRowView;
+using kk::app::SettingsView;
 using kk::app::SyncIssueKind;
 using kk::app::SyncRowState;
 using kk::app::SyncView;
@@ -3810,23 +3813,6 @@ void drawPause() {
 void drawSettings() {
     if (!gDisp) return;
     auto& d = target();
-    d.startWrite();
-    d.fillScreen(kBg);
-    d.setTextDatum(lgfx::top_left);
-    d.setTextWrap(false);
-    d.setTextFont(2);
-    d.setTextSize(1);
-    d.setTextColor(kBrand, kBg);
-    d.drawString("KaniKey", 6, 2);
-    d.setTextFont(1);
-    d.setTextColor(kDim, kBg);
-    d.drawString("settings", 7, 22);
-    d.setTextFont(0);
-    d.setTextColor(kFaint, kBg);
-    d.setTextDatum(lgfx::top_right);
-    d.drawString("Esc: back", 232, 5);
-    d.setTextDatum(lgfx::top_left);
-    d.drawFastHLine(4, 36, 232, kLine);
 
     static const char* kLabels[] = {"Brightness", "Dim after", "Blank after", "Sleep after",
                                     "Review batch", "Order", "Lesson batch", "Setup portal",
@@ -3845,39 +3831,20 @@ void drawSettings() {
     values[10] = "clear";
     values[11] = "out";
 
-    constexpr int kVisibleRows = 7;
-    int top = gSettingsIndex - kVisibleRows / 2;
-    if (top < 0) top = 0;
-    if (top > kSettingsRows - kVisibleRows) top = kSettingsRows - kVisibleRows;
-    for (int row = 0; row < kVisibleRows; ++row) {
-        const int i = top + row;
-        const int y = 42 + row * 11;
-        if (i == gSettingsIndex) {
-            d.fillRect(4, y - 2, 228, 11, kSurfaceHi);
-            d.fillRect(4, y - 2, 2, 11, kAccent);
-        }
-        d.setTextFont(0);
-        d.setTextSize(1);
-        d.setTextColor(i == gSettingsIndex ? kText : kDim,
-                       i == gSettingsIndex ? kSurfaceHi : kBg);
-        d.drawString(kLabels[i], 10, y);
-        d.setTextDatum(lgfx::top_right);
-        d.setTextColor(i == gSettingsIndex ? kAccentHi : kFaint,
-                       i == gSettingsIndex ? kSurfaceHi : kBg);
-        d.drawString(values[i].c_str(), 228, y);
-        d.setTextDatum(lgfx::top_left);
+    SettingsView view;
+    view.selectedIndex = gSettingsIndex;
+    view.note = gSettingsNote;
+    view.noteColor = gSettingsNoteColor;
+    view.rows.reserve(kSettingsRows);
+    for (int i = 0; i < kSettingsRows; ++i) {
+        SettingsRowView row;
+        row.label = kLabels[i];
+        row.value = values[i].c_str();
+        view.rows.push_back(std::move(row));
     }
-    // Scroll thumb when there are more rows than fit.
-    constexpr int kTrackY = 42;
-    constexpr int kTrackH = 66;
-    d.fillRect(235, kTrackY, 2, kTrackH, kLine);
-    const int thumbH = std::max(10, kTrackH * kVisibleRows / kSettingsRows);
-    const int thumbY = kTrackY + (kTrackH - thumbH) * top / (kSettingsRows - kVisibleRows);
-    d.fillRect(235, thumbY, 2, thumbH, kAccentHi);
 
-    d.setTextFont(0);
-    d.setTextColor(gSettingsNote[0] ? gSettingsNoteColor : kFaint, kBg);
-    d.drawString(gSettingsNote[0] ? gSettingsNote : "Enter: change  Esc: back", 8, 123);
+    d.startWrite();
+    drawSettingsScreen(d, view);
     d.endWrite();
     present();
 }

@@ -383,11 +383,13 @@ Details are in [ux.md](ux.md). Map:
 row statuses, progress bar and retry/setup hints), `BootScreen` (`BootView`
 plus `drawBootScreen`), `LoadingScreen` (`LoadingView` plus
 `drawLoadingScreen`), `AboutScreen` (`AboutView`, `AboutLine` plus
-`drawAboutScreen`, including the 226 px truncation) and `OutboxScreen`
+`drawAboutScreen`, including the 226 px truncation), `OutboxScreen`
 (`OutboxView`, `OutboxRowView`, `OutboxReasonKind` plus `drawOutboxScreen`,
 including the empty state, 7-row scrolling list with scrollbar, reason colors
-and discard confirmation), each drawn between the caller's
-`startWrite()`/`present()`; `ui/Theme.h` is the shared RGB332 palette and
+and discard confirmation) and `SettingsScreen` (`SettingsView`,
+`SettingsRowView` plus `drawSettingsScreen`, including the 7 visible rows of
+12, selection highlight, scrollbar and note line), each drawn between the
+caller's `startWrite()`/`present()`; `ui/Theme.h` is the shared RGB332 palette and
 `ui/Text.h` holds the shared wrapped-text helper. The other screens still live
 in `main.cpp`.
 
