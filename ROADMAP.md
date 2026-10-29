@@ -117,9 +117,9 @@ Working on hardware:
 - 63 native tests and the `cardputer-adv` build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests.
 
-Current build: **1,403,689 B / 1,835,008 B flash (76.5%)**, **94,704 B /
-327,680 B static RAM (28.9%)**. The dev image is 1,411,557 B. Removing
-`efontJA_16` freed ~468 KB and leaves ~421 KB of flash headroom.
+Current build: **1,412,341 B / 1,835,008 B flash (77.0%)**, **94,704 B /
+327,680 B static RAM (28.9%)**. The dev image is 1,419,953 B. Removing
+`efontJA_16` freed ~468 KB and leaves ~423 KB of flash headroom.
 
 ## Priority summary
 
@@ -152,7 +152,7 @@ OTA/release, with the remaining UI and API hardware verification alongside.
 | 4 | WaniKani data and detail | WK-11 (WK-01/03/04/05/06/07/08/09/10 done) | Review history and progress |
 | 5 | API robustness | API-07 (API-01/02/03/04/05/06 done) | Done; hardware verification of API-01's final OUTBOX screen and API-02…05 still pending |
 | 6 | UI, stats and sync | UI-07 → UI-08 (UI-01/02/03/04/05/06 done) | Polish |
-| 7 | Technical debt and release | TECH-01 → TECH-07 (TECH-04 done) | Refactor, version, OTA and license |
+| 7 | Technical debt and release | TECH-01/TECH-04 done → TECH-07 | Refactor, version, OTA and license |
 | 8 | Kakehashi-inspired extras | EXT-01 → EXT-09 | Practice modes, critical items, audio and stats |
 
 ## 1. Radicals and remove `efontJA_16` (v1 blocker)
@@ -553,9 +553,18 @@ SRS and deck catalog remain intentionally dropped. See
 
 ## 9. Technical debt, CI and release
 
-- **TECH-01 — Streaming subject parser.** Assignments/subjects still build a
-  JSON DOM; a streaming parser would reduce fragmentation, permit larger
-  batches and make a 16-bit canvas realistic.
+- **TECH-01 — Streaming subject parser. Done (2026-10-29).** `wk/JsonStream`
+  (SAX, 32-level cap, escapes/surrogate pairs) feeds `AssignmentSink` and
+  `SubjectSink`; review and lesson `/v2/assignments`, their `/v2/subjects` pages
+  (5 review subjects, 3 lesson subjects, 3 review components, 10 lesson
+  components) and `fetchSubjectsByIds` no longer build a page DOM. Page sizes,
+  fetch order, the static 32 KB body buffer and the two-attempt/300 ms retry
+  policy are unchanged. Expected memory win: no DOM nodes or whole-page string
+  copies; peak heap should fall by the per-page DOM size (largest on detail
+  pages). Hardware-verified on 2026-10-29: review and lesson pages parsed
+  without `bad_alloc`; the largest free block stayed >=35 KB (see
+  `docs/hardware.md`). 72 native tests pass; release build 1,412,341 B flash /
+  94,704 B static RAM, dev build 1,419,953 B / 94,728 B.
 - **TECH-02 — Refactor `main.cpp`.** It is ~5,700 lines with many globals.
   Split screens, session state and app services before adding more flows.
 - **TECH-03 — Dev hooks.** `KANIKEY_DEV` now covers the M0 screen and Tab

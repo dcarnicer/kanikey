@@ -195,14 +195,15 @@ data.readings[] { reading, primary, accepted_answer, type }
 - `document_url`, `slug`, `created_at`, `hidden_at` and
   `spaced_repetition_system_id` are not stored in v1 (they are not needed).
 
-**Implementation (2026-10-28).** Review batches parse the detail fields
+**Implementation (2026-10-29).** Review batches parse the detail fields
 (`meaning_mnemonic`, `reading_mnemonic`, hints, `parts_of_speech` and
-`context_sentences`) and fetch the component subjects in pages of 3. A
-10-subject component page is ~20 KB and its DOM can exceed the largest free
-block after the review subjects are loaded. Components are kept in the same
-subject list and cached, so the detail card works offline. Vocabulary context
-sentences are stored (up to 4) and the English sentence is shown on the sixth
-detail page; `pronunciation_audios` remains phase 2 (EXT-06). The related IDs
+`context_sentences`) and fetch the review component subjects in pages of 3;
+the lesson detail view fetches its components in pages of 10. The assignment
+and subject pages are streamed into the domain records (TECH-01), so a page no
+longer builds a JSON DOM; components are kept in the same subject list and
+cached, so the detail card works offline. Vocabulary context sentences are
+stored (up to 4) and the English sentence is shown on the sixth detail page;
+`pronunciation_audios` remains phase 2 (EXT-06). The related IDs
 (`visually_similar_subject_ids`, `amalgamation_subject_ids`, up to 32 each) are
 stored and the detail card adds a related page with counts and any meanings
 already present in the batch.
@@ -615,31 +616,46 @@ a cache older than 24 h is shown as stale.
 
 ## 8. Streaming JSON parser
 
-The API returns pages of up to 1,000 subjects; an ArduinoJson DOM does not fit.
-Design:
+The API returns pages of up to 1,000 subjects; a DOM does not fit. Design:
 
 ```
 HTTPClient / WiFiClientSecure
         │ bytes
         ▼
-JsonStream (4 KB buffer)
+JsonStream (whole body in the shared 32 KB buffer)
         │ events: object_start, key, string, number, bool, null, array_start...
         ▼
-SubjectSink / AssignmentSink / UserSink / SummarySink
+SubjectSink / AssignmentSink
         │ records
         ▼
 store (LittleFS or SD)
 ```
 
-- Own parser, no dependencies, with a context stack of maximum depth 8.
+- Own parser, no dependencies, with a context-stack cap (32 in the
+  implementation).
 - Decodes `\uXXXX` escapes (including surrogate pairs) to UTF-8.
 - Long strings (mnemonics) are written directly to the record; they are not
   copied to a global `std::string`.
-- A subject object is built in a fixed ~8 KB structure; if a mnemonic exceeds the
-  budget, it is stored truncated with a flag.
+- A subject is built as the existing variable-length `Subject` record; strings
+  are copied once into it rather than into a page DOM.
 - If the parser fails, the page is discarded, it is retried once and
   `Bad response from WaniKani` is shown.
 - Native tests with fixtures and fuzzing.
+
+**Implementation (2026-10-29).** `wk/JsonStream` is the pure SAX parser:
+whole-buffer, no DOM, callbacks through `JsonSink`, a 32-level nesting cap,
+and escaped strings (including surrogate pairs) decoded to UTF-8. The
+`AssignmentSink` and `SubjectSink` build the domain records directly.
+`wkGetAssignmentsRetry` and `wkGetSubjectsRetry` run the sinks on each 200 body
+and keep the existing two-attempt/300 ms retry policy, the static 32 KB
+`WkClient` body buffer and the `assignments JSON`/`subjects JSON` errors.
+Streaming is the production path for `/v2/assignments` in the review and lesson
+batches, every `/v2/subjects` page (5 review subjects, 3 lesson subjects, 3
+review component subjects, 10 lesson component subjects) and
+`fetchSubjectsByIds`; page sizes and fetch order are unchanged. Component pages
+use details=false, so mnemonics, parts of speech and context sentences are not
+copied. The DOM parsers remain for small payloads (`/user`, study materials,
+statistics, level/SRS) and tests. `/summary` keeps its own streaming parser.
 
 Rejected alternative: download the JSON to the SD card and parse it afterwards
 with a DOM. It still needs a DOM and duplicates temporary storage.

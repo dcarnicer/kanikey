@@ -60,4 +60,33 @@ WkBodyResult wkGetBodyRetry(const String& path, const String& token, size_t maxB
     return result;
 }
 
+WkAssignmentsResult wkGetAssignmentsRetry(const String& path, const String& token,
+                                          size_t maxBodyBytes, size_t reserve,
+                                          uint32_t timeoutMs, uint8_t attempts) {
+    WkAssignmentsResult result;
+    result.parsed = getParsed(
+        path, token, maxBodyBytes, timeoutMs, attempts, &result.http,
+        [&result]() { result.assignments.clear(); },
+        [&result, reserve](std::string_view body) {
+            if (reserve && result.assignments.capacity() < reserve)
+                result.assignments.reserve(reserve);
+            return parseAssignmentsStream(body, &result.assignments);
+        });
+    if (!result.parsed) result.assignments.clear();
+    return result;
+}
+
+WkSubjectsResult wkGetSubjectsRetry(const String& path, const String& token, size_t maxBodyBytes,
+                                    bool details, uint32_t timeoutMs, uint8_t attempts) {
+    WkSubjectsResult result;
+    result.parsed = getParsed(
+        path, token, maxBodyBytes, timeoutMs, attempts, &result.http,
+        [&result]() { result.subjects.clear(); },
+        [&result, details](std::string_view body) {
+            return parseSubjectsStream(body, &result.subjects, details);
+        });
+    if (!result.parsed) result.subjects.clear();
+    return result;
+}
+
 }  // namespace kk

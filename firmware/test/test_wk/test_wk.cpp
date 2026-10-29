@@ -1,6 +1,8 @@
 #include <unity.h>
 
+#include <cmath>
 #include <string>
+#include <vector>
 
 #include "ui/KeyInput.h"
 #include "wk/AnswerChecker.h"
@@ -10,6 +12,7 @@
 #include "wk/HttpRetry.h"
 #include "wk/Outbox.h"
 #include "wk/Json.h"
+#include "wk/JsonStream.h"
 #include "wk/LessonQuiz.h"
 #include "wk/LevelProgress.h"
 #include "wk/RateLimit.h"
@@ -533,6 +536,225 @@ static void test_json_rejects_bad_input() {
     TEST_ASSERT_FALSE(p.error().empty());
 }
 
+// ---------------------------------------------------------------- JSON stream
+struct StreamEvent {
+    enum Kind : uint8_t {
+        ObjectStart,
+        ObjectEnd,
+        ArrayStart,
+        ArrayEnd,
+        Key,
+        String,
+        Number,
+        Bool,
+        Null,
+    };
+    Kind kind;
+    std::string text;
+    double number = 0;
+    bool boolean = false;
+};
+
+class StreamEventSink : public JsonSink {
+public:
+    std::vector<StreamEvent> events;
+
+    bool onObjectStart() override { return add(StreamEvent::ObjectStart); }
+    bool onObjectEnd() override { return add(StreamEvent::ObjectEnd); }
+    bool onArrayStart() override { return add(StreamEvent::ArrayStart); }
+    bool onArrayEnd() override { return add(StreamEvent::ArrayEnd); }
+    bool onKey(std::string_view key) override {
+        return add(StreamEvent::Key, std::string(key));
+    }
+    bool onString(std::string_view value) override {
+        return add(StreamEvent::String, std::string(value));
+    }
+    bool onNumber(double value) override {
+        StreamEvent e{StreamEvent::Number};
+        e.number = value;
+        events.push_back(e);
+        return true;
+    }
+    bool onBool(bool value) override {
+        StreamEvent e{StreamEvent::Bool};
+        e.boolean = value;
+        events.push_back(e);
+        return true;
+    }
+    bool onNull() override { return add(StreamEvent::Null); }
+
+private:
+    bool add(StreamEvent::Kind kind, std::string text = std::string()) {
+        StreamEvent e{kind};
+        e.text = std::move(text);
+        events.push_back(e);
+        return true;
+    }
+};
+
+static void test_json_stream_events() {
+    StreamEventSink sink;
+    JsonStreamParser p(&sink);
+    TEST_ASSERT_TRUE(p.parse(R"json({"a":1,"b":[true,null,"x\n\u3042"],"c":{"d":-25}})json"));
+    TEST_ASSERT_EQUAL(15, sink.events.size());
+    TEST_ASSERT_EQUAL(StreamEvent::ObjectStart, sink.events[0].kind);
+    TEST_ASSERT_EQUAL(StreamEvent::Key, sink.events[1].kind);
+    TEST_ASSERT_EQUAL_STRING("a", sink.events[1].text.c_str());
+    TEST_ASSERT_EQUAL(StreamEvent::Number, sink.events[2].kind);
+    TEST_ASSERT_TRUE(std::fabs(sink.events[2].number - 1.0) < 1e-9);
+    TEST_ASSERT_EQUAL(StreamEvent::Key, sink.events[3].kind);
+    TEST_ASSERT_EQUAL_STRING("b", sink.events[3].text.c_str());
+    TEST_ASSERT_EQUAL(StreamEvent::ArrayStart, sink.events[4].kind);
+    TEST_ASSERT_EQUAL(StreamEvent::Bool, sink.events[5].kind);
+    TEST_ASSERT_TRUE(sink.events[5].boolean);
+    TEST_ASSERT_EQUAL(StreamEvent::Null, sink.events[6].kind);
+    TEST_ASSERT_EQUAL(StreamEvent::String, sink.events[7].kind);
+    TEST_ASSERT_EQUAL_STRING("x\nあ", sink.events[7].text.c_str());
+    TEST_ASSERT_EQUAL(StreamEvent::ArrayEnd, sink.events[8].kind);
+    TEST_ASSERT_EQUAL(StreamEvent::Key, sink.events[9].kind);
+    TEST_ASSERT_EQUAL(StreamEvent::ObjectStart, sink.events[10].kind);
+    TEST_ASSERT_EQUAL(StreamEvent::Key, sink.events[11].kind);
+    TEST_ASSERT_EQUAL(StreamEvent::Number, sink.events[12].kind);
+    TEST_ASSERT_TRUE(std::fabs(sink.events[12].number + 25.0) < 1e-9);
+    TEST_ASSERT_EQUAL(StreamEvent::ObjectEnd, sink.events[13].kind);
+    TEST_ASSERT_EQUAL(StreamEvent::ObjectEnd, sink.events[14].kind);
+}
+
+static void test_json_stream_escapes() {
+    StreamEventSink sink;
+    JsonStreamParser p(&sink);
+    TEST_ASSERT_TRUE(p.parse(
+        R"json({"a\u0062":"quote:\" slash:\\ solidus:\/ tab:\t unicode:\u3042 emoji:\uD83D\uDE00"})json"));
+    TEST_ASSERT_EQUAL(4, sink.events.size());
+    TEST_ASSERT_EQUAL(StreamEvent::Key, sink.events[1].kind);
+    TEST_ASSERT_EQUAL_STRING("ab", sink.events[1].text.c_str());
+    TEST_ASSERT_EQUAL_STRING("quote:\" slash:\\ solidus:/ tab:\t unicode:あ emoji:😀",
+                             sink.events[2].text.c_str());
+
+    const char* bad[] = {
+        R"json({"s":"\uD800"})json",
+        R"json({"s":"\uDC00"})json",
+        R"json({"s":"\u12"})json",
+        R"json({"s":"\q"})json",
+    };
+    for (const char* text : bad) {
+        StreamEventSink rejected;
+        JsonStreamParser invalid(&rejected);
+        TEST_ASSERT_FALSE(invalid.parse(text));
+        TEST_ASSERT_FALSE(invalid.error().empty());
+    }
+
+    std::string control = "{\"s\":\"a";
+    control.push_back('\x01');
+    control += "\"}";
+    StreamEventSink rejected;
+    JsonStreamParser invalid(&rejected);
+    TEST_ASSERT_FALSE(invalid.parse(control));
+}
+
+static void test_json_stream_numbers() {
+    StreamEventSink sink;
+    JsonStreamParser p(&sink);
+    TEST_ASSERT_TRUE(p.parse("[0,-0,3,12.5,-2.5e1,1E+2,1e-2]"));
+    TEST_ASSERT_EQUAL(9, sink.events.size());
+    const double expected[] = {0, 0, 3, 12.5, -25, 100, 0.01};
+    for (size_t i = 0; i < sizeof(expected) / sizeof(expected[0]); ++i) {
+        const StreamEvent& e = sink.events[i + 1];
+        TEST_ASSERT_EQUAL(StreamEvent::Number, e.kind);
+        TEST_ASSERT_TRUE(std::fabs(e.number - expected[i]) < 1e-9);
+    }
+
+    const char* bad[] = {
+        "01",  "-",   "1.",  ".5",    "+1",     "1e",
+        "1e+", "NaN", "Infinity", "1e9999", "--1",
+    };
+    for (const char* text : bad) {
+        StreamEventSink rejected;
+        JsonStreamParser invalid(&rejected);
+        TEST_ASSERT_FALSE(invalid.parse(text));
+    }
+}
+
+static void test_json_stream_truncation_and_depth() {
+    const char* truncated[] = {
+        "",
+        "   ",
+        "{",
+        "[",
+        R"json({"a":[1,2)json",
+        R"json({"a":"x)json",
+        R"json({"a":)json",
+        R"json({"a":tru})json",
+    };
+    for (const char* text : truncated) {
+        StreamEventSink sink;
+        JsonStreamParser p(&sink);
+        TEST_ASSERT_FALSE(p.parse(text));
+        TEST_ASSERT_FALSE(p.error().empty());
+    }
+
+    const char* malformed[] = {
+        R"json({"a":1,})json",
+        R"json([1,])json",
+        R"json({"a" 1})json",
+        R"json({"a":1 "b":2})json",
+        R"json({"a":1}x)json",
+    };
+    for (const char* text : malformed) {
+        StreamEventSink sink;
+        JsonStreamParser p(&sink);
+        TEST_ASSERT_FALSE(p.parse(text));
+    }
+
+    auto nested = [](int count) {
+        std::string text;
+        for (int i = 0; i < count; ++i) text.push_back('[');
+        text.push_back('0');
+        for (int i = 0; i < count; ++i) text.push_back(']');
+        return text;
+    };
+    StreamEventSink sink;
+    JsonStreamParser p(&sink);
+    TEST_ASSERT_TRUE(p.parse(nested(32)));
+    TEST_ASSERT_FALSE(p.parse(nested(33)));
+    TEST_ASSERT_FALSE(p.error().empty());
+
+    JsonStreamParser shallow(&sink, 2);
+    TEST_ASSERT_TRUE(shallow.parse("[[0]]"));
+    TEST_ASSERT_FALSE(shallow.parse("[[[0]]]"));
+
+    JsonStreamParser noSink(nullptr);
+    TEST_ASSERT_FALSE(noSink.parse("null"));
+}
+
+class RejectingSink : public JsonSink {
+public:
+    int values = 0;
+    int events = 0;
+
+    bool onArrayStart() override {
+        ++events;
+        return true;
+    }
+    bool onNumber(double) override {
+        ++events;
+        return ++values < 2;
+    }
+    bool onArrayEnd() override {
+        ++events;
+        return true;
+    }
+};
+
+static void test_json_stream_sink_rejection() {
+    RejectingSink sink;
+    JsonStreamParser p(&sink);
+    TEST_ASSERT_FALSE(p.parse("[1,2,3]"));
+    TEST_ASSERT_EQUAL(2, sink.values);
+    TEST_ASSERT_EQUAL(3, sink.events);
+    TEST_ASSERT_FALSE(p.error().empty());
+}
+
 static void test_iso8601_round_trip() {
     uint32_t e = 0;
     TEST_ASSERT_TRUE(parseIso8601("2026-10-25T12:38:37.375268Z", &e));
@@ -720,6 +942,284 @@ static void test_subject_parse() {
     TEST_ASSERT_EQUAL(SubjectType::Radical, ss[1].type);
     TEST_ASSERT_TRUE(ss[1].characters.empty());
 }
+
+static void assertAssignmentFieldsEqual(const Assignment& want, const Assignment& got) {
+    TEST_ASSERT_EQUAL_UINT32(want.id, got.id);
+    TEST_ASSERT_EQUAL_UINT32(want.subjectId, got.subjectId);
+    TEST_ASSERT_EQUAL(static_cast<int>(want.type), static_cast<int>(got.type));
+    TEST_ASSERT_EQUAL(want.srsStage, got.srsStage);
+    TEST_ASSERT_EQUAL(want.lessonPosition, got.lessonPosition);
+    TEST_ASSERT_EQUAL_UINT32(want.availableAt, got.availableAt);
+    TEST_ASSERT_EQUAL_UINT32(want.dataUpdatedAt, got.dataUpdatedAt);
+    TEST_ASSERT_EQUAL(want.hidden, got.hidden);
+}
+
+static void assertIdsEqual(const std::vector<uint32_t>& want, const std::vector<uint32_t>& got) {
+    TEST_ASSERT_EQUAL(static_cast<int>(want.size()), static_cast<int>(got.size()));
+    for (size_t i = 0; i < want.size(); ++i) TEST_ASSERT_EQUAL_UINT32(want[i], got[i]);
+}
+
+static void assertSubjectFieldsEqual(const Subject& want, const Subject& got) {
+    TEST_ASSERT_EQUAL_UINT32(want.id, got.id);
+    TEST_ASSERT_EQUAL(static_cast<int>(want.type), static_cast<int>(got.type));
+    TEST_ASSERT_EQUAL(want.level, got.level);
+    TEST_ASSERT_EQUAL_STRING(want.characters.c_str(), got.characters.c_str());
+
+    TEST_ASSERT_EQUAL(static_cast<int>(want.meanings.size()),
+                      static_cast<int>(got.meanings.size()));
+    for (size_t i = 0; i < want.meanings.size(); ++i) {
+        TEST_ASSERT_EQUAL_STRING(want.meanings[i].text.c_str(), got.meanings[i].text.c_str());
+        TEST_ASSERT_EQUAL(want.meanings[i].primary, got.meanings[i].primary);
+        TEST_ASSERT_EQUAL(want.meanings[i].accepted, got.meanings[i].accepted);
+    }
+    TEST_ASSERT_EQUAL(static_cast<int>(want.readings.size()),
+                      static_cast<int>(got.readings.size()));
+    for (size_t i = 0; i < want.readings.size(); ++i) {
+        TEST_ASSERT_EQUAL_STRING(want.readings[i].text.c_str(), got.readings[i].text.c_str());
+        TEST_ASSERT_EQUAL(want.readings[i].primary, got.readings[i].primary);
+        TEST_ASSERT_EQUAL(want.readings[i].accepted, got.readings[i].accepted);
+        TEST_ASSERT_EQUAL(static_cast<int>(want.readings[i].type),
+                          static_cast<int>(got.readings[i].type));
+    }
+
+    assertIdsEqual(want.componentSubjectIds, got.componentSubjectIds);
+    assertIdsEqual(want.visuallySimilarSubjectIds, got.visuallySimilarSubjectIds);
+    assertIdsEqual(want.amalgamationSubjectIds, got.amalgamationSubjectIds);
+    TEST_ASSERT_EQUAL_STRING(want.meaningMnemonic.c_str(), got.meaningMnemonic.c_str());
+    TEST_ASSERT_EQUAL_STRING(want.readingMnemonic.c_str(), got.readingMnemonic.c_str());
+    TEST_ASSERT_EQUAL_STRING(want.meaningHint.c_str(), got.meaningHint.c_str());
+    TEST_ASSERT_EQUAL_STRING(want.readingHint.c_str(), got.readingHint.c_str());
+    TEST_ASSERT_EQUAL_STRING(want.meaningNote.c_str(), got.meaningNote.c_str());
+    TEST_ASSERT_EQUAL_STRING(want.readingNote.c_str(), got.readingNote.c_str());
+
+    TEST_ASSERT_EQUAL(static_cast<int>(want.partsOfSpeech.size()),
+                      static_cast<int>(got.partsOfSpeech.size()));
+    for (size_t i = 0; i < want.partsOfSpeech.size(); ++i)
+        TEST_ASSERT_EQUAL_STRING(want.partsOfSpeech[i].c_str(), got.partsOfSpeech[i].c_str());
+    TEST_ASSERT_EQUAL(static_cast<int>(want.contextSentences.size()),
+                      static_cast<int>(got.contextSentences.size()));
+    for (size_t i = 0; i < want.contextSentences.size(); ++i) {
+        TEST_ASSERT_EQUAL_STRING(want.contextSentences[i].en.c_str(),
+                                 got.contextSentences[i].en.c_str());
+        TEST_ASSERT_EQUAL_STRING(want.contextSentences[i].ja.c_str(),
+                                 got.contextSentences[i].ja.c_str());
+    }
+    TEST_ASSERT_EQUAL(static_cast<int>(want.whitelist.size()),
+                      static_cast<int>(got.whitelist.size()));
+    for (size_t i = 0; i < want.whitelist.size(); ++i)
+        TEST_ASSERT_EQUAL_STRING(want.whitelist[i].c_str(), got.whitelist[i].c_str());
+    TEST_ASSERT_EQUAL(static_cast<int>(want.blacklist.size()),
+                      static_cast<int>(got.blacklist.size()));
+    for (size_t i = 0; i < want.blacklist.size(); ++i)
+        TEST_ASSERT_EQUAL_STRING(want.blacklist[i].c_str(), got.blacklist[i].c_str());
+    TEST_ASSERT_EQUAL(static_cast<int>(want.meaningSynonyms.size()),
+                      static_cast<int>(got.meaningSynonyms.size()));
+
+    TEST_ASSERT_EQUAL_UINT32(want.meaningCorrect, got.meaningCorrect);
+    TEST_ASSERT_EQUAL_UINT32(want.meaningIncorrect, got.meaningIncorrect);
+    TEST_ASSERT_EQUAL_UINT32(want.readingCorrect, got.readingCorrect);
+    TEST_ASSERT_EQUAL_UINT32(want.readingIncorrect, got.readingIncorrect);
+    TEST_ASSERT_EQUAL(want.meaningMaxStreak, got.meaningMaxStreak);
+    TEST_ASSERT_EQUAL(want.meaningCurrentStreak, got.meaningCurrentStreak);
+    TEST_ASSERT_EQUAL(want.readingMaxStreak, got.readingMaxStreak);
+    TEST_ASSERT_EQUAL(want.readingCurrentStreak, got.readingCurrentStreak);
+    TEST_ASSERT_EQUAL(want.percentageCorrect, got.percentageCorrect);
+    TEST_ASSERT_EQUAL(want.hasReviewStats, got.hasReviewStats);
+}
+
+static void test_assignment_stream_matches_dom() {
+    const char* text = R"json({
+        "object":"collection",
+        "data":[
+            {"id":101,"object":"assignment","data_updated_at":"2026-10-26T01:02:03.456789Z",
+             "data":{"subject_id":10,"subject_type":"kanji","srs_stage":3,
+                     "lesson_position":7,"available_at":"2026-10-25T14:00:00Z",
+                     "hidden":false,"unknown":{"subject_id":99}}},
+            {"id":102,"object":"assignment","data_updated_at":"2026-10-26T01:02:04Z",
+             "data":{"subject_id":11,"subject_type":"radical","srs_stage":1,
+                     "lesson_position":2,"available_at":null,"hidden":true}},
+            {"id":103,"object":"assignment",
+             "data":{"subject_type":"vocabulary","srs_stage":0,"lesson_position":0,
+                     "available_at":"2026-10-25T15:00:00Z","hidden":false}},
+            {"id":104,"object":"assignment","data":null}
+        ]})json";
+    JsonParser p;
+    JsonValue v;
+    TEST_ASSERT_TRUE(p.parse(text, &v));
+    const std::vector<Assignment> dom = parseAssignments(v);
+    std::vector<Assignment> stream;
+    TEST_ASSERT_TRUE(parseAssignmentsStream(text, &stream));
+    TEST_ASSERT_EQUAL(2, dom.size());
+    TEST_ASSERT_EQUAL(static_cast<int>(dom.size()), static_cast<int>(stream.size()));
+    for (size_t i = 0; i < dom.size(); ++i) assertAssignmentFieldsEqual(dom[i], stream[i]);
+    TEST_ASSERT_TRUE(stream[0].dataUpdatedAt > 0);
+    TEST_ASSERT_EQUAL_UINT32(0, stream[1].availableAt);
+}
+
+static void test_assignment_stream_edges() {
+    std::vector<Assignment> out;
+    TEST_ASSERT_TRUE(parseAssignmentsStream(R"json({"data":[]})json", &out));
+    TEST_ASSERT_TRUE(out.empty());
+    TEST_ASSERT_TRUE(parseAssignmentsStream(R"json({"data":null})json", &out));
+    TEST_ASSERT_TRUE(out.empty());
+    TEST_ASSERT_TRUE(
+        parseAssignmentsStream(R"json({"meta":{"data":[{"id":1,"data":{"subject_id":2}}]}})json",
+                               &out));
+    TEST_ASSERT_TRUE(out.empty());
+    TEST_ASSERT_FALSE(parseAssignmentsStream(R"json({"data":[)json", &out));
+    TEST_ASSERT_TRUE(out.empty());
+    TEST_ASSERT_FALSE(parseAssignmentsStream(R"json({"data":[]})json", nullptr));
+}
+
+static const char* kSubjectStreamFixture = R"json({
+    "object":"collection",
+    "data":[
+        {"id":10,"object":"kanji","data":{
+            "level":5,"characters":"\u98df",
+            "meanings":[
+                {"meaning":"eat","primary":true,"accepted_answer":true},
+                {"meaning":"food","primary":false,"accepted_answer":false},
+                {"meaning":"","primary":false,"accepted_answer":true}],
+            "readings":[
+                {"reading":"\u305f.べる","primary":false,"accepted_answer":true,
+                 "type":"kunyomi"},
+                {"reading":"ショク","primary":true,"accepted_answer":true,"type":"onyomi"},
+                {"reading":"","primary":false,"accepted_answer":false,"type":"nanori"}],
+            "component_subject_ids":[1,2,3],
+            "visually_similar_subject_ids":[7,8],
+            "amalgamation_subject_ids":[9],
+            "auxiliary_meanings":[
+                {"meaning":"food","type":"blacklist"},
+                {"meaning":"consume","type":"whitelist"},
+                {"meaning":"ignored","type":"other"}],
+            "meaning_mnemonic":"A <radical>person</radical> eats.",
+            "reading_mnemonic":"<reading>shoku</reading>.",
+            "meaning_hint":"Think of <kanji>food</kanji>.",
+            "reading_hint":"Long o.",
+            "meaning_note":"  keep   this  ",
+            "reading_note":"read  me",
+            "meaning_correct":8,"meaning_incorrect":2,
+            "reading_correct":7,"reading_incorrect":1,
+            "meaning_max_streak":5,"meaning_current_streak":3,
+            "reading_max_streak":4,"reading_current_streak":2,
+            "percentage_correct":150,
+            "unknown_object":{"meanings":[{"meaning":"ignored"}],"level":99}
+        }},
+        {"id":11,"object":"radical","data":{
+            "level":1,"characters":null,
+            "meanings":[{"meaning":"ground","primary":true,"accepted_answer":true}],
+            "component_subject_ids":[]
+        }},
+        {"id":30,"object":"vocabulary","data":{
+            "level":7,"characters":"日本",
+            "meanings":[{"meaning":"Japan","primary":true,"accepted_answer":true}],
+            "readings":[{"reading":"にほん","primary":true,"accepted_answer":true,
+                         "type":"kunyomi"}],
+            "parts_of_speech":["noun","proper noun","","five","six","seven","eight","nine",
+                               "dropped"],
+            "context_sentences":[
+                {"en":"This is Japan.","ja":"これは日本です。"},
+                {"en":"I like Japan.","ja":"日本が好きです。"},
+                {"en":"","ja":""},
+                {"en":"","ja":"空腹"},
+                {"en":"No room","ja":"満員"}],
+            "meaning_mnemonic":"Japan is the <kanji>origin</kanji>.",
+            "visually_similar_subject_ids":[31,32]
+        }},
+        {"id":0,"object":"kanji","data":{"level":1}},
+        {"id":40,"object":"kana_vocabulary","data":null}
+    ]})json";
+
+static void test_subject_stream_matches_dom() {
+    JsonParser p;
+    JsonValue v;
+    TEST_ASSERT_TRUE(p.parse(kSubjectStreamFixture, &v));
+
+    const std::vector<Subject> domDetails = parseSubjects(v, true);
+    std::vector<Subject> streamDetails;
+    TEST_ASSERT_TRUE(parseSubjectsStream(kSubjectStreamFixture, &streamDetails, true));
+    TEST_ASSERT_EQUAL(3, domDetails.size());
+    TEST_ASSERT_EQUAL(static_cast<int>(domDetails.size()),
+                      static_cast<int>(streamDetails.size()));
+    for (size_t i = 0; i < domDetails.size(); ++i)
+        assertSubjectFieldsEqual(domDetails[i], streamDetails[i]);
+
+    TEST_ASSERT_EQUAL_STRING("A person eats.", streamDetails[0].meaningMnemonic.c_str());
+    TEST_ASSERT_EQUAL_STRING("keep this", streamDetails[0].meaningNote.c_str());
+    TEST_ASSERT_EQUAL_STRING("read me", streamDetails[0].readingNote.c_str());
+    TEST_ASSERT_EQUAL(100, streamDetails[0].percentageCorrect);
+    TEST_ASSERT_TRUE(streamDetails[0].hasReviewStats);
+    TEST_ASSERT_TRUE(streamDetails[1].characters.empty());
+    TEST_ASSERT_EQUAL(8, streamDetails[2].partsOfSpeech.size());
+    TEST_ASSERT_EQUAL(4, streamDetails[2].contextSentences.size());
+    TEST_ASSERT_EQUAL_STRING("No room", streamDetails[2].contextSentences[3].en.c_str());
+
+    const std::vector<Subject> domPlain = parseSubjects(v, false);
+    std::vector<Subject> streamPlain;
+    TEST_ASSERT_TRUE(parseSubjectsStream(kSubjectStreamFixture, &streamPlain, false));
+    TEST_ASSERT_EQUAL(static_cast<int>(domPlain.size()),
+                      static_cast<int>(streamPlain.size()));
+    for (size_t i = 0; i < domPlain.size(); ++i)
+        assertSubjectFieldsEqual(domPlain[i], streamPlain[i]);
+    TEST_ASSERT_TRUE(streamPlain[0].meaningMnemonic.empty());
+    TEST_ASSERT_TRUE(streamPlain[0].meaningNote.empty());
+    TEST_ASSERT_TRUE(streamPlain[2].partsOfSpeech.empty());
+    TEST_ASSERT_TRUE(streamPlain[2].contextSentences.empty());
+    TEST_ASSERT_TRUE(streamPlain[0].hasReviewStats);
+}
+
+static void test_subject_stream_edges_and_caps() {
+    std::vector<Subject> out;
+    TEST_ASSERT_TRUE(parseSubjectsStream(R"json({"data":[]})json", &out, true));
+    TEST_ASSERT_TRUE(out.empty());
+    TEST_ASSERT_TRUE(parseSubjectsStream(R"json({"data":null})json", &out, true));
+    TEST_ASSERT_TRUE(out.empty());
+    TEST_ASSERT_TRUE(parseSubjectsStream(R"json({"meta":{"data":[{"id":1}]}})json", &out, true));
+    TEST_ASSERT_TRUE(out.empty());
+
+    const char* nulls = R"json({"data":[
+        {"id":5,"object":"radical","data":{"level":1,"characters":null,
+         "meanings":[],"readings":[],"meaning_mnemonic":null,
+         "unknown":{"level":9,"meanings":[{"meaning":"ignored"}]}}}]})json";
+    TEST_ASSERT_TRUE(parseSubjectsStream(nulls, &out, true));
+    TEST_ASSERT_EQUAL(1, out.size());
+    TEST_ASSERT_EQUAL_UINT32(5, out[0].id);
+    TEST_ASSERT_TRUE(out[0].characters.empty());
+    TEST_ASSERT_TRUE(out[0].meaningMnemonic.empty());
+    TEST_ASSERT_TRUE(out[0].meanings.empty());
+
+    std::string similar;
+    std::string amalgamation;
+    for (uint32_t i = 0; i < 40; ++i) {
+        if (i) {
+            similar.push_back(',');
+            amalgamation.push_back(',');
+        }
+        similar += std::to_string(1000 + i);
+        amalgamation += std::to_string(2000 + i);
+    }
+    const std::string capped = R"json({"data":[{"id":1,"object":"kanji","data":{
+        "level":1,"characters":"\u706b","visually_similar_subject_ids":[)json" + similar +
+                              R"json(],"amalgamation_subject_ids":[)json" + amalgamation +
+                              R"json(]}}]})json";
+    JsonParser p;
+    JsonValue v;
+    TEST_ASSERT_TRUE(p.parse(capped, &v));
+    const std::vector<Subject> dom = parseSubjects(v, true);
+    std::vector<Subject> stream;
+    TEST_ASSERT_TRUE(parseSubjectsStream(capped, &stream, true));
+    TEST_ASSERT_EQUAL(static_cast<int>(dom.size()), static_cast<int>(stream.size()));
+    assertSubjectFieldsEqual(dom[0], stream[0]);
+    TEST_ASSERT_EQUAL(32, stream[0].visuallySimilarSubjectIds.size());
+    TEST_ASSERT_EQUAL_UINT32(1031, stream[0].visuallySimilarSubjectIds[31]);
+    TEST_ASSERT_EQUAL(32, stream[0].amalgamationSubjectIds.size());
+    TEST_ASSERT_EQUAL_UINT32(2031, stream[0].amalgamationSubjectIds[31]);
+
+    TEST_ASSERT_FALSE(parseSubjectsStream(R"json({"data":[{"id":1)json", &out, true));
+    TEST_ASSERT_TRUE(out.empty());
+    TEST_ASSERT_FALSE(parseSubjectsStream(R"json({"data":[]})json", nullptr, true));
+}
+
 
 static void test_summary_subject_ids() {
     JsonParser p;
@@ -1339,6 +1839,11 @@ int main(int, char**) {
     RUN_TEST(test_cardputer_event_fields);
     RUN_TEST(test_json_values_and_escapes);
     RUN_TEST(test_json_rejects_bad_input);
+    RUN_TEST(test_json_stream_events);
+    RUN_TEST(test_json_stream_escapes);
+    RUN_TEST(test_json_stream_numbers);
+    RUN_TEST(test_json_stream_truncation_and_depth);
+    RUN_TEST(test_json_stream_sink_rejection);
     RUN_TEST(test_iso8601_round_trip);
     RUN_TEST(test_rate_limit_reset_in_42s);
     RUN_TEST(test_rate_limit_past_or_zero_falls_back);
@@ -1355,6 +1860,10 @@ int main(int, char**) {
     RUN_TEST(test_srs_total_count_and_groups);
     RUN_TEST(test_assignment_parse);
     RUN_TEST(test_subject_parse);
+    RUN_TEST(test_assignment_stream_matches_dom);
+    RUN_TEST(test_assignment_stream_edges);
+    RUN_TEST(test_subject_stream_matches_dom);
+    RUN_TEST(test_subject_stream_edges_and_caps);
     RUN_TEST(test_summary_subject_ids);
     RUN_TEST(test_markup_and_subject_details);
     RUN_TEST(test_vocabulary_detail_fields);

@@ -567,7 +567,7 @@ prototype, with a `logNetHeap()` on every connection.
 ### 13.2 Rules
 
 - **Never** a full subject page in RAM. `/user` and `/summary` use a small DOM;
-  subject pages will use a streaming parser that emits one subject at a time.
+  subject pages use a streaming parser that emits one subject at a time.
 - **Never** a CJK font in RAM. Glyphs from the SD, with a small cache.
 - **Never** download all subjects on first boot. Fetch only the IDs that are
   needed (reviews/lessons) and grow the cache.
@@ -680,6 +680,10 @@ request. After 20 subjects the free heap is ~134 KB and the largest block
 - `Cache`: account key, snapshot/subject round trip and CRC rejection.
 - `Json`/`SummaryParser`: JSON values/escapes/bad input; summary buckets, IDs
   and a valid empty summary.
+- `JsonStream`: SAX events, nested containers, escapes/surrogate pairs, numbers,
+  malformed/truncated input and the depth cap. Assignment and subject sinks match
+  the DOM parsers for details on/off, radicals without characters, vocabulary
+  parts/context, related IDs and review stats, and cover empty/unknown/null data.
 - `Time`: ISO 8601 round trip.
 - Not covered natively: HTTP/TLS, outbox append/compaction/retries/
   reconciliation, `.bak`/cut-mid-write, filesystem atomic writes and version

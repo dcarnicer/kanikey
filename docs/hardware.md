@@ -354,3 +354,17 @@ WaniKani subjects and mnemonics.
   `PUT /start` was sent; the card was only opened for the screenshot.
 - The final image was reflashed after the UI-05/UI-06 changes. Live captures
   remain in `tools/screenshots/out/` and are not committed.
+
+### Hardware verification 2026-10-29 (TECH-01)
+
+- The streaming assignment/subject parser was exercised with the real account.
+  A review batch fetched 20 assignments and four 5-subject pages; the logs
+  showed `subjects 5/20` … `20/20`, then 24 component subjects, with no
+  `bad_alloc` and no DOM parse errors. Free heap after the review pages was
+  ~148.6 KB with a 52.3 KB largest block; after components it was ~126.1 KB
+  with a 51.3 KB largest block.
+- A lesson batch fetched 10 assignments and four 3-subject pages; the largest
+  free block stayed at ~35.8 KB and the free heap was ~108.2 KB after the last
+  page. No crash or truncated JSON.
+- The session was only opened for the fetch and then exited; no review was
+  submitted and no `PUT /start` was sent.

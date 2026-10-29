@@ -4,9 +4,12 @@
 #include <Arduino.h>
 
 #include <string_view>
+#include <vector>
 
 #include "platform/WkClient.h"
+#include "wk/Assignment.h"
 #include "wk/Json.h"
+#include "wk/SubjectParser.h"
 
 namespace kk {
 
@@ -37,5 +40,26 @@ using WkBodyParser = bool (*)(std::string_view body, void* out);
 WkBodyResult wkGetBodyRetry(const String& path, const String& token, size_t maxBodyBytes,
                             WkBodyParser parse, void* out, uint32_t timeoutMs = 12000,
                             uint8_t attempts = 2);
+
+// Large-collection counterparts: run the streaming sinks on each 200 body and
+// return the domain vector. `reserve` only sizes the initial growth. The retry
+// policy, body cap and static response buffer are the same as wkGetJsonRetry.
+struct WkAssignmentsResult {
+    WkResponse http;
+    bool parsed = false;
+    std::vector<Assignment> assignments;
+};
+WkAssignmentsResult wkGetAssignmentsRetry(const String& path, const String& token,
+                                          size_t maxBodyBytes, size_t reserve = 0,
+                                          uint32_t timeoutMs = 12000, uint8_t attempts = 2);
+
+struct WkSubjectsResult {
+    WkResponse http;
+    bool parsed = false;
+    std::vector<Subject> subjects;
+};
+WkSubjectsResult wkGetSubjectsRetry(const String& path, const String& token, size_t maxBodyBytes,
+                                    bool details = true, uint32_t timeoutMs = 12000,
+                                    uint8_t attempts = 2);
 
 }  // namespace kk
