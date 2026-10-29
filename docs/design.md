@@ -378,9 +378,11 @@ Details are in [ux.md](ux.md). Map:
 | `tools/glyph-pack/` | Visual pack generator (Python) | — |
 | `tools/screenshots/` | Serial remote for screenshots | — |
 
-`app/` now contains `HomeScreen` (`HomeView` plus `drawHomeScreen`, drawn
-between the caller's `startWrite()`/`present()`), and `ui/Theme.h` is the
-shared RGB332 palette. The other screens still live in `main.cpp`.
+`app/` now contains `HomeScreen` (`HomeView` plus `drawHomeScreen`) and
+`SyncScreen` (`SyncView`, `SyncRowView` plus `drawSyncScreen`, including the
+row statuses, progress bar and retry/setup hints), each drawn between the
+caller's `startWrite()`/`present()`, and `ui/Theme.h` is the shared RGB332
+palette. The other screens still live in `main.cpp`.
 
 Rule: `wk/`, `store/`, and the logic in `ui/` compile and are tested in
 PlatformIO's `native` environment without Arduino headers. It's the same

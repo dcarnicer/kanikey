@@ -22,6 +22,7 @@
 #include <cstring>
 
 #include "app/HomeScreen.h"
+#include "app/SyncScreen.h"
 #include "board/Board.h"
 #include "Version.h"
 #include "platform/CacheStore.h"
@@ -53,6 +54,10 @@ namespace {
 using tgc::Key;
 using tgc::KeyEvent;
 using namespace kk::ui;
+using kk::app::kSyncRowCount;
+using kk::app::SyncIssueKind;
+using kk::app::SyncRowState;
+using kk::app::SyncView;
 
 lgfx::LGFX_Device* gDisp = nullptr;
 lgfx::LGFX_Sprite* gCanvas = nullptr;
@@ -144,7 +149,6 @@ SyncIssue gDeferredAuthIssue = SyncIssue::None;
 bool gOutboxAuthIssue = false;
 
 // Sync screen: one row per real step, updated between blocking requests.
-constexpr int kSyncRowCount = 6;
 enum SyncRowIndex : uint8_t {
     SyncWifi,
     SyncOutbox,
@@ -153,7 +157,6 @@ enum SyncRowIndex : uint8_t {
     SyncLevel,
     SyncSrs,
 };
-enum class SyncRowState : uint8_t { Pending, Active, Done, Warn, Failed };
 struct SyncRow {
     const char* label = "";
     char value[40] = "";
@@ -4356,130 +4359,30 @@ void drawBoot() {
     present();
 }
 
-void drawSyncText(lgfx::LovyanGFX& d, const char* text, int x, int y, uint16_t fg,
-                  int maxWidth) {
-    if (!text || !text[0]) return;
-    d.setTextFont(0);
-    d.setTextSize(1);
-    d.setTextColor(fg, kBg);
-    std::string s = text;
-    while (s.size() > 1 && d.textWidth(s.c_str()) > maxWidth) s.pop_back();
-    d.drawString(s.c_str(), x, y);
-}
-
 void drawSync() {
     if (!gDisp) return;
+
+    SyncView view;
+    view.batteryPercent = tgc::board::batteryPercent();
+    view.finished = gSyncFinished;
+    view.completed = gSyncCompleted;
+    for (int i = 0; i < kSyncRowCount; ++i)
+        view.rows[i] = {gSyncRows[i].label, gSyncRows[i].value, gSyncRows[i].state};
+    view.errorLine = gNetLine;
+    switch (gSyncIssue) {
+        case SyncIssue::None: view.issue = SyncIssueKind::None; break;
+        case SyncIssue::RateLimit:
+            view.issue = SyncIssueKind::RateLimit;
+            view.rateLimitWaitSeconds = kk::wkRateLimitWaitSeconds();
+            break;
+        case SyncIssue::Auth: view.issue = SyncIssueKind::Auth; break;
+        case SyncIssue::Forbidden: view.issue = SyncIssueKind::Forbidden; break;
+        default: view.issue = SyncIssueKind::Other; break;
+    }
+
     auto& d = target();
     d.startWrite();
-    d.fillScreen(kBg);
-    d.setTextDatum(lgfx::top_left);
-    d.setTextWrap(false);
-
-    d.setTextFont(2);
-    d.setTextSize(1);
-    d.setTextColor(kBrand, kBg);
-    d.drawString("KaniKey", 6, 2);
-
-    const int bat = tgc::board::batteryPercent();
-    char right[16];
-    if (bat >= 0)
-        snprintf(right, sizeof right, "%d%%", bat);
-    else
-        snprintf(right, sizeof right, "USB");
-    d.setTextFont(1);
-    d.setTextColor(bat >= 0 && bat < 20 ? kWarn : kDim, kBg);
-    d.setTextDatum(lgfx::top_right);
-    d.drawString(right, 233, 5);
-    d.setTextDatum(lgfx::top_left);
-
-    d.setTextFont(2);
-    d.setTextSize(1);
-    const bool allDone = gSyncCompleted >= kSyncRowCount;
-    d.setTextColor(gSyncFinished ? kWarn : allDone ? kOk : kText, kBg);
-    d.drawString(gSyncFinished ? "Sync failed" : allDone ? "Synced" : "Syncing...", 8, 24);
-    char count[12];
-    snprintf(count, sizeof count, "%u/%u", static_cast<unsigned>(gSyncCompleted),
-             static_cast<unsigned>(kSyncRowCount));
-    d.setTextFont(0);
-    d.setTextSize(1);
-    d.setTextColor(kFaint, kBg);
-    d.setTextDatum(lgfx::top_right);
-    d.drawString(count, 233, 32);
-    d.setTextDatum(lgfx::top_left);
-
-    for (int i = 0; i < kSyncRowCount; ++i) {
-        const SyncRow& row = gSyncRows[i];
-        const int y = 46 + i * 11;
-        d.setTextFont(0);
-        d.setTextSize(1);
-        d.setTextColor(kDim, kBg);
-        d.drawString(row.label, 8, y);
-
-        uint16_t valueColor = kFaint;
-        const char* status = "--";
-        uint16_t statusColor = kFaint;
-        switch (row.state) {
-            case SyncRowState::Pending: break;
-            case SyncRowState::Active:
-                valueColor = kText;
-                status = "..";
-                statusColor = kAccentHi;
-                break;
-            case SyncRowState::Done:
-                valueColor = kText;
-                status = "ok";
-                statusColor = kOk;
-                break;
-            case SyncRowState::Warn:
-                valueColor = kWarn;
-                status = "!";
-                statusColor = kWarn;
-                break;
-            case SyncRowState::Failed:
-                valueColor = kErr;
-                status = "X";
-                statusColor = kErr;
-                break;
-        }
-        if (row.value[0]) drawSyncText(d, row.value, 64, y, valueColor, 140);
-        d.setTextFont(0);
-        d.setTextSize(1);
-        d.setTextColor(statusColor, kBg);
-        d.setTextDatum(lgfx::top_right);
-        d.drawString(status, 233, y);
-        d.setTextDatum(lgfx::top_left);
-    }
-
-    if (gSyncFinished && gSyncIssue != SyncIssue::None) {
-        if (gSyncIssue == SyncIssue::RateLimit) {
-            char rateLine[48];
-            const uint32_t wait = kk::wkRateLimitWaitSeconds();
-            if (wait)
-                snprintf(rateLine, sizeof rateLine, "Rate limited; retry in %us",
-                         static_cast<unsigned>(wait));
-            else
-                snprintf(rateLine, sizeof rateLine, "Rate limited; retry later");
-            drawSyncText(d, rateLine, 8, 112, kWarn, 224);
-        } else {
-            drawSyncText(d, gNetLine, 8, 112, kWarn, 224);
-        }
-    } else {
-        d.fillRect(8, 113, 224, 3, kSurfaceHi);
-        if (gSyncCompleted)
-            d.fillRect(8, 113, 224 * gSyncCompleted / kSyncRowCount, 3, kAccentHi);
-    }
-
-    const char* hint = "Esc: cancel";
-    if (gSyncFinished)
-        hint = (gSyncIssue == SyncIssue::Auth || gSyncIssue == SyncIssue::Forbidden)
-                   ? "Enter: setup  Esc: back"
-                   : "Enter: retry  Esc: back";
-    else if (allDone)
-        hint = "";
-    d.setTextFont(0);
-    d.setTextSize(1);
-    d.setTextColor(kFaint, kBg);
-    d.drawString(hint, 8, 125);
+    kk::app::drawSyncScreen(d, view);
     d.endWrite();
     present();
 }
