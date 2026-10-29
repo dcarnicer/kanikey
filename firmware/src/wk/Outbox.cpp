@@ -4,6 +4,8 @@
 
 namespace kk {
 
+bool outboxShouldGiveUp(uint8_t attempts) { return attempts >= kOutboxMaxAttempts; }
+
 uint32_t outboxAdd(std::vector<OutboxItem>& items, uint32_t assignmentId, uint32_t subjectId,
                    uint16_t incorrectMeaning, uint16_t incorrectReading, uint32_t createdAt) {
     if (items.size() >= kOutboxMax || assignmentId == 0) return 0;
@@ -43,7 +45,7 @@ const OutboxItem* outboxFind(const std::vector<OutboxItem>& items, uint32_t seq)
 size_t outboxPendingCount(const std::vector<OutboxItem>& items) {
     size_t n = 0;
     for (const OutboxItem& it : items)
-        if (it.state != OutboxState::Rejected) ++n;
+        if (it.state != OutboxState::Rejected && it.state != OutboxState::Stuck) ++n;
     return n;
 }
 
@@ -51,6 +53,20 @@ size_t outboxRejectedCount(const std::vector<OutboxItem>& items) {
     size_t n = 0;
     for (const OutboxItem& it : items)
         if (it.state == OutboxState::Rejected) ++n;
+    return n;
+}
+
+size_t outboxStuckCount(const std::vector<OutboxItem>& items) {
+    size_t n = 0;
+    for (const OutboxItem& it : items)
+        if (it.state == OutboxState::Stuck) ++n;
+    return n;
+}
+
+size_t outboxAttentionCount(const std::vector<OutboxItem>& items) {
+    size_t n = 0;
+    for (const OutboxItem& it : items)
+        if (it.state == OutboxState::Rejected || it.state == OutboxState::Stuck) ++n;
     return n;
 }
 

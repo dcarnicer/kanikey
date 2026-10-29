@@ -149,7 +149,7 @@ the field is active.
 | `←` `→` | Previous/next page in lessons |
 | `Space` | Next page in lessons; space in text |
 | `L` | Lessons (home) |
-| `O` | Outbox of rejected reviews (home) |
+| `O` | Outbox of rejected/stuck reviews (home) |
 | `S` | Sync (home) |
 | `G0` | Back / pause (holding it in the review opens the session menu) |
 
@@ -297,11 +297,12 @@ Home ──L──► Lessons ──Enter──► Lesson card
   sync and are cached; if they are missing, the line reads
   `SRS: sync for counts`.
 - If the outbox is not empty, `Outbox: N pending` in amber or
-  `N need attention` in red at 8 px. When items were rejected, the hint swaps
-  `L: lessons` for `O: outbox` (§5.13).
-- Hint: `Enter: reviews  L: lessons  S: sync` (8 px). With rejected items the
-  hint becomes `O: outbox  Enter: reviews  S: sync`, dropping entries from the
-  middle when it would not fit; `O: outbox` is kept. `Esc` still opens
+  `Outbox: N need attention` in red at 8 px. The attention count is rejected +
+  stuck; pending does not include either. When items need attention, the hint
+  swaps `L: lessons` for `O: outbox` (§5.13).
+- Hint: `Enter: reviews  L: lessons  S: sync` (8 px). With rejected or stuck
+  items the hint becomes `O: outbox  Enter: reviews  S: sync`, dropping entries
+  from the middle when it would not fit; `O: outbox` is kept. `Esc` still opens
   Settings; the hint bar only shows the three primary actions. The M0 debug
   screen and the `Tab: debug` shortcut only exist in the `cardputer-adv-dev`
   build; the shortcut is no longer advertised on Home.
@@ -422,7 +423,8 @@ and `Tab`/`Esc` returns to feedback.
     when the review was queued; the response carries the new stage, not the old
     one.
   - `3 mistakes` on the left and the outbox state on the right: `4 pending` in
-    amber, `1 need attention` in red, or `All reviews sent` in faint.
+    amber, `1 need attention` in red (rejected + stuck), or `All reviews sent`
+    in faint.
   - The item line combines two sources. The stage comes from the last
     successful `POST /reviews` (`gStageChange`; its previous stage is the one
     tracked in the pending assignment), while the lifetime accuracy/history
@@ -499,6 +501,8 @@ the mnemonic.
 
 - A dedicated screen replaces Home while a sync runs.
 - Six rows: `Wi-Fi`, `Outbox`, `Account`, `Summary`, `Level`, `SRS`.
+- The `Outbox` row shows pending and attention separately (`2 attention, 4
+  pending`), or `N need attention` / `N pending`; `sent` when both are zero.
 - Each row shows a name, a value and a status: `ok` in green, `..` while
   active, `!` for a warning, `X` for a failure and `--` while pending.
 - Progress bar `0/6` … `6/6`; the title reads `Syncing…`, `Synced` or
@@ -540,25 +544,29 @@ the mnemonic.
 
 ### 5.13 Outbox
 
-- Open with `O` from Home when at least one review was rejected; the key is
-  ignored when there is nothing to review.
-- Header `OUTBOX` and `N need attention`; only `rejected` items are listed.
+- Open with `O` from Home when at least one review was rejected or gave up; the
+  key is ignored when nothing needs attention.
+- Header `OUTBOX` and `N need attention`; `rejected` and `stuck` items are
+  listed. Pending, sending and ambiguous items are not.
 - Up to seven visible rows scroll with `↑↓`. A row shows the subject's English
   main meaning and level (for example `day L1`) when it is still in the cached
   batch, otherwise `assignment <id>` (or `subject <id>`). The reason is
-  right-aligned: `HTTP 422`, `HTTP 409` or `rejected` when the code is unknown.
+  right-aligned: `HTTP 422`, `HTTP 409`, `rejected` when the code is unknown, or
+  `gave up` for a stuck item.
 - `Enter: review` or `D: discard` opens the confirmation; `Esc: back` returns
   to Home.
-- Confirmation shows the same identifier, the reason
-  (`WaniKani rejected this review (HTTP 422).`,
-  `Conflict (409); it may have changed.`, or a generic fallback) and the
-  warning that dismissing only removes the local unsent review and does not
-  change WaniKani.
+- Confirmation shows the same identifier and the reason. Rejected items keep
+  `WaniKani rejected this review (HTTP 422).`, `Conflict (409); it may have
+  changed.` or the generic fallback; stuck items show
+  `Not sent after N attempts.` Both add the attempt count and the created age
+  (`just now`, `2h`, `3d`, or `age unknown` when `created_at` is 0 or the clock
+  is untrusted). It also warns that dismissing only removes the local unsent
+  review and does not change WaniKani.
 - `Enter: discard` removes exactly that sequence, saves the outbox and returns
-  to the list, or to Home when no rejected items remain. `Esc: cancel` returns
-  to the list. Pending and ambiguous items are never removed here, and the
-  cache/assignments are not touched. If the outbox file cannot be written, the
-  item stays and the screen shows `Could not save outbox`.
+  to the list, or to Home when no rejected/stuck items remain. `Esc: cancel`
+  returns to the list. Pending, sending and ambiguous items are never removed
+  here, and the cache/assignments are not touched. If the outbox file cannot be
+  written, the item stays and the screen shows `Could not save outbox`.
 
 ### 5.14 Stats (phase 2)
 

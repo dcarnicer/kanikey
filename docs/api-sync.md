@@ -393,9 +393,10 @@ setting is separate and only selects meaning-first or reading-first.
 
 - `summary` is refreshed; local counters are recalculated.
 - If the server returns new assignments, the home screen shows `N new reviews`.
-- If an outbox item was rejected (422/409), it is marked `rejected` with its
-  HTTP code and kept; it is not deleted or reconciled automatically. Home shows
-  `N need attention` and `O: outbox` opens the list to review or discard it.
+- If an outbox item was rejected (422/409) or reached the attempt cap, it is
+  marked `rejected`/`stuck` with its HTTP code or attempt count and kept; it is
+  not deleted or reconciled automatically. Home shows `N need attention` and
+  `O: outbox` opens the list to review or discard it.
 - If the token expires, the outbox is kept and reauthentication is requested.
   An outbox 401/403 is retained as a deferred auth issue, so a later successful
   `/user` or `/summary` does not hide it; it clears when the outbox drains or
@@ -415,7 +416,7 @@ offset  field              type
 12      incorrect_meaning  u16
 14      incorrect_reading  u16
 16      created_at         u32   UTC epoch; 0 = omit
-20      state              u8    pending | sending | ambiguous | rejected
+20      state              u8    pending | sending | ambiguous | rejected | stuck
 21      attempts           u8
 22      http_code          u16   0 = unknown; rejection reason
         (record size 24 B)
@@ -429,14 +430,26 @@ offset  field              type
   treated as `ambiguous`, not blindly as `pending`.
 - `rejected` is kept until the user sees it; the Home status line shows
   `N need attention` and `O: outbox` opens the list. Discarding is confirmed
-  and removes only the selected `seq`, never a pending or ambiguous item.
+  and removes only the selected `seq`, never a pending, sending or ambiguous
+  item.
+- `attempts` counts send attempts, including offline and gate-blocked calls
+  that never reached WaniKani; after 50 attempts an item that would be retried
+  is marked `stuck` before the next POST. Stuck is not pending and is never
+  sent again, but it is kept and dismissed exactly like `rejected`.
+  `N need attention` counts rejected + stuck.
 - `http_code` records 422/409 (or another rejection code) so the Outbox screen
-  can explain why the review was refused.
+  can explain why the review was refused. The detail view also shows the
+  attempt count and the age from `created_at` (`just now`, `2h`, `3d`); a zero
+  `created_at` or an untrusted clock shows `age unknown`.
 
 ### 6.2 Flush
 
 1. Sort by `seq`.
-2. For each `pending`:
+2. Skip `rejected` and `stuck`; they are not failures and do not block later
+   items.
+3. For each `pending`:
+   - Before the POST, if `attempts >= 50`, mark `stuck`, save and continue with
+     the next item without sending.
    - POST.
    - 200: apply `resources_updated.assignment`; delete.
    - 401: arm the session-wide auth gate and stop; later requests are answered
@@ -451,7 +464,7 @@ offset  field              type
      next attempt local until the reset (no immediate retry).
    - 5xx/timeout: mark `ambiguous`; stop the flush (do not continue with the
      following ones to avoid creating a mess).
-3. `ambiguous` ones are resolved before retrying:
+4. `ambiguous` ones are resolved before retrying:
    - `GET /assignments/{assignment_id}`.
    - If `data_updated_at` is later than our `created_at` and the SRS stage
      changed, assume the review arrived; delete.
@@ -468,10 +481,11 @@ processed the review produces a duplicate if it is resent. Duplicating a review
 alters the SRS stage and the user's statistics. We prefer to leave the item as
 `ambiguous` and reconcile rather than risk it.
 
-A rejected review is never resent automatically. The user opens Outbox from
-Home, sees the stored HTTP code and either keeps the item or confirms a local
-discard. Dismissing only removes the unsent outbox record; it does not change
-WaniKani and does not touch the cache or assignments.
+A rejected or stuck review is never resent automatically. The user opens
+Outbox from Home, sees the stored HTTP code or `gave up`, the attempt count and
+the age, and either keeps the item or confirms a local discard. Dismissing only
+removes the unsent outbox record; it does not change WaniKani and does not touch
+the cache or assignments.
 
 ### 6.4 Limitations
 
@@ -480,6 +494,13 @@ WaniKani and does not touch the cache or assignments.
 - If the user reviews in KaniKey and on the web at the same time, there may be
   conflicts. The UI warns and prioritizes not duplicating.
 - The outbox is not synchronized between devices.
+
+**Implementation (2026-10-29).** `attempts` is incremented before each POST and
+saturates at 255. After 50 started attempts the next send is replaced by
+`stuck` (state value 4, same 24 B record and file version). The flush skips
+rejected/stuck items without stopping later pending ones; the Outbox screen
+lists both with `HTTP <code>` or `gave up` and shows attempts/age in the
+confirmation.
 
 ---
 
@@ -595,6 +616,7 @@ with a DOM. It still needs a DOM and duplicates temporary storage.
 | 404 | Resource does not exist | Discard, refresh |
 | 409 | Conflict | Mark rejected; keep until the user discards in Outbox |
 | 422 | Validation | Mark rejected, do not retry; keep until the user discards in Outbox |
+| 50 attempts | Retry cap | Mark stuck before the next POST; not pending, keep until the user discards in Outbox |
 | 429 | Rate limit | Wait for `RateLimit-Reset`; shared gate, no immediate retry |
 | 5xx | Server | Retry with backoff |
 | timeout / DNS / TLS | Network | 2 retries, then offline |

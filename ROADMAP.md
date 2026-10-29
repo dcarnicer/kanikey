@@ -101,11 +101,11 @@ Working on hardware:
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 57 native tests and the release build run in GitHub Actions alongside
+- 60 native tests and the release build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests.
 
-Current build: **1,401,005 B / 1,835,008 B flash (76.3%)**, **94,696 B /
-327,680 B static RAM (28.9%)**. The dev image is 1,408,461 B. Removing
+Current build: **1,402,013 B / 1,835,008 B flash (76.4%)**, **94,696 B /
+327,680 B static RAM (28.9%)**. The dev image is 1,409,545 B. Removing
 `efontJA_16` freed ~468 KB and leaves ~425 KB of flash headroom.
 
 ## Priority summary
@@ -116,7 +116,7 @@ Current build: **1,401,005 B / 1,835,008 B flash (76.3%)**, **94,696 B /
 | 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Core landed; real-account E2E pending | CACHE-05, CACHE-07 |
 | 3 | Complete lesson flow | List/picker, card, components, quiz, empty state and start exist; ordering/hardware remain | Partial | LESSON-08, RAD-04 |
 | 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; review history and audio remain | Partial | WK-11, EXT-06 |
-| 5 | Outbox and API robustness | Rejected items, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Partial | API-05, API-07 |
+| 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Docs pending | API-07 |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
 | 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen and item detail are live | Partial | UI-05 |
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal ported; OTA/widgets pending | TNG-02, TNG-03 |
@@ -136,7 +136,7 @@ lesson flow.
 | 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | List, understand, quiz and start lessons |
 | 3 | Setup and device UX | TNG-02 | OTA release path (setup/settings complete) |
 | 4 | WaniKani data and detail | WK-11 (WK-01/03/04/05/06/07/08/09/10 done) | Review history and progress |
-| 5 | API robustness | API-05 → API-07 (API-01/02/03/04/06 done) | Recoverable rate-limited and auth errors |
+| 5 | API robustness | API-07 (API-01/02/03/04/05/06 done) | Docs and screen text in sync with the implementation |
 | 6 | UI, stats and sync | UI-05 → UI-08 (UI-01/02/03/04/06 done) | Polish |
 | 7 | Technical debt and release | TECH-01 → TECH-07 (TECH-04 done) | Refactor, version, OTA and license |
 | 8 | Kakehashi-inspired extras | EXT-01 → EXT-09 | Practice modes, critical items, audio and stats |
@@ -312,8 +312,9 @@ live; review history, audio and the remaining preferences still need work.
 ## 5. Outbox and API robustness (finish M3)
 
 Already done: CRC/`.bak`, ambiguous-request reconciliation, offline end-to-end,
-Home pending/attention counts, a user-facing path for rejected items, the
-shared 429 gate and the shared 401 auth gate. Remaining:
+Home pending/attention counts, a user-facing path for rejected/stuck items and
+their attempt/age detail, the 50-attempt cap, the shared 429 gate and the
+shared 401 auth gate. Remaining:
 
 - **API-01 — Dismiss `Rejected` items.** User-facing action with confirmation
   and a clear reason. **Done (2026-10-28):** the HTTP code is stored in the two
@@ -358,7 +359,13 @@ shared 429 gate and the shared 401 auth gate. Remaining:
   `subjects JSON`) survive both attempts, and a structurally valid empty
   `/summary` is no longer treated as a parse failure.
 - **API-05 — Attempts and age.** Cap attempts and show attempt/age information
-  for stuck items.
+  for stuck items. **Done (2026-10-29):** `OutboxState::Stuck` (`4`) and a
+  50-attempt cap; a would-be retry becomes stuck instead of sending. Pending
+  excludes stuck, and attention counts rejected + stuck for Home, Summary and
+  the sync row. The OUTBOX screen lists both, shows `gave up`, attempts and age
+  (`just now`/hours/days, or `age unknown` with a zero/untrusted timestamp) and
+  dismisses only the selected seq. Flush skips stuck without blocking later
+  items; dev `J` adds a stuck seed. Native-tested.
 - **API-06 — Manual sync and retry.** A clear action from Home/Settings and the
   error screens. **Done (2026-10-29):** Home shows
   `Enter: reviews  L: lessons  S: sync`; pressing `s` or `S` starts the same
@@ -457,7 +464,7 @@ the device; account/study preferences and clear error actions remain.
   y=125 hint bar holds `Space p  Q quiz` (90 px) left and
   `Enter start  Esc list` (126 px) right, leaving a 12 px gap in 228 px.
   `startCurrentLesson()` passes the English main meaning to `drawLoading`.
-  Mockups and docs updated; 57 native tests and both firmware builds pass.
+  Mockups and docs updated; 60 native tests and both firmware builds pass.
 - **UI-07 — Missing pack/glyph states.** The prompt state exists; finish the
   full startup/setup wording and actions.
 - **UI-08 — Palette and screenshots.** Revisit the RGB332 palette after real

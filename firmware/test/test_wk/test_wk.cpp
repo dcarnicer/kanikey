@@ -785,6 +785,47 @@ static void test_outbox_http_code_default() {
     TEST_ASSERT_EQUAL_UINT16(409, box[0].httpCode);
 }
 
+static void test_outbox_attempt_cap() {
+    TEST_ASSERT_FALSE(outboxShouldGiveUp(0));
+    TEST_ASSERT_FALSE(outboxShouldGiveUp(49));
+    TEST_ASSERT_TRUE(outboxShouldGiveUp(50));
+    TEST_ASSERT_TRUE(outboxShouldGiveUp(51));
+    TEST_ASSERT_TRUE(outboxShouldGiveUp(255));
+}
+
+static void test_outbox_stuck_counts() {
+    std::vector<OutboxItem> box;
+    TEST_ASSERT_EQUAL_UINT32(1, outboxAdd(box, 301, 30, 0, 0, 0));
+    TEST_ASSERT_EQUAL_UINT32(2, outboxAdd(box, 302, 31, 0, 0, 0));
+    TEST_ASSERT_EQUAL_UINT32(3, outboxAdd(box, 303, 32, 0, 0, 0));
+    box[1].state = OutboxState::Stuck;
+    box[2].state = OutboxState::Rejected;
+    TEST_ASSERT_EQUAL(1, outboxPendingCount(box));
+    TEST_ASSERT_EQUAL(1, outboxStuckCount(box));
+    TEST_ASSERT_EQUAL(1, outboxRejectedCount(box));
+    TEST_ASSERT_EQUAL(2, outboxAttentionCount(box));
+    box[0].state = OutboxState::Ambiguous;
+    TEST_ASSERT_EQUAL(1, outboxPendingCount(box));
+    TEST_ASSERT_EQUAL(2, outboxAttentionCount(box));
+}
+
+static void test_outbox_stuck_remove() {
+    std::vector<OutboxItem> box;
+    TEST_ASSERT_EQUAL_UINT32(1, outboxAdd(box, 401, 40, 0, 0, 0));
+    TEST_ASSERT_EQUAL_UINT32(2, outboxAdd(box, 402, 41, 0, 0, 0));
+    TEST_ASSERT_EQUAL_UINT32(3, outboxAdd(box, 403, 42, 0, 0, 0));
+    box[1].state = OutboxState::Stuck;
+    box[1].attempts = kOutboxMaxAttempts;
+    TEST_ASSERT_TRUE(outboxRemove(box, 2));
+    TEST_ASSERT_EQUAL(2, box.size());
+    TEST_ASSERT_NOT_NULL(outboxFind(box, 1));
+    TEST_ASSERT_NULL(outboxFind(box, 2));
+    TEST_ASSERT_NOT_NULL(outboxFind(box, 3));
+    TEST_ASSERT_EQUAL(2, outboxPendingCount(box));
+    TEST_ASSERT_EQUAL(0, outboxStuckCount(box));
+    TEST_ASSERT_EQUAL(0, outboxAttentionCount(box));
+}
+
 
 static void test_markup_and_subject_details() {
     TEST_ASSERT_EQUAL_STRING("A ground B", stripMarkup("A <radical>ground</radical> B").c_str());
@@ -1258,6 +1299,9 @@ int main(int, char**) {
     RUN_TEST(test_crc32_known_vector);
     RUN_TEST(test_outbox_model);
     RUN_TEST(test_outbox_http_code_default);
+    RUN_TEST(test_outbox_attempt_cap);
+    RUN_TEST(test_outbox_stuck_counts);
+    RUN_TEST(test_outbox_stuck_remove);
     RUN_TEST(test_cache_account_key);
     RUN_TEST(test_cache_snapshot_round_trip);
     RUN_TEST(test_cache_corruption_is_rejected);

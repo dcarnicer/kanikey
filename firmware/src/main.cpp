@@ -1301,15 +1301,15 @@ void drawReviewSummary() {
     d.drawString(line, 8, 98);
 
     const size_t pending = kk::outboxPendingCount(gOutbox);
-    const size_t rejected = kk::outboxRejectedCount(gOutbox);
+    const size_t attention = kk::outboxAttentionCount(gOutbox);
     char outbox[40];
-    if (rejected)
-        snprintf(outbox, sizeof outbox, "%u need attention", static_cast<unsigned>(rejected));
+    if (attention)
+        snprintf(outbox, sizeof outbox, "%u need attention", static_cast<unsigned>(attention));
     else if (pending)
         snprintf(outbox, sizeof outbox, "%u pending", static_cast<unsigned>(pending));
     else
         snprintf(outbox, sizeof outbox, "All reviews sent");
-    d.setTextColor(rejected ? kErr : pending ? kWarn : kFaint, kBg);
+    d.setTextColor(attention ? kErr : pending ? kWarn : kFaint, kBg);
     d.setTextDatum(lgfx::top_right);
     d.drawString(outbox, 232, 98);
     d.setTextDatum(lgfx::top_left);
@@ -1354,6 +1354,10 @@ void saveOutbox() {
     if (!kk::outboxSave(gOutbox)) Serial.println("[outbox] save failed");
 }
 
+bool outboxNeedsAttention(const kk::OutboxItem& item) {
+    return item.state == kk::OutboxState::Rejected || item.state == kk::OutboxState::Stuck;
+}
+
 bool reconcileOutboxItem(kk::OutboxItem& item) {
     if (item.createdAt == 0) return false;
     const String token = kk::DevToken::load();
@@ -1387,7 +1391,7 @@ bool reconcileOutboxItem(kk::OutboxItem& item) {
 bool sendOutboxItem(uint32_t seq) {
     kk::OutboxItem* item = kk::outboxFind(gOutbox, seq);
     if (!item) return true;
-    if (item->state == kk::OutboxState::Rejected) return false;
+    if (outboxNeedsAttention(*item)) return false;
     if (item->state == kk::OutboxState::Sending ||
         item->state == kk::OutboxState::Ambiguous) {
         if (reconcileOutboxItem(*item)) return true;
@@ -1405,6 +1409,15 @@ bool sendOutboxItem(uint32_t seq) {
         }
         item->state = kk::OutboxState::Pending;
         saveOutbox();
+    }
+
+    if (kk::outboxShouldGiveUp(item->attempts)) {
+        item->state = kk::OutboxState::Stuck;
+        saveOutbox();
+        Serial.printf("[outbox] assignment %u stuck after %u attempts\n",
+                      static_cast<unsigned>(item->assignmentId),
+                      static_cast<unsigned>(item->attempts));
+        return false;
     }
 
     item->state = kk::OutboxState::Sending;
@@ -1511,32 +1524,33 @@ void flushOutbox() {
     Serial.printf("[outbox] flushing %u\n", static_cast<unsigned>(gOutbox.size()));
     std::vector<uint32_t> seqs;
     for (const kk::OutboxItem& it : gOutbox)
-        if (it.state != kk::OutboxState::Rejected) seqs.push_back(it.seq);
+        if (!outboxNeedsAttention(it)) seqs.push_back(it.seq);
     for (uint32_t seq : seqs) {
         if (!sendOutboxItem(seq)) {
             const kk::OutboxItem* it = kk::outboxFind(gOutbox, seq);
-            if (!it || it->state == kk::OutboxState::Rejected) continue;
+            if (!it || outboxNeedsAttention(*it)) continue;
             break;
         }
     }
     if (kk::outboxPendingCount(gOutbox) == 0) clearOutboxAuthIssue();
-    Serial.printf("[outbox] %u pending, %u rejected\n",
+    Serial.printf("[outbox] %u pending, %u need attention (%u stuck)\n",
                   static_cast<unsigned>(kk::outboxPendingCount(gOutbox)),
-                  static_cast<unsigned>(kk::outboxRejectedCount(gOutbox)));
+                  static_cast<unsigned>(kk::outboxAttentionCount(gOutbox)),
+                  static_cast<unsigned>(kk::outboxStuckCount(gOutbox)));
 }
 
-std::vector<const kk::OutboxItem*> rejectedOutboxItems() {
+std::vector<const kk::OutboxItem*> attentionOutboxItems() {
     std::vector<const kk::OutboxItem*> items;
     for (const kk::OutboxItem& it : gOutbox)
-        if (it.state == kk::OutboxState::Rejected) items.push_back(&it);
+        if (outboxNeedsAttention(it)) items.push_back(&it);
     return items;
 }
 
 const kk::OutboxItem* selectedOutboxItem() {
     const kk::OutboxItem* selected = kk::outboxFind(gOutbox, gOutboxSelectedSeq);
-    if (selected && selected->state == kk::OutboxState::Rejected) return selected;
+    if (selected && outboxNeedsAttention(*selected)) return selected;
     for (const kk::OutboxItem& it : gOutbox) {
-        if (it.state != kk::OutboxState::Rejected) continue;
+        if (!outboxNeedsAttention(it)) continue;
         gOutboxSelectedSeq = it.seq;
         return &it;
     }
@@ -1568,26 +1582,54 @@ std::string outboxItemLabel(const kk::OutboxItem& item) {
 }
 
 void outboxReasonShort(const kk::OutboxItem& item, char* out, size_t n) {
-    if (item.httpCode)
+    if (item.state == kk::OutboxState::Stuck)
+        snprintf(out, n, "gave up");
+    else if (item.httpCode)
         snprintf(out, n, "HTTP %u", static_cast<unsigned>(item.httpCode));
     else
         snprintf(out, n, "rejected");
 }
 
-void outboxReasonDetail(const kk::OutboxItem& item, char* out, size_t n) {
-    if (item.httpCode == 422)
-        snprintf(out, n, "WaniKani rejected this review (HTTP 422).");
-    else if (item.httpCode == 409)
-        snprintf(out, n, "Conflict (409); it may have changed.");
-    else if (item.httpCode)
-        snprintf(out, n, "WaniKani rejected this review (HTTP %u).",
-                 static_cast<unsigned>(item.httpCode));
+std::string outboxAgeLabel(const kk::OutboxItem& item, uint32_t now) {
+    if (!item.createdAt || now < 1700000000u || now < item.createdAt) return "unknown";
+    const uint32_t age = now - item.createdAt;
+    char out[16];
+    if (age < 60)
+        snprintf(out, sizeof out, "just now");
+    else if (age < 3600)
+        snprintf(out, sizeof out, "%um", static_cast<unsigned>(age / 60));
+    else if (age < 86400)
+        snprintf(out, sizeof out, "%uh", static_cast<unsigned>(age / 3600));
     else
-        snprintf(out, n, "WaniKani rejected this review.");
+        snprintf(out, sizeof out, "%ud", static_cast<unsigned>(age / 86400));
+    return out;
+}
+
+void outboxReasonDetail(const kk::OutboxItem& item, char* out, size_t n) {
+    const std::string age =
+        outboxAgeLabel(item, static_cast<uint32_t>(time(nullptr)));
+    const unsigned attempts = item.attempts;
+    const char* suffix = attempts == 1 ? "attempt" : "attempts";
+    if (item.state == kk::OutboxState::Stuck) {
+        snprintf(out, n, "Not sent after %u %s. Age %s.", attempts, suffix, age.c_str());
+        return;
+    }
+    if (item.httpCode == 422)
+        snprintf(out, n, "WaniKani rejected this review (HTTP 422). %u %s, age %s.", attempts,
+                 suffix, age.c_str());
+    else if (item.httpCode == 409)
+        snprintf(out, n, "Conflict (409); it may have changed. %u %s, age %s.", attempts,
+                 suffix, age.c_str());
+    else if (item.httpCode)
+        snprintf(out, n, "WaniKani rejected this review (HTTP %u). %u %s, age %s.",
+                 static_cast<unsigned>(item.httpCode), attempts, suffix, age.c_str());
+    else
+        snprintf(out, n, "WaniKani rejected this review. %u %s, age %s.", attempts, suffix,
+                 age.c_str());
 }
 
 void moveOutboxSelection(int delta) {
-    const std::vector<const kk::OutboxItem*> items = rejectedOutboxItems();
+    const std::vector<const kk::OutboxItem*> items = attentionOutboxItems();
     if (items.empty()) return;
     int index = -1;
     for (size_t i = 0; i < items.size(); ++i)
@@ -1600,7 +1642,7 @@ void moveOutboxSelection(int delta) {
 }
 
 void openOutbox() {
-    if (kk::outboxRejectedCount(gOutbox) == 0) return;
+    if (kk::outboxAttentionCount(gOutbox) == 0) return;
     gOutboxScreen = true;
     gOutboxConfirm = false;
     gOutboxSelectedSeq = 0;
@@ -1618,7 +1660,7 @@ void discardSelectedOutboxItem() {
     int index = 0;
     bool found = false;
     for (const kk::OutboxItem& it : gOutbox) {
-        if (it.state != kk::OutboxState::Rejected) continue;
+        if (!outboxNeedsAttention(it)) continue;
         if (it.seq == seq) {
             found = true;
             break;
@@ -1640,7 +1682,7 @@ void discardSelectedOutboxItem() {
 
     std::vector<uint32_t> remaining;
     for (const kk::OutboxItem& it : next)
-        if (it.state == kk::OutboxState::Rejected) remaining.push_back(it.seq);
+        if (outboxNeedsAttention(it)) remaining.push_back(it.seq);
 
     gOutbox = std::move(next);
     gOutboxConfirm = false;
@@ -3320,20 +3362,34 @@ void startSync() {
                   static_cast<unsigned>(utc));
 
     // Outbox: keep going even if items remain pending.
-    const size_t beforeOutbox = kk::outboxPendingCount(gOutbox);
-    char outbox[32];
-    if (beforeOutbox)
-        snprintf(outbox, sizeof outbox, "%u pending", static_cast<unsigned>(beforeOutbox));
+    const size_t beforePending = kk::outboxPendingCount(gOutbox);
+    const size_t beforeAttention = kk::outboxAttentionCount(gOutbox);
+    char outbox[40];
+    if (beforeAttention && beforePending)
+        snprintf(outbox, sizeof outbox, "%u attention, %u pending",
+                 static_cast<unsigned>(beforeAttention), static_cast<unsigned>(beforePending));
+    else if (beforeAttention)
+        snprintf(outbox, sizeof outbox, "%u need attention",
+                 static_cast<unsigned>(beforeAttention));
+    else if (beforePending)
+        snprintf(outbox, sizeof outbox, "%u pending", static_cast<unsigned>(beforePending));
     else
         snprintf(outbox, sizeof outbox, "none");
     syncRowBegin(SyncOutbox, outbox);
     flushOutbox();
-    const size_t afterOutbox = kk::outboxPendingCount(gOutbox);
-    if (afterOutbox)
-        snprintf(outbox, sizeof outbox, "%u pending", static_cast<unsigned>(afterOutbox));
+    const size_t afterPending = kk::outboxPendingCount(gOutbox);
+    const size_t afterAttention = kk::outboxAttentionCount(gOutbox);
+    if (afterAttention && afterPending)
+        snprintf(outbox, sizeof outbox, "%u attention, %u pending",
+                 static_cast<unsigned>(afterAttention), static_cast<unsigned>(afterPending));
+    else if (afterAttention)
+        snprintf(outbox, sizeof outbox, "%u need attention",
+                 static_cast<unsigned>(afterAttention));
+    else if (afterPending)
+        snprintf(outbox, sizeof outbox, "%u pending", static_cast<unsigned>(afterPending));
     else
         snprintf(outbox, sizeof outbox, "sent");
-    if (afterOutbox)
+    if (afterAttention || afterPending)
         syncRowWarn(SyncOutbox, outbox);
     else
         syncRowDone(SyncOutbox, outbox);
@@ -3734,7 +3790,7 @@ void drawHome() {
     d.setTextFont(0);
     d.setTextSize(1);
     const size_t pending = kk::outboxPendingCount(gOutbox);
-    const size_t rejected = kk::outboxRejectedCount(gOutbox);
+    const size_t attention = kk::outboxAttentionCount(gOutbox);
     if (gSyncIssue == SyncIssue::Auth) {
         d.setTextColor(kErr, kBg);
         d.drawString("Auth: token rejected", 8, 117);
@@ -3755,10 +3811,10 @@ void drawHome() {
     } else if (gSyncIssue == SyncIssue::Server || gSyncIssue == SyncIssue::Other) {
         d.setTextColor(kWarn, kBg);
         d.drawString("WaniKani error; retry", 8, 117);
-    } else if (rejected) {
+    } else if (attention) {
         char line[40];
         snprintf(line, sizeof line, "Outbox: %u need attention",
-                 static_cast<unsigned>(rejected));
+                 static_cast<unsigned>(attention));
         d.setTextColor(kErr, kBg);
         d.drawString(line, 8, 117);
     } else if (pending) {
@@ -3790,7 +3846,7 @@ void drawHome() {
     }
     d.setTextColor(kFaint, kBg);
     const char* hint = "Enter: reviews  L: lessons  S: sync";
-    if (rejected) {
+    if (attention) {
         hint = "O: outbox  Enter: reviews  S: sync";
         if (d.textWidth(hint) > 224) hint = "O: outbox  Enter  L  S";
         if (d.textWidth(hint) > 224) hint = "O: outbox  S: sync";
@@ -3951,7 +4007,7 @@ void drawOutbox() {
         d.drawString(gOutboxNote, 8, 112);
     };
 
-    const size_t total = kk::outboxRejectedCount(gOutbox);
+    const size_t total = kk::outboxAttentionCount(gOutbox);
     d.setTextFont(2);
     d.setTextSize(1);
     d.setTextColor(kBrand, kBg);
@@ -3969,7 +4025,7 @@ void drawOutbox() {
         d.drawFastHLine(4, 22, 232, kLine);
         d.setTextFont(1);
         d.setTextColor(kDim, kBg);
-        d.drawString("No rejected reviews", 8, 52);
+        d.drawString("No reviews need attention", 8, 52);
         d.setTextFont(0);
         d.setTextColor(kFaint, kBg);
         d.drawString("Esc: back", 8, 124);
@@ -3990,7 +4046,7 @@ void drawOutbox() {
         d.setTextColor(kText, kBg);
         d.drawString(label.c_str(), 8, 42);
 
-        char reason[64];
+        char reason[128];
         outboxReasonDetail(*selected, reason, sizeof reason);
         drawWrapped(d, reason, 8, 60, 224, 3, kDim, kBg);
 
@@ -4010,7 +4066,7 @@ void drawOutbox() {
 
     d.drawFastHLine(4, 22, 232, kLine);
 
-    const std::vector<const kk::OutboxItem*> items = rejectedOutboxItems();
+    const std::vector<const kk::OutboxItem*> items = attentionOutboxItems();
     int selectedIndex = 0;
     for (size_t i = 0; i < items.size(); ++i)
         if (items[i]->seq == gOutboxSelectedSeq) selectedIndex = static_cast<int>(i);
@@ -4045,7 +4101,10 @@ void drawOutbox() {
         d.setTextColor(focus ? kText : kDim, focus ? kSurfaceHi : kBg);
         d.drawString(label.c_str(), 10, y);
         d.setTextDatum(lgfx::top_right);
-        d.setTextColor(item.httpCode ? kErr : kFaint, focus ? kSurfaceHi : kBg);
+        const uint16_t reasonColor = item.state == kk::OutboxState::Stuck
+                                         ? kWarn
+                                         : (item.httpCode ? kErr : kFaint);
+        d.setTextColor(reasonColor, focus ? kSurfaceHi : kBg);
         d.drawString(reason, 228, y);
         d.setTextDatum(lgfx::top_left);
     }
@@ -4792,18 +4851,24 @@ void clearDevCache() {
     Serial.println("[cache] dev cache cleared");
 }
 
-// Dev-only `J`: two fixed rejected items for the outbox screen. Reusing the
-// assignment IDs updates an earlier seed instead of piling up duplicates.
+// Dev-only `J`: two fixed rejected items and one stuck item for the outbox
+// screen. Reusing the assignment IDs updates an earlier seed instead of piling
+// up duplicates.
 void seedDevRejectedOutbox() {
     struct Seed {
         uint32_t assignmentId;
         uint32_t subjectId;
+        kk::OutboxState state;
+        uint8_t attempts;
         uint16_t httpCode;
     };
     static const Seed kSeeds[] = {
-        {999999901, 999999001, 422},
-        {999999902, 999999002, 409},
+        {999999901, 999999001, kk::OutboxState::Rejected, 1, 422},
+        {999999902, 999999002, kk::OutboxState::Rejected, 1, 409},
+        {999999903, 999999003, kk::OutboxState::Stuck, kk::kOutboxMaxAttempts, 0},
     };
+    const uint32_t now = static_cast<uint32_t>(time(nullptr));
+    const uint32_t createdAt = now >= 1700000000u ? now : 1793000000u;
     for (const Seed& seed : kSeeds) {
         kk::OutboxItem* item = nullptr;
         for (kk::OutboxItem& it : gOutbox)
@@ -4813,7 +4878,7 @@ void seedDevRejectedOutbox() {
             }
         if (!item) {
             const uint32_t seq = kk::outboxAdd(gOutbox, seed.assignmentId, seed.subjectId, 0, 0,
-                                               static_cast<uint32_t>(time(nullptr)));
+                                               createdAt);
             if (!seq) {
                 Serial.println("[outbox] seed failed: full");
                 continue;
@@ -4821,12 +4886,18 @@ void seedDevRejectedOutbox() {
             item = kk::outboxFind(gOutbox, seq);
         }
         if (!item) continue;
-        item->state = kk::OutboxState::Rejected;
+        item->state = seed.state;
         item->httpCode = seed.httpCode;
-        if (item->attempts == 0) item->attempts = 1;
-        Serial.printf("[outbox] synthetic rejected assignment %u HTTP %u\n",
-                      static_cast<unsigned>(seed.assignmentId),
-                      static_cast<unsigned>(seed.httpCode));
+        item->attempts = seed.attempts;
+        item->createdAt = createdAt;
+        if (seed.state == kk::OutboxState::Stuck)
+            Serial.printf("[outbox] synthetic stuck assignment %u after %u attempts\n",
+                          static_cast<unsigned>(seed.assignmentId),
+                          static_cast<unsigned>(seed.attempts));
+        else
+            Serial.printf("[outbox] synthetic rejected assignment %u HTTP %u\n",
+                          static_cast<unsigned>(seed.assignmentId),
+                          static_cast<unsigned>(seed.httpCode));
     }
     saveOutbox();
     if (!gReviewActive && !gReviewSummary && !gLessonActive && !gLessonListActive &&
@@ -5442,7 +5513,7 @@ void handleSerial() {
             ESP.restart();
         } else if (!gSerialLine.isEmpty()) {
 #ifdef KANIKEY_DEV
-            const char* rejectedCmd = " J=rejected-outbox";
+            const char* rejectedCmd = " J=attention-outbox";
 #else
             const char* rejectedCmd = "";
 #endif
