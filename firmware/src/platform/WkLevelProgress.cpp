@@ -1,29 +1,26 @@
 #include "platform/WkLevelProgress.h"
 
-#include <string_view>
-
 #include "platform/WkClient.h"
+#include "platform/WkJson.h"
 #include "wk/Json.h"
 
 namespace kk {
 
 LevelProgress fetchLevelProgress(const String& token, uint8_t currentLevel) {
     LevelProgress progress;
-    const WkResponse r = wkGetRetry("/v2/level_progressions", token, 32768, 12000);
-    if (r.httpCode != 200) {
-        Serial.printf("[level] HTTP %d\n", r.httpCode);
-        if (r.httpCode == 401 || r.httpCode == 403)
+    const WkJsonResult r = wkGetJsonRetry("/v2/level_progressions", token, 32768, 12000);
+    if (r.http.httpCode != 200) {
+        Serial.printf("[level] HTTP %d\n", r.http.httpCode);
+        if (r.http.httpCode == 401 || r.http.httpCode == 403)
             Serial.println("[level] continuing without level progress");
         return progress;
     }
-    JsonParser p;
-    JsonValue v;
-    if (!p.parse(std::string_view(r.body.data(), r.body.size()), &v)) {
+    if (!r.parsed) {
         Serial.printf("[level] JSON failed: len=%u trunc=%d\n",
-                      static_cast<unsigned>(r.body.size()), r.truncated ? 1 : 0);
+                      static_cast<unsigned>(r.http.body.size()), r.http.truncated ? 1 : 0);
         return progress;
     }
-    if (!parseLevelProgressions(v, currentLevel, &progress)) {
+    if (!parseLevelProgressions(r.json, currentLevel, &progress)) {
         Serial.println("[level] no matching progression");
         return progress;
     }

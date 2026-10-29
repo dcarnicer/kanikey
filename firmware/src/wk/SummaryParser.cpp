@@ -21,6 +21,7 @@ public:
         ws();
         return pos_ == text_.size();
     }
+    bool complete() const { return hasData_ && hasLessons_ && hasReviews_; }
     const std::string& error() const { return error_; }
 
 private:
@@ -213,10 +214,18 @@ private:
             if (!take(':')) return fail("expected :");
             if (key == "lessons") {
                 if (!buckets(&out->lessons)) return false;
+                hasLessons_ = true;
             } else if (key == "reviews") {
                 if (!buckets(&out->reviews)) return false;
+                hasReviews_ = true;
             } else if (key == "next_reviews_at") {
-                if (!string(&out->nextReviewsAt)) return false;
+                ws();
+                if (peek('n')) {
+                    if (!literal("null")) return false;
+                    out->nextReviewsAt.clear();
+                } else if (!string(&out->nextReviewsAt)) {
+                    return false;
+                }
             } else {
                 if (!skipValue(1)) return false;
             }
@@ -235,6 +244,7 @@ private:
             if (!take(':')) return fail("expected :");
             if (key == "data") {
                 if (!data(out)) return false;
+                hasData_ = true;
             } else if (key == "data_updated_at") {
                 std::string stamp;
                 if (!string(&stamp)) return false;
@@ -251,6 +261,9 @@ private:
     size_t pos_ = 0;
     size_t maxIds_;
     std::string error_;
+    bool hasData_ = false;
+    bool hasLessons_ = false;
+    bool hasReviews_ = false;
 };
 }  // namespace
 
@@ -261,14 +274,15 @@ bool parseSummaryText(std::string_view text, Summary* out, size_t maxIdsPerBucke
     out->nextReviewsAt.clear();
     out->dataUpdatedAt = 0;
     Reader r(text, maxIdsPerBucket);
-    if (!r.parse(out)) {
+    if (!r.parse(out) || !r.complete()) {
         out->lessons.clear();
         out->reviews.clear();
         out->nextReviewsAt.clear();
         out->dataUpdatedAt = 0;
         return false;
     }
-    return !out->lessons.empty() || !out->reviews.empty();
+    // A valid report with no buckets is an empty account, not a parse failure.
+    return true;
 }
 
 }  // namespace kk

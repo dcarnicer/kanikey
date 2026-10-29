@@ -1,10 +1,10 @@
 #include "platform/WkStudyMaterials.h"
 
 #include <algorithm>
-#include <string_view>
 #include <utility>
 
 #include "platform/WkClient.h"
+#include "platform/WkJson.h"
 #include "wk/Json.h"
 
 namespace kk {
@@ -19,10 +19,6 @@ String idList(const std::vector<uint32_t>& ids, size_t begin, size_t end) {
     return s;
 }
 
-bool parseJson(std::string_view body, JsonValue* out) {
-    JsonParser p;
-    return p.parse(body, out);
-}
 }  // namespace
 
 std::vector<StudyMaterial> fetchStudyMaterials(const String& token,
@@ -33,29 +29,28 @@ std::vector<StudyMaterial> fetchStudyMaterials(const String& token,
     for (size_t begin = 0; begin < subjectIds.size(); begin += batch) {
         const size_t end = std::min(subjectIds.size(), begin + batch);
         const String path = "/v2/study_materials?subject_ids=" + idList(subjectIds, begin, end);
-        const WkResponse r = wkGetRetry(path, token, 32768, 12000);
-        if (r.httpCode != 200) {
-            Serial.printf("[study] HTTP %d for %u ids\n", r.httpCode,
+        WkJsonResult r = wkGetJsonRetry(path, token, 32768, 12000);
+        if (r.http.httpCode != 200) {
+            Serial.printf("[study] HTTP %d for %u ids\n", r.http.httpCode,
                           static_cast<unsigned>(end - begin));
             // A token without the study-materials scope is a normal case: keep
             // the subjects and let reviews/lessons work without notes.
-            if (r.httpCode == 401 || r.httpCode == 403) {
+            if (r.http.httpCode == 401 || r.http.httpCode == 403) {
                 Serial.println("[study] continuing without notes");
                 break;
             }
-            if (r.httpCode == 429) {
+            if (r.http.httpCode == 429) {
                 Serial.println("[study] rate limited; stopping batches");
                 break;
             }
             continue;
         }
-        JsonValue v;
-        if (!parseJson(r.body, &v)) {
+        if (!r.parsed) {
             Serial.printf("[study] JSON failed: len=%u trunc=%d\n",
-                          static_cast<unsigned>(r.body.size()), r.truncated ? 1 : 0);
+                          static_cast<unsigned>(r.http.body.size()), r.http.truncated ? 1 : 0);
             continue;
         }
-        std::vector<StudyMaterial> part = parseStudyMaterials(v);
+        std::vector<StudyMaterial> part = parseStudyMaterials(r.json);
         Serial.printf("[study] %u materials for %u ids\n", static_cast<unsigned>(part.size()),
                       static_cast<unsigned>(end - begin));
         for (StudyMaterial& m : part) out.push_back(std::move(m));

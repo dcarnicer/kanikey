@@ -32,9 +32,6 @@ void wkSetRequestHooks(WkMemHook before, WkMemHook after);
 // `path` starts with /v2/. `maxBodyBytes` bounds the String body.
 WkResponse wkGet(const String& path, const String& token, size_t maxBodyBytes,
                  uint32_t timeoutMs = 20000);
-// Same as wkGet, retrying a failed or truncated response a couple of times.
-WkResponse wkGetRetry(const String& path, const String& token, size_t maxBodyBytes,
-                      uint32_t timeoutMs = 20000, uint8_t attempts = 2);
 WkResponse wkPost(const String& path, const String& token, const String& body,
                   size_t maxBodyBytes, uint32_t timeoutMs = 20000);
 WkResponse wkPut(const String& path, const String& token, const String& body,

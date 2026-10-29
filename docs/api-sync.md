@@ -575,6 +575,7 @@ with a DOM. It still needs a DOM and duplicates temporary storage.
 | Code | Meaning | Action |
 |---|---|---|
 | 200 | OK | Apply |
+| 200, truncated / invalid JSON | Incomplete response | Retry once, then report the parse error |
 | 304 | Not modified | Use cache |
 | 401 | Invalid token | Stop, request token |
 | 403 | No permissions / subscription | Stop, explain |
@@ -598,14 +599,18 @@ with a DOM. It still needs a DOM and duplicates temporary storage.
 returns a synthetic 429 with `connected=true`, `rateLimitReset` and `retryAfter`,
 without opening TLS, calling the request hooks or touching the body buffer.
 `wkRateLimitWaitSeconds()` returns the remaining whole seconds, safely across the
-`millis()` wrap. `wkGetRetry` returns immediately on 429 and never retries a 4xx;
-it retries only a truncated 200, `httpCode == 0` or 5xx, with a short delay
-between attempts. The wait is the reset delta clamped to 120 s, or 60 s when the
-header is absent/past or the clock is untrusted. The boot screen, Home status line
-and sync error line show the countdown; an outbox POST 429 stays `Pending` and
-the next attempt is satisfied locally by the gate. The visible countdown is
-redrawn once per second while the gate is active and no blocking sync is
-running. A 429 on the non-critical Level or SRS step is a row warning but still
+`millis()` wrap. `wkGetJsonRetry` returns immediately on 429 and never retries a
+4xx; its streaming counterpart `wkGetBodyRetry` for `/summary` follows the same
+policy. They retry a truncated or unparsable 200, `httpCode == 0` or 5xx once,
+with a short delay between attempts. Each 200 body is parsed before the next
+request, so a short JSON body gets one more attempt; other 4xx and 429 are not
+retried by the helpers, and a 429 still arms the shared gate. The wait is the
+reset delta clamped to 120 s, or 60 s when the header is absent/past or the
+clock is untrusted. The boot screen, Home status line and sync error line show
+the countdown; an outbox POST 429 stays `Pending` and the next attempt is
+satisfied locally by the gate. The visible countdown is redrawn once per second
+while the gate is active and no blocking sync is running. A 429 on the
+non-critical Level or SRS step is a row warning but still
 sets the rate-limit state for Home/Boot. Study-material and review-statistic
 batch loops stop at the first 429. If reconciling an ambiguous outbox item is
 blocked by the gate, the item stays `ambiguous`.

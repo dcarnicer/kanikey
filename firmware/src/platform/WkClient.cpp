@@ -226,21 +226,6 @@ WkResponse wkGet(const String& path, const String& token, size_t maxBodyBytes,
     return request("GET", path, token, String(), maxBodyBytes, timeoutMs);
 }
 
-WkResponse wkGetRetry(const String& path, const String& token, size_t maxBodyBytes,
-                      uint32_t timeoutMs, uint8_t attempts) {
-    WkResponse r;
-    for (uint8_t i = 0; i < attempts; ++i) {
-        r = wkGet(path, token, maxBodyBytes, timeoutMs);
-        const bool retryable = (r.httpCode == 200 && r.truncated) || r.httpCode == 0 ||
-                               r.httpCode >= 500;
-        if (!retryable) return r;
-        Serial.printf("[http] retry %s (%d, %u bytes%s)\n", path.c_str(), r.httpCode,
-                      static_cast<unsigned>(r.bytes), r.truncated ? ", truncated" : "");
-        if (i + 1 < attempts) delay(300);
-    }
-    return r;
-}
-
 WkResponse wkPost(const String& path, const String& token, const String& body,
                   size_t maxBodyBytes, uint32_t timeoutMs) {
     return request("POST", path, token, body, maxBodyBytes, timeoutMs);

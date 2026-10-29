@@ -987,6 +987,32 @@ static void test_summary_text_parser() {
     TEST_ASSERT_EQUAL(2, s.dueReviews(now));
 }
 
+static void test_summary_text_parser_empty() {
+    const char* text =
+        "{\"object\":\"report\",\"data\":{\"lessons\":[],\"reviews\":[],"
+        "\"next_reviews_at\":null}}";
+    Summary s;
+    TEST_ASSERT_TRUE(parseSummaryText(text, &s));
+    TEST_ASSERT_EQUAL(0, s.totalLessons());
+    TEST_ASSERT_EQUAL(0, s.totalReviews());
+    TEST_ASSERT_TRUE(s.nextReviewsAt.empty());
+
+    const char* invalid[] = {
+        "{}",
+        "{\"object\":\"report\"}",
+        "{\"errors\":[{\"error\":\"unauthorized\"}]}",
+        "{\"data\":{}}",
+        "{\"data\":{\"lessons\":[]}}",
+        "{\"data\":{\"reviews\":[]}}",
+        "{\"data\":{\"lessons\":[]}",
+    };
+    for (const char* json : invalid) {
+        TEST_ASSERT_FALSE(parseSummaryText(json, &s));
+        TEST_ASSERT_EQUAL(0, s.totalLessons());
+        TEST_ASSERT_EQUAL(0, s.totalReviews());
+    }
+}
+
 static void test_cache_account_key() {
     TEST_ASSERT_EQUAL_UINT32(0x4F9F2CABu, cacheAccountKey("hello"));
 }
@@ -1218,6 +1244,7 @@ int main(int, char**) {
     RUN_TEST(test_user_parse);
     RUN_TEST(test_summary_parse_and_counts);
     RUN_TEST(test_summary_text_parser);
+    RUN_TEST(test_summary_text_parser_empty);
     RUN_TEST(test_review_response_parse);
     RUN_TEST(test_level_progressions_parse);
     RUN_TEST(test_srs_total_count_and_groups);

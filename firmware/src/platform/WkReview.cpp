@@ -1,10 +1,10 @@
 #include "platform/WkReview.h"
 
 #include <algorithm>
-#include <string_view>
 #include <utility>
 
 #include "platform/WkClient.h"
+#include "platform/WkJson.h"
 #include "platform/WkLessons.h"
 #include "platform/WkReviewStatistics.h"
 #include "platform/WkStudyMaterials.h"
@@ -22,10 +22,6 @@ String idList(const std::vector<uint32_t>& ids, size_t begin, size_t end) {
     return s;
 }
 
-bool parseJson(std::string_view body, JsonValue* out) {
-    JsonParser p;
-    return p.parse(body, out);
-}
 }  // namespace
 
 ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& dueSubjectIds,
@@ -42,18 +38,17 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
     batch.subjects.reserve(want);
     String path = "/v2/assignments?subject_ids=" + idList(dueSubjectIds, 0, want);
     Serial.printf("[review] assignments for %u subjects\n", static_cast<unsigned>(want));
-    const WkResponse ar = wkGetRetry(path, token, 32768, 12000);
-    if (ar.httpCode != 200) {
-        batch.error = "assignments HTTP " + String(ar.httpCode);
+    WkJsonResult ar = wkGetJsonRetry(path, token, 32768, 12000);
+    if (ar.http.httpCode != 200) {
+        batch.error = "assignments HTTP " + String(ar.http.httpCode);
         return batch;
     }
-    JsonValue av;
-    if (!parseJson(ar.body, &av)) {
+    if (!ar.parsed) {
         batch.error = "assignments JSON";
         return batch;
     }
-    const std::vector<Assignment> parsed = parseAssignments(av);
-    av = JsonValue{};  // the assignment DOM is not needed while subjects load
+    const std::vector<Assignment> parsed = parseAssignments(ar.json);
+    ar.json = JsonValue{};  // the assignment DOM is not needed while subjects load
     for (const Assignment& a : parsed) {
         if (a.hidden || a.srsStage < 1 || a.srsStage > 8) continue;
         if (a.availableAt != 0 && a.availableAt > now) continue;
@@ -74,23 +69,22 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
     for (size_t begin = 0; begin < ids.size(); begin += kSubjectBatch) {
         const size_t end = std::min(ids.size(), begin + kSubjectBatch);
         String sp = "/v2/subjects?ids=" + idList(ids, begin, end);
-        const WkResponse sr = wkGetRetry(sp, token, 32768, 12000);
-        if (sr.httpCode != 200) {
-            batch.error = "subjects HTTP " + String(sr.httpCode);
+        WkJsonResult sr = wkGetJsonRetry(sp, token, 32768, 12000);
+        if (sr.http.httpCode != 200) {
+            batch.error = "subjects HTTP " + String(sr.http.httpCode);
             return batch;
         }
-        JsonValue sv;
-        if (!parseJson(sr.body, &sv)) {
-            const size_t n = sr.body.size();
+        if (!sr.parsed) {
+            const size_t n = sr.http.body.size();
             Serial.printf("[review] subjects JSON failed: len=%u trunc=%d\n",
-                          static_cast<unsigned>(n), sr.truncated ? 1 : 0);
+                          static_cast<unsigned>(n), sr.http.truncated ? 1 : 0);
             Serial.printf("[review] head: %.*s\n", static_cast<int>(std::min<size_t>(n, 80)),
-                          sr.body.data());
+                          sr.http.body.data());
             batch.error = "subjects JSON";
             return batch;
         }
-        std::vector<Subject> part = parseSubjects(sv, true);
-        sv = JsonValue{};  // free the page before growing the subject vector
+        std::vector<Subject> part = parseSubjects(sr.json, true);
+        sr.json = JsonValue{};  // free the page before growing the subject vector
         for (Subject& s : part) batch.subjects.push_back(std::move(s));
         Serial.printf("[review] subjects %u/%u, total %u\n", static_cast<unsigned>(end),
                       static_cast<unsigned>(ids.size()),

@@ -1,8 +1,7 @@
 #include "platform/WkSrsCounts.h"
 
-#include <string_view>
-
 #include "platform/WkClient.h"
+#include "platform/WkJson.h"
 #include "wk/Json.h"
 
 namespace kk {
@@ -20,19 +19,17 @@ constexpr const char* kBucketPaths[5] = {
 };
 
 bool fetchTotal(const String& token, const char* path, uint32_t* out) {
-    const WkResponse r = wkGetRetry(path, token, 4096, 12000);
-    if (r.httpCode != 200) {
-        Serial.printf("[srs] %s -> HTTP %d\n", path, r.httpCode);
+    const WkJsonResult r = wkGetJsonRetry(path, token, 4096, 12000);
+    if (r.http.httpCode != 200) {
+        Serial.printf("[srs] %s -> HTTP %d\n", path, r.http.httpCode);
         return false;
     }
-    JsonParser p;
-    JsonValue v;
-    if (!p.parse(std::string_view(r.body.data(), r.body.size()), &v)) {
-        Serial.printf("[srs] JSON failed: len=%u trunc=%d\n", static_cast<unsigned>(r.body.size()),
-                      r.truncated ? 1 : 0);
+    if (!r.parsed) {
+        Serial.printf("[srs] JSON failed: len=%u trunc=%d\n",
+                      static_cast<unsigned>(r.http.body.size()), r.http.truncated ? 1 : 0);
         return false;
     }
-    if (!parseCollectionTotal(v, out)) {
+    if (!parseCollectionTotal(r.json, out)) {
         Serial.printf("[srs] %s has no total_count\n", path);
         return false;
     }

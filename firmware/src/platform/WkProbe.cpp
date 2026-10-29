@@ -3,30 +3,28 @@
 #include <string_view>
 
 #include "platform/WkClient.h"
-#include "wk/Json.h"
+#include "platform/WkJson.h"
 #include "wk/SummaryParser.h"
 
 namespace kk {
 
 namespace {
-bool parseBody(std::string_view body, JsonValue* out) {
-    JsonParser p;
-    return p.parse(body, out);
+bool parseSummaryBody(std::string_view body, void* out) {
+    return parseSummaryText(body, static_cast<Summary*>(out));
 }
 }  // namespace
 
 WkProbeResult probeWaniKaniUser(const String& token) {
     WkProbeResult r;
-    const WkResponse http = wkGet("/v2/user", token, 4096);
-    r.connected = http.connected;
-    r.httpCode = http.httpCode;
-    r.tlsError = http.tlsError;
-    r.ms = http.ms;
-    r.bytes = http.bytes;
-    r.statusLine = http.statusLine;
-    if (http.httpCode == 200) {
-        JsonValue v;
-        if (parseBody(http.body, &v)) r.parsed = parseUser(v, &r.user);
+    const WkJsonResult res = wkGetJsonRetry("/v2/user", token, 4096, 20000);
+    r.connected = res.http.connected;
+    r.httpCode = res.http.httpCode;
+    r.tlsError = res.http.tlsError;
+    r.ms = res.http.ms;
+    r.bytes = res.http.bytes;
+    r.statusLine = res.http.statusLine;
+    if (res.http.httpCode == 200) {
+        if (res.parsed) r.parsed = parseUser(res.json, &r.user);
         if (r.parsed)
             Serial.printf("[user] %s level %d, max level %d, batch %d, order %s\n",
                           r.user.username.c_str(), r.user.level, r.user.maxLevelGranted,
@@ -42,14 +40,15 @@ WkProbeResult probeWaniKaniUser(const String& token) {
 
 SummaryProbeResult probeWaniKaniSummary(const String& token) {
     SummaryProbeResult r;
-    const WkResponse http = wkGet("/v2/summary", token, 32768);
-    r.connected = http.connected;
-    r.httpCode = http.httpCode;
-    r.tlsError = http.tlsError;
-    r.ms = http.ms;
-    r.bytes = http.bytes;
-    if (http.httpCode == 200) {
-        r.parsed = parseSummaryText(http.body, &r.summary);
+    const WkBodyResult res =
+        wkGetBodyRetry("/v2/summary", token, 32768, parseSummaryBody, &r.summary, 20000);
+    r.connected = res.http.connected;
+    r.httpCode = res.http.httpCode;
+    r.tlsError = res.http.tlsError;
+    r.ms = res.http.ms;
+    r.bytes = res.http.bytes;
+    if (res.http.httpCode == 200) {
+        r.parsed = res.parsed;
         if (r.parsed)
             Serial.printf("[summary] %u reviews, %u lessons, next %s\n",
                           static_cast<unsigned>(r.summary.totalReviews()),
