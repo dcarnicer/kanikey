@@ -117,8 +117,8 @@ Working on hardware:
 - 72 native tests and the `cardputer-adv` build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests.
 
-Current build: **1,417,949 B / 1,835,008 B flash (77.3%)**, **94,704 B /
-327,680 B static RAM (28.9%)**. The dev image is 1,425,549 B. Removing
+Current build: **1,418,401 B / 1,835,008 B flash (77.3%)**, **94,704 B /
+327,680 B static RAM (28.9%)**. The dev image is 1,426,001 B. Removing
 `efontJA_16` freed ~468 KB and leaves ~420 KB of flash headroom.
 
 ## Priority summary
@@ -582,11 +582,14 @@ SRS and deck catalog remain intentionally dropped. See
   228 px truncation and token/pack status, and `app/ModalScreens` takes
   `PauseView` and `LowBatteryView` (or no view for sign-out) and draws the
   Pause, low battery and sign-out frames; `main.cpp` keeps their key handlers,
-  state and actions. `ui/Theme.h` holds the common colors and `ui/Text` holds
-  `drawWrapped`. Review, Lesson, debug, the remaining drawing helpers, session
-  state and services still live in `main.cpp`. 72 native tests pass; release
-  build 1,417,949 B flash / 94,704 B static RAM, dev build 1,425,549 B /
-  94,728 B.
+  state and actions. `ui/Theme.h` holds the common colors, `ui/Text` holds
+  `drawWrapped` and `ui/Widgets` holds the shared `drawPill`,
+  `trimFrontToWidth`, `drawSubjectPrompt`, `drawMissingGlyph` and
+  `drawJapaneseFit`; the three glyph helpers take an explicit `GlyphPack`.
+  Review, Lesson,
+  debug, session state and services still live in `main.cpp`. 72 native tests
+  pass; release build 1,418,401 B flash / 94,704 B static RAM, dev build
+  1,426,001 B / 94,728 B.
 - **TECH-03 — Dev hooks.** `KANIKEY_DEV` now covers the M0 screen and Tab
   shortcut; put `gDirectReading`, synthetic outbox commands and other serial
   helpers behind the same flag.

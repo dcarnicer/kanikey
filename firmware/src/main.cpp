@@ -56,6 +56,7 @@
 #include "wk/Utf8.h"
 #include "ui/Text.h"
 #include "ui/Theme.h"
+#include "ui/Widgets.h"
 
 namespace {
 
@@ -779,66 +780,6 @@ void clearReviewInput() {
     gIme.clear();
 }
 
-void drawPill(lgfx::LovyanGFX& d, int x, int y, const char* text, uint16_t fg, uint16_t bg) {
-    d.setTextFont(0);
-    d.setTextSize(1);
-    const int w = d.textWidth(text) + 8;
-    d.fillRect(x, y, w, 13, bg);
-    d.setTextColor(fg, bg);
-    d.drawString(text, x + 4, y + 2);
-}
-
-void trimFrontToWidth(lgfx::LovyanGFX& d, std::string& text, int maxWidth) {
-    while (text.size() > 1 && d.textWidth(text.c_str()) > maxWidth) {
-        const char* p = text.c_str();
-        kk::utf8Next(&p);
-        const size_t n = static_cast<size_t>(p - text.c_str());
-        if (n == 0 || n >= text.size()) break;
-        text.erase(0, n);
-    }
-}
-
-// Radicals use their own bitmap; everything else uses the character pack. The
-// caller draws an explicit missing-glyph state when this returns false.
-bool drawSubjectPrompt(lgfx::LovyanGFX& d, const kk::Subject& s, int cx, int cy,
-                       int maxWidth, int maxHeight, int radicalMaxSide, uint16_t fg,
-                       uint16_t bg, const kk::ClipRect& clip) {
-    if (s.type == kk::SubjectType::Radical) {
-        const int side = std::min({maxWidth, maxHeight, radicalMaxSide});
-        if (gPack.drawRadical(d, s.id, cx, cy, side, side, fg, bg, clip)) return true;
-    }
-    if (!s.characters.empty() &&
-        gPack.drawTextCentered(d, s.characters, 64, cx, cy, maxWidth, maxHeight, fg, bg,
-                               clip))
-        return true;
-    return false;
-}
-
-void drawMissingGlyph(lgfx::LovyanGFX& d, int cx, int cy) {
-    d.setTextDatum(lgfx::middle_center);
-    d.setTextFont(4);
-    d.setTextSize(1);
-    d.setTextColor(kWarn, kSurface);
-    d.drawString("?", cx, cy - 8);
-    d.setTextFont(0);
-    d.setTextSize(1);
-    d.setTextColor(kFaint, kSurface);
-    d.drawString(gPack.ready() ? "no glyph" : "no pack", cx, cy + 12);
-    d.drawString("check SD", cx, cy + 21);
-    d.setTextDatum(lgfx::top_left);
-}
-
-// 20 px text that fits, or right-aligned when the reading is too wide. A
-// missing glyph is different from a long reading; only the former says
-// "no glyph".
-bool drawJapaneseFit(lgfx::LovyanGFX& d, const std::string& text, int x, int right, int y,
-                     int maxWidth, uint16_t fg, uint16_t bg, const kk::ClipRect& clip) {
-    if (gPack.drawTextFit(d, text, x, y, 20, maxWidth, fg, bg, clip)) return true;
-    if (gPack.covers(text, 20))
-        return gPack.drawTextRight(d, text, right, y, 20, fg, bg, clip);
-    return false;
-}
-
 void drawReview() {
     if (!gDisp) return;
     const kk::SessionItem* item = gQueue.current();
@@ -883,9 +824,9 @@ void drawReview() {
 
     d.fillRect(4, 20, 88, 88, kSurface);
     d.drawRect(4, 20, 88, 88, kLine);
-    if (!drawSubjectPrompt(d, *s, 48, 56, 78, 80, 64, kText, kSurface,
+    if (!drawSubjectPrompt(d, gPack, *s, 48, 56, 78, 80, 64, kText, kSurface,
                            kk::ClipRect{6, 22, 90, 106}))
-        drawMissingGlyph(d, 48, 56);
+        drawMissingGlyph(d, gPack, 48, 56);
     char type[24];
     const char* kindName = s->type == kk::SubjectType::Vocabulary ? "VOCAB"
                            : s->type == kk::SubjectType::Radical ? "RADICAL"
@@ -957,7 +898,7 @@ void drawReview() {
             d.drawString("Y", 100, 40);
             bool typedDrawn = false;
             if (!typed.empty())
-                typedDrawn = drawJapaneseFit(d, typed, 108, 232, 56, 128, kDim, kBg,
+                typedDrawn = drawJapaneseFit(d, gPack, typed, 108, 232, 56, 128, kDim, kBg,
                                              kk::ClipRect{108, 38, 236, 58});
             if (!typedDrawn) {
                 d.setTextFont(1);
@@ -970,7 +911,7 @@ void drawReview() {
             d.setTextColor(kFaint, kBg);
             d.drawString("A", 100, 72);
             bool answerDrawn = drawJapaneseFit(
-                d, answer, 108, 232, 86, 128, ok ? kOk : warn ? kWarn : kErr, kBg,
+                d, gPack, answer, 108, 232, 86, 128, ok ? kOk : warn ? kWarn : kErr, kBg,
                 kk::ClipRect{108, 68, 236, 88});
             if (!answerDrawn) {
                 d.setTextFont(1);
@@ -1068,9 +1009,9 @@ void drawReviewDetail() {
 
     d.fillRect(4, 20, 74, 64, kSurface);
     d.drawRect(4, 20, 74, 64, kLine);
-    if (!drawSubjectPrompt(d, *s, 41, 52, 70, 62, 60, kText, kSurface,
+    if (!drawSubjectPrompt(d, gPack, *s, 41, 52, 70, 62, 60, kText, kSurface,
                            kk::ClipRect{6, 22, 76, 82}))
-        drawMissingGlyph(d, 41, 52);
+        drawMissingGlyph(d, gPack, 41, 52);
     const char* kind = s->type == kk::SubjectType::Vocabulary ? "VOCAB"
                        : s->type == kk::SubjectType::Radical ? "RADICAL"
                                                               : "KANJI";
@@ -1119,7 +1060,7 @@ void drawReviewDetail() {
                     }
             if (reading.empty()) {
                 d.drawString("none", 94, 88);
-            } else if (!drawJapaneseFit(d, reading, 94, 232, 98, 142, kReading, kBg,
+            } else if (!drawJapaneseFit(d, gPack, reading, 94, 232, 98, 142, kReading, kBg,
                                         kk::ClipRect{94, 80, 236, 100})) {
                 d.setTextFont(1);
                 d.setTextSize(1);
@@ -2230,9 +2171,9 @@ void drawLesson() {
 
     d.fillRect(4, 20, 74, 64, kSurface);
     d.drawRect(4, 20, 74, 64, kLine);
-    if (!drawSubjectPrompt(d, *s, 41, 52, 70, 62, 60, kText, kSurface,
+    if (!drawSubjectPrompt(d, gPack, *s, 41, 52, 70, 62, 60, kText, kSurface,
                            kk::ClipRect{6, 22, 76, 82}))
-        drawMissingGlyph(d, 41, 52);
+        drawMissingGlyph(d, gPack, 41, 52);
 
     const char* kind = s->type == kk::SubjectType::Vocabulary ? "VOCAB"
                        : s->type == kk::SubjectType::Radical ? "RADICAL"
@@ -2252,7 +2193,7 @@ void drawLesson() {
     if (!reading.empty()) {
         if (!gPack.drawTextFit(d, reading, 86, 80, 32, 148, kReading, kBg,
                                kk::ClipRect{86, 50, 236, 88}) &&
-            !drawJapaneseFit(d, reading, 86, 232, 80, 148, kReading, kBg,
+            !drawJapaneseFit(d, gPack, reading, 86, 232, 80, 148, kReading, kBg,
                              kk::ClipRect{86, 50, 236, 88})) {
             d.setTextFont(1);
             d.setTextSize(1);
@@ -2341,9 +2282,9 @@ void drawLessonQuiz() {
 
     d.fillRect(4, 20, 74, 64, kSurface);
     d.drawRect(4, 20, 74, 64, kLine);
-    if (!drawSubjectPrompt(d, s, 41, 52, 70, 62, 60, kText, kSurface,
+    if (!drawSubjectPrompt(d, gPack, s, 41, 52, 70, 62, 60, kText, kSurface,
                            kk::ClipRect{6, 22, 76, 82}))
-        drawMissingGlyph(d, 41, 52);
+        drawMissingGlyph(d, gPack, 41, 52);
 
     const bool meaning = gLessonQuiz.part() == kk::AnswerKind::Meaning;
     const kk::AnswerCheck& result = gLessonQuiz.result();
@@ -2384,7 +2325,7 @@ void drawLessonQuiz() {
             d.drawString("Y", 86, 40);
             bool typedDrawn = false;
             if (!typed.empty())
-                typedDrawn = drawJapaneseFit(d, typed, 94, 232, 56, 142, kDim, kBg,
+                typedDrawn = drawJapaneseFit(d, gPack, typed, 94, 232, 56, 142, kDim, kBg,
                                              kk::ClipRect{94, 38, 236, 58});
             if (!typedDrawn) {
                 d.setTextFont(1);
@@ -2397,7 +2338,7 @@ void drawLessonQuiz() {
             d.setTextColor(kFaint, kBg);
             d.drawString("A", 86, 72);
             bool answerDrawn = drawJapaneseFit(
-                d, answer, 94, 232, 86, 142, ok ? kOk : warn ? kWarn : kErr, kBg,
+                d, gPack, answer, 94, 232, 86, 142, ok ? kOk : warn ? kWarn : kErr, kBg,
                 kk::ClipRect{94, 68, 236, 88});
             if (!answerDrawn) {
                 d.setTextFont(1);
@@ -4210,7 +4151,7 @@ void drawRadicalTest() {
     d.drawRect(4, 38, 232, 66, kLine);
     const bool ok = gPack.drawRadical(d, gRadicalTestId, 120, 71, 96, 62, kText, kSurface,
                                       kk::ClipRect{6, 40, 234, 102});
-    if (!ok) drawMissingGlyph(d, 120, 71);
+    if (!ok) drawMissingGlyph(d, gPack, 120, 71);
 
     d.setTextFont(1);
     d.setTextSize(1);

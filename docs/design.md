@@ -394,9 +394,12 @@ plus `drawSetupScreen`, including the AP and station layouts, battery state,
 (`PauseView`, `LowBatteryView` plus `drawPauseScreen`, `drawLowBatteryScreen`
 and `drawSignOutScreen`, including the pause progress and selection rows, the
 battery percentage and both confirmation bodies), each drawn between the
-caller's `startWrite()`/`present()`; `ui/Theme.h` is the shared RGB332 palette and
-`ui/Text.h` holds the shared wrapped-text helper. The other screens still live
-in `main.cpp`.
+caller's `startWrite()`/`present()`; `ui/Theme.h` is the shared RGB332 palette,
+`ui/Text.h` holds the shared wrapped-text helper and `ui/Widgets.h` holds the
+shared drawing widgets (`drawPill`, `trimFrontToWidth`, `drawSubjectPrompt`,
+`drawMissingGlyph`, `drawJapaneseFit`); the three glyph helpers take an explicit
+`GlyphPack`.
+The other screens still live in `main.cpp`.
 
 Rule: `wk/`, `store/`, and the logic in `ui/` compile and are tested in
 PlatformIO's `native` environment without Arduino headers. It's the same
