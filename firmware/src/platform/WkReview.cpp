@@ -40,6 +40,7 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
     Serial.printf("[review] assignments for %u subjects\n", static_cast<unsigned>(want));
     WkJsonResult ar = wkGetJsonRetry(path, token, 32768, 12000);
     if (ar.http.httpCode != 200) {
+        batch.httpCode = ar.http.httpCode;
         batch.error = "assignments HTTP " + String(ar.http.httpCode);
         return batch;
     }
@@ -71,6 +72,7 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
         String sp = "/v2/subjects?ids=" + idList(ids, begin, end);
         WkJsonResult sr = wkGetJsonRetry(sp, token, 32768, 12000);
         if (sr.http.httpCode != 200) {
+            batch.httpCode = sr.http.httpCode;
             batch.error = "subjects HTTP " + String(sr.http.httpCode);
             return batch;
         }

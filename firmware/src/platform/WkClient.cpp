@@ -26,6 +26,12 @@ uint32_t gRateLimitDeadlineMs = 0;
 uint32_t gRateLimitResetEpoch = 0;
 bool gRateLimitGateActive = false;
 
+// Shared 401 gate: once the API rejects the token, every request is answered
+// locally with the same 401 until the token is saved, validated or cleared.
+// Missing scope (403) is endpoint-specific and deliberately does not arm it.
+bool gAuthBlocked = false;
+int gAuthHttpCode = 0;
+
 // The Cardputer has no RTC; anything earlier than this is a clock that has not
 // been set yet, so an epoch reset header cannot be compared against it.
 constexpr uint32_t kTrustedClockEpoch = 1700000000u;
@@ -63,10 +69,25 @@ uint32_t wkRateLimitWaitSeconds() {
     return (static_cast<uint32_t>(left) + 999u) / 1000u;
 }
 
+bool wkAuthBlocked() { return gAuthBlocked; }
+
+void wkClearAuthBlock() {
+    if (gAuthBlocked) Serial.println("[http] auth gate cleared");
+    gAuthBlocked = false;
+    gAuthHttpCode = 0;
+}
+
 namespace {
 WkResponse request(const String& method, const String& path, const String& token,
                     const String& body, size_t maxBodyBytes, uint32_t timeoutMs) {
     const uint32_t startMs = millis();
+    if (gAuthBlocked) {
+        WkResponse r;
+        r.connected = true;
+        r.httpCode = gAuthHttpCode ? gAuthHttpCode : 401;
+        Serial.printf("[http] %s blocked by auth (%d)\n", path.c_str(), r.httpCode);
+        return r;
+    }
     if (gRateLimitGateActive) {
         const int32_t left = static_cast<int32_t>(gRateLimitDeadlineMs - startMs);
         if (left > 0) {
@@ -201,6 +222,11 @@ WkResponse request(const String& method, const String& path, const String& token
     Serial.printf("[http] %s -> %d, %u body bytes, %u ms, cl=%d%s\n", path.c_str(),
                   r.httpCode, static_cast<unsigned>(r.bytes), static_cast<unsigned>(r.ms),
                   contentLength, r.truncated ? " (truncated)" : "");
+    if (r.httpCode == 401) {
+        gAuthBlocked = true;
+        gAuthHttpCode = r.httpCode;
+        Serial.printf("[http] 401 token rejected; blocking requests until the token changes\n");
+    }
     if (r.httpCode == 429) {
         const time_t now = time(nullptr);
         const uint32_t nowEpoch = now > 0 ? static_cast<uint32_t>(now) : 0;

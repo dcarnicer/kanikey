@@ -14,6 +14,7 @@ namespace kk {
 
 struct ReviewBatch {
     bool ok = false;
+    int httpCode = 0;
     String error;
     std::vector<Assignment> assignments;
     std::vector<Subject> subjects;

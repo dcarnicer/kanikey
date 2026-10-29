@@ -197,8 +197,10 @@ materials for their own subject IDs in groups of 10, after the subjects are
 parsed. Notes are whitespace-collapsed, hidden materials are skipped and the
 synonyms are de-duplicated. Everything is merged into the `Subject`, so the
 answer checker and the lesson/feedback cards use it and the subject cache keeps
-it offline. A 401/403 on `/study_materials` is logged and the batch continues
-without notes: a token without that permission can still review and study.
+it offline. A 403 on `/study_materials` is logged and the batch continues
+without notes: a token without that permission can still review and study. A
+401 is different: it arms the session-wide auth gate and the review/lesson
+flow stops to ask for a new token.
 
 ### 3.6 `POST /reviews`
 
@@ -285,8 +287,11 @@ value.
 - It is stored in NVS; it is shown masked; it is deleted on logout.
 - It is validated with `GET /user` before storing it.
 - If the token lacks permissions, `403`; what is missing is shown and updating it
-  is offered.
-- If the token is revoked, `401`; returning to setup is offered.
+  is offered. A 403 is per endpoint and does not stop requests that are still in
+  scope (for example, study materials can fail while reviews work).
+- If the token is revoked, `401`; returning to setup is offered. A 401 arms a
+  session-wide gate: later requests are answered locally with 401 until setup
+  starts, the token is saved/validated/cleared, or the user signs out.
 
 ---
 
@@ -392,6 +397,9 @@ setting is separate and only selects meaning-first or reading-first.
   HTTP code and kept; it is not deleted or reconciled automatically. Home shows
   `N need attention` and `O: outbox` opens the list to review or discard it.
 - If the token expires, the outbox is kept and reauthentication is requested.
+  An outbox 401/403 is retained as a deferred auth issue, so a later successful
+  `/user` or `/summary` does not hide it; it clears when the outbox drains or
+  the token is validated/changed.
 
 ---
 
@@ -431,7 +439,12 @@ offset  field              type
 2. For each `pending`:
    - POST.
    - 200: apply `resources_updated.assignment`; delete.
-   - 401/403: stop and request auth.
+   - 401: arm the session-wide auth gate and stop; later requests are answered
+     locally with the stored 401. The item stays `Pending` and is remembered as
+     a deferred auth issue.
+   - 403: stop this endpoint and request permissions; the item stays `Pending`
+     and is remembered as a deferred auth issue. Other endpoints are not gated
+     because the missing scope may be local to one resource.
    - 422/409: mark `rejected` with the HTTP code; keep it for the Outbox
      screen.
    - 429: wait for `RateLimit-Reset`; leave pending. The shared gate makes the
@@ -445,8 +458,8 @@ offset  field              type
    - If the assignment still has the same stage and `available_at` earlier than
      `created_at`, the POST did not arrive; set it back to `pending`.
    - If it cannot be decided, show `Needs attention` and do not duplicate.
-   - If the shared 429 gate is active during reconciliation, keep the item
-     `ambiguous` and stop rather than retrying the POST.
+   - If the shared 429 or 401 gate is active during reconciliation, keep the
+     item `ambiguous` and stop rather than retrying the POST.
 
 ### 6.3 Why not retry blindly
 
@@ -577,8 +590,8 @@ with a DOM. It still needs a DOM and duplicates temporary storage.
 | 200 | OK | Apply |
 | 200, truncated / invalid JSON | Incomplete response | Retry once, then report the parse error |
 | 304 | Not modified | Use cache |
-| 401 | Invalid token | Stop, request token |
-| 403 | No permissions / subscription | Stop, explain |
+| 401 | Invalid token | Arm the session-wide auth gate; stop until token validation/save, setup start, sign-out or dev token clear; outbox items stay Pending |
+| 403 | No permissions / subscription | Per-endpoint only; explain and keep the outbox item Pending; do not gate other requests |
 | 404 | Resource does not exist | Discard, refresh |
 | 409 | Conflict | Mark rejected; keep until the user discards in Outbox |
 | 422 | Validation | Mark rejected, do not retry; keep until the user discards in Outbox |
@@ -593,7 +606,33 @@ with a DOM. It still needs a DOM and duplicates temporary storage.
 - No requests are made in parallel. One at a time.
 - The radio is turned off when done.
 
-**Implementation (2026-10-29).** `WkClient` parses `RateLimit-Reset` and
+**Implementation (2026-10-29).** `WkClient` stores a real 401 in one shared
+session-wide auth gate. While it is armed, every GET/POST/PUT returns a
+synthetic `connected=true` 401 without opening TLS, calling the request hooks or
+touching the body buffer, so no endpoint retries the rejected token. The gate is
+cleared when setup starts, a token is saved or validated (setup portal, serial
+dev `k`), the dev token is cleared, or the user signs out; an ordinary 200 does
+not clear it. A 403 is not gated: it is reported for the endpoint that returned
+it and the rest of the batch can continue, so a token without the
+study-materials scope can still review.
+
+An outbox POST that gets 401/403 stays `Pending` and is also kept as a deferred
+session auth issue. A later successful `/user` or `/summary` does not erase it;
+the sync end reapplies it, so Home/Boot show the generic `Auth: token rejected` /
+`Auth: missing permissions`. The `Reviews: token rejected (401)`, `Reviews:
+missing permissions (403)`, `Lessons: ...` and `Lesson: ...` strings are
+transient loading/sync/debug lines, not the Home status. The deferred issue
+clears when the outbox has no unsent items and on token validation/save/clear or
+sign-out; draining the outbox also clears an Auth/Forbidden Home state that came
+from the outbox, without hiding a current probe/summary failure. Review and
+lesson batches carry their HTTP code, so a 401/403 stops the batch and shows the
+transient line; an optional materials/statistics/component 401 also stops the
+session. A failed `PUT /start` returns Home with the auth state and the transient
+`Lesson: ...` line. If reconciliation is blocked by the 401 gate, the outbox item
+stays `Ambiguous` instead of being downgraded to `Pending`. A non-critical Level
+or SRS 401 keeps the sync going as a row warning but still sets the auth state.
+
+The same client parses `RateLimit-Reset` and
 `RateLimit-Remaining` case-insensitively. Any 429 arms one shared monotonic gate
 (`millis()` deadline + reset epoch + wait); every GET/POST/PUT while it is active
 returns a synthetic 429 with `connected=true`, `rateLimitReset` and `retryAfter`,
@@ -613,7 +652,7 @@ while the gate is active and no blocking sync is running. A 429 on the
 non-critical Level or SRS step is a row warning but still
 sets the rate-limit state for Home/Boot. Study-material and review-statistic
 batch loops stop at the first 429. If reconciling an ambiguous outbox item is
-blocked by the gate, the item stays `ambiguous`.
+blocked by the 429 or 401 gate, the item stays `ambiguous`.
 
 ---
 

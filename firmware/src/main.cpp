@@ -146,6 +146,12 @@ bool gOffline = false;
 uint32_t gCacheSavedAt = 0;
 enum class SyncIssue : uint8_t { None, Network, Auth, Forbidden, RateLimit, Server, Other };
 SyncIssue gSyncIssue = SyncIssue::None;
+// An outbox 401/403 must survive a successful /user or /summary later in the
+// same sync; it is reapplied before the sync screen closes.
+SyncIssue gDeferredAuthIssue = SyncIssue::None;
+// True when the current Auth/Forbidden gSyncIssue came from the outbox, so a
+// later drain can clear it without hiding a failed probe/summary.
+bool gOutboxAuthIssue = false;
 
 // Sync screen: one row per real step, updated between blocking requests.
 constexpr int kSyncRowCount = 6;
@@ -500,6 +506,7 @@ void updateModifier(uint8_t x, uint8_t y, bool down) {
 }
 
 void setSyncIssue(int httpCode, bool connected, int tlsError, const char* what) {
+    gOutboxAuthIssue = false;
     if (!connected) {
         gSyncIssue = SyncIssue::Network;
         if (tlsError)
@@ -537,6 +544,25 @@ void setSyncIssue(int httpCode, bool connected, int tlsError, const char* what) 
     }
 }
 
+void applyDeferredAuthIssue() {
+    if (gDeferredAuthIssue == SyncIssue::Auth) {
+        setSyncIssue(401, true, 0, "Reviews");
+        gOutboxAuthIssue = true;
+    } else if (gDeferredAuthIssue == SyncIssue::Forbidden &&
+               gSyncIssue != SyncIssue::Auth) {
+        setSyncIssue(403, true, 0, "Reviews");
+        gOutboxAuthIssue = true;
+    }
+}
+
+void clearOutboxAuthIssue() {
+    gDeferredAuthIssue = SyncIssue::None;
+    if (gOutboxAuthIssue &&
+        (gSyncIssue == SyncIssue::Auth || gSyncIssue == SyncIssue::Forbidden))
+        gSyncIssue = SyncIssue::None;
+    gOutboxAuthIssue = false;
+}
+
 void runProbe() {
     const String token = kk::DevToken::load();
     snprintf(gNetLine, sizeof gNetLine, "API: probing...");
@@ -546,6 +572,7 @@ void runProbe() {
         gUser = r.user;
         gHaveUser = true;
         gSyncIssue = SyncIssue::None;
+        gOutboxAuthIssue = false;
     } else {
         setSyncIssue(r.httpCode, r.connected, r.tlsError, "API");
     }
@@ -567,6 +594,7 @@ void runSummary() {
         gSummary = r.summary;
         gHaveSummary = true;
         gSyncIssue = SyncIssue::None;
+        gOutboxAuthIssue = false;
         gSyncedAt = now >= 1700000000u ? now : 0;
         if (gSyncedAt) localHm(gSyncedAt, gSyncClock, sizeof gSyncClock);
         pruneBatchToSummary(now);
@@ -629,6 +657,7 @@ bool runBatch() {
         Serial.printf("[review] batch failed: %s\n", batch.error.c_str());
         snprintf(gNetLine, sizeof gNetLine, "Batch: %s", batch.error.c_str());
         gBatch = kk::ReviewBatch{};
+        gBatch.httpCode = batch.httpCode;
         gDirty = true;
         return false;
     }
@@ -1364,12 +1393,13 @@ bool sendOutboxItem(uint32_t seq) {
         if (reconcileOutboxItem(*item)) return true;
         item = kk::outboxFind(gOutbox, seq);
         if (!item) return true;
-        if (kk::wkRateLimitWaitSeconds() > 0) {
-            // The GET was blocked by the shared 429 gate, so the POST may have
-            // succeeded earlier; keep it ambiguous instead of risking a resend.
+        if (kk::wkRateLimitWaitSeconds() > 0 || kk::wkAuthBlocked()) {
+            // The GET was blocked by the shared 429/401 gate, so the POST may
+            // have succeeded earlier; keep it ambiguous instead of resending.
             item->state = kk::OutboxState::Ambiguous;
             saveOutbox();
-            Serial.printf("[outbox] reconcile %u rate limited; keeping ambiguous\n",
+            if (kk::wkAuthBlocked()) gDeferredAuthIssue = SyncIssue::Auth;
+            Serial.printf("[outbox] reconcile %u gate blocked; keeping ambiguous\n",
                           static_cast<unsigned>(item->assignmentId));
             return false;
         }
@@ -1433,7 +1463,17 @@ bool sendOutboxItem(uint32_t seq) {
         item->state = kk::OutboxState::Pending;  // never reached the server
     else if (r.httpCode == 0 || r.httpCode >= 500)
         item->state = kk::OutboxState::Ambiguous;  // may have been accepted
-    else if (r.httpCode == 401 || r.httpCode == 403 || r.httpCode == 429)
+    else if (r.httpCode == 401) {
+        item->state = kk::OutboxState::Pending;
+        gDeferredAuthIssue = SyncIssue::Auth;
+        setSyncIssue(401, true, 0, "Review");
+        gOutboxAuthIssue = true;
+    } else if (r.httpCode == 403) {
+        item->state = kk::OutboxState::Pending;
+        gDeferredAuthIssue = SyncIssue::Forbidden;
+        setSyncIssue(403, true, 0, "Review");
+        gOutboxAuthIssue = true;
+    } else if (r.httpCode == 429)
         item->state = kk::OutboxState::Pending;
     else {
         item->state = kk::OutboxState::Rejected;
@@ -1464,7 +1504,10 @@ void queueReview(const kk::SessionItem& item) {
 }
 
 void flushOutbox() {
-    if (gOutbox.empty()) return;
+    if (gOutbox.empty()) {
+        clearOutboxAuthIssue();
+        return;
+    }
     Serial.printf("[outbox] flushing %u\n", static_cast<unsigned>(gOutbox.size()));
     std::vector<uint32_t> seqs;
     for (const kk::OutboxItem& it : gOutbox)
@@ -1476,6 +1519,7 @@ void flushOutbox() {
             break;
         }
     }
+    if (kk::outboxPendingCount(gOutbox) == 0) clearOutboxAuthIssue();
     Serial.printf("[outbox] %u pending, %u rejected\n",
                   static_cast<unsigned>(kk::outboxPendingCount(gOutbox)),
                   static_cast<unsigned>(kk::outboxRejectedCount(gOutbox)));
@@ -1726,9 +1770,20 @@ void startReview() {
         drawLoading("Fetching reviews...", subtitle);
         flushOutbox();
         if (!runBatch()) {
+            if (gBatch.httpCode == 401 || gBatch.httpCode == 403)
+                setSyncIssue(gBatch.httpCode, true, 0, "Reviews");
+            else if (kk::wkAuthBlocked())
+                setSyncIssue(401, true, 0, "Reviews");
             drawLoading("Could not load reviews", gNetLine);
             return;
         }
+    }
+    if (kk::wkAuthBlocked()) {
+        // Optional study materials/statistics/components can arm the gate after
+        // the main batch succeeded; do not start a session with a rejected token.
+        setSyncIssue(401, true, 0, "Reviews");
+        drawLoading("Could not load reviews", gNetLine);
+        return;
     }
     drawLoading("Starting session...", "");
     const uint32_t now = effectiveNow();
@@ -2435,7 +2490,15 @@ void startLessons() {
             gDirty = true;
             return;
         }
-        drawLoading("No lessons available", gLessonBatch.error.c_str());
+        const char* lessonError = gLessonBatch.error.c_str();
+        if (gLessonBatch.httpCode == 401 || gLessonBatch.httpCode == 403) {
+            setSyncIssue(gLessonBatch.httpCode, true, 0, "Lessons");
+            lessonError = gNetLine;
+        } else if (kk::wkAuthBlocked()) {
+            setSyncIssue(401, true, 0, "Lessons");
+            lessonError = gNetLine;
+        }
+        drawLoading("No lessons available", lessonError);
         gShowHome = true;
         gDirty = true;
         return;
@@ -2472,6 +2535,15 @@ void startLessons() {
             kk::fetchSubjectsByIds(kk::DevToken::load(), componentIds, 10);
         gFreeCanvasForRequest = false;
     }
+    if (kk::wkAuthBlocked()) {
+        // An optional materials/component request rejected the token; stop
+        // before showing a lesson list that cannot be started.
+        setSyncIssue(401, true, 0, "Lessons");
+        drawLoading("No lessons available", gNetLine);
+        gShowHome = true;
+        gDirty = true;
+        return;
+    }
     gLessonListActive = true;
     gLessonActive = false;
     gShowHome = false;
@@ -2490,10 +2562,10 @@ void startCurrentLesson() {
     drawLoading("Starting lesson...", s ? s->characters.c_str() : "");
     const uint32_t now = static_cast<uint32_t>(time(nullptr));
     gFreeCanvasForRequest = true;
-    const bool ok = kk::startAssignment(kk::DevToken::load(), a.id,
-                                        now >= 1700000000u ? now : 0);
+    const int httpCode = kk::startAssignment(kk::DevToken::load(), a.id,
+                                             now >= 1700000000u ? now : 0);
     gFreeCanvasForRequest = false;
-    if (ok) {
+    if (httpCode >= 200 && httpCode < 300) {
         if (gLessons > 0) --gLessons;
         saveCacheSnapshot();
         ++gLessonIndex;
@@ -2502,6 +2574,12 @@ void startCurrentLesson() {
             gLessonActive = false;
             gShowHome = true;
         }
+    } else if (httpCode == 401 || httpCode == 403) {
+        setSyncIssue(httpCode, true, 0, "Lesson");
+        drawLoading("Could not start lesson", gNetLine);
+        gLessonActive = false;
+        gLessonListActive = false;
+        gShowHome = true;
     }
     gDirty = true;
 }
@@ -2720,6 +2798,8 @@ void settingsKey(const KeyEvent& e) {
             gDirty = true;
         } else if (e.key == Key::Enter) {
             kk::DevToken::clear();
+            kk::wkClearAuthBlock();
+            gDeferredAuthIssue = SyncIssue::None;
             kk::cacheClearSnapshot();
             if (gSdOk) kk::cacheClearSubjects(SD);
             gOutbox.clear();
@@ -2739,6 +2819,7 @@ void settingsKey(const KeyEvent& e) {
             gSyncing = false;
             gSyncAttempted = false;
             gSyncIssue = SyncIssue::None;
+            gOutboxAuthIssue = false;
             gReviewActive = false;
             gReviewSummary = false;
             gLessonQuizActive = false;
@@ -3172,6 +3253,7 @@ void finishSyncCancelled() {
     gSyncing = false;
     gSyncAttempted = false;
     gSyncIssue = SyncIssue::None;
+    gOutboxAuthIssue = false;
     snprintf(gNetLine, sizeof gNetLine, "Sync cancelled");
     Serial.println("[sync] cancelled");
     gShowHome = gHaveSummary;
@@ -3188,6 +3270,7 @@ void startSync() {
     gSyncing = true;
     gSyncAttempted = true;
     gSyncIssue = SyncIssue::None;
+    gOutboxAuthIssue = false;
     resetSyncScreen();
     drawSync();
 
@@ -3274,7 +3357,10 @@ void startSync() {
 
     syncRowBegin(SyncLevel, "fetching");
     runLevelProgress();
-    if (kk::wkRateLimitWaitSeconds() > 0) {
+    if (kk::wkAuthBlocked()) {
+        setSyncIssue(401, true, 0, "Level");
+        syncRowWarn(SyncLevel, "token rejected");
+    } else if (kk::wkRateLimitWaitSeconds() > 0) {
         // Non-critical step: keep syncing, but surface the countdown.
         setSyncIssue(429, true, 0, "Level");
         syncRowWarn(SyncLevel, "rate limited");
@@ -3301,7 +3387,10 @@ void startSync() {
 
     syncRowBegin(SyncSrs, "fetching");
     const bool srsOk = runSrsCounts();
-    if (kk::wkRateLimitWaitSeconds() > 0) {
+    if (kk::wkAuthBlocked()) {
+        setSyncIssue(401, true, 0, "SRS");
+        syncRowWarn(SyncSrs, "token rejected");
+    } else if (kk::wkRateLimitWaitSeconds() > 0) {
         setSyncIssue(429, true, 0, "SRS");
         syncRowWarn(SyncSrs, "rate limited");
     } else if (srsOk) {
@@ -3319,6 +3408,7 @@ void startSync() {
         return;
     }
 
+    applyDeferredAuthIssue();
     gSyncing = false;
     gSyncFinished = true;
     gSyncScreen = false;
@@ -3332,14 +3422,20 @@ bool portalValidateToken(const String& token, String* username, int* level, Stri
         if (error) *error = "Wi-Fi is not connected yet.";
         return false;
     }
+    kk::wkClearAuthBlock();
     gFreeCanvasForRequest = true;
     const kk::WkProbeResult r = kk::probeWaniKaniUser(token);
     gFreeCanvasForRequest = false;
     if (r.parsed) {
+        gDeferredAuthIssue = SyncIssue::None;
+        gSyncIssue = SyncIssue::None;
+        gOutboxAuthIssue = false;
         if (username) *username = r.user.username.c_str();
         if (level) *level = r.user.level;
         return true;
     }
+    if (r.httpCode == 401 || r.httpCode == 403)
+        setSyncIssue(r.httpCode, r.connected, r.tlsError, "Setup");
     if (error) {
         if (r.httpCode == 401 || r.httpCode == 403)
             *error = "WaniKani rejected the token (HTTP " + String(r.httpCode) + ").";
@@ -3391,6 +3487,7 @@ void portalFinish() {
 bool startSetupPortal() {
     if (gPortalActive) return true;
     if (gReviewActive || gLessonActive || gLessonListActive || gLessonEmptyActive) return false;
+    kk::wkClearAuthBlock();
     tgc::board::setDisplayOn(true);
     tgc::board::setBrightness(kk::settingsBrightness());
     gDimmed = false;
@@ -5119,6 +5216,9 @@ void handleSerial() {
             token.trim();
             if (kk::DevToken::save(token)) {
                 Serial.printf("[auth] token saved (%u chars)\n", static_cast<unsigned>(token.length()));
+                gDeferredAuthIssue = SyncIssue::None;
+                gOutboxAuthIssue = false;
+                kk::wkClearAuthBlock();
                 if (!kk::DevWifi::connected() && !kk::DevWifi::connect(30000)) {
                     snprintf(gNetLine, sizeof gNetLine, "API: no Wi-Fi");
                 } else {
@@ -5129,6 +5229,9 @@ void handleSerial() {
             }
         } else if (gSerialLine == "c") {
             kk::DevToken::clear();
+            kk::wkClearAuthBlock();
+            gDeferredAuthIssue = SyncIssue::None;
+            gOutboxAuthIssue = false;
             Serial.println("[auth] token cleared");
             snprintf(gNetLine, sizeof gNetLine, "API: token cleared");
         } else if (gSerialLine == "d") {
@@ -5158,6 +5261,7 @@ void handleSerial() {
             }
         } else if (gSerialLine == "z") {
             gOutbox.clear();
+            clearOutboxAuthIssue();
             saveOutbox();
             Serial.println("[outbox] cleared");
         } else if (gSerialLine == "l") {

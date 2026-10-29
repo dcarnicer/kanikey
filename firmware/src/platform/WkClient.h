@@ -42,4 +42,11 @@ WkResponse wkPut(const String& path, const String& token, const String& body,
 // a synthetic 429 without opening TLS, so callers can show a countdown.
 uint32_t wkRateLimitWaitSeconds();
 
+// Shared 401 gate. A real 401 arms it; every request then returns a synthetic
+// 401 without opening TLS until setup starts, a new token is saved/validated,
+// the dev token is cleared, or the user signs out. A 403 is endpoint-specific
+// and does not arm the gate.
+bool wkAuthBlocked();
+void wkClearAuthBlock();
+
 }  // namespace kk

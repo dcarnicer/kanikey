@@ -14,6 +14,7 @@ namespace kk {
 
 struct LessonBatch {
     bool ok = false;
+    int httpCode = 0;
     String error;
     std::vector<Assignment> assignments;
     std::vector<Subject> subjects;
@@ -24,6 +25,7 @@ LessonBatch fetchLessonBatch(const String& token, const std::vector<uint32_t>& l
 // Fetch plain subjects by id (lesson/review components), without details.
 std::vector<Subject> fetchSubjectsByIds(const String& token, const std::vector<uint32_t>& ids,
                                         size_t batch = 10);
-bool startAssignment(const String& token, uint32_t assignmentId, uint32_t startedAt);
+// Returns the HTTP status code (0 when no response was received).
+int startAssignment(const String& token, uint32_t assignmentId, uint32_t startedAt);
 
 }  // namespace kk

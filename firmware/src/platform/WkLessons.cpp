@@ -37,6 +37,7 @@ LessonBatch fetchLessonBatch(const String& token, const std::vector<uint32_t>& l
     Serial.printf("[lesson] assignments for %u subjects\n", static_cast<unsigned>(want));
     WkJsonResult ar = wkGetJsonRetry(path, token, 32768, 12000);
     if (ar.http.httpCode != 200) {
+        batch.httpCode = ar.http.httpCode;
         batch.error = "assignments HTTP " + String(ar.http.httpCode);
         return batch;
     }
@@ -67,6 +68,7 @@ LessonBatch fetchLessonBatch(const String& token, const std::vector<uint32_t>& l
         String sp = "/v2/subjects?ids=" + idList(ids, begin, end);
         WkJsonResult sr = wkGetJsonRetry(sp, token, 32768, 12000);
         if (sr.http.httpCode != 200) {
+            batch.httpCode = sr.http.httpCode;
             batch.error = "subjects HTTP " + String(sr.http.httpCode);
             return batch;
         }
@@ -126,7 +128,7 @@ std::vector<Subject> fetchSubjectsByIds(const String& token, const std::vector<u
     return out;
 }
 
-bool startAssignment(const String& token, uint32_t assignmentId, uint32_t startedAt) {
+int startAssignment(const String& token, uint32_t assignmentId, uint32_t startedAt) {
     String path = "/v2/assignments/";
     path += String(static_cast<unsigned long>(assignmentId));
     path += "/start";
@@ -139,7 +141,7 @@ bool startAssignment(const String& token, uint32_t assignmentId, uint32_t starte
     body += "}}";
     const WkResponse r = wkPut(path, token, body, 4096, 12000);
     Serial.printf("[lesson] start %u -> %d\n", static_cast<unsigned>(assignmentId), r.httpCode);
-    return r.httpCode >= 200 && r.httpCode < 300;
+    return r.httpCode;
 }
 
 }  // namespace kk
