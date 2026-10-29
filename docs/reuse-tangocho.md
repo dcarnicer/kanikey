@@ -171,7 +171,7 @@ copied.
 - **Tangocho:** MIT, Copyright (c) 2026 Tamagotcho contributors. The fork must
   keep `LICENSE` and the notice in the copied files.
 - **Kakehashi:** MIT, Copyright (c) 2026 Pedro Ortego. Add a notice if code is
-  copied; if only ideas are used, mention it in `THIRD_PARTY.md`.
+  copied; if only ideas are used, mention it in `THIRD_PARTY_NOTICES.md`.
 - **Noto Sans JP:** SIL OFL 1.1. Include the license and the notice when
   distributing the visual pack.
 - **KanjiVG:** CC BY-SA 3.0, only if stroke order is added.

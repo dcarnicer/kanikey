@@ -2,9 +2,10 @@
 
 > **Status:** design approved, 2026-10-25; implementation status 2026-10-29.
 > The firmware has Home, cached offline sessions, the outbox, lessons, the item
-> detail card, the sync screen and the 429/auth/parse-retry handling. Review and
-> lesson writes use the real API; the remaining v1 work is lesson ordering
-> (LESSON-08), the last hardware verification, OTA and the license/notices.
+> detail card, the sync screen, the 429/auth/parse-retry handling and OTA with
+> rollback. Review and lesson writes use the real API; the remaining v1 work is
+> lesson ordering (LESSON-08), the last hardware verification and the deliberate
+> offline boot. The source is MIT-licensed.
 > Measurements:
 > [hardware.md](hardware.md).
 >
@@ -504,7 +505,7 @@ cache; the pack is never loaded whole.
 
 **Upload:** a one-shot Wi-Fi HTTP server (`S`, port 8080) plus
 `tools/device.py push` writes the 2.9 MB pack reliably with `curl -T`. The USB
-`up` command writes 8 KiB ACKed chunks and is kept for small files.
+`up` command writes 2 KiB ACKed chunks and is kept for small files.
 
 ### 11.3 Why not other options
 
@@ -584,7 +585,7 @@ Summary; details are in [api-sync.md](api-sync.md).
 | Usage | Estimate |
 |---|---|
 | Canvas 240×135×1 (RGB332) | 32.4 KB |
-| Loop stack | 16 KB |
+| Loop stack | 24 KB |
 | TLS (sync only) | ~50 KB |
 | Static response body buffer (BSS) | 32 KB |
 | Subject record being built | 8 KB |
@@ -739,11 +740,13 @@ request. After 20 subjects the free heap is ~134 KB and the largest block
 
 ### 15.3 CI
 
-- `pio test -e native` and `pio run -e cardputer-adv` run in GitHub Actions on
-  pushes to `main` and pull requests.
+- `pio test -e native`, the release-manifest tests, `pio run -e cardputer-adv`
+  and `pio run -e cardputer-adv-dev` run in GitHub Actions on pushes to `main`
+  and pull requests.
 - Gitleaks scans the full history.
-- Planned: a `KK_VERSION` release artifact, automated screenshots with the
-  serial remote and `clang-format`/`clang-tidy` if Tangocho's style is adopted.
+- The release workflow publishes a `vX.Y.Z` app image and the OTA manifest;
+  automated screenshots with the serial remote and
+  `clang-format`/`clang-tidy` remain optional.
 
 ### 15.4 Observability
 
@@ -818,7 +821,8 @@ account; Enter fetches the batch.
 
 ### M5 — Polish (mostly done)
 
-- Statistics, full settings and About are implemented; OTA remains.
+- Statistics, full settings, About and OTA (manifest, two slots, rollback,
+  release workflow) are implemented; lesson ordering remains.
 - Accessibility, contrast and error texts are mostly in place; hardware
   verification of the latest screens is partial.
 - Screenshots and user documentation exist.

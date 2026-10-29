@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "ui/KeyInput.h"
+#include "ota/Manifest.h"
 #include "wk/AnswerChecker.h"
 #include "wk/Assignment.h"
 #include "wk/Cache.h"
@@ -32,6 +33,7 @@
 #include "wk/Text.h"
 
 using namespace kk;
+using namespace kk::ota;
 
 void setUp() {}
 void tearDown() {}
@@ -1807,6 +1809,174 @@ static void test_cache_subjects_round_trip() {
     TEST_ASSERT_FALSE(decodeSubjectCache(bytes.data(), bytes.size(), &out));
 }
 
+// ---------------------------------------------------------------- OTA
+static const char* kOtaSha =
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+static std::string manifestText(const char* version = "v0.2.0", const char* env = "cardputer-adv",
+                                uint32_t bytes = 1423021) {
+    char line[256];
+    snprintf(line, sizeof line,
+             "#kanikey-firmware\t1\nversion\t%s\napp\t%s\tkanikey-%s.bin\t%u\t%s\n", version,
+             env, env, static_cast<unsigned>(bytes), kOtaSha);
+    return line;
+}
+
+static void test_ota_manifest_parse() {
+    const char* url =
+        "https://github.com/dcarnicer/kanikey/releases/download/v0.2.0/kanikey-firmware.txt";
+    ManifestParseResult r = parseManifest(manifestText(), url);
+    TEST_ASSERT_EQUAL(ManifestError::Ok, r.error);
+    TEST_ASSERT_EQUAL_UINT32(1, r.manifest.format);
+    TEST_ASSERT_EQUAL_STRING("v0.2.0", r.manifest.version.c_str());
+    TEST_ASSERT_EQUAL(1, r.manifest.apps.size());
+    const AppImage& app = r.manifest.apps[0];
+    TEST_ASSERT_EQUAL_STRING("cardputer-adv", app.env.c_str());
+    TEST_ASSERT_EQUAL_UINT32(1423021, app.bytes);
+    TEST_ASSERT_EQUAL_STRING(kOtaSha, app.sha256.c_str());
+    TEST_ASSERT_EQUAL_STRING(
+        "https://github.com/dcarnicer/kanikey/releases/download/v0.2.0/kanikey-cardputer-adv.bin",
+        app.url.c_str());
+    TEST_ASSERT_TRUE(r.manifest.find("cardputer-adv") == &app);
+    TEST_ASSERT_TRUE(r.manifest.find("m5stack") == nullptr);
+}
+
+static void test_ota_manifest_edges() {
+    ManifestParseResult r = parseManifest("", "https://x/y");
+    TEST_ASSERT_EQUAL(ManifestError::Empty, r.error);
+
+    std::string huge(kManifestMaxBytes + 1, 'x');
+    r = parseManifest(huge, "https://x/y");
+    TEST_ASSERT_EQUAL(ManifestError::TooLarge, r.error);
+
+    r = parseManifest("version\tv0.2.0\n", "https://x/y");
+    TEST_ASSERT_EQUAL(ManifestError::BadHeader, r.error);
+    TEST_ASSERT_EQUAL_UINT(1, r.line);
+
+    r = parseManifest("#kanikey-firmware\t2\nversion\tv0.2.0\n", "https://x/y");
+    TEST_ASSERT_EQUAL(ManifestError::UnsupportedVersion, r.error);
+
+    r = parseManifest("#kanikey-firmware\t1\nversion\t0.2\n", "https://x/y");
+    TEST_ASSERT_EQUAL(ManifestError::BadVersion, r.error);
+
+    // A version after the first app record is invalid.
+    r = parseManifest(
+        "#kanikey-firmware\t1\nversion\tv0.2.0\napp\tcardputer-adv\ta.bin\t10\t" + std::string(kOtaSha) +
+            "\nversion\tv0.2.1\n",
+        "https://x/y");
+    TEST_ASSERT_EQUAL(ManifestError::BadVersion, r.error);
+
+    // Duplicate environments are refused.
+    const std::string appLine =
+        std::string("app\tcardputer-adv\ta.bin\t10\t") + kOtaSha + "\n";
+    r = parseManifest("#kanikey-firmware\t1\nversion\tv0.2.0\n" + appLine + appLine,
+                      "https://x/y");
+    TEST_ASSERT_EQUAL(ManifestError::DuplicateApp, r.error);
+
+    // A bad hash or zero size rejects the whole manifest.
+    r = parseManifest("#kanikey-firmware\t1\nversion\tv0.2.0\n"
+                      "app\tcardputer-adv\ta.bin\t10\tnothex\n",
+                      "https://x/y");
+    TEST_ASSERT_EQUAL(ManifestError::BadApp, r.error);
+    r = parseManifest("#kanikey-firmware\t1\nversion\tv0.2.0\napp\tcardputer-adv\ta.bin\t0\t" +
+                          std::string(kOtaSha) + "\n",
+                      "https://x/y");
+    TEST_ASSERT_EQUAL(ManifestError::BadApp, r.error);
+
+    // Unknown records are ignored for forward compatibility.
+    r = parseManifest("#kanikey-firmware\t1\nnotes\tfuture\nversion\tv0.2.0\n"
+                      "app\tcardputer-adv\ta.bin\t10\t" +
+                          std::string(kOtaSha) + "\n",
+                      "https://x/y");
+    TEST_ASSERT_EQUAL(ManifestError::Ok, r.error);
+    TEST_ASSERT_EQUAL_STRING("https://x/a.bin", r.manifest.apps[0].url.c_str());
+}
+
+static void test_ota_versions() {
+    FirmwareVersion a, b;
+    TEST_ASSERT_TRUE(parseFirmwareVersion("0.1.0", &a));
+    TEST_ASSERT_TRUE(parseFirmwareVersion("v0.2.0", &b));
+    TEST_ASSERT_EQUAL(-1, compareFirmwareVersions(a, b));
+    TEST_ASSERT_EQUAL(1, compareFirmwareVersions(b, a));
+    TEST_ASSERT_EQUAL(0, compareFirmwareVersions(b, b));
+    TEST_ASSERT_TRUE(parseFirmwareVersion("10.20.30", &a));
+    TEST_ASSERT_EQUAL_UINT32(10, a.major);
+    TEST_ASSERT_EQUAL_UINT32(20, a.minor);
+    TEST_ASSERT_EQUAL_UINT32(30, a.patch);
+    TEST_ASSERT_FALSE(parseFirmwareVersion("0.1", &a));
+    TEST_ASSERT_FALSE(parseFirmwareVersion("0.1.0-dev", &a));
+    TEST_ASSERT_FALSE(parseFirmwareVersion("", &a));
+    TEST_ASSERT_FALSE(parseFirmwareVersion("1.2.3.4", &a));
+    TEST_ASSERT_FALSE(parseFirmwareVersion("v1.2.x", &a));
+}
+
+static void test_ota_offer() {
+    ManifestParseResult r = parseManifest(manifestText(), "https://x/y/manifest.txt");
+    TEST_ASSERT_EQUAL(ManifestError::Ok, r.error);
+
+    OfferInput in;
+    in.running = "0.1.0";
+    in.env = "cardputer-adv";
+    in.slotBytes = 1835008;
+    Offer o = offerFor(r.manifest, in);
+    TEST_ASSERT_EQUAL(OfferVerdict::Offer, o.verdict);
+    TEST_ASSERT_TRUE(o.app == &r.manifest.apps[0]);
+
+    in.running = "0.2.0";
+    o = offerFor(r.manifest, in);
+    TEST_ASSERT_EQUAL(OfferVerdict::UpToDate, o.verdict);
+
+    in.running = "0.1.0";
+    in.env = "m5stack";
+    o = offerFor(r.manifest, in);
+    TEST_ASSERT_EQUAL(OfferVerdict::NoImage, o.verdict);
+
+    in.env = "cardputer-adv";
+    in.slotBytes = 1000;
+    o = offerFor(r.manifest, in);
+    TEST_ASSERT_EQUAL(OfferVerdict::TooLarge, o.verdict);
+
+    in.slotBytes = 1835008;
+    in.rolledBack = "v0.2.0";
+    o = offerFor(r.manifest, in);
+    TEST_ASSERT_EQUAL(OfferVerdict::RolledBack, o.verdict);
+
+    in.rolledBack = "0.2.0";
+    o = offerFor(r.manifest, in);
+    TEST_ASSERT_EQUAL(OfferVerdict::RolledBack, o.verdict);
+
+    in.rolledBack = "v0.1.9";
+    o = offerFor(r.manifest, in);
+    TEST_ASSERT_EQUAL(OfferVerdict::Offer, o.verdict);
+
+    in.rolledBack = "";
+    in.running = "dev";
+    o = offerFor(r.manifest, in);
+    TEST_ASSERT_EQUAL(OfferVerdict::DevBuild, o.verdict);
+    in.allowAnyDevVersion = true;
+    o = offerFor(r.manifest, in);
+    TEST_ASSERT_EQUAL(OfferVerdict::Offer, o.verdict);
+
+    in.running = "0.1.0";
+    in.slotBytes = 0;
+    o = offerFor(r.manifest, in);
+    TEST_ASSERT_EQUAL(OfferVerdict::NoSlot, o.verdict);
+}
+
+static void test_ota_url_resolution() {
+    TEST_ASSERT_EQUAL_STRING("https://x/y/a.bin",
+                             resolveUrl("https://x/y/manifest.txt", "a.bin").c_str());
+    TEST_ASSERT_EQUAL_STRING("https://x/a.bin",
+                             resolveUrl("https://x/y/manifest.txt", "/a.bin").c_str());
+    TEST_ASSERT_EQUAL_STRING("https://cdn/a.bin",
+                             resolveUrl("https://x/y/manifest.txt", "https://cdn/a.bin").c_str());
+    const ManifestParseResult r = parseManifest(
+        "#kanikey-firmware\t1\nversion\tv0.2.0\napp\tcardputer-adv\t../a.bin\t10\t" +
+            std::string(kOtaSha) + "\n",
+        "https://x/y/manifest.txt");
+    TEST_ASSERT_EQUAL(ManifestError::BadApp, r.error);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_romaji_common_words);
@@ -1881,5 +2051,10 @@ int main(int, char**) {
     RUN_TEST(test_cache_snapshot_round_trip);
     RUN_TEST(test_cache_corruption_is_rejected);
     RUN_TEST(test_cache_subjects_round_trip);
+    RUN_TEST(test_ota_manifest_parse);
+    RUN_TEST(test_ota_manifest_edges);
+    RUN_TEST(test_ota_versions);
+    RUN_TEST(test_ota_offer);
+    RUN_TEST(test_ota_url_resolution);
     return UNITY_END();
 }

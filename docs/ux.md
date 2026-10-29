@@ -560,8 +560,8 @@ the mnemonic.
 
 - Open with `Esc` from Home, or `Esc` in a review → Pause → Settings.
 - Implemented rows: `Brightness`, `Dim after`, `Blank after`, `Sleep after`,
-  `Review batch`, `Order`, `Lesson batch`, `Setup portal`, `Sync now`, `About`,
-  `Clear cache`, `Sign out`.
+  `Review batch`, `Order`, `Lesson batch`, `Setup portal`, `Sync now`,
+  `Firmware`, `About`, `Clear cache`, `Sign out`.
 - `Brightness` cycles 64/128/192/255; the timings cycle presets and `off`.
   Review batch cycles 10/20/30, lesson batch 3/5/10, and order toggles
   meaning-first / reading-first. All are stored in NVS and applied without a
@@ -570,12 +570,18 @@ the mnemonic.
 - The list scrolls when there are more rows than fit (7 visible, scroll bar).
 - `Setup portal` reopens the Wi-Fi/token/time page; it is disabled during a
   review so the session is not lost. `Sync now` starts a manual sync.
-- About shows the firmware version, build date, pack status, cached batch,
-  last sync, Wi-Fi, whether a token is configured, time zone and heap.
+- About shows the firmware version and slot, build date, an update badge when
+  one is known, pack status, cached batch, last sync, Wi-Fi, whether a token is
+  configured, time zone and heap.
+- `Firmware` shows the running version/slot, the last check or install result
+  and `Check now` / `Install update` rows. Install asks for a second `Enter`,
+  then streams the image and restarts. A failed check stays on the screen with
+  its HTTP/TLS reason; a failed install keeps the current image.
 - `↑↓` moves, `Enter` changes, `Esc` goes back.
 - `Clear cache` removes the snapshot/subjects for the next boot; `Sign out`
   confirms, then removes the token, cache and pending outbox and keeps Wi-Fi.
-- Not yet: licenses and attributions and strict-answer options.
+- Licenses and attributions are in `LICENSE` and `THIRD_PARTY_NOTICES.md`; the
+  About header marks the app as unofficial. Not yet: strict-answer options.
 
 ### 5.13 Outbox
 

@@ -17,7 +17,7 @@ struct AboutLine {
 };
 
 struct AboutView {
-    const char* version = "";
+    std::string version;
     std::vector<AboutLine> lines;
 };
 

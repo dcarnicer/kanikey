@@ -1,6 +1,6 @@
 // From Tamagotcho (MIT, Copyright (c) 2026 Tamagotcho contributors).
 #pragma once
-// Root CAs for the HTTPS "Get decks" download (platform/NetFetch). Arduino/ESP32
+// Root CAs for the HTTPS OTA manifest/image and asset downloads. Arduino/ESP32
 // only; not part of the native build.
 //
 // A small, hand-picked set instead of the full Mozilla bundle: it covers the

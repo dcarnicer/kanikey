@@ -14,7 +14,7 @@ void drawAboutScreen(lgfx::LovyanGFX& d, const AboutView& view) {
     d.drawString("KaniKey", 6, 2);
     d.setTextFont(1);
     d.setTextColor(ui::kDim, ui::kBg);
-    d.drawString("about", 7, 22);
+    d.drawString("about · unofficial", 7, 22);
     d.setTextFont(0);
     d.setTextColor(ui::kFaint, ui::kBg);
     d.setTextDatum(lgfx::top_right);

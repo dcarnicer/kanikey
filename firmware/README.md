@@ -12,11 +12,15 @@ KaniKey firmware for the M5Stack Cardputer ADV.
 - Shows every key event on screen and over serial: TCA8418 code, grid position,
   action and character on the main/Shift layer.
 - `Esc` from Home opens Settings: brightness, dim/blank/sleep timings, review
-  batch size/order, lesson batch size, Setup portal, Sync now, About (version,
-  pack, cache, heap, last sync, zone), Clear cache and Sign out. Values persist
-  in NVS. In a review, `Esc` opens Pause (Continue / End session / Settings)
-  instead of quitting immediately. Below 20% on battery, starting reviews or
-  lessons asks for confirmation.
+  batch size/order, lesson batch size, Setup portal, Sync now, Firmware
+  (check/install an OTA release), About (version, slot, pack, cache, heap, last
+  sync, zone), Clear cache and Sign out. Values persist in NVS. In a review,
+  `Esc` opens Pause (Continue / End session / Settings) instead of quitting
+  immediately. Below 20% on battery, starting reviews or lessons asks for
+  confirmation.
+- Firmware updates use the second 1.75 MiB app slot: an HTTPS manifest with the
+  version, size and SHA-256, `Update` streaming, and bootloader rollback if the
+  new image does not reach the loop. See [docs/ota.md](../docs/ota.md).
 - On first boot, or when Wi-Fi/token are missing, starts a WPA2 setup access
   point `KaniKey-XXXX` (password on screen). The phone saves the home Wi-Fi,
   the device joins it and serves the second setup page at its station IP.
@@ -108,13 +112,13 @@ uv run --with pyserial python3 tools/device.py upload \
     dist/glyphs-test.kgp /kanikey/glyphs.kgp
 ```
 
-The serial uploader uses 8 KiB chunks with an ACK per chunk. It is useful for
-small files but was not reliable enough for the 2.9 MB full pack; use `push`
-for that.
+The serial uploader uses 2 KiB chunks with an ACK per chunk (the USB RX ring is
+4 KiB). It is useful for small files but was not reliable enough for the 2.9 MB
+full pack; use `push` for that.
 
-The token is a development convenience. Production KaniKey will use the setup
-portal and the same NVS storage, with the token masked on screen and never
-logged.
+The serial `k` token helper exists only in the development image. The release
+image configures the token through the setup portal and stores it in NVS; it is
+masked on screen and never logged.
 
 ## Build
 
@@ -131,7 +135,14 @@ pio run -e cardputer-adv-dev
 ```
 
 The build uses two 1.75 MiB OTA slots and 4.44 MiB LittleFS, the same layout as
-Tangocho's Cardputer ADV image.
+Tangocho's Cardputer ADV image. `Version.h` is the release version and must
+match the `vX.Y.Z` tag; `platformio.ini` sets `KANIKEY_ENV="cardputer-adv"` for
+the OTA row. The release image is about 1.46 MB (79.6% of the slot); the dev
+image adds the serial remote and debug screens and is about 1.474 MB.
+
+The release image keeps a small serial console (`h`, `i`, `p`, `S`, `up`, `r`);
+build `cardputer-adv-dev` for the full remote. The loop task uses a 24 KiB
+stack, enough for the lesson fetch and OTA install paths.
 
 ## Flash
 
@@ -169,45 +180,61 @@ uv run --with pyserial python3 tools/device.py token
 
 `wifi` prompts for the SSID and password, sends `w <ssid>|<password>` and never
 prints or stores the password. `token` prompts for the WaniKani token, sends
-`k <token>` and runs the authenticated `/user` probe.
+`k <token>` and runs the authenticated `/user` probe. Both commands exist only
+in the development image; a release device uses the setup portal.
 
 ## Serial commands
 
-| Key | Action |
-|---|---|
-| `w` | Join the saved Wi-Fi network |
-| `t` | Join if needed, then run the TLS probe (with the saved token, if any) |
-| `u` | Run the authenticated `GET /user` probe |
-| `k <token>` | Save a token in NVS and probe `/user` |
-| `c` | Clear the saved token |
-| `s` | Scan Wi-Fi networks (when not connected) |
-| `h` | Print free/largest/minimum internal heap |
-| `i` | Print the visual pack status |
-| `R <id>` | Dev build only: render a radical bitmap by subject id |
-| `C` | Dev build only: seed a synthetic offline cache (needs a token) |
-| `X` | Dev build only: clear the synthetic cache |
-| `S` | Start the one-shot Wi-Fi asset upload server |
-| `up <bytes> <path>` | Write a file to the card over USB (8 KiB ACKed chunks) |
-| `d` | Disconnect Wi-Fi (test offline) |
-| `o` | Print the outbox |
-| `f` | Reconnect and flush the outbox |
-| `x` | Queue a synthetic review (test persistence) |
-| `z` | Clear the outbox (test only) |
-| `b` | Fetch a 20-item review batch (logs only) |
-| `P` | Open the setup portal (Wi-Fi/token/time/pack) |
-| `v` | Fetch (if needed) and start a review session |
-| `l` | Fetch and show the lesson list/picker |
-| `g` | Next mnemonic page in a lesson, or next review-detail page |
-| `D` | Toggle the review detail card from feedback |
-| `Q` | Open the optional lesson quiz for the current card |
-| `y <text>` | Type text into the current review or lesson-quiz answer (test helper) |
-| `e` | Open the selected lesson / check the answer / advance / start |
-| `q` | Quit the review session or return from the quiz to the card |
-| `r` | Restart |
+The release image keeps only field diagnostics and the asset path. The full
+remote is compiled into `cardputer-adv-dev` (`KANIKEY_DEV`): token/Wi-Fi
+helpers, synthetic data and the `gDirectReading` answer bypass are not in a
+release binary.
+
+| Key | Image | Action |
+|---|---|---|
+| `h` | both | Print free/largest/minimum heap and the loop stack high-water mark |
+| `i` | both | Print the visual pack status |
+| `p` | both | Dump the 240×135 canvas for `tools/shot.py` |
+| `S` | both | Start the one-shot Wi-Fi asset upload server |
+| `up <bytes> <path>` | both | Write a file to the card over USB (2 KiB ACKed chunks) |
+| `r` | both | Restart |
+| `w` | dev | Join the saved Wi-Fi network |
+| `w <ssid>\|<pass>` | dev | Save Wi-Fi credentials and join |
+| `t` | dev | Join if needed, then run the TLS probe |
+| `u` | dev | Run the authenticated `GET /user` probe |
+| `k <token>` | dev | Save a token in NVS and probe `/user` |
+| `c` | dev | Clear the saved token |
+| `s` | dev | Scan Wi-Fi networks (when not connected) |
+| `d` | dev | Disconnect Wi-Fi (test offline) |
+| `o` | dev | Print the outbox |
+| `f` | dev | Reconnect and flush the outbox |
+| `x` | dev | Queue a synthetic review (test persistence) |
+| `z` | dev | Clear the outbox (test only) |
+| `J` | dev | Seed synthetic rejected/stuck outbox items |
+| `C` | dev | Seed a synthetic offline cache (needs a token) |
+| `X` | dev | Clear the synthetic cache |
+| `R <id>` | dev | Render a radical bitmap by subject id |
+| `P` | dev | Open the setup portal (Wi-Fi/token/time/pack) |
+| `v` | dev | Fetch (if needed) and start a review session |
+| `l` | dev | Fetch and show the lesson list/picker |
+| `g` | dev | Next mnemonic page in a lesson, or next review-detail page |
+| `D` | dev | Toggle the review detail card from feedback |
+| `Q` | dev | Open the optional lesson quiz for the current card |
+| `y <text>` | dev | Type text into the current review or lesson-quiz answer |
+| `e` | dev | Open the selected lesson / check the answer / advance / start |
+| `q` | dev | Quit a review/lesson or close Settings/Firmware |
+| `b` | dev | Fetch a 20-item review batch (logs only) |
+| `m` | dev | Fetch the summary (logs only) |
+| `U <url>` | dev | Point the OTA check at a local manifest (`http://` allowed) |
+| `F` | dev | Run a firmware manifest check |
+| `I` | dev | Install the offered firmware |
+| `V` | dev | Open the Firmware screen |
+| `Y` | dev | Clear the remembered rollback version |
 
 ## Setup portal
 
-On first boot, or after pressing `P`, the device starts a WPA2 access point:
+On first boot, or from **Settings › Setup portal** (the dev image also has
+`P`), the device starts a WPA2 access point:
 
 1. The screen shows the network (`KaniKey-XXXX`), its password and
    `http://192.168.4.1/`.
@@ -222,8 +249,20 @@ The token and Wi-Fi password are never logged, never shown back on the page and
 never written to the repository. The portal does not call
 `PUT /assignments/{id}/start`, so setup does not move lessons in WaniKani. The
 normal first sync after **Start KaniKey** may flush the existing outbox. There
-is no deck catalog, OTA or progress restore; those Tangocho routes were
-dropped.
+is no deck catalog or progress restore; those Tangocho routes were dropped.
+
+## OTA
+
+The release environment publishes `kanikey-cardputer-adv.bin` and
+`kanikey-firmware.txt` from a `vX.Y.Z` tag. The device checks the manifest after
+a successful sync (once a day) and from Settings › Firmware. The install keeps
+settings, the outbox and the cache; a failed first boot rolls back to the
+previous slot. See [docs/ota.md](../docs/ota.md) for the format, trust model and
+release steps.
+
+The serial `U <url>`, `F`, `I`, `V` and `Y` commands exist only in the
+development image. They point the device at a local manifest, run a check,
+install, open the Firmware screen and clear a rollback record.
 
 ## Notes
 

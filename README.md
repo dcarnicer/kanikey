@@ -2,7 +2,8 @@
 
 **A pocket-sized review terminal for WaniKani, built for the M5Stack Cardputer ADV.**
 
-> **Status: firmware preview — offline cache and manual sync (2026-10-29).**
+> **Status: firmware preview — offline cache, lessons and OTA release path
+> (2026-10-29).**
 > The Cardputer ADV shows a live Home from `/user` + `/summary`, fetches a
 > 20-item due batch, runs a typed meaning/reading session and submits completed
 > items with `POST /v2/reviews` (201). Review order follows the account's
@@ -48,9 +49,11 @@
 > and a shared 401 gate stops API calls until the token changes; a 403 stays
 > endpoint-specific. The remaining v1 gaps are lesson ordering (LESSON-08), the
 > last lesson hardware checks (radical-only lessons, notes/`lower_levels_first`),
-> a deliberate offline boot, hardware verification of the 429/auth/parse-retry
-> paths and the final OUTBOX screen (currently native/host-inspected), OTA and
-> the license.
+> a deliberate offline boot, and hardware verification of the 429/auth/parse-retry
+> paths and the final OUTBOX screen (currently native/host-inspected). Firmware
+> updates arrive over HTTPS from GitHub releases with a size/SHA-256 manifest,
+> install into the spare 1.75 MiB slot and roll back on a failed first boot.
+> The source is MIT-licensed.
 >
 > KaniKey is an **unofficial** third-party app for WaniKani. It is not
 > affiliated with, endorsed by or sponsored by WaniKani or Tofugu LLC. WaniKani
@@ -87,7 +90,9 @@ syncs with the user's account. The SRS still lives in WaniKani.
 - Home screen with pending reviews/lessons, next review time, the breakdown by
   SRS stage and the sync/outbox status.
 - Settings, Wi-Fi, time, a sync screen with cancel/retry, and clear
-  auth/rate-limit/offline states. OTA is still planned.
+  auth/rate-limit/offline states. Firmware updates check the latest GitHub
+  release, verify size and SHA-256, install into the other OTA slot and roll
+  back if the new image does not start.
 - UI in English (WaniKani meanings are in English).
 
 ## What it won't do (for now)
@@ -127,6 +132,7 @@ already solved and tested on hardware in
 | [docs/design.md](docs/design.md) | Product, scope, architecture, memory, risks and roadmap |
 | [docs/ux.md](docs/ux.md) | Visual language, keyboard, flows and screen by screen |
 | [docs/api-sync.md](docs/api-sync.md) | WaniKani API, cache, offline queue and data model |
+| [docs/ota.md](docs/ota.md) | OTA manifest, slots, install and rollback |
 | [docs/reuse-tangocho.md](docs/reuse-tangocho.md) | What is reused from Tangocho and how it is ported |
 | [docs/setup.md](docs/setup.md) | Token, visual pack, first boot and troubleshooting |
 | [docs/decisions.md](docs/decisions.md) | Short log of accepted decisions |
@@ -154,9 +160,11 @@ KANIKEY_FONT=/path/NotoSansJP-Regular.otf python3 tools/mockups/render.py
 ## CI and secret scanning
 
 GitHub Actions runs [gitleaks](https://github.com/gitleaks/gitleaks),
-the native tests (`pio test -e native`) and the Cardputer firmware build
-(`pio run -e cardputer-adv`) on every push to `main` and on pull requests.
-Gitleaks scans the full history. Locally:
+the native tests (`pio test -e native`), the release-manifest tests and both
+Cardputer firmware builds (`cardputer-adv` and `cardputer-adv-dev`) on every
+push to `main` and on pull requests. A `vX.Y.Z` tag runs the release workflow,
+which builds the image, writes `kanikey-firmware.txt` and publishes both on
+GitHub. Gitleaks scans the full history. Locally:
 
 ```sh
 brew install gitleaks
@@ -172,7 +180,8 @@ design doesn't depend on it.
 
 ## License
 
-KaniKey's own license is still to be decided. The code adapted from Tangocho
-(MIT) and the other third-party components are credited in
+KaniKey's own source is released under the **MIT License**; see
+[LICENSE](LICENSE). The code adapted from Tangocho (MIT) and the other
+third-party components are credited in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). No WaniKani content is
 distributed in the repository.

@@ -291,9 +291,10 @@ namespace can keep using `kanikey`.
 
 ---
 
-## 2026-10-25 — MIT license (proposed)
+## 2026-10-25 — MIT license (accepted 2026-10-29)
 
-**Decision:** the code would be published under MIT, like Tangocho and Kakehashi.
+**Decision:** the code is published under MIT, like Tangocho and Kakehashi.
+The repository ships `LICENSE` and `THIRD_PARTY_NOTICES.md`.
 
 **Why:** compatibility with the fork and with the copied ideas; it is the usual
 thing in this kind of project.
@@ -642,3 +643,52 @@ deferred auth issue that survives a later successful `/user` or `/summary`
 until the outbox drains. A reconciliation blocked by either gate stays
 `Ambiguous`. The gates and retry helpers are native/host-inspected only;
 hardware verification is pending.
+
+---
+
+## 2026-10-29 — OTA: GitHub manifest, two slots, rollback
+
+**Decision:** a tagged GitHub release publishes the app-only
+`kanikey-cardputer-adv.bin` and a tab-separated `kanikey-firmware.txt` manifest
+with the version, size and SHA-256. The device checks
+`releases/latest/download/kanikey-firmware.txt` after a successful sync at most
+once a day and from Settings › Firmware, streams the image into the spare
+1.75 MiB slot, verifies size and SHA-256, and switches the boot slot only after
+`Update.end()` accepts the image. The new image is marked valid after 10 s of
+the loop; a failure before that rolls back to the previous slot, and the failed
+version is not offered again.
+
+**Why:** the partition table already had two OTA slots; the security properties
+match the existing HTTPS root CAs and `Update`, and the rollback keeps a bad
+image from bricking a pocket device. A daily check adds one small request and
+makes releases discoverable without a phone.
+
+**Implications:** release builds require HTTPS and ignore the serial manifest
+override; only a `KANIKEY_DEV` build may use a local `http://` manifest for
+testing. The first OTA-capable image is flashed over USB. Settings, the outbox
+and the cache survive an update. `tools/release/firmware_manifest.py` checks
+the tag against `Version.h` and the image against its slot.
+
+---
+
+## 2026-10-29 — Lazy review batch and dev-only serial hooks
+
+**Decision:** Home loads the cached summary, user and counters at boot but not
+the review subjects; `startReview()` loads the batch from disk on demand, and
+the batch is evicted after a review and before a lesson fetch. The loop task
+stack is 24 KiB, the USB RX ring is 4 KiB and the USB uploader sends 2 KiB
+chunks. Only the development image exposes the serial token/Wi-Fi/probe
+commands, synthetic outbox/cache seeds, the remote key helpers and the
+`gDirectReading` answer bypass. Release keeps `h`, `i`, `p`, `S`, `up` and `r`.
+
+**Why:** keeping 20 review subjects alive during a lesson fetch left the TLS
+handshake with as little as 3.5 KB free and blocked the canvas in some runs;
+the dev image also overflowed the 8 KiB loop stack. The lazy batch raised the
+lesson-fetch minimum to ~56 KiB and the 24 KiB stack leaves ~17 KiB of
+headroom. Test hooks that can inject answers or synthetic data do not belong in
+a release binary.
+
+**Implications:** starting a review after a lesson or a reboot reads the batch
+from the card (no network round trip); the snapshot's assignment list is
+preserved when the subjects are evicted. `h` now prints the loop stack
+high-water mark. The trade-off is one extra disk read per review session.

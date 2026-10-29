@@ -31,6 +31,11 @@ jobs:
       - name: Run native tests
         run: pio test -e native
         working-directory: firmware
+      - name: Test the release manifest builder
+        run: python3 tools/release/test_firmware_manifest.py
       - name: Build Cardputer firmware
         run: pio run -e cardputer-adv
+        working-directory: firmware
+      - name: Build development firmware
+        run: pio run -e cardputer-adv-dev
         working-directory: firmware

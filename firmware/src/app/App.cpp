@@ -20,6 +20,7 @@
 #include "app/App.h"
 #include "app/BootScreen.h"
 #include "app/DebugScreens.h"
+#include "app/FirmwareScreen.h"
 #include "app/HomeScreen.h"
 #include "app/LessonScreens.h"
 #include "app/LoadingScreen.h"
@@ -39,6 +40,7 @@
 #include "platform/SetupPortal.h"
 #include "platform/WkProbe.h"
 #include "platform/OutboxStore.h"
+#include "platform/Ota.h"
 #include "platform/WkClient.h"
 #include "platform/WkLessons.h"
 #include "platform/WkLevelProgress.h"
@@ -93,6 +95,12 @@ char gNextReview[12] = "--:--";
 char gSyncClock[12] = "--:--";
 
 kk::ReviewBatch gBatch;
+// The cached review batch is loaded on demand: Home and lessons do not need
+// its subjects, and keeping ~20 subjects alive during a lesson fetch left the
+// TLS handshake with less than 4 KB of free heap. When the batch lives only on
+// disk, the snapshot's assignment list is preserved on the next save.
+bool gBatchEvicted = false;
+size_t gCachedBatchCount = 0;
 kk::ReviewQueue gQueue;
 bool gReviewActive = false;
 bool gReviewSummary = false;
@@ -119,14 +127,18 @@ uint32_t gStageUps = 0;        // successful upward moves in the current session
 uint32_t gReviewStartMs = 0;   // millis() when the current session started
 uint32_t gReviewElapsedMs = 0; // latched when the summary is entered
 std::string gMeaningInput;
+#ifdef KANIKEY_DEV
 std::string gDirectReading;  // test/serial reading input, bypasses the romaji IME
+#endif
 kk::RomajiIme gIme;
 std::vector<kk::OutboxItem> gOutbox;
 kk::LessonBatch gLessonBatch;
 std::vector<kk::Subject> gLessonComponents;
 kk::LessonQuiz gLessonQuiz;
 std::string gLessonQuizInput;
+#ifdef KANIKEY_DEV
 std::string gLessonQuizDirectReading;
+#endif
 kk::RomajiIme gLessonQuizIme;
 kk::GlyphPack gPack;
 WiFiServer gAssetServer(8080);
@@ -184,6 +196,22 @@ bool gAboutActive = false;
 bool gSignOutConfirm = false;
 bool gOutboxScreen = false;
 bool gOutboxConfirm = false;
+kk::ota::SavedState gOtaState;
+bool gOtaPending = false;
+uint32_t gOtaLoopAt = 0;
+bool gFirmwareActive = false;
+int gFirmwareIndex = 0;
+enum class FirmwareStep : uint8_t { Idle, Checking, Installing, Restarting };
+FirmwareStep gFirmwareStep = FirmwareStep::Idle;
+bool gFirmwareChecked = false;
+bool gFirmwareConfirm = false;
+kk::ota::Manifest gFirmwareManifest;
+kk::ota::Offer gFirmwareOffer;
+char gFirmwareStatus[120] = "";
+uint16_t gFirmwareStatusColor = kDim;
+char gFirmwareNote[96] = "";
+uint16_t gFirmwareNoteColor = kFaint;
+int gFirmwareProgress = -1;
 uint32_t gOutboxSelectedSeq = 0;
 char gOutboxNote[40] = "";
 bool gLowBatteryPrompt = false;
@@ -224,6 +252,16 @@ void drawSignOutConfirm();
 void drawLowBattery();
 void drawOutbox();
 void openPause();
+void wakeScreen();
+void openFirmware();
+void drawFirmware();
+void firmwareKey(const KeyEvent& e);
+void firmwareBoot();
+void firmwareTick(uint32_t now);
+void firmwareBeforeSleep();
+void firmwareCheck(bool manual);
+void firmwareAfterSync();
+bool gFirmwareStateIdle();
 
 void clearLevelUpNotice() {
     gLevelUpNotice = false;
@@ -316,12 +354,22 @@ void saveCacheSnapshot() {
     if (gHaveUser) snapshot.user = gUser;
     snapshot.levelProgress = gLevelProgress;
     snapshot.srs = gSrs;
-    if (gBatch.ok) snapshot.assignments = gBatch.assignments;
+    if (gBatch.ok) {
+        snapshot.assignments = gBatch.assignments;
+    } else if (gBatchEvicted) {
+        // The batch is on disk only: keep its assignments instead of writing an
+        // empty list. The summary and the other fields still come from memory.
+        kk::CacheSnapshot previous;
+        if (kk::cacheLoadSnapshot(&previous) &&
+            previous.meta.accountKey == snapshot.meta.accountKey)
+            snapshot.assignments = std::move(previous.assignments);
+    }
     if (!kk::cacheSaveSnapshot(snapshot)) {
         Serial.println("[cache] snapshot save failed");
         return;
     }
     gCacheSavedAt = snapshot.meta.savedAt;
+    gCachedBatchCount = snapshot.assignments.size();
     Serial.printf("[cache] snapshot saved: %u assignments, %u due\n",
                   static_cast<unsigned>(snapshot.assignments.size()),
                   static_cast<unsigned>(gDueReviews));
@@ -363,32 +411,12 @@ bool loadCache() {
     gLevelProgress = snapshot.levelProgress;
     gSrs = snapshot.srs;
 
+    // The assignment list is cheap and only a few hundred bytes; the subjects
+    // are not. Keep the count for About and let startReview() load the batch
+    // from disk when it is actually needed.
     gBatch = kk::ReviewBatch{};
-    if (!snapshot.assignments.empty()) {
-        kk::SubjectCache subjects;
-        if (kk::cacheLoadSubjects(SD, &subjects) && subjects.meta.accountKey == key) {
-            for (const kk::Assignment& a : snapshot.assignments) {
-                const kk::Subject* match = nullptr;
-                for (const kk::Subject& s : subjects.subjects)
-                    if (s.id == a.subjectId) {
-                        match = &s;
-                        break;
-                    }
-                if (!match) continue;
-                gBatch.assignments.push_back(a);
-                gBatch.subjects.push_back(*match);
-            }
-            // Keep component subjects too, for the offline detail card.
-            for (const kk::Subject& s : subjects.subjects) {
-                if (std::any_of(gBatch.subjects.begin(), gBatch.subjects.end(),
-                                [&s](const kk::Subject& x) { return x.id == s.id; }))
-                    continue;
-                gBatch.subjects.push_back(s);
-            }
-            gBatch.fetchedAt = snapshot.meta.savedAt;
-            gBatch.ok = !gBatch.assignments.empty();
-        }
-    }
+    gCachedBatchCount = snapshot.assignments.size();
+    gBatchEvicted = gCachedBatchCount > 0;
 
     gCacheSavedAt = snapshot.meta.savedAt;
     gSyncedAt = snapshot.meta.savedAt;
@@ -397,9 +425,8 @@ bool loadCache() {
     applySummary(effectiveNow());
     gOffline = true;
     gShowHome = true;
-    Serial.printf("[cache] loaded: %u assignments, %u subjects, %u due, saved %u\n",
-                  static_cast<unsigned>(gBatch.assignments.size()),
-                  static_cast<unsigned>(gBatch.subjects.size()),
+    Serial.printf("[cache] loaded: %u cached assignments (batch lazy), %u due, saved %u\n",
+                  static_cast<unsigned>(gCachedBatchCount),
                   static_cast<unsigned>(gDueReviews), static_cast<unsigned>(gCacheSavedAt));
     if (gSrs.valid)
         Serial.printf("[cache] srs A %u, G %u, M %u, E %u, B %u\n",
@@ -408,6 +435,67 @@ bool loadCache() {
                       static_cast<unsigned>(gSrs.enlightened),
                       static_cast<unsigned>(gSrs.burned));
     return true;
+}
+
+// Loads the cached review batch (assignments + subjects) on demand. The
+// snapshot is authoritative for the assignment list; the subject cache on SD
+// supplies the data used by the review screens.
+bool loadCachedBatch() {
+    if (!gSdOk || !kk::DevToken::has()) return false;
+    kk::CacheSnapshot snapshot;
+    if (!kk::cacheLoadSnapshot(&snapshot) || snapshot.assignments.empty()) return false;
+    const uint32_t key = currentAccountKey();
+    if (snapshot.meta.accountKey != key) return false;
+
+    kk::SubjectCache subjects;
+    if (!kk::cacheLoadSubjects(SD, &subjects) || subjects.meta.accountKey != key) return false;
+
+    kk::ReviewBatch batch;
+    for (const kk::Assignment& a : snapshot.assignments) {
+        const kk::Subject* match = nullptr;
+        for (const kk::Subject& s : subjects.subjects)
+            if (s.id == a.subjectId) {
+                match = &s;
+                break;
+            }
+        if (!match) continue;
+        batch.assignments.push_back(a);
+        batch.subjects.push_back(*match);
+    }
+    // Keep component subjects too, for the offline detail card.
+    for (const kk::Subject& s : subjects.subjects) {
+        if (std::any_of(batch.subjects.begin(), batch.subjects.end(),
+                        [&s](const kk::Subject& x) { return x.id == s.id; }))
+            continue;
+        batch.subjects.push_back(s);
+    }
+    if (batch.assignments.empty()) return false;
+    batch.fetchedAt = snapshot.meta.savedAt;
+    batch.ok = true;
+    gBatch = std::move(batch);
+    gBatchEvicted = false;
+    gCachedBatchCount = gBatch.assignments.size();
+    pruneCacheOutbox();
+    pruneBatchToSummary(effectiveNow());
+    gCachedBatchCount = gBatch.assignments.size();
+    gBatch.ok = !gBatch.assignments.empty() && !gBatch.subjects.empty();
+    Serial.printf("[cache] batch loaded: %u assignments, %u subjects\n",
+                  static_cast<unsigned>(gBatch.assignments.size()),
+                  static_cast<unsigned>(gBatch.subjects.size()));
+    return gBatch.ok;
+}
+
+// Drops the batch's subject strings when the app leaves review mode or starts
+// a lesson fetch. The assignment list and subjects stay on disk, so the next
+// session reloads them without a network round trip.
+void evictCachedBatch(bool save) {
+    if (gBatch.assignments.empty() && gBatch.subjects.empty() && !gBatchEvicted) return;
+    if (save) saveCacheSnapshot();
+    if (!gBatch.assignments.empty()) gCachedBatchCount = gBatch.assignments.size();
+    gBatch = kk::ReviewBatch{};
+    gBatchEvicted = gCachedBatchCount > 0;
+    Serial.printf("[cache] batch evicted, %u assignments remain on disk\n",
+                  static_cast<unsigned>(gCachedBatchCount));
 }
 
 void markCacheCompleted(uint32_t subjectId, uint32_t assignmentId) {
@@ -420,6 +508,7 @@ void markCacheCompleted(uint32_t subjectId, uint32_t assignmentId) {
             ++i;
     }
     gBatch.ok = !gBatch.assignments.empty() && !gBatch.subjects.empty();
+    gCachedBatchCount = gBatch.assignments.size();
     saveCacheSnapshot();
 }
 
@@ -737,6 +826,8 @@ bool runBatch() {
              static_cast<unsigned>(batch.assignments.size()),
              static_cast<unsigned>(batch.subjects.size()));
     gBatch = std::move(batch);
+    gBatchEvicted = false;
+    gCachedBatchCount = gBatch.assignments.size();
     saveCacheAll();
     gDirty = true;
     return true;
@@ -763,8 +854,20 @@ std::string correctAnswer(const kk::Subject& s, kk::ReviewPart part) {
 
 void clearReviewInput() {
     gMeaningInput.clear();
+#ifdef KANIKEY_DEV
     gDirectReading.clear();
+#endif
     gIme.clear();
+}
+
+// The serial test helper can inject a reading directly; release builds only
+// use the romaji IME.
+std::string reviewInput(bool meaning) {
+    if (meaning) return gMeaningInput;
+#ifdef KANIKEY_DEV
+    if (!gDirectReading.empty()) return gDirectReading;
+#endif
+    return gIme.text();
 }
 
 void showReview() {
@@ -786,9 +889,7 @@ void showReview() {
         view.position = static_cast<int>(gQueue.completedCount());
     if (view.position > view.total) view.position = view.total;
     if (!gFeedback) {
-        view.typed = part == kk::ReviewPart::Meaning
-                         ? gMeaningInput
-                         : (!gDirectReading.empty() ? gDirectReading : gIme.text());
+        view.typed = reviewInput(part == kk::ReviewPart::Meaning);
         view.romaji = gIme.raw();
     } else {
         view.typed = gFeedbackInput;
@@ -1250,8 +1351,7 @@ void checkCurrent() {
     const kk::Subject* s = subjectById(item->subjectId);
     if (!s) return;
     const bool meaning = gQueue.part() == kk::ReviewPart::Meaning;
-    const std::string input = meaning ? gMeaningInput
-                                     : (!gDirectReading.empty() ? gDirectReading : gIme.text());
+    const std::string input = reviewInput(meaning);
     if (input.empty()) return;
     gFeedbackSubjectId = item->subjectId;
     gFeedbackPart = gQueue.part();
@@ -1317,6 +1417,9 @@ void endReview() {
     gFeedback = false;
     gFeedbackCompleted = false;
     gQueue = kk::ReviewQueue{};
+    // Home does not need the batch's subjects; the assignments stay on disk for
+    // the next session.
+    evictCachedBatch(true);
     gDirty = true;
 }
 
@@ -1348,6 +1451,7 @@ void startReview() {
     }
     gLowBatteryConfirmed = false;
     const size_t reviewLimit = static_cast<size_t>(kk::settingsReviewBatchSize());
+    if (gBatch.assignments.empty() && gBatchEvicted) loadCachedBatch();
     if (gBatch.assignments.empty()) {
         char subtitle[48];
         snprintf(subtitle, sizeof subtitle, "%u due items, please wait",
@@ -1444,9 +1548,13 @@ bool reviewKey(const KeyEvent& e) {
     if (e.key == Key::Backspace) {
         if (gQueue.part() == kk::ReviewPart::Meaning) {
             if (!gMeaningInput.empty()) gMeaningInput.pop_back();
-        } else if (!gDirectReading.empty()) {
+        }
+#ifdef KANIKEY_DEV
+        else if (!gDirectReading.empty()) {
             gDirectReading.pop_back();
-        } else {
+        }
+#endif
+        else {
             gIme.backspace();
         }
         gDirty = true;
@@ -1457,7 +1565,9 @@ bool reviewKey(const KeyEvent& e) {
         if (gQueue.part() == kk::ReviewPart::Meaning) {
             gMeaningInput.push_back(c);
         } else {
+#ifdef KANIKEY_DEV
             gDirectReading.clear();
+#endif
             gIme.feed(c);
         }
         gDirty = true;
@@ -1616,8 +1726,18 @@ void showLesson() {
 
 void clearLessonQuizInput() {
     gLessonQuizInput.clear();
+#ifdef KANIKEY_DEV
     gLessonQuizDirectReading.clear();
+#endif
     gLessonQuizIme.clear();
+}
+
+std::string lessonQuizInput(bool meaning) {
+    if (meaning) return gLessonQuizInput;
+#ifdef KANIKEY_DEV
+    if (!gLessonQuizDirectReading.empty()) return gLessonQuizDirectReading;
+#endif
+    return gLessonQuizIme.text();
 }
 
 void startLessonQuiz() {
@@ -1634,10 +1754,7 @@ void startLessonQuiz() {
 void checkLessonQuiz() {
     if (!gLessonQuiz.active() || gLessonQuiz.feedback()) return;
     const bool meaning = gLessonQuiz.part() == kk::AnswerKind::Meaning;
-    const std::string input =
-        meaning ? gLessonQuizInput
-                : (!gLessonQuizDirectReading.empty() ? gLessonQuizDirectReading
-                                                    : gLessonQuizIme.text());
+    const std::string input = lessonQuizInput(meaning);
     if (input.empty()) return;
     gLessonQuiz.submit(input, true);
     const char* status = gLessonQuiz.result().status == kk::AnswerStatus::Correct ? "correct"
@@ -1671,9 +1788,7 @@ void showLessonQuiz() {
         view.message = gLessonQuiz.result().message;
     }
     if (!view.complete) {
-        view.typed = meaning ? gLessonQuizInput
-                             : (!gLessonQuizDirectReading.empty() ? gLessonQuizDirectReading
-                                                                 : gLessonQuizIme.text());
+        view.typed = lessonQuizInput(meaning);
         view.answer = correctAnswer(s, meaning ? kk::ReviewPart::Meaning
                                                : kk::ReviewPart::Reading);
         view.romaji = gLessonQuizIme.raw();
@@ -1717,9 +1832,13 @@ void lessonQuizKey(const KeyEvent& e) {
     if (e.key == Key::Backspace) {
         if (gLessonQuiz.part() == kk::AnswerKind::Meaning) {
             if (!gLessonQuizInput.empty()) gLessonQuizInput.pop_back();
-        } else if (!gLessonQuizDirectReading.empty()) {
+        }
+#ifdef KANIKEY_DEV
+        else if (!gLessonQuizDirectReading.empty()) {
             gLessonQuizDirectReading.pop_back();
-        } else {
+        }
+#endif
+        else {
             gLessonQuizIme.backspace();
         }
         gDirty = true;
@@ -1730,11 +1849,20 @@ void lessonQuizKey(const KeyEvent& e) {
         if (gLessonQuiz.part() == kk::AnswerKind::Meaning)
             gLessonQuizInput.push_back(c);
         else {
+#ifdef KANIKEY_DEV
             gLessonQuizDirectReading.clear();
+#endif
             gLessonQuizIme.feed(c);
         }
         gDirty = true;
     }
+}
+
+void releaseLessonData() {
+    gLessonBatch = kk::LessonBatch{};
+    gLessonComponents.clear();
+    gLessonIndex = 0;
+    gLessonPage = 0;
 }
 
 void startLessons() {
@@ -1753,6 +1881,11 @@ void startLessons() {
         return;
     }
     gLowBatteryConfirmed = false;
+    // Home does not need the review batch while the user is in lessons; drop
+    // its subjects before the lesson fetch so TLS keeps a healthy block.
+    evictCachedBatch(true);
+    gLessonComponents.clear();
+    gLessonBatch = kk::LessonBatch{};
     gLessonEmptyActive = false;
     size_t lessonLimit = static_cast<size_t>(kk::settingsLessonBatchSize());
     if (gHaveUser && gUser.lessonsBatchSize > 0)
@@ -1859,6 +1992,7 @@ void startCurrentLesson() {
         if (gLessonIndex >= gLessonBatch.assignments.size()) {
             gLessonActive = false;
             gShowHome = true;
+            releaseLessonData();
         }
     } else if (httpCode == 401 || httpCode == 403) {
         setSyncIssue(httpCode, true, 0, "Lesson");
@@ -1866,6 +2000,7 @@ void startCurrentLesson() {
         gLessonActive = false;
         gLessonListActive = false;
         gShowHome = true;
+        releaseLessonData();
     }
     gDirty = true;
 }
@@ -1876,12 +2011,14 @@ void lessonListKey(const KeyEvent& e) {
     if (total == 0) {
         gLessonListActive = false;
         gShowHome = true;
+        releaseLessonData();
         gDirty = true;
         return;
     }
     if (e.key == Key::Esc) {
         gLessonListActive = false;
         gShowHome = true;
+        releaseLessonData();
         gDirty = true;
         return;
     }
@@ -1918,8 +2055,10 @@ void lessonKey(const KeyEvent& e) {
         gLessonActive = false;
         if (!gLessonBatch.assignments.empty() && gLessonIndex < gLessonBatch.assignments.size())
             gLessonListActive = true;
-        else
+        else {
             gShowHome = true;
+            releaseLessonData();
+        }
         gDirty = true;
         return;
     }
@@ -1932,7 +2071,7 @@ void lessonKey(const KeyEvent& e) {
     }
 }
 
-constexpr int kSettingsRows = 12;
+constexpr int kSettingsRows = 13;
 
 void setSettingsNote(const char* text, uint16_t color = kFaint) {
     snprintf(gSettingsNote, sizeof gSettingsNote, "%s", text ? text : "");
@@ -1942,6 +2081,7 @@ void setSettingsNote(const char* text, uint16_t color = kFaint) {
 void openSettings(SettingsOrigin origin) {
     gSettingsActive = true;
     gAboutActive = false;
+    gFirmwareActive = false;
     gSignOutConfirm = false;
     gPauseActive = false;
     gSettingsOrigin = origin;
@@ -1954,7 +2094,9 @@ void openSettings(SettingsOrigin origin) {
 void closeSettings() {
     gSettingsActive = false;
     gAboutActive = false;
+    gFirmwareActive = false;
     gSignOutConfirm = false;
+    gFirmwareConfirm = false;
     gSettingsNote[0] = 0;
     if (gSettingsOrigin == SettingsOrigin::Pause)
         gPauseActive = true;
@@ -1969,6 +2111,7 @@ void openPause() {
     gPauseIndex = 0;
     gSettingsActive = false;
     gAboutActive = false;
+    gFirmwareActive = false;
     gSignOutConfirm = false;
     gDirty = true;
 }
@@ -2059,16 +2202,19 @@ void settingsAction() {
             startSync();
             break;
         case 9:
+            openFirmware();
+            break;
+        case 10:
             gAboutActive = true;
             gSettingsNote[0] = 0;
             break;
-        case 10:
+        case 11:
             kk::cacheClearSnapshot();
             if (gSdOk) kk::cacheClearSubjects(SD);
             gCacheSavedAt = 0;
             setSettingsNote("Cache cleared; next boot is cold", kOk);
             break;
-        case 11:
+        case 12:
             gSignOutConfirm = true;
             gSettingsNote[0] = 0;
             break;
@@ -2098,6 +2244,8 @@ void settingsKey(const KeyEvent& e) {
             gHaveUser = false;
             gHaveSummary = false;
             gBatch = kk::ReviewBatch{};
+            gBatchEvicted = false;
+            gCachedBatchCount = 0;
             gQueue = kk::ReviewQueue{};
             gDueReviews = 0;
             gLessons = 0;
@@ -2115,6 +2263,7 @@ void settingsKey(const KeyEvent& e) {
             gPauseActive = false;
             gSettingsActive = false;
             gAboutActive = false;
+            gFirmwareActive = false;
             gSignOutConfirm = false;
             gLowBatteryPrompt = false;
             gLowBatteryConfirmed = false;
@@ -2281,6 +2430,10 @@ void onKey(const KeyEvent& e) {
     }
     if (gOutboxScreen) {
         outboxKey(e);
+        return;
+    }
+    if (gFirmwareActive) {
+        firmwareKey(e);
         return;
     }
     if (gSettingsActive) {
@@ -2692,6 +2845,7 @@ void startSync() {
     gSyncFinished = true;
     gSyncScreen = false;
     Serial.println("[sync] complete");
+    firmwareAfterSync();
     gLastInputAt = millis();
     gDirty = true;
 }
@@ -2989,7 +3143,7 @@ void drawSettings() {
 
     static const char* kLabels[] = {"Brightness", "Dim after", "Blank after", "Sleep after",
                                     "Review batch", "Order", "Lesson batch", "Setup portal",
-                                    "Sync now", "About", "Clear cache", "Sign out"};
+                                    "Sync now", "Firmware", "About", "Clear cache", "Sign out"};
     String values[kSettingsRows];
     values[0] = String(kk::settingsBrightness());
     values[1] = secondsLabel(kk::settingsDimSeconds());
@@ -3000,9 +3154,11 @@ void drawSettings() {
     values[6] = String(kk::settingsLessonBatchSize());
     values[7] = "open";
     values[8] = "run";
-    values[9] = "info";
-    values[10] = "clear";
-    values[11] = "out";
+    values[9] = gOtaState.badgeVersion.empty() ? kk::kFirmwareVersion
+                                               : gOtaState.badgeVersion.c_str();
+    values[10] = "info";
+    values[11] = "clear";
+    values[12] = "out";
 
     SettingsView view;
     view.selectedIndex = gSettingsIndex;
@@ -3086,17 +3242,487 @@ void drawSignOutConfirm() {
     present();
 }
 
+// ---------------------------------------------------------------- firmware
+
+void formatBytes(uint32_t bytes, char* out, size_t n) {
+    if (bytes >= 1024u * 1024u)
+        snprintf(out, n, "%.1f MB", static_cast<double>(bytes) / (1024.0 * 1024.0));
+    else
+        snprintf(out, n, "%u KB", static_cast<unsigned>((bytes + 1023u) / 1024u));
+}
+
+void firmwareStatus(const char* text, uint16_t color) {
+    snprintf(gFirmwareStatus, sizeof gFirmwareStatus, "%s", text ? text : "");
+    gFirmwareStatusColor = color;
+}
+
+void firmwareNote(const char* text, uint16_t color) {
+    snprintf(gFirmwareNote, sizeof gFirmwareNote, "%s", text ? text : "");
+    gFirmwareNoteColor = color;
+}
+
+const char* offerLabel(kk::ota::OfferVerdict verdict) {
+    switch (verdict) {
+        case kk::ota::OfferVerdict::UpToDate: return "Up to date";
+        case kk::ota::OfferVerdict::NoImage: return "No image for this build";
+        case kk::ota::OfferVerdict::NoSlot: return "No update slot";
+        case kk::ota::OfferVerdict::TooLarge: return "Image too large";
+        case kk::ota::OfferVerdict::RolledBack: return "Previous update failed";
+        case kk::ota::OfferVerdict::DevBuild: return "Development build";
+        case kk::ota::OfferVerdict::BadManifest: return "Bad release manifest";
+        case kk::ota::OfferVerdict::Offer: return "Update available";
+    }
+    return "Update check failed";
+}
+
+void firmwareBoot() {
+    gOtaState = kk::ota::loadSavedState();
+    const bool layout = kk::ota::layoutIsOurs();
+    if (!layout) {
+        Serial.printf("[ota] no OTA layout (running %s): USB updates only\n",
+                      kk::ota::runningSlot());
+    } else {
+        Serial.printf("[ota] %s (%s) in %s; update slot %s, %u bytes\n", kk::kFirmwareVersion,
+                      kk::ota::buildEnv(), kk::ota::runningSlot(), kk::ota::nextSlot(),
+                      static_cast<unsigned>(kk::ota::slotBytes()));
+    }
+    if (!gOtaState.installing.empty()) {
+        kk::ota::FirmwareVersion installed, running;
+        bool same = gOtaState.installing == kk::kFirmwareVersion;
+        if (!same && kk::ota::parseFirmwareVersion(gOtaState.installing, &installed) &&
+            kk::ota::parseFirmwareVersion(kk::kFirmwareVersion, &running))
+            same = kk::ota::compareFirmwareVersions(installed, running) == 0;
+        if (same) {
+            Serial.printf("[ota] %s installed over the air in %s\n",
+                          gOtaState.installing.c_str(), kk::ota::runningSlot());
+        } else {
+            Serial.printf("[ota] %s did not start in %s: back on %s\n",
+                          gOtaState.installing.c_str(), gOtaState.installSlot.c_str(),
+                          kk::kFirmwareVersion);
+            gOtaState.failedVersion = gOtaState.installing;
+            kk::ota::saveFailedVersion(gOtaState.failedVersion);
+            firmwareNote("Last update rolled back", kWarn);
+        }
+        gOtaState.installing.clear();
+        gOtaState.installSlot.clear();
+        kk::ota::clearInstallRecord();
+    }
+    gOtaPending = layout && kk::ota::pendingVerify();
+    if (gOtaPending) {
+        gOtaLoopAt = millis();
+        Serial.printf("[ota] first boot of %s: valid after 10 s of the loop\n",
+                      kk::kFirmwareVersion);
+    }
+    // A badge for the running version (or for a failed one) is stale.
+    if (!gOtaState.badgeVersion.empty()) {
+        kk::ota::FirmwareVersion running, badge;
+        const bool parsed = kk::ota::parseFirmwareVersion(kk::kFirmwareVersion, &running) &&
+                            kk::ota::parseFirmwareVersion(gOtaState.badgeVersion, &badge);
+        if ((parsed && kk::ota::compareFirmwareVersions(badge, running) <= 0) ||
+            gOtaState.badgeVersion == gOtaState.failedVersion) {
+            gOtaState.badgeVersion.clear();
+            gOtaState.badgeBytes = 0;
+            kk::ota::saveBadge("", 0);
+        }
+    }
+    if (!gOtaState.badgeVersion.empty())
+        Serial.printf("[ota] cached offer %s (%u bytes)\n", gOtaState.badgeVersion.c_str(),
+                      static_cast<unsigned>(gOtaState.badgeBytes));
+    if (!gOtaState.failedVersion.empty())
+        Serial.printf("[ota] not offering %s again (rolled back)\n",
+                      gOtaState.failedVersion.c_str());
+}
+
+void firmwareTick(uint32_t now) {
+    if (!gOtaPending) return;
+    if (!gOtaLoopAt) gOtaLoopAt = now ? now : 1;
+    if (now - gOtaLoopAt < 10000) return;
+    if (kk::ota::markValid()) {
+        gOtaPending = false;
+        Serial.printf("[ota] %s marked valid after 10 s of the loop\n", kk::kFirmwareVersion);
+    }
+}
+
+void firmwareBeforeSleep() {
+    if (!gOtaPending) return;
+    if (kk::ota::markValid()) {
+        gOtaPending = false;
+        Serial.printf("[ota] %s marked valid before sleep\n", kk::kFirmwareVersion);
+    }
+}
+
+void buildFirmwareView(kk::app::FirmwareView* view) {
+    view->version = kk::kFirmwareVersion;
+    view->env = kk::ota::buildEnv();
+    view->slot = kk::ota::runningSlot();
+    view->status = gFirmwareStatus;
+    view->statusColor = gFirmwareStatusColor;
+    view->note = gFirmwareNote;
+    view->noteColor = gFirmwareNoteColor;
+    view->progress = gFirmwareProgress;
+    view->busy = gFirmwareStep != FirmwareStep::Idle;
+    view->selectedIndex = gFirmwareIndex;
+    if (gFirmwareStep != FirmwareStep::Idle) return;
+
+    const bool canInstall = gFirmwareOffer.verdict == kk::ota::OfferVerdict::Offer &&
+                            gFirmwareOffer.app != nullptr;
+    if (canInstall) {
+        kk::app::FirmwareRowView install;
+        install.label = "Install update";
+        install.value = gFirmwareManifest.version;
+        view->rows.push_back(std::move(install));
+    }
+    kk::app::FirmwareRowView check;
+    check.label = canInstall ? "Check again" : "Check now";
+    check.value = "GitHub";
+    view->rows.push_back(std::move(check));
+}
+
+void drawFirmware() {
+    if (!gDisp) return;
+    kk::app::FirmwareView view;
+    buildFirmwareView(&view);
+    auto& d = target();
+    d.startWrite();
+    kk::app::drawFirmwareScreen(d, view);
+    d.endWrite();
+    present();
+}
+
+void openFirmware() {
+    gFirmwareActive = true;
+    gSettingsActive = false;
+    gAboutActive = false;
+    gSignOutConfirm = false;
+    gShowHome = false;
+    gSettingsNote[0] = 0;
+    gFirmwareIndex = 0;
+    gFirmwareConfirm = false;
+    gFirmwareProgress = -1;
+    gFirmwareStep = FirmwareStep::Idle;
+    if (!gFirmwareChecked) {
+        if (!gOtaState.badgeVersion.empty()) {
+            char status[96];
+            snprintf(status, sizeof status, "%s available; check to install",
+                     gOtaState.badgeVersion.c_str());
+            firmwareStatus(status, kAccentHi);
+            firmwareNote("Check again before installing", kFaint);
+            // The cached offer has no AppImage; a Check now is still required
+            // before installing after a reboot.
+            gFirmwareOffer = kk::ota::Offer{};
+        } else if (gFirmwareStatus[0] == 0) {
+            firmwareStatus("Not checked", kDim);
+            if (gFirmwareNote[0] == 0)
+                firmwareNote("Check GitHub for a new release", kFaint);
+        }
+    }
+    gDirty = true;
+}
+
+void firmwareCheck(bool manual) {
+    if (gFirmwareStep != FirmwareStep::Idle) return;
+    if (!kk::ota::layoutIsOurs()) {
+        firmwareStatus("No OTA slot on this build", kWarn);
+        firmwareNote("Updates over USB only", kFaint);
+        if (gFirmwareActive) drawFirmware();
+        return;
+    }
+    if (!kk::DevWifi::connected() && !kk::DevWifi::connect(30000)) {
+        firmwareStatus("No Wi-Fi connection", kWarn);
+        firmwareNote("Join the saved network first", kFaint);
+        if (gFirmwareActive) drawFirmware();
+        return;
+    }
+
+    gFirmwareStep = FirmwareStep::Checking;
+    gFirmwareProgress = -1;
+    firmwareStatus("Checking GitHub...", kDim);
+    firmwareNote(manual ? "This can take a few seconds" : "", kFaint);
+    if (gFirmwareActive) drawFirmware();
+
+    const String url = kk::ota::manifestUrl();
+    std::string text;
+    releaseCanvas();
+    const kk::ota::FetchResult r = kk::ota::fetchText(
+        std::string_view(url.c_str(), url.length()), kk::ota::kManifestMaxBytes, &text);
+    ensureCanvas();
+
+    if (r.status != kk::ota::FetchStatus::Ok) {
+        char status[96];
+        snprintf(status, sizeof status, "Check failed: %s",
+                 kk::ota::fetchStatusString(r.status));
+        firmwareStatus(status, kWarn);
+        if (r.httpCode)
+            snprintf(gFirmwareNote, sizeof gFirmwareNote, "HTTP %d  %s", r.httpCode, url.c_str());
+        else
+            snprintf(gFirmwareNote, sizeof gFirmwareNote, "%s", url.c_str());
+        gFirmwareNoteColor = kFaint;
+    } else {
+        const kk::ota::ManifestParseResult parsed =
+            kk::ota::parseManifest(text, std::string_view(url.c_str(), url.length()));
+        if (parsed.error != kk::ota::ManifestError::Ok) {
+            char status[96];
+            snprintf(status, sizeof status, "Bad manifest: %s",
+                     kk::ota::manifestErrorString(parsed.error));
+            firmwareStatus(status, kWarn);
+            if (parsed.line)
+                snprintf(gFirmwareNote, sizeof gFirmwareNote, "Line %u  %s", parsed.line,
+                         url.c_str());
+            else
+                snprintf(gFirmwareNote, sizeof gFirmwareNote, "%s", url.c_str());
+            gFirmwareNoteColor = kFaint;
+        } else {
+            gFirmwareManifest = parsed.manifest;
+            kk::ota::OfferInput in;
+            in.running = kk::kFirmwareVersion;
+            in.env = kk::ota::buildEnv();
+            in.slotBytes = kk::ota::slotBytes();
+            in.rolledBack = gOtaState.failedVersion;
+#ifdef KANIKEY_DEV
+            in.allowAnyDevVersion = true;
+#endif
+            gFirmwareOffer = kk::ota::offerFor(gFirmwareManifest, in);
+            gFirmwareChecked = true;
+            if (gFirmwareOffer.verdict == kk::ota::OfferVerdict::Offer) {
+                char status[96];
+                char size[16];
+                formatBytes(gFirmwareOffer.app->bytes, size, sizeof size);
+                snprintf(status, sizeof status, "%s available (%s)",
+                         gFirmwareManifest.version.c_str(), size);
+                firmwareStatus(status, kAccentHi);
+                firmwareNote("Enter: install  Esc: back", kFaint);
+                gOtaState.badgeVersion = gFirmwareManifest.version;
+                gOtaState.badgeBytes = gFirmwareOffer.app->bytes;
+                kk::ota::saveBadge(gOtaState.badgeVersion, gOtaState.badgeBytes);
+            } else {
+                char status[96];
+                snprintf(status, sizeof status, "%s: %s",
+                         offerLabel(gFirmwareOffer.verdict), gFirmwareManifest.version.c_str());
+                firmwareStatus(status,
+                               gFirmwareOffer.verdict == kk::ota::OfferVerdict::UpToDate ? kOk
+                                                                                         : kWarn);
+                firmwareNote(parsed.manifest.version.c_str(), kFaint);
+                if (!gOtaState.badgeVersion.empty()) {
+                    gOtaState.badgeVersion.clear();
+                    gOtaState.badgeBytes = 0;
+                    kk::ota::saveBadge("", 0);
+                }
+            }
+        }
+    }
+    const uint32_t now = static_cast<uint32_t>(time(nullptr));
+    if (now >= 1700000000u) {
+        gOtaState.lastCheckAt = now;
+        kk::ota::saveLastCheck(now);
+    }
+    gFirmwareStep = FirmwareStep::Idle;
+    gFirmwareIndex = 0;
+    gFirmwareConfirm = false;
+    Serial.printf("[ota] check: %s (%s, http %d, %u bytes)\n",
+                  kk::ota::fetchStatusString(r.status), gFirmwareStatus, r.httpCode,
+                  static_cast<unsigned>(r.bytes));
+    gDirty = true;
+    if (gFirmwareActive) drawFirmware();
+}
+
+// After a sync the device is already online: a silent check once a day keeps
+// the Settings row and About current without a visible delay.
+void firmwareAfterSync() {
+    if (!kk::ota::layoutIsOurs() || gOtaPending || !gFirmwareStateIdle()) return;
+    if (!kk::DevWifi::connected()) return;
+    const uint32_t now = static_cast<uint32_t>(time(nullptr));
+    if (now < 1700000000u) return;
+    if (gOtaState.lastCheckAt && now - gOtaState.lastCheckAt < 24u * 60u * 60u) return;
+    firmwareStatus("Checking for firmware...", kFaint);
+    firmwareCheck(false);
+}
+
+bool gFirmwareStateIdle() { return gFirmwareStep == FirmwareStep::Idle; }
+
+bool firmwareProgress(size_t done, size_t total, void*) {
+    if (!total) return true;
+    gLastInputAt = millis();
+    if (gScreenOff) wakeScreen();
+    const int pct = static_cast<int>(done * 100 / total);
+    if (pct == gFirmwareProgress) return true;
+    gFirmwareProgress = pct;
+    snprintf(gFirmwareStatus, sizeof gFirmwareStatus, "Downloading update %d%%", pct);
+    // No std::string/vector allocations while the TLS download owns the heap:
+    // draw a small progress frame directly.
+    if (!gDisp) return true;
+    auto& d = *gDisp;
+    d.startWrite();
+    d.fillScreen(ui::kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextFont(2);
+    d.setTextColor(ui::kBrand, ui::kBg);
+    d.drawString("KaniKey", 6, 2);
+    d.setTextFont(1);
+    d.setTextColor(ui::kDim, ui::kBg);
+    d.drawString("firmware update", 7, 22);
+    char line[64];
+    snprintf(line, sizeof line, "%s", gFirmwareManifest.version.c_str());
+    d.setTextFont(0);
+    d.setTextColor(ui::kText, ui::kBg);
+    d.drawString(line, 7, 44);
+    d.drawRect(7, 66, 226, 10, ui::kLine);
+    d.fillRect(9, 68, 222 * pct / 100, 6, ui::kAccentHi);
+    snprintf(line, sizeof line, "%d%%", pct);
+    d.setTextColor(ui::kDim, ui::kBg);
+    d.drawString(line, 7, 82);
+    d.setTextColor(ui::kFaint, ui::kBg);
+    d.drawString("Do not power off", 7, 123);
+    d.endWrite();
+    return true;
+}
+
+void startFirmwareInstall() {
+    if (gFirmwareStep != FirmwareStep::Idle) return;
+    if (gReviewActive || gLessonActive || gLessonListActive || gLessonQuizActive) {
+        firmwareNote("Finish the review/lesson first", kWarn);
+        gDirty = true;
+        return;
+    }
+    if (gFirmwareOffer.verdict != kk::ota::OfferVerdict::Offer || !gFirmwareOffer.app) {
+        firmwareNote("Check for an update first", kWarn);
+        gDirty = true;
+        return;
+    }
+    if (lowBatteryNow()) {
+        firmwareNote("Battery below 20%; connect power", kWarn);
+        gDirty = true;
+        return;
+    }
+    const kk::ota::AppImage app = *gFirmwareOffer.app;
+    const std::string version = gFirmwareManifest.version;
+
+    // Cache and outbox first: the restart after a good install must not lose a
+    // completed review or the last snapshot.
+    saveCacheSnapshot();
+    saveOutbox();
+    // The update slot is the one a pending image would roll back to; this
+    // image has carried the user here, so it is good now.
+    if (gOtaPending && kk::ota::markValid()) gOtaPending = false;
+
+    gFirmwareStep = FirmwareStep::Installing;
+    gFirmwareConfirm = false;
+    gFirmwareProgress = 0;
+    gLastInputAt = millis();
+    snprintf(gFirmwareStatus, sizeof gFirmwareStatus, "Downloading update 0%%");
+    firmwareNote("Do not power off", kFaint);
+    if (gFirmwareActive) drawFirmware();
+    releaseCanvas();
+
+    const kk::ota::FetchResult r = kk::ota::install(app, firmwareProgress, nullptr);
+    if (r.status == kk::ota::FetchStatus::Ok) {
+        gFirmwareProgress = 100;
+        firmwareStatus("Verifying update...", kDim);
+        firmwareNote("Do not power off", kFaint);
+        if (gFirmwareActive) drawFirmware();
+        kk::ota::saveInstallRecord(version, kk::ota::nextSlot());
+        if (kk::ota::activate()) {
+            gFirmwareStep = FirmwareStep::Restarting;
+            gFirmwareProgress = 100;
+            snprintf(gFirmwareStatus, sizeof gFirmwareStatus, "Restarting into %s", version.c_str());
+            firmwareNote("Installed; rebooting", kOk);
+            if (gFirmwareActive) drawFirmware();
+            Serial.printf("[ota] restarting into %s\n", version.c_str());
+            Serial.flush();
+            delay(1500);
+            ESP.restart();
+        }
+        kk::ota::clearInstallRecord();
+        kk::ota::abandon();
+        firmwareStatus("Update image rejected", kWarn);
+        firmwareNote("Stays on the current firmware", kFaint);
+    } else {
+        kk::ota::clearInstallRecord();
+        char status[96];
+        snprintf(status, sizeof status, "Install failed: %s",
+                 kk::ota::fetchStatusString(r.status));
+        firmwareStatus(status, kWarn);
+        snprintf(gFirmwareNote, sizeof gFirmwareNote, "Stays on %s", kk::kFirmwareVersion);
+        gFirmwareNoteColor = kFaint;
+        Serial.printf("[ota] install failed: %s (http %d)\n",
+                      kk::ota::fetchStatusString(r.status), r.httpCode);
+    }
+    ensureCanvas();
+    gFirmwareStep = FirmwareStep::Idle;
+    gFirmwareProgress = -1;
+    gFirmwareIndex = 0;
+    gFirmwareChecked = false;
+    gOtaState.badgeVersion.clear();
+    gOtaState.badgeBytes = 0;
+    kk::ota::saveBadge("", 0);
+    gDirty = true;
+    if (gFirmwareActive) drawFirmware();
+}
+
+void firmwareKey(const KeyEvent& e) {
+    if (!e.down) return;
+    if (gFirmwareStep != FirmwareStep::Idle) return;
+    if (e.key == Key::Esc) {
+        if (gFirmwareConfirm) {
+            gFirmwareConfirm = false;
+            firmwareNote("Install cancelled", kFaint);
+        } else {
+            gFirmwareActive = false;
+            gSettingsActive = true;
+            gSettingsIndex = 9;
+        }
+        gDirty = true;
+        return;
+    }
+    const bool canInstall = gFirmwareOffer.verdict == kk::ota::OfferVerdict::Offer &&
+                            gFirmwareOffer.app != nullptr;
+    const int rows = canInstall ? 2 : 1;
+    if (e.key == Key::Up) {
+        gFirmwareIndex = (gFirmwareIndex + rows - 1) % rows;
+        gFirmwareConfirm = false;
+        firmwareNote("", kFaint);
+        gDirty = true;
+    } else if (e.key == Key::Down) {
+        gFirmwareIndex = (gFirmwareIndex + 1) % rows;
+        gFirmwareConfirm = false;
+        firmwareNote("", kFaint);
+        gDirty = true;
+    } else if (e.key == Key::Enter) {
+        if (canInstall && gFirmwareIndex == 0) {
+            if (!gFirmwareConfirm) {
+                gFirmwareConfirm = true;
+                firmwareNote("Enter again to install, Esc cancels", kWarn);
+                gDirty = true;
+            } else {
+                startFirmwareInstall();
+            }
+        } else {
+            firmwareCheck(true);
+        }
+    }
+}
+
 void drawAbout() {
     if (!gDisp) return;
     kk::app::AboutView view;
     view.version = kk::kFirmwareVersion;
+    if (kk::ota::layoutIsOurs()) {
+        view.version += " (";
+        view.version += kk::ota::runningSlot();
+        view.version += ")";
+    }
 
-    view.lines.push_back({"Build " __DATE__ " " __TIME__, kFaint, 52});
+    char build[48];
+    if (!gOtaState.badgeVersion.empty())
+        snprintf(build, sizeof build, "Build %s  upd %s", __DATE__,
+                 gOtaState.badgeVersion.c_str());
+    else
+        snprintf(build, sizeof build, "Build %s %s", __DATE__, __TIME__);
+    view.lines.push_back({build, gOtaState.badgeVersion.empty() ? kFaint : kAccentHi, 52});
     view.lines.push_back({std::string("Pack: ") + gPack.statusLine(),
                           gPack.ready() ? kOk : kWarn, 63});
     char cache[64];
     snprintf(cache, sizeof cache, "Cache: %u batch, %u due",
-             static_cast<unsigned>(gBatch.assignments.size()),
+             static_cast<unsigned>(gCachedBatchCount),
              static_cast<unsigned>(gDueReviews));
     view.lines.push_back({cache, kDim, 74});
     view.lines.push_back({std::string("Last sync: ") + gSyncClock +
@@ -3464,6 +4090,8 @@ void clearDevCache() {
     gHaveSummary = false;
     gHaveUser = false;
     gBatch = kk::ReviewBatch{};
+    gBatchEvicted = false;
+    gCachedBatchCount = 0;
     gSrs = kk::SrsCounts{};
     gDueReviews = 0;
     gLessons = 0;
@@ -3556,6 +4184,10 @@ void draw() {
         drawOutbox();
         return;
     }
+    if (gFirmwareActive) {
+        drawFirmware();
+        return;
+    }
     if (gSettingsActive) {
         drawSettings();
         return;
@@ -3617,9 +4249,9 @@ void draw() {
 
 void drawStatus() {
     if (!gDisp || gPortalActive || gLowBatteryPrompt || gSignOutConfirm || gAboutActive ||
-        gSettingsActive || gPauseActive || gSyncScreen || gShowHome || gReviewActive ||
-        gReviewSummary || gLessonListActive || gLessonEmptyActive || gLessonActive ||
-        gOutboxScreen)
+        gFirmwareActive || gSettingsActive || gPauseActive || gSyncScreen || gShowHome ||
+        gReviewActive || gReviewSummary || gLessonListActive || gLessonEmptyActive ||
+        gLessonActive || gOutboxScreen)
         return;
 #ifdef KANIKEY_DEV
     if (gShowDebug) showDebug();
@@ -3887,6 +4519,25 @@ void handleSerial() {
         gSerialLine.trim();
         if (gSerialLine.startsWith("up ")) {
             uploadSdFile(gSerialLine);
+        } else if (gSerialLine == "p") {
+            dumpCanvas();
+        } else if (gSerialLine == "h") {
+            Serial.printf("[heap] free %u, largest %u, min %u, stack %u\n",
+                          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+                          static_cast<unsigned>(heap_caps_get_largest_free_block(
+                              MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+                          static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL)),
+                          static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr) *
+                                                sizeof(StackType_t)));
+        } else if (gSerialLine == "i") {
+            Serial.printf("[pack] %s\n", gPack.statusLine());
+        } else if (gSerialLine == "S") {
+            startAssetServer();
+        } else if (gSerialLine == "r") {
+            Serial.println("[kk] restart");
+            delay(100);
+            ESP.restart();
+#ifdef KANIKEY_DEV
         } else if (gSerialLine == "w") {
             snprintf(gNetLine, sizeof gNetLine, "NET: joining...");
             gDirty = true;
@@ -4011,7 +4662,7 @@ void handleSerial() {
                 Serial.println("[lesson] open a lesson card first");
             }
         } else if (gSerialLine == "v") {
-            if (gBatch.assignments.empty() && !kk::DevWifi::connected() &&
+            if (gBatch.assignments.empty() && !gBatchEvicted && !kk::DevWifi::connected() &&
                 !kk::DevWifi::connect(30000)) {
                 snprintf(gNetLine, sizeof gNetLine, "Review: no Wi-Fi");
             } else {
@@ -4045,13 +4696,23 @@ void handleSerial() {
                 else checkCurrent();
             }
         } else if (gSerialLine == "q") {
-            if (gLessonEmptyActive) {
+            if (gFirmwareActive) {
+                gFirmwareActive = false;
+                gSettingsActive = true;
+                gSettingsIndex = 9;
+                gFirmwareConfirm = false;
+                gDirty = true;
+            } else if (gSettingsActive) {
+                closeSettings();
+            } else if (gLessonEmptyActive) {
                 gLessonEmptyActive = false;
                 gShowHome = true;
+                releaseLessonData();
                 gDirty = true;
             } else if (gLessonListActive) {
                 gLessonListActive = false;
                 gShowHome = true;
+                releaseLessonData();
                 gDirty = true;
             } else if (gLessonQuizActive) {
                 gLessonQuizActive = false;
@@ -4062,8 +4723,10 @@ void handleSerial() {
                 if (!gLessonBatch.assignments.empty() &&
                     gLessonIndex < gLessonBatch.assignments.size())
                     gLessonListActive = true;
-                else
+                else {
                     gShowHome = true;
+                    releaseLessonData();
+                }
                 gDirty = true;
             } else if (gReviewActive) {
                 endReview();
@@ -4097,34 +4760,18 @@ void handleSerial() {
             }
         } else if (gSerialLine == "P") {
             startSetupPortal();
-        } else if (gSerialLine == "p") {
-            dumpCanvas();
-        } else if (gSerialLine == "h") {
-            Serial.printf("[heap] free %u, largest %u, min %u\n",
-                          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
-                          static_cast<unsigned>(heap_caps_get_largest_free_block(
-                              MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
-                          static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL)));
-#ifdef KANIKEY_DEV
-        } else if (gSerialLine == "C") {
-            seedDevCache();
-        } else if (gSerialLine == "X") {
-            clearDevCache();
-        } else if (gSerialLine == "J") {
-            seedDevRejectedOutbox();
-        } else if (gSerialLine.startsWith("R")) {
-            String arg = gSerialLine.substring(1);
-            arg.trim();
-            gRadicalTestId = arg.length() ? static_cast<uint32_t>(arg.toInt()) : 1;
-            gShowRadicalTest = true;
-            gShowDebug = false;
-            gDirty = true;
-            Serial.printf("[test] radical %u\n", static_cast<unsigned>(gRadicalTestId));
-#endif
-        } else if (gSerialLine == "i") {
-            Serial.printf("[pack] %s\n", gPack.statusLine());
-        } else if (gSerialLine == "S") {
-            startAssetServer();
+        } else if (gSerialLine.startsWith("U ")) {
+            const String url = gSerialLine.substring(2);
+            if (kk::ota::setManifestUrl(url))
+                Serial.printf("[ota] manifest URL %s\n", kk::ota::manifestUrl().c_str());
+            else
+                Serial.println("[ota] manifest URL not saved");
+        } else if (gSerialLine == "F") {
+            firmwareCheck(true);
+        } else if (gSerialLine == "I") {
+            startFirmwareInstall();
+        } else if (gSerialLine == "V") {
+            openFirmware();
         } else if (gSerialLine == "s") {
             if (kk::DevWifi::connected()) {
                 Serial.println("[wifi] disconnect first");
@@ -4138,17 +4785,32 @@ void handleSerial() {
                 WiFi.scanDelete();
                 WiFi.mode(WIFI_OFF);
             }
-        } else if (gSerialLine == "r") {
-            Serial.println("[kk] restart");
-            delay(100);
-            ESP.restart();
+        } else if (gSerialLine == "C") {
+            seedDevCache();
+        } else if (gSerialLine == "X") {
+            clearDevCache();
+        } else if (gSerialLine == "J") {
+            seedDevRejectedOutbox();
+        } else if (gSerialLine == "Y") {
+            gOtaState.failedVersion.clear();
+            kk::ota::saveFailedVersion("");
+            firmwareNote("Rollback record cleared", kOk);
+            Serial.println("[ota] rollback record cleared");
+        } else if (gSerialLine.startsWith("R")) {
+            String arg = gSerialLine.substring(1);
+            arg.trim();
+            gRadicalTestId = arg.length() ? static_cast<uint32_t>(arg.toInt()) : 1;
+            gShowRadicalTest = true;
+            gShowDebug = false;
+            gDirty = true;
+            Serial.printf("[test] radical %u\n", static_cast<unsigned>(gRadicalTestId));
+#endif
         } else if (!gSerialLine.isEmpty()) {
 #ifdef KANIKEY_DEV
-            const char* rejectedCmd = " J=attention-outbox";
+            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear J=attention-outbox Y=clear-rollback C=dev-cache X=clear-cache R<id>=radical U <url>=manifest F=firmware-check I=firmware-install V=firmware-screen k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload\n");
 #else
-            const char* rejectedCmd = "";
+            Serial.printf("[kk] commands: h=heap i=pack S=asset-server p=picture r=restart up <bytes> <path>=sd-upload\n");
 #endif
-            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear%s k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload\n", rejectedCmd);
         }
         gSerialLine = "";
         gDirty = true;
@@ -4158,7 +4820,7 @@ void handleSerial() {
 }  // namespace
 
 void setup() {
-    Serial.setRxBufferSize(16384);
+    Serial.setRxBufferSize(4096);
     Serial.begin(115200);
     delay(250);
 
@@ -4170,8 +4832,10 @@ void setup() {
 
     ensureCanvas();
     kk::wkSetRequestHooks(requestBefore, requestAfter);
+    firmwareBoot();
 
     Serial.printf("\n[kk] KaniKey boot\n");
+    Serial.printf("[kk] version %s (%s)\n", kk::kFirmwareVersion, kk::ota::buildEnv());
     Serial.printf("[kk] canvas: %s (%u bytes, %d bpp)\n", gCanvas ? "ok" : "none",
                   static_cast<unsigned>(gCanvas ? gCanvas->bufferLength() : 0),
                   static_cast<int>(gCanvas ? gCanvas->getColorDepth() : 0));
@@ -4232,6 +4896,7 @@ void loop() {
     if (!gPortalActive) serviceAssetServer();
 
     const uint32_t now = millis();
+    firmwareTick(now);
     if (gScreenOff) {
         bool wake = false;
         KeyEvent ignored;
@@ -4313,11 +4978,12 @@ void loop() {
     }
     if (!gPortalActive && !gReviewActive && !gReviewSummary && !gFeedback && !gLessonActive &&
         !gLessonListActive && !gLessonEmptyActive && !gPauseActive && !gSettingsActive &&
-        !gAboutActive && !gOutboxScreen &&
+        !gAboutActive && !gOutboxScreen && !gFirmwareActive && gFirmwareStep == FirmwareStep::Idle &&
         !gLowBatteryPrompt && !gAssetServerActive && sleepMs &&
         now - gLastInputAt > sleepMs && !tgc::board::externalPower()) {
         Serial.println("[power] idle sleep");
         saveCacheSnapshot();
+        firmwareBeforeSleep();
         tgc::board::deepSleep();
     }
 

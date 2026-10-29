@@ -8,6 +8,7 @@
 #include <time.h>
 
 #include "platform/RootCerts.h"
+#include "Version.h"
 #include "wk/RateLimit.h"
 
 namespace kk {
@@ -129,7 +130,9 @@ WkResponse request(const String& method, const String& path, const String& token
     client.print(path);
     client.print(" HTTP/1.0\r\n"
                  "Host: api.wanikani.com\r\n"
-                 "User-Agent: KaniKey/0.1 (unofficial WaniKani client)\r\n"
+                 "User-Agent: KaniKey/");
+    client.print(kk::kFirmwareVersion);
+    client.print(" (unofficial WaniKani client)\r\n"
                  "Wanikani-Revision: 20170710\r\n"
                  "Accept: application/json\r\n"
                  "Connection: close\r\n");

@@ -1,0 +1,65 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Cache PlatformIO and pip
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: ${{ runner.os }}-pio-${{ hashFiles('firmware/platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-
+      - name: Install PlatformIO Core
+        run: pip install platformio==6.1.19
+      - name: Run native tests
+        run: pio test -e native
+        working-directory: firmware
+      - name: Test the release manifest builder
+        run: python3 tools/release/test_firmware_manifest.py
+      - name: Build release firmware
+        run: pio run -e cardputer-adv
+        working-directory: firmware
+      - name: Build OTA manifest
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp firmware/.pio/build/cardputer-adv/firmware.bin \
+             dist/kanikey-cardputer-adv.bin
+          cp LICENSE THIRD_PARTY_NOTICES.md dist/
+          python3 tools/release/firmware_manifest.py \
+            --version "${GITHUB_REF_NAME}" \
+            --image dist/kanikey-cardputer-adv.bin \
+            --out dist/kanikey-firmware.txt \
+            --check-version firmware/src/Version.h
+          (cd dist && sha256sum kanikey-cardputer-adv.bin \
+             kanikey-firmware.txt > SHA256SUMS)
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/kanikey-cardputer-adv.bin
+            dist/kanikey-firmware.txt
+            dist/SHA256SUMS
+            dist/LICENSE
+            dist/THIRD_PARTY_NOTICES.md
+          generate_release_notes: true
+          fail_on_unmatched_files: true

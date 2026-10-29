@@ -7,13 +7,13 @@ plan. Product scope and UX live in [docs/design.md](docs/design.md),
 
 The review loop works on hardware. The main v1 gaps are the last lesson
 hardware checks and the lesson-ordering limitation, a deliberate offline boot,
-hardware verification of the 429/auth/parse-retry paths and the final OUTBOX
-screen (they are code/native/host-inspected only), OTA and the license/release.
-The persistent
-offline cache restores Home, the user and a
+and hardware verification of the 429/auth/parse-retry paths and the final
+OUTBOX screen (they are code/native/host-inspected only). OTA, the MIT license
+and the release tooling are done; the cache batch is loaded lazily. The
+persistent offline cache restores Home, the user and a
 cached review batch after a reboot without network; first boot uses an
 on-device setup portal, and Settings covers display/power/study preferences
-plus sync, cache and sign-out.
+plus sync, firmware, cache and sign-out.
 
 ## Where we are
 
@@ -114,12 +114,17 @@ Working on hardware:
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 72 native tests and the `cardputer-adv` build run in GitHub Actions alongside
-  gitleaks on pushes to `main` and on pull requests.
+- 77 native tests and the `cardputer-adv` build run in GitHub Actions alongside
+  gitleaks on pushes to `main` and on pull requests; the release workflow adds
+  the manifest tests and a tag-driven GitHub release.
+- OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
+  bootloader rollback; Settings › Firmware and About expose it.
 
-Current build: **1,421,589 B / 1,835,008 B flash (77.5%)**, **94,704 B /
-327,680 B static RAM (28.9%)**. The dev image is 1,429,505 B. Removing
-`efontJA_16` freed ~468 KB and leaves ~413 KB of flash headroom.
+Current build: **1,461,165 B / 1,835,008 B flash (79.6%)**, **95,248 B /
+327,680 B static RAM (29.1%)**. The dev image is 1,474,257 B. Removing
+`efontJA_16` freed ~468 KB and leaves ~374 KB of flash headroom. The loop task
+uses a 24 KiB stack; the lazy review batch raised the lesson-fetch minimum free
+heap to ~56 KB.
 
 ## Priority summary
 
@@ -132,27 +137,28 @@ Current build: **1,421,589 B / 1,835,008 B flash (77.5%)**, **94,704 B /
 | 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Code and docs done; hardware check pending for the final OUTBOX screen (API-01) and API-02…05 | — |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
 | 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen, item detail and level progress are live | Partial | UI-07 |
-| 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal ported; OTA/widgets pending | TNG-02, TNG-03 |
-| 9 | Technical debt, CI and release | Maintainability and shipping | Ongoing | TECH-03, TECH-06, TECH-07 |
+| 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal, OTA, storage and sleep done; widgets pending | TNG-03 |
+| 9 | Technical debt, CI and release | Maintainability and shipping | Done (TECH-01…06, TECH-08); TECH-07 only if needed | TECH-07 |
 | 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | Partially started (EXT-01/02 done) | EXT-03, EXT-04 |
 
 ## Execution order
 
 Radicals and the offline cache are code-complete except for hardware checks.
 The lesson flow is implemented except LESSON-08 (only the first 10 summary
-candidates are sorted) and hardware checks. The next work is LESSON-08, then
-OTA/release, with the remaining UI and API hardware verification alongside.
+candidates are sorted) and hardware checks. OTA, the license and the release
+tooling are done; the next work is LESSON-08, with the remaining UI, API and
+lesson hardware verification alongside.
 
 | Order | Phase | Tasks | Outcome |
 |---:|---|---|---|
 | 0 | Close radicals (parallel) | RAD-04 (RAD-02 done) | Real radical prompts and a radical-only lesson |
 | 1 | Offline cache | CACHE-05 → CACHE-07, TNG-04, TNG-05 | Review and Home work after reboot without network (offline boot still untested) |
 | 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | List, understand, quiz and start lessons (ordering partial) |
-| 3 | Setup and device UX | TNG-02 | OTA release path (setup/settings complete) |
+| 3 | Setup and device UX | TNG-02 (done) | OTA release path (setup/settings complete) |
 | 4 | WaniKani data and detail | WK-11 (WK-01/03/04/05/06/07/08/09/10 done) | Review history and progress |
 | 5 | API robustness | API-07 (API-01/02/03/04/05/06 done) | Done; hardware verification of API-01's final OUTBOX screen and API-02…05 still pending |
 | 6 | UI, stats and sync | UI-07 → UI-08 (UI-01/02/03/04/05/06 done) | Polish |
-| 7 | Technical debt and release | TECH-03 → TECH-07 (TECH-01/02/04/05 done) | Version, OTA and license |
+| 7 | Technical debt and release | TECH-03 → TECH-08 (done; TECH-07 optional) | Version, OTA, license and hardening |
 | 8 | Kakehashi-inspired extras | EXT-01 → EXT-09 | Practice modes, critical items, audio and stats |
 
 ## 1. Radicals and remove `efontJA_16` (v1 blocker)
@@ -533,7 +539,9 @@ SRS and deck catalog remain intentionally dropped. See
   token entry (SETUP-01). **Done (2026-10-28):** reduced to KaniKey setup in
   `platform/SetupPortal`; no deck catalog or progress-restore routes.
 - **TNG-02 — `Ota`.** Port manifest download, SHA-256 verification, update and
-  rollback (TECH-06).
+  rollback (TECH-06). **Done (2026-10-29):** `platform/Ota` + `ota/Manifest`,
+  Settings › Firmware, About badge, bootloader rollback and the release
+  workflow; see `docs/ota.md`.
 - **TNG-03 — UI primitives.** Port/adapt `Widgets`, `ListView`, `HintBar`,
   `TextLayout`, `UiFont` and `Icons` before adding more screens; the current UI
   is hand-drawn.
@@ -584,23 +592,42 @@ SRS and deck catalog remain intentionally dropped. See
   Lesson and dev frames were re-checked on hardware on 2026-10-29; only the
   lesson-list capture is blocked by the pre-existing canvas recreation limit
   (see `docs/hardware.md`).
-- **TECH-03 — Dev hooks.** `KANIKEY_DEV` now covers the M0 screen and Tab
-  shortcut; put `gDirectReading`, synthetic outbox commands and other serial
-  helpers behind the same flag.
+- **TECH-03 — Dev hooks. Done (2026-10-29).** `KANIKEY_DEV` now covers the M0
+  screen, the Tab shortcut, `gDirectReading`/`gLessonQuizDirectReading`, the
+  serial token/Wi-Fi/TLS/probe commands, the remote key helpers, the synthetic
+  outbox/cache seeds and the OTA test commands (`U`/`F`/`I`/`V`/`Y`). The
+  release serial console keeps only `h`, `i`, `p`, `S`, `up` and `r`. Both
+  images compile; the dev image exercised the lesson fetch with the 24 KiB loop
+  stack and no overflow.
 - **TECH-04 — PlatformIO CI. Done (2026-10-29).** The `firmware` workflow
-  (`.github/workflows/firmware.yml`) runs `pio test -e native` and the
-  `cardputer-adv` release build; PlatformIO and pip caches are keyed by
-  `firmware/platformio.ini`.
+  (`.github/workflows/firmware.yml`) runs `pio test -e native`, the release
+  manifest tests and the `cardputer-adv` release build; PlatformIO and pip
+  caches are keyed by `firmware/platformio.ini`.
 - **TECH-05 — Host tests. Done (2026-10-29).** The retry predicate moved to
   native-buildable `wk/HttpRetry` (`httpRetryable`) and is table-tested across
-  200/4xx/3xx/2xx and 0/5xx; the outbox capacity edge is covered too. 63 native
-  tests pass; release build 1,403,689 B flash and 94,704 B static RAM. Pack/RLE
-  reads, HTTP transport and outbox persistence stay platform-only.
-- **TECH-06 — Release.** Decide the license, finalize third-party notices,
-  version the firmware, integrate OTA/About and review WaniKani API/branding
-  compliance.
-- **TECH-07 — 16-bit canvas.** Evaluate only if TECH-01 frees enough contiguous
-  memory; the 8-bit path is currently the stable one.
+  200/4xx/3xx/2xx and 0/5xx; the outbox capacity edge is covered too. 77 native
+  tests pass. Pack/RLE reads, HTTP transport and outbox persistence stay
+  platform-only.
+- **TECH-06 — Release. Done (2026-10-29).** MIT `LICENSE`, consolidated
+  `THIRD_PARTY_NOTICES.md`, `Version.h`/`KANIKEY_ENV`, a tag-driven
+  `.github/workflows/release.yml`, `tools/release/firmware_manifest.py` and
+  the OTA path. Settings › Firmware and About show the running version/slot and
+  a cached offer; the manifest check runs daily after sync and on demand. The
+  install streams to the spare slot, checks size + SHA-256, activates and marks
+  valid after 10 s; a failed first boot rolls back and is not offered again.
+  Hardware-verified on 2026-10-29 with a local test server: v0.1.0 → v0.1.2/
+  v0.1.3 in the other slot, plus a rollback when the image was reset before its
+  10 s window (see `docs/hardware.md`). API/branding review is in
+  `docs/ota.md` and `THIRD_PARTY_NOTICES.md`.
+- **TECH-07 — 16-bit canvas.** Evaluate only if a later change frees enough
+  contiguous memory; the 8-bit path is currently the stable one.
+- **TECH-08 — Release hardening. Done (2026-10-29).** The cached review batch
+  is lazy: Home no longer keeps 20 subjects alive, the batch is evicted after a
+  review and before a lesson fetch, and the snapshot preserves its assignment
+  list. The lesson-fetch minimum free heap rose from ~3.5 KB to ~56 KB, the loop
+  task stack is 24 KiB (dev high-water ~17.9 KB free) and the USB RX ring is
+  4 KiB (uploader chunk 2 KiB). The canvas recreated successfully in the lesson
+  fetch run; both release and dev images pass. See `docs/hardware.md`.
 
 ## 10. Kakehashi-inspired extras that fit (after v1)
 
@@ -643,5 +670,9 @@ notifications and a local SRS.
   path.
 - Wi-Fi, token and time can be configured on the device itself.
 - The item detail and session summary show enough to learn from a mistake.
-- CI builds the firmware, runs the native tests and scans secrets.
+- CI builds the firmware, runs the native tests, checks the release manifest
+  and scans secrets.
+- A tagged release publishes an app image and an OTA manifest; the device can
+  install it, mark it valid and roll back a bad first boot.
+- The source is MIT-licensed and the third-party notices are complete.
 - No WaniKani content is distributed in the repository.

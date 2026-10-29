@@ -399,3 +399,42 @@ WaniKani subjects and mnemonics.
   112 B to the lesson-list/card draw stack, so this claim is limited to the
   fetch path, not the draw frames. Both issues remain for the release-hardening
   pass.
+
+### 2026-10-29 — TECH-03/06/08 (dev hooks, OTA, hardening)
+
+- **Lazy review batch:** boot logs now read
+  `[cache] loaded: 20 cached assignments (batch lazy)`; starting a review loads
+  them with `[cache] batch loaded: 20 assignments, 44 subjects`, and ending the
+  review or starting lessons logs `[cache] batch evicted, 20 assignments remain
+  on disk`. The lesson fetch minimum free heap rose from **~3.5 KB** to
+  **~56.3 KB** and the canvas recreated after every request (no
+  `canvas attempt failed` lines). The largest block during the review-batch
+  fetch stayed >=98 KB.
+- **Stack:** the loop task is now 24 KiB. A dev-build lesson fetch completed
+  with **17,876 B** of stack high-water headroom (`h` prints `stack`); the same
+  fetch overflowed the old 8 KiB loop task on the pre-refactor baseline. The
+  USB RX ring is 4 KiB and `tools/device.py upload` sends 2 KiB chunks.
+- **Dev hooks:** the release image accepts only `h`, `i`, `p`, `S`, `up` and
+  `r`; the dev image keeps the remote/token/synthetic/OTA commands. `F`/`I`/
+  `V`/`U`/`Y` were used for the checks below. The `gDirectReading` bypass is
+  no longer in release code.
+- **OTA check:** the default GitHub URL returned a clean `404` (no release
+  published yet) and the Firmware screen showed the HTTP error without changing
+  the badge. A local `http://192.168.1.143:8765/kanikey-firmware.txt` test
+  manifest (dev override `U`) parsed and offered v0.1.1/v0.1.2/v0.1.3.
+- **OTA install:** v0.1.0 in `app0` installed a v0.1.2 dev image into `app1`
+  (1,474,016 B, SHA-256 checked) and booted it. v0.1.2 then installed v0.1.3
+  into `app0` (1,474,192 B) and booted it. Settings, the cache and the outbox
+  survived. The install record was detected on the first boot; the new image
+  was marked valid after 10 s.
+- **Rollback:** an earlier v0.1.1 attempt was reset from USB before its 10 s
+  validation window; the bootloader returned to the old slot and the next boot
+  logged `not offering v0.1.1 again (rolled back)`. This is the expected
+  behaviour, not a bug. The test record was cleared with `Y`.
+- **Final image:** the release `cardputer-adv` build is flashed over USB at the
+  end of the run; the dev-only test hooks are not present in it.
+- **Final release:** after the last USB flash the release image reported
+  `version 0.1.0 (cardputer-adv)`, 219,620 B free / 180,212 B largest at boot,
+  and `h` after sync showed 141,284 B free / 63,476 B largest / 47,664 B min /
+  17,812 B stack headroom. No `[ota] rolled back` line was present after the
+  test record was cleared.

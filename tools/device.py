@@ -99,7 +99,7 @@ def upload(s: serial.Serial, local: str, remote: str, timeout: float) -> int:
         print("[host] device did not acknowledge the upload", file=sys.stderr)
         return 4
     sent = 0
-    chunk = 8192
+    chunk = 2048
     while sent < len(data):
         part = data[sent : sent + chunk]
         write_all(s, part)

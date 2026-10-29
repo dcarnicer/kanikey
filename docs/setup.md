@@ -142,6 +142,10 @@ missing) to open the portal again.
   Pause (Continue / End session / Settings).
 - Settings stores brightness and dim/blank/sleep timings in NVS; `Setup portal`
   reopens the Wi-Fi/token/time page.
+- `Settings › Firmware` checks the latest GitHub release and offers an update.
+  The install streams into the spare slot and restarts; settings, the outbox
+  and the cache survive. If the new image does not start, the previous one
+  comes back. See [ota.md](ota.md).
 
 ---
 
