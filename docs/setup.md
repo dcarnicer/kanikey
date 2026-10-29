@@ -12,15 +12,16 @@
 - **FAT32** microSD card (exFAT won't work; the Arduino-ESP32 framework doesn't
   support it).
 - WaniKani account and a **personal token** with read permissions for
-  assignments, subjects, study materials, user and summary, and create
-  permission for reviews.
+  assignments, subjects, study materials, review statistics, level progressions,
+  user and summary, and create permission for reviews.
 - A computer with Python 3.11+ and [`uv`](https://docs.astral.sh/uv/) to
   generate the visual pack the first time.
-- **Noto Sans JP** font (OFL); the generator downloads it or accepts a local
-  path.
+- **Noto Sans JP** font (OFL); the generator looks in Tangocho's local cache by
+  default and accepts `--font PATH`.
 
-The card is required for the glyphs. Without a visual pack you can sync,
-but not review kanji/vocabulary.
+The card is required for the glyphs. Without a visual pack you can configure
+Wi-Fi and the token through the setup portal, but sync does not run and you
+cannot review kanji, vocabulary or radical prompts.
 
 ---
 
@@ -32,10 +33,12 @@ but not review kanji/vocabulary.
    - Assignments: read.
    - Subjects: read.
    - Study materials: read.
+   - Review statistics: read.
+   - Level progressions: read.
    - User: read.
    - Summary: read.
    - Reviews: create.
-   - (Phase 2: review statistics and reviews, read.)
+   - (Phase 2: reviews, read for history.)
 4. Copy the token. Don't paste it into a chat or commit it.
 
 It can be revoked at any time. KaniKey stores it in NVS and shows it
@@ -50,31 +53,33 @@ your account has access to, plus the rasterized radicals. It is generated
 locally with your token; it is not uploaded to any server.
 
 ```sh
-cd tools/glyph-pack
-uv run kanikey-glyphs build \
-  --token "$WANIKANI_TOKEN" \
+uv run --with pillow --with cairosvg python3 tools/glyph-pack/build.py \
   --out /Volumes/KANIKEY/kanikey/glyphs.kgp
 ```
 
-What it does:
+`build.py` reads the token from `WANIKANI_TOKEN`, so export it first (or pass
+`--token`). What it does:
 
 1. `GET /user` to read `level` and `subscription.max_level_granted`.
 2. `GET /subjects` by allowed levels (up to 60 if the subscription allows it).
 3. Collects the unique characters from kanji, vocabulary and kana.
-4. Renders each character with Noto Sans JP at 64, 40 and 20 px, 4bpp + RLE.
+4. Renders each character with Noto Sans JP at 64, 32 and 20 px, 4bpp + RLE.
 5. Downloads the SVG images for the radicals and rasterizes them at 96 px.
 6. Writes the index and the pack.
 
-Planned options:
+Options:
 
 ```sh
---max-level N       # limit the pack to one level (default: the allowed one)
---font PATH         # another OFL font
---no-radicals       # glyphs only (for testing)
---check             # compare a pack against current subjects and list missing ones
+--chars "食休日本語"  # test pack, no API
+--tangocho           # full kanji/kana pack from Tangocho's local cache, no token
+--font PATH          # another OFL font
+--no-kana            # omit the kana block
+--out PATH           # output file
 ```
 
-Approximate size: 7–9 MB. On an 8 GB card or larger it's not a problem.
+Approximate size: 3.7 MB for the token pack on the card (7,269 glyphs + 498
+radical bitmaps); the tokenless pack is 2.9 MB. On an 8 GB card or larger it is
+not a problem.
 
 ### 3.1 Copying to the card
 
@@ -105,10 +110,13 @@ The card must be FAT32. If the system doesn't mount it, format it as FAT32
    - it is validated with `GET /user` before being stored;
    - a 401/403/TLS error is shown and nothing is saved;
    - the token is never logged or shown back.
-6. **Start KaniKey** closes the portal and runs the first sync.
-7. Check the visual pack. If it is missing or incomplete:
-   `Visual pack missing · Copy glyphs.kgp to /kanikey/`.
-8. Go back to the home screen. You should see your reviews and lessons.
+6. Check the visual pack on the portal page. If it is missing or incomplete:
+   `Pack missing · Copy glyphs.kgp to /kanikey/`, then check again. Sync will
+   not run without the pack.
+7. **Start KaniKey** closes the portal and runs the first sync (`/user`,
+   `/summary`, level and SRS counts; the review batch is fetched later).
+8. Go back to the home screen. You should see the review/lesson counters; Enter
+   on Home fetches the review batch.
 
 The portal only reads `/user` and does not call
 `PUT /assignments/{id}/start`, so configuring the device does not move lessons
@@ -122,13 +130,14 @@ missing) to open the portal again.
 
 ## 5. Daily use
 
-- Turn it on; if it has been more than 15 minutes since the last sync, it syncs.
+- Turn it on; a configured device syncs on boot (`S` on Home or Settings ›
+  `Sync now` runs the same sync manually).
 - `Enter` → reviews.
 - Type the meaning; `Enter`.
 - Type the reading in romaji; the field shows kana; `Enter`.
 - If you get it wrong, read the correct answer and press `Enter`; the item comes back later.
 - When you finish, a summary. `Enter` to return to the home screen.
-- `L` → lessons (phase 2).
+- `L` → lessons. `O` opens reviews that were rejected or gave up.
 - `Esc` → Settings; `Sync now` starts a manual sync. In a review, `Esc` opens
   Pause (Continue / End session / Settings).
 - Settings stores brightness and dim/blank/sleep timings in NVS; `Setup portal`
@@ -146,15 +155,13 @@ You must regenerate it if:
 - You change the font or the glyph size.
 
 With the pack generated up to `max_level_granted`, level changes should not
-require regenerating it. Even so, `--check` lists the missing characters:
+require regenerating it. If a `no glyph` state appears, regenerate the pack;
+there is no separate `check`/`--ids` command yet.
 
 ```sh
-uv run kanikey-glyphs check \
-  --pack /Volumes/KANIKEY/kanikey/glyphs.kgp \
-  --token "$WANIKANI_TOKEN"
+uv run --with pillow --with cairosvg python3 tools/glyph-pack/build.py \
+  --out /Volumes/KANIKEY/kanikey/glyphs.kgp
 ```
-
-If only a few are missing, you can regenerate just the partial pack with `--ids` (planned).
 
 ---
 
@@ -163,14 +170,16 @@ If only a few are missing, you can regenerate just the partial pack with `--ids`
 | Symptom | Probable cause | Solution |
 |---|---|---|
 | `No SD card` | Card missing or not FAT32 | Insert/format as FAT32 |
-| `Visual pack missing` | `/kanikey/glyphs.kgp` is not there | Copy the pack |
-| `Visual pack is missing 休` | Old pack or generated with another level | Regenerate with `--check` |
-| `Token rejected` (401) | Token revoked or copied wrong | Create a new one and update it |
-| `Missing API permissions` (403) | Missing permissions | Edit the token in WaniKani |
-| `Offline` | No Wi-Fi or DNS | Check the network; offline review continues |
-| `WaniKani is busy` (429) | Rate limit | Wait; KaniKey retries |
+| `Pack missing` | `/kanikey/glyphs.kgp` is not there | Copy the pack |
+| `no glyph` on an item | Old pack or generated with another level | Regenerate the pack and copy it again |
+| `Auth: token rejected` / `Token rejected` (401) | Token revoked or copied wrong | Create a new one and update it; KaniKey blocks API calls until the token changes |
+| `Auth: missing permissions` / `Missing permissions` (403) | Missing permissions | Edit the token in WaniKani; other endpoints keep working |
+| `Offline - ...` | No Wi-Fi or DNS | Check the network; offline review continues from the cache |
+| `Rate limited; retry in Ns` (429) | Rate limit | Wait for the countdown; the shared gate stops all requests until the reset |
 | `Clock not set` | No SNTP and no portal time | Connect once or set the time |
-| `Review already changed` (422) | The item was reviewed elsewhere | KaniKey marks it rejected and keeps it; open `O: outbox` to inspect and dismiss it |
+| `HTTP 422` in Outbox | The item was reviewed elsewhere or is invalid | KaniKey marks it rejected; open `O: outbox` to inspect and dismiss it |
+| `HTTP 409` in Outbox | Conflict; the assignment changed | Inspect it in `O: outbox`; dismissing only removes the local review |
+| `gave up` in Outbox | 50 send attempts failed | Inspect the attempts/age in `O: outbox` and dismiss it if it is no longer useful |
 
 ---
 

@@ -5,11 +5,15 @@ cache and the `efontJA_16` removal landed, not the original product
 plan. Product scope and UX live in [docs/design.md](docs/design.md),
 [docs/ux.md](docs/ux.md) and [docs/api-sync.md](docs/api-sync.md).
 
-The review loop works on hardware. The main v1 gaps are the complete lesson
-flow, WaniKani preferences/item detail and API robustness. The persistent
-offline cache restores Home, the user and a cached review batch after a reboot
-without network; first boot now uses an on-device setup portal, and Settings
-covers display/power/study preferences plus sync, cache and sign-out.
+The review loop works on hardware. The main v1 gaps are the last lesson
+hardware checks and the lesson-ordering limitation, a deliberate offline boot,
+hardware verification of the 429/auth/parse-retry paths and the final OUTBOX
+screen (they are code/native/host-inspected only), OTA and the license/release.
+The persistent
+offline cache restores Home, the user and a
+cached review batch after a reboot without network; first boot uses an
+on-device setup portal, and Settings covers display/power/study preferences
+plus sync, cache and sign-out.
 
 ## Where we are
 
@@ -27,12 +31,19 @@ Working on hardware:
   network-off reboot.
 - 429 handling: `RateLimit-Reset` / `RateLimit-Remaining` are parsed and one
   shared gate blocks every request until the reset; Boot, Home and the sync
-  error line show the remaining seconds.
+  error line show the remaining seconds. This is native-tested; hardware
+  verification is pending.
+- 401/403 handling and parse-failure retries are implemented and native-tested;
+  the shared auth gate and the retrying GET helpers have not had a hardware
+  pass. Rejected/stuck outbox rows, their attempt/age detail and dismissal are
+  native-tested; the earlier outbox hardware runs covered the send/reconcile
+  path, not the final OUTBOX screen.
 - Lessons: a list/picker with character, type, level and main meaning, sorted
   by level and `lesson_position`; the card shows meaning/reading, paged
   mnemonic, component meanings and hints, and `PUT /assignments/{id}/start`
-  returns 200. The list, card and quiz are hardware-verified; tests so far use
-  only GETs and no live lesson was started by this work.
+  returns 200. The list, card and quiz were hardware-verified with GETs; the
+  card's `PUT /start` returned 200 in an earlier card run, not in that
+  list/picker pass.
 - Lesson quiz: `Q` on a lesson card opens an optional local meaning/reading
   quiz with typed answers, incorrect-answer feedback, retries and a completion
   screen. It is read-only: the quiz itself never calls `/start`; Enter on the
@@ -77,7 +88,7 @@ Working on hardware:
   asset upload also works.
 - Radical prompts render from the pack's 96 px bitmaps; radical-only lessons
   and reviews are no longer filtered out. `efontJA_16` is gone: missing glyphs
-  show an explicit state instead. A real radical review prompt (radical 鳥) was
+  show an explicit state instead. A real radical review prompt (radical 舌) was
   verified on hardware on 2026-10-28; a radical-only lesson still needs a
   low-level account.
 - Offline cache: Home counts, the user and the cached review batch are
@@ -101,7 +112,7 @@ Working on hardware:
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 60 native tests and the release build run in GitHub Actions alongside
+- 60 native tests and the `cardputer-adv` build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests.
 
 Current build: **1,402,013 B / 1,835,008 B flash (76.4%)**, **94,696 B /
@@ -112,31 +123,32 @@ Current build: **1,402,013 B / 1,835,008 B flash (76.4%)**, **94,696 B /
 
 | Priority | Workstream | Why | Status | Start with |
 |---:|---|---|---|---|
-| 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Done except real-prompt hardware check | RAD-02, RAD-04 |
-| 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Core landed; real-account E2E pending | CACHE-05, CACHE-07 |
+| 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Done except a radical-only lesson | RAD-04 |
+| 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Core and real-account E2E done; deliberate offline boot pending | CACHE-07 |
 | 3 | Complete lesson flow | List/picker, card, components, quiz, empty state and start exist; ordering/hardware remain | Partial | LESSON-08, RAD-04 |
 | 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; review history and audio remain | Partial | WK-11, EXT-06 |
-| 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Docs pending | API-07 |
+| 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Code and docs done; hardware check pending for the final OUTBOX screen (API-01) and API-02…05 | — |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
 | 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen and item detail are live | Partial | UI-05 |
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal ported; OTA/widgets pending | TNG-02, TNG-03 |
 | 9 | Technical debt, CI and release | Maintainability and shipping | Ongoing | TECH-01, TECH-02 |
-| 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | Not started | EXT-01, EXT-03 |
+| 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | Partially started (EXT-01/02 done) | EXT-03, EXT-04 |
 
 ## Execution order
 
-Radicals are closed except the real-account hardware check. The software work
-continues with the remaining cache invalidation/E2E items, then the complete
-lesson flow.
+Radicals and the offline cache are code-complete except for hardware checks.
+The lesson flow is implemented except LESSON-08 (only the first 10 summary
+candidates are sorted) and hardware checks. The next work is LESSON-08, then
+OTA/release, with the remaining UI and API hardware verification alongside.
 
 | Order | Phase | Tasks | Outcome |
 |---:|---|---|---|
-| 0 | Close radicals (parallel) | RAD-02, RAD-04 | Real radical prompts on a configured account |
-| 1 | Offline cache | CACHE-05 → CACHE-07, TNG-04, TNG-05 | Review and Home work after reboot without network |
-| 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | List, understand, quiz and start lessons |
+| 0 | Close radicals (parallel) | RAD-04 (RAD-02 done) | Real radical prompts and a radical-only lesson |
+| 1 | Offline cache | CACHE-05 → CACHE-07, TNG-04, TNG-05 | Review and Home work after reboot without network (offline boot still untested) |
+| 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | List, understand, quiz and start lessons (ordering partial) |
 | 3 | Setup and device UX | TNG-02 | OTA release path (setup/settings complete) |
 | 4 | WaniKani data and detail | WK-11 (WK-01/03/04/05/06/07/08/09/10 done) | Review history and progress |
-| 5 | API robustness | API-07 (API-01/02/03/04/05/06 done) | Docs and screen text in sync with the implementation |
+| 5 | API robustness | API-07 (API-01/02/03/04/05/06 done) | Done; hardware verification of API-01's final OUTBOX screen and API-02…05 still pending |
 | 6 | UI, stats and sync | UI-05 → UI-08 (UI-01/02/03/04/06 done) | Polish |
 | 7 | Technical debt and release | TECH-01 → TECH-07 (TECH-04 done) | Refactor, version, OTA and license |
 | 8 | Kakehashi-inspired extras | EXT-01 → EXT-09 | Practice modes, critical items, audio and stats |
@@ -155,7 +167,7 @@ low-level account.
 - **RAD-02 — Verify radical rendering on hardware.** Check review and lesson
   prompts at 64/32 px, radical-only lessons and the missing-glyph state.
   **Done except radical-only lessons (2026-10-28):** the 96 px bitmap, scaling,
-  missing state and a real radical review prompt (radical 鳥) are verified with
+  missing state and a real radical review prompt (radical 舌) are verified with
   the configured account. Radical-only lessons remain in RAD-04.
 - **RAD-03 — Remove `efontJA_16`.** Replace the remaining fallbacks with the
   pack + missing state, then confirm the flash drop. **Done (2026-10-28):**
@@ -174,8 +186,9 @@ Home, the user and a review batch now survive a reboot without network. The
 snapshot (summary + assignments + user) is in LittleFS; the subjects referenced
 by the batch are on SD. A cached session can be started and completed offline,
 completed items are pruned from the cache and kept in the outbox, and a cache
-older than 24 h is marked stale. The remaining work is the real-account E2E
-validation.
+older than 24 h is marked stale. The real-account online fetch → Wi-Fi off →
+review → reconnect → 201 path is verified; the remaining check is a deliberate
+reboot with Wi-Fi unavailable.
 
 - **CACHE-01 — Persist assignments.** Store the due assignment list and
   critical state in LittleFS, as in the design. **Done:** the fetched batch and
@@ -195,7 +208,7 @@ validation.
   `Stale cache`; a missing cache keeps the `Not synced` boot state.
 - **CACHE-05 — Invalidation.** Define cache version, token/account change,
   server `data_updated_at` and manual sync invalidation. **Done (2026-10-28):**
-  versioned `KKCA`/`KKCS` files (currently v9), token fingerprint at load,
+  versioned `KKCA`/`KKCS` files (currently v10), token fingerprint at load,
   summary `data_updated_at` stored, assignments keep theirs, 24 h stale state,
   Settings `Sync now` and `Clear cache`. Sign-out clears account state.
 - **CACHE-06 — Keep the outbox coherent.** Flush/reconcile pending reviews
@@ -215,9 +228,9 @@ validation.
 
 ## 3. Complete lesson flow (M4)
 
-The card and `PUT /start` work, but this is not yet a full lesson flow. The
-local quiz decision still needs to be made; the recommendation is to keep it
-optional practice before `PUT /start` unless real use shows otherwise.
+The list, card and `PUT /start` work. The local quiz is optional practice
+before `PUT /start`, as decided; the flow is closed except a radical-only lesson
+and the last ordering check.
 
 - **LESSON-01 — Lesson list.** Available lessons with character, type, level
   and main meaning; sorted by level and `lesson_position`. **Done
@@ -295,9 +308,10 @@ live; review history, audio and the remaining preferences still need work.
 - **WK-08 — Item detail data.** Mnemonics, hints, components, user notes and
   synonyms for the review detail screen. **Done (2026-10-28):** review subjects
   are parsed with details, component subjects are fetched in small pages and
-  kept with the batch, and the data is cached. The detail screen is UI-04.
+  kept with the batch, and the data is cached. The detail screen is UI-04 and
+  is done.
 - **WK-09 — Vocabulary detail fields.** Parse `parts_of_speech`,
-  `context_sentences` (phase 2) and `pronunciation_audios` (phase 2).
+  `context_sentences` (stored, up to 4) and `pronunciation_audios` (phase 2).
   **Done except audio (2026-10-28):** parts of speech and context sentences are
   parsed/cached and shown on the vocabulary detail page (6/6). Audio remains
   EXT-06.
@@ -309,12 +323,15 @@ live; review history, audio and the remaining preferences still need work.
 - **WK-11 — Review history.** `GET /reviews` for heatmap, streak and forecast;
   this is a later stats input, not a v1 blocker.
 
-## 5. Outbox and API robustness (finish M3)
+## 5. Outbox and API robustness (code and docs done)
 
-Already done: CRC/`.bak`, ambiguous-request reconciliation, offline end-to-end,
-Home pending/attention counts, a user-facing path for rejected/stuck items and
-their attempt/age detail, the 50-attempt cap, the shared 429 gate and the
-shared 401 auth gate. Remaining:
+This section is code- and docs-complete. CRC/`.bak`, ambiguous-request
+reconciliation, offline end-to-end, Home pending/attention counts, the
+user-facing rejected/stuck path with attempt/age detail, the 50-attempt cap, the
+shared 429 gate, the shared 401 auth gate and parse retries all landed. The
+remaining work is hardware verification of the final OUTBOX screen
+(attempts/age/discard, API-01) and API-02…05; those paths are native or
+host-inspected only.
 
 - **API-01 — Dismiss `Rejected` items.** User-facing action with confirmation
   and a clear reason. **Done (2026-10-28):** the HTTP code is stored in the two
@@ -322,7 +339,8 @@ shared 401 auth gate. Remaining:
   files load with 0). Home shows `O: outbox` when attention is needed; the
   OUTBOX screen lists rejected items with their reason, scrolls, and confirms a
   discard of exactly that sequence. Pending/ambiguous items and the cache are
-  untouched. Dev `J` seeds a 422 and a 409 item. Native-tested.
+  untouched. Dev `J` seeds a 422 and a 409 item. Native-tested; the final
+  OUTBOX screen still needs a hardware pass.
 - **API-02 — 429 backoff.** Wait for `RateLimit-Reset` and back off instead of
   retrying immediately. **Done (2026-10-29):** `RateLimit-Reset` and
   `RateLimit-Remaining` are parsed case-insensitively. A 429 arms one shared
@@ -349,8 +367,8 @@ shared 401 auth gate. Remaining:
   retried by the JSON/body helpers. Native tests cannot cover the TLS client;
   hardware verification is pending.
 - **API-04 — Retry parse failures.** Retry truncated or parse-failed responses,
-  not just transport errors. The subject DOM path still fails the batch on a
-  short body. **Done (2026-10-29):** `wkGetJsonRetry` parses each 200 body
+  not just transport errors. At the time, the subject DOM path failed the batch
+  on a short body. **Done (2026-10-29):** `wkGetJsonRetry` parses each 200 body
   immediately and retries a truncated/unparsable 200, `httpCode == 0` or 5xx
   once (two attempts); 4xx and 429 are not retried by the helper, and 429 still
   uses the shared gate. Review/lesson assignments, subject and component pages,
@@ -374,15 +392,26 @@ shared 401 auth gate. Remaining:
   retry, so no duplicate action was added. `Esc` still opens Settings; the UX
   text documents that the hint bar omits it.
 - **API-07 — Keep docs in sync.** Update `api-sync.md` error table and screens
-  with the implementation.
+  with the implementation. **Done (2026-10-29):** audited `README.md`,
+  `ROADMAP.md`, `docs/api-sync.md`, `docs/ux.md`, `docs/design.md`,
+  `docs/setup.md`, `docs/hardware.md` and `docs/decisions.md` against the
+  current firmware: sync steps, cache v10, outbox states/attempts/age, 401/403
+  and 429 gates, parse retries, `/summary` empty behavior, Home/Sync/Outbox/
+  Summary/Lesson wording, CI and remaining hardware checks. A follow-up pass
+  fixed the 13 contradictions reported by the tester (cache E2E status, lesson
+  ordering, API-01 hardware row, single Home status line, pack-gated sync,
+  implemented settings, current storage format, session-only stats, POST
+  fields, timeout split, first-sync scope, reopenable portal and test-coverage
+  overclaims). No firmware code or tests changed.
 
 ## 6. Setup, settings and pause (M5)
 
 First boot no longer needs a serial cable. The device starts a WPA2 setup
 network, saves the home Wi-Fi, joins it, then serves the station page where the
 token is validated with `GET /user`, the browser sets the clock/time zone and
-the pack can be checked again. Pause and the core device settings are also on
-the device; account/study preferences and clear error actions remain.
+the pack can be checked again. Pause, the core device settings, review/lesson
+batch sizes, order and clear auth/rate-limit/offline screens are also on the
+device.
 
 - **SETUP-01 — First-boot setup portal.** Wi-Fi scan/password, token entry
   (masked, never logged), timezone and visual-pack check. Port the applicable
@@ -504,7 +533,7 @@ SRS and deck catalog remain intentionally dropped. See
 - **TECH-01 — Streaming subject parser.** Assignments/subjects still build a
   JSON DOM; a streaming parser would reduce fragmentation, permit larger
   batches and make a 16-bit canvas realistic.
-- **TECH-02 — Refactor `main.cpp`.** It is ~2,000 lines with many globals.
+- **TECH-02 — Refactor `main.cpp`.** It is ~5,700 lines with many globals.
   Split screens, session state and app services before adding more flows.
 - **TECH-03 — Dev hooks.** `KANIKEY_DEV` now covers the M0 screen and Tab
   shortcut; put `gDirectReading`, synthetic outbox commands and other serial
@@ -528,9 +557,11 @@ These are the product-ideas part of [docs/reuse-tangocho.md](docs/reuse-tangocho
 progress features, not a second SRS.
 
 - **EXT-01 — Configurable batch sizes.** Review and lesson batch size in
-  Settings; today they are fixed at 20 and 5.
+  Settings. **Done:** review 10/20/30 and lesson 3/5/10, clamped to WaniKani's
+  `lessons_batch_size`.
 - **EXT-02 — Question order.** Meaning-first / reading-first and custom
-  ordering; today it is always meaning then reading.
+  ordering. **Done for the pair:** Settings › `Order` toggles meaning-first /
+  reading-first; custom ordering is still open.
 - **EXT-03 — Critical items / leeches.** Prioritize items with repeated
   mistakes and show a small “critical items” list.
 - **EXT-04 — Extra study modes.** Recent lessons, random tests, vocabulary

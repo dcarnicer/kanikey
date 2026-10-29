@@ -18,8 +18,9 @@
    shortcuts. If a key changes meaning, the bar changes.
 4. **Color + shape + word.** Correct isn't just green; it has ✓ and the word
    `CORRECT`. Incorrect isn't just red; it has ✗ and `NOT QUITE`.
-5. **Offline is stated.** An icon, a word and a number: `Offline · 18 cached ·
-   4 to sync`. Never a generic error.
+5. **Offline is stated.** One status line carries the most urgent state, such
+   as `Offline - 2h old` or `Outbox: 4 pending`; outbox pending/attention
+   replaces the offline/stale/vacation/level line. Never a generic error.
 6. **Short texts.** The screen is 240×135; long sentences wrap onto several
    lines or move to a detail screen.
 
@@ -121,18 +122,18 @@ uppercase and symbols; Fn gives function.
 | `.` | `.` | `>` | `↓` |
 | `/` | `/` | `?` | `→` |
 | `'` | `'` | `"` | — |
-| `[` `]` `\` | literals | `{ } |` | — |
+| `[` `]` `\` | literals | `{ } \|` | — |
 
 ### 3.2 Two modes
 
 | Mode | When | What `; , . /` do | What the letters do |
 |---|---|---|---|
-| **Navigation** | Menus, home, feedback, lessons | Arrows (without Fn) | Shortcuts (`R`, `L`, `S`) |
+| **Navigation** | Menus, home, feedback, lessons | Arrows (without Fn) | Context shortcuts (`L`, `O`, `S` on Home; `Q` on a lesson; `D` in Outbox) |
 | **Text** | Answer field active | Characters `; , . /` | They type |
 
 In text mode, the arrows are still available with `Fn + ; , . /`. The field is
-marked with an `accent` border and caret; the bottom bar changes to
-`Enter check · Esc pause · Tab hint`.
+marked with an `accent` border and caret; the bottom bar reads
+`Enter: check` / `Esc: quit`.
 
 When an answer ends (Enter) or is cancelled (Esc), it returns to navigation.
 There's no need to press a button to “enter” the field: when a question opens,
@@ -142,19 +143,22 @@ the field is active.
 
 | Key | Action |
 |---|---|
-| `Enter` | Check answer / continue / open |
+| `Enter` | Check answer / continue / open / start lesson / discard in Outbox |
 | `Esc` | Back / cancel / pause session |
-| `Tab` | Item detail / hint; in menus, settings |
+| `Tab` | Item detail on review feedback |
 | `↑` `↓` | Move focus; in text, `Fn` + arrows |
-| `←` `→` | Previous/next page in lessons |
-| `Space` | Next page in lessons; space in text |
+| `←` `→` | Previous/next page in lessons and item detail |
+| `Space` | Next page in lessons and item detail; space in text |
 | `L` | Lessons (home) |
-| `O` | Outbox of rejected/stuck reviews (home) |
+| `O` | Outbox of rejected/stuck reviews (home; ignored when none need attention) |
 | `S` | Sync (home) |
-| `G0` | Back / pause (holding it in the review opens the session menu) |
+| `Q` | Optional local quiz on a lesson card |
+| `D` | Discard the selected rejected/stuck review (Outbox) |
+| `G0` | Short press wakes; long press is the future power action (not the pause menu) |
 
-`Esc` from Home opens Settings; in a review it opens Pause → Settings. In the
-review, `Tab` opens the item card later (it is the dev debug shortcut today).
+`Esc` from Home opens Settings; in a review it opens Pause → Settings. `Tab` on
+review feedback opens the item card; `Tab` is the dev-build debug shortcut only
+on Home.
 
 ### 3.4 Repeat and modifiers
 
@@ -178,11 +182,12 @@ Boot
                           ├─ 2. Portal: Wi-Fi + token
                           ├─ 3. GET /user: user/level
                           ├─ 4. Time (NTP or browser)
-                          ├─ 5. First sync (summary/assignments)
-                          └─ 6. Visual pack? ──no──► SD instructions
+                          ├─ 5. Visual pack? ──no──► SD instructions
+                          └─ 6. First sync (user/summary/level/SRS counts)
 ```
 
-- The portal opens only during setup and closes when it finishes.
+- The portal opens for first setup and can be reopened from Settings; it closes
+  when setup finishes.
 - The temporary network uses WPA2 with a random 8–10 character key visible on
   screen. It's not an open network.
 - The token is pasted in the portal; it's validated with `GET /user` before
@@ -220,11 +225,14 @@ Home (Offline) ──► Review with cache ──► completed to outbox
                                     Sync outbox (1 by 1)
 ```
 
-- Home shows `Offline · 18 cached · 4 to sync`.
-- If an item has no cached subject, it isn't offered; it says
-  `1 item needs a connection`.
-- When the network returns, the outbox is sent before requesting new
-  assignments.
+- Home shows the cached state or the pending/attention outbox count in the
+  single status line, whichever is more urgent (for example `Offline - 2h old`
+  or `Outbox: 4 pending`).
+- If an item has no cached subject, it isn't offered. If no reviewable item
+  remains, the session does not start; there is no separate “needs a
+  connection” line yet.
+- When the network returns, the outbox is sent before the summary is
+  refreshed.
 
 ### 4.4 Lessons
 
@@ -238,21 +246,24 @@ Home ──L──► Lessons ──Enter──► Lesson card
 ```
 
 - The card shows meaning(s), reading(s), mnemonic and components.
-- “Start lesson” requires a network in v1. Without one, the card can be studied
-  but the button is disabled with `Needs connection`.
+- “Start lesson” requires a network in v1. The card can still be studied and
+  the local quiz used offline; `Enter` attempts `PUT /start` and fails without
+  a connection (the current screen does not yet show `Needs connection`).
 - After starting, the assignment moves to the review queue at stage 1.
 
 ### 4.5 Conflicts and errors
 
 | Situation | What the user sees | What the app does |
 |---|---|---|
-| Invalid token (401) | `Token rejected` + `Update token` | Opens token setup |
-| No permission (403) | `Missing API permissions` | Lists the required scopes |
-| Rate limit (429) | `WaniKani is busy · retrying in 42s` | Backoff with `RateLimit-Reset` |
-| No network | `Offline` + cache | Continues with the cache |
-| 422 on submit | `Review already changed` | Reconciliation and refresh |
-| SD removed | `Insert the SD card` | Pauses the session |
-| Missing glyph | `Visual pack is missing 休` | Blocks the item and explains |
+| Invalid token (401) | `Auth: token rejected` on Home; `Token rejected` on Boot | Arms the shared auth gate; Boot/Sync Enter opens setup |
+| No permission (403) | `Auth: missing permissions` / `Missing permissions` | Endpoint-specific; Boot/Sync Enter offers the token page |
+| Rate limit (429) | `Rate limited; retry in 42s` | Shared gate waits for `RateLimit-Reset`; no immediate retry |
+| No network | `Offline - 2h old` + cache | Continues with the cache |
+| 422 on submit | `WaniKani rejected this review (HTTP 422)` in Outbox | Marks it rejected; keeps it for `O: outbox` |
+| 409 on submit | `Conflict (409); it may have changed` | Marks it rejected; keeps it for `O: outbox` |
+| 50 failed attempts | `Not sent after N attempts` | Marks it stuck; keeps it for `O: outbox` |
+| SD removed | `No SD card` | Retry; a session cannot fetch subjects |
+| Missing glyph | `no glyph` + `check SD` | Draws the explicit state; does not fake a character |
 | Unreliable clock | `Clock not set` | Requests sync; if not, `created_at` is omitted |
 
 ---
@@ -296,10 +307,12 @@ Home ──L──► Lessons ──Enter──► Lesson card
   `M 9`, `E 4`, `B 2` and 4 px swatches below. The counts come from the last
   sync and are cached; if they are missing, the line reads
   `SRS: sync for counts`.
-- If the outbox is not empty, `Outbox: N pending` in amber or
-  `Outbox: N need attention` in red at 8 px. The attention count is rejected +
-  stuck; pending does not include either. When items need attention, the hint
-  swaps `L: lessons` for `O: outbox` (§5.13).
+- The single status line at y=117 shows the most urgent state after the
+  auth/rate/server errors above. If the outbox is not empty it shows
+  `Outbox: N pending` in amber or `Outbox: N need attention` in red at 8 px,
+  replacing the offline/stale/vacation/level line. The attention
+  count is rejected + stuck; pending does not include either. When items need
+  attention, the hint swaps `L: lessons` for `O: outbox` (§5.13).
 - Hint: `Enter: reviews  L: lessons  S: sync` (8 px). With rejected or stuck
   items the hint becomes `O: outbox  Enter: reviews  S: sync`, dropping entries
   from the middle when it would not fit; `O: outbox` is kept. `Esc` still opens
@@ -309,9 +322,11 @@ Home ──L──► Lessons ──Enter──► Lesson card
 - States:
   - **Sync:** `S` starts the same sync as Settings › `Sync now`; the Sync
     screen (§5.11) replaces Home while a sync runs.
-  - **Offline:** line in `warn`: `Offline · 18 cached · 4 to sync`.
-  - **Empty:** `All caught up` + `Next review 18:00`; `Enter` opens the
-    forecast detail.
+  - **Offline:** when no outbox item is pending or needs attention, the status
+    line in `warn` reads `Offline - 2h old`; after 24 h, `Stale cache - 2d old`.
+  - **Empty:** the counters show `0` and `Next review` shows the next time (or
+    `all clear`); there is no separate “All caught up” screen or forecast
+    detail yet.
   - **Vacation:** `Vacation mode` in amber in the status line when no more
     urgent sync/outbox/offline message is shown.
   - **Level:** `L8 since 03 Feb` in faint text in the status line when nothing
@@ -333,16 +348,16 @@ Home ──L──► Lessons ──Enter──► Lesson card
 - Left panel 88×88:
   - 64 px kanji/radical, centered.
   - Pill `KANJI · L5` or `RADICAL · L3` below.
-  - Vocabulary: the word scales to 48/32/20 px to fit; if it doesn't fit, it
-    splits into two lines.
+  - Vocabulary: the word scales to 64/32/20 px to fit the 78×80 panel; if none
+    fits, the prompt shows the missing-glyph state.
   - Radical without Unicode: bitmap from the visual pack.
 - Right panel:
   - Pill `MEANING` (indigo) or `READING` (teal).
   - Instruction: `Type the meaning` / `Type the reading`.
   - 32 px field with the answer; caret.
   - In reading, below: `romaji: tabe` in gray; the field shows `たべ`.
-  - `Tab: details` in the bottom corner.
-- Bar: `Enter check`, `Esc pause`.
+  - `Tab: details` is shown on feedback; the question bar only has check/pause.
+- Bar: `Enter check`, `Esc quit` (which opens Pause).
 - The field is active as soon as the question appears. Nothing needs to be
   pressed.
 - If the answer is long, the text scrolls horizontally; the caret stays
@@ -358,10 +373,10 @@ reading and 20 px feedback from the SD visual pack. Vocabulary words composed
 of several characters are laid out from individual glyphs. Radicals use their
 96 px bitmap when the subject has no Unicode character; a missing glyph shows
 an explicit `no glyph` state. The bottom bar says
-`Enter check` / `Esc quit`; `Esc` now opens the Pause menu (Continue / End
-session / Settings), so quitting is deliberate. `Tab: details` is later. The
-screen is driven by the same review queue and answer checker as the final
-design. The session order follows the account's
+`Enter check` / `Esc quit`; `Esc` opens the Pause menu (Continue / End session /
+Settings), so quitting is deliberate. `Tab` on feedback opens the detail card
+(§5.6). The screen is driven by the same review queue and answer checker as the
+final design. The session order follows the account's
 `reviews_presentation_order`: shuffled, or lower levels first with the shuffle
 kept inside each level.
 
@@ -386,26 +401,29 @@ kept inside each level.
 - `Tab` opens the full card: meanings, readings, mnemonic and components.
 - **Implementation note (2026-10-28).** After a correct answer, the free lines
   under the answer show the user's meaning or reading note when one exists.
-  Wrong answers keep the mistake message; the full detail card is still UI-04.
+  Wrong answers keep the mistake message. `Tab` opens the full detail card
+  described in §5.6.
 
 ### 5.6 Item detail
 
-- Header `ITEM` with type and level.
+- Header `ITEM DETAIL` with the page counter; type and level sit in the pill.
 - Character/radical on the left; meanings and readings on the right.
 - Pages with `←` `→` or `Space`:
-  1. Meanings + readings.
-  2. Meaning mnemonic.
-  3. Reading mnemonic.
-  4. Components (radicals/kanji) with their meanings.
-- If the mnemonic isn't cached: `Mnemonic not available offline`.
-- `Esc` returns to the review without losing the written answer.
+  1. Meanings, readings and synonyms.
+  2. Meaning mnemonic + hint.
+  3. Reading mnemonic + hint.
+  4. Meaning/reading notes.
+  5. Components (radicals/kanji) with their meanings.
+  6. Vocabulary: parts of speech + context sentences (when present).
+  7. Related subjects: similar/amalgamation counts and cached meanings (when
+     present).
+- If the mnemonic isn't cached: `No mnemonic cached.`
+- `Esc` or `Tab` returns to the review without losing the written answer.
 
-**Implementation note (2026-10-28).** `Tab` on feedback opens the live card:
-page 1 meanings/readings/synonyms, page 2 meaning mnemonic + hint, page 3
-reading mnemonic + hint, page 4 notes, page 5 components and, for vocabulary,
-page 6 parts of speech + context. A related page (after vocabulary when
-present) shows similar/amalgamation counts and cached meanings. `Space` pages
-and `Tab`/`Esc` returns to feedback.
+**Implementation note (2026-10-28).** `Tab` on feedback opens the live card.
+The page count depends on the subject: five base pages, plus vocabulary and
+related pages when they apply. `Space`/`←`/`→` page and `Tab`/`Esc` returns to
+feedback.
 
 ### 5.7 Session summary
 
@@ -467,13 +485,14 @@ the mnemonic.
   Wi-Fi/battery icons.
 - A live 2 px progress bar at y=14 shows the completed lesson items; the card
   starts at y=20.
-- Left panel: 48 px character/radical.
-- Right: pill `KANJI · L5`, main meaning in 20 px, readings in teal at 14 px,
-  `person + tree` in gray.
+- Left panel: character/radical scaled to fit the 74×64 panel (64 px preferred).
+- Right: pill `KANJI · L5`, main meaning in the title font, readings in teal at
+  32 px (20 px fallback), `person + tree` in gray.
 - Mnemonic in a 3-line, 10 px panel; `Space` turns the page. The page counter
   stays in the header so it never covers the third line.
-- `Q quiz` opens the optional local quiz; `Enter start` / `Needs connection` if
-  there's no network.
+- `Q quiz` opens the optional local quiz. `Enter start` always attempts the
+  `PUT`; offline it fails and the screen currently has no separate
+  `Needs connection` state.
 - Bottom hint: `Space p  Q quiz` left and `Enter start  Esc list` right at
   y=125, with a gap between them.
 - On start, `drawLoading` shows the English main meaning as its subtitle; the
@@ -502,7 +521,8 @@ the mnemonic.
 - A dedicated screen replaces Home while a sync runs.
 - Six rows: `Wi-Fi`, `Outbox`, `Account`, `Summary`, `Level`, `SRS`.
 - The `Outbox` row shows pending and attention separately (`2 attention, 4
-  pending`), or `N need attention` / `N pending`; `sent` when both are zero.
+  pending`), or `N need attention` / `N pending`; `none` before a flush and
+  `sent` when both are zero afterwards.
 - Each row shows a name, a value and a status: `ok` in green, `..` while
   active, `!` for a warning, `X` for a failure and `--` while pending.
 - Progress bar `0/6` … `6/6`; the title reads `Syncing…`, `Synced` or
@@ -513,8 +533,9 @@ the mnemonic.
 - A failed Account or Summary request stops the later steps and leaves the
   screen on `Sync failed` with the error line. `Enter` retries; for a token or
   permission error `Enter` opens setup. `Esc` goes back.
-- A failed Level or SRS request is a warning (`!`), not a blocker: the sync
-  completes and keeps the previous cached data.
+- A failed Level or SRS request is not a blocker: the sync completes and keeps
+  the previous cached data. It shows `!` when the step reports a warning; a
+  still-valid cached Level value can remain `ok`.
 - The rows are drawn between the blocking TLS requests, so a cancel pressed
   during a request takes effect when it finishes.
 
@@ -539,8 +560,7 @@ the mnemonic.
 - `↑↓` moves, `Enter` changes, `Esc` goes back.
 - `Clear cache` removes the snapshot/subjects for the next boot; `Sign out`
   confirms, then removes the token, cache and pending outbox and keeps Wi-Fi.
-- Not yet: licenses and attributions, strict answers and clear-cache/sign-out
-  from elsewhere.
+- Not yet: licenses and attributions and strict-answer options.
 
 ### 5.13 Outbox
 
@@ -578,14 +598,23 @@ the mnemonic.
 
 ### 5.15 Errors and empty states
 
-- **Not configured:** `Welcome to KaniKey` + `Enter setup`.
-- **No SD:** `No SD card` + `Insert a FAT32 card` + `Enter retry`.
-- **Visual pack:** `Visual pack missing` + `Copy glyphs.kgp` + `Enter check`.
-- **No network:** `Offline` + `Using cached data` + `S sync`.
-- **Token:** `Token rejected` + `Update token`.
-- **Server:** `WaniKani is not answering` + `Enter retry`.
-- **All up to date:** `All caught up` + `Next review 18:00`.
-- **Empty session:** `No reviews due` + `Next review 18:00` + `L lessons`.
+- **Not configured:** Boot `Token needed` or `Wi-Fi needed` + `Enter: setup`.
+- **No SD:** `No SD card` + `Insert a FAT32 card with /kanikey/glyphs.kgp` +
+  `Enter: retry`.
+- **Visual pack:** `Pack missing` + `Copy glyphs.kgp to /kanikey/ on the SD
+  card` + `Enter: check again`.
+- **No network:** Home status `Offline - ...` with cached data and `S: sync`;
+  without a cache, Boot `Sync failed` with the network line + `Enter: retry`.
+- **Token:** Home `Auth: token rejected`; Boot `Token rejected` + `Enter:
+  setup`.
+- **Permissions:** Home `Auth: missing permissions`; Boot `Missing permissions`
+  + `Enter: setup`.
+- **Rate limit:** Home `Rate limited; retry in 42s`; Boot `Rate limited` +
+  `Retry in 42s`.
+- **Server:** Home `WaniKani error; retry`; Boot `WaniKani error` + `Enter:
+  retry`.
+- **Empty:** the counters show `0` and `Next review` shows the next time (or
+  `all clear`). A separate caught-up/empty-session screen is not implemented.
 
 Error screens never show stack traces, URLs with a token, or JSON.
 
@@ -612,7 +641,7 @@ Error screens never show stack traces, URLs with a token, or JSON.
 - Short, direct, without WaniKani jargon.
 - “Correct” / “Not quite”, not “Well done!” or “You got it wrong”.
 - “Reviews”, “Lessons”, “Meaning”, “Reading”, “Item”, “Session”.
-- “Offline · 18 cached · 4 to sync”, not “Network error”.
+- “Offline - 2h old” and “Outbox: 4 pending”, not “Network error”.
 - “Comes back later in this session”, not “Incorrect. It will be repeated”.
 - Disclaimer in Setup and About:
   `KaniKey is an unofficial third-party app for WaniKani. Not affiliated with

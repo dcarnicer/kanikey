@@ -1,7 +1,8 @@
 # Decisions
 
 Short log of design decisions. Status: **accepted** (2026-10-25). Format:
-date, decision, why and what it implies.
+date, decision, why and what it implies. Cache versions named in dated entries
+are the version at that date; the current files are `KKCA`/`KKCS` v10.
 
 ---
 
@@ -150,13 +151,19 @@ flash; the app still fits its 1.75 MiB slot at 88.6%.
 decision. **Superseded on 2026-10-28:** the reference is removed and missing
 glyphs show an explicit state.
 
+---
+
+## 2026-10-25 — MVP focuses on reviews; lessons later
+
 **Decision:** the MVP focuses on reviews. Lessons come later.
 
 **Why:** reviews already require API, cache, IME, answer checker, outbox and
 screens. Adding lessons and mnemonics at the same time multiplies the scope.
 
 **Implications:** the home screen can show the lesson counter from the start,
-but the lessons screen is postponed.
+but the lessons screen was postponed. **Superseded (2026-10-28):** the lesson
+list, card, components and optional quiz are implemented and lessons are part
+of v1.
 
 ---
 
@@ -336,12 +343,13 @@ snapshot fits LittleFS. The token fingerprint discards another account's data.
 
 **Implications:** boot restores Home and a cached batch before any Wi-Fi
 request; completed items are pruned from the cache and stay in the outbox.
-`KKCA`/`KKCS` v9 add the study-material notes, the review presentation order,
-the vacation timestamp, the per-subject review statistics, the level
-progression, vocabulary details and related-subject IDs, store the summary
+`KKCA`/`KKCS` v9 (the current version at the time; v10 adds the Home SRS
+counts) add the study-material notes, the review presentation order, the
+vacation timestamp, the per-subject review statistics, the level progression,
+vocabulary details and related-subject IDs, store the summary
 `data_updated_at`, mark caches older than 24 h as stale, and Settings exposes
-`Sync now`/`Clear cache`. The real online fetch → offline → reconnect E2E
-(CACHE-07) still needs a deliberate live run.
+`Sync now`/`Clear cache`. **Update:** the real-account online fetch → Wi-Fi off
+→ review → reconnect → 201 path is verified; a deliberate offline boot remains.
 
 ---
 
@@ -545,8 +553,9 @@ also expose the device controls without one. Pausing instead of ending avoids
 losing a session on a stray `Esc`, and a sync can be requested deliberately.
 
 **Implications:** changing settings never calls WaniKani. `Sync now` may flush
-the existing outbox and is a user action. Account/study preferences, clear-cache
-and the auth/rate-limit screens are still open (SETUP-05/07).
+the existing outbox and is a user action. Review/lesson preferences,
+clear-cache, sign-out and the auth/rate-limit screens are implemented
+(SETUP-05/07).
 
 ---
 
@@ -590,3 +599,46 @@ request returns (SRS can take up to five requests). What already arrived stays
 in the cache and the device returns Home, or to `Sync cancelled` when there is
 no cache. An Account or Summary failure stops later steps; Level and SRS
 failures are warnings and the sync completes.
+
+---
+
+## 2026-10-29 — Rejected and stuck reviews wait for the user
+
+**Decision:** an outbox review refused by WaniKani (422/409/other non-auth 4xx)
+is kept as `Rejected`; a review that has used 50 send attempts becomes `Stuck`.
+Neither is resent automatically. Home shows `N need attention`; `O: outbox`
+opens the list, and a confirmed discard removes only the selected sequence.
+The row and confirmation show the HTTP code or `gave up`, the attempt count and
+the age.
+
+**Why:** the API has no idempotency key, so resending a refused or
+possibly-delivered review can duplicate it. A rejection or give-up must remain
+visible instead of disappearing, and the user needs enough context to decide.
+
+**Implications:** the 24-byte record keeps its layout; bytes 22–23 now hold
+`http_code` (old files load `0`), and `Stuck` uses state value `4`. Pending
+excludes attention items, and attention counts rejected + stuck for Home,
+Summary and the sync row. Native-tested; the final OUTBOX screen still needs a
+hardware pass.
+
+---
+
+## 2026-10-29 — Shared 429/401 gates; 403 stays endpoint-specific
+
+**Decision:** any 429 arms one shared monotonic gate using `RateLimit-Reset`
+(clamped to 120 s, 60 s fallback), and every request returns a local 429 until
+the deadline. Any real 401 arms one shared session gate; every request returns
+a local 401 until setup starts, a token is saved/validated/cleared, or the user
+signs out. A 403 is reported only for the endpoint that returned it. The JSON
+and body helpers retry a truncated/unparsable 200, `httpCode == 0` or 5xx once;
+other 4xx and 429 are not retried.
+
+**Why:** retrying a rate limit immediately makes it worse, and continuing to
+send a revoked token cannot succeed. A missing scope may affect only one
+resource, so it must not block reviews or lessons that still work.
+
+**Implications:** the outbox POST keeps a 401/403 item `Pending` and stores a
+deferred auth issue that survives a later successful `/user` or `/summary`
+until the outbox drains. A reconciliation blocked by either gate stays
+`Ambiguous`. The gates and retry helpers are native/host-inspected only;
+hardware verification is pending.

@@ -8,11 +8,13 @@
 > items with `POST /v2/reviews` (201). Review order follows the account's
 > `reviews_presentation_order` (`shuffled` or `lower_levels_first`). A
 > persistent outbox makes reviews survive a reboot and offline sessions. Home,
-> the user and the review batch are now cached too:
-> after a reboot without network the device restores them, shows `Offline` and
-> can run a cached session. Lessons show a list/picker sorted by level and
-> `lesson_position`, then a card with meaning/reading and mnemonic pages; only
-> the card's Enter calls `PUT /assignments/{id}/start` (200). Study materials
+> the user and the review batch are now cached too: the snapshot restores them
+> at boot, shows `Offline` and can run a cached session (a deliberate
+> offline-boot hardware run is still pending). Lessons show a list/picker
+> sorted by level and `lesson_position` within the summary's first 10
+> candidates (ordering is partial), then a card with meaning/reading and
+> mnemonic pages; only the card's Enter calls `PUT /assignments/{id}/start`
+> (200). Study materials
 > add the user's meaning synonyms and meaning/reading notes: synonyms are
 > accepted answers and the notes appear on the lesson card and review feedback.
 > `Q` on a lesson card opens an optional local meaning/reading quiz with
@@ -39,8 +41,15 @@
 > reads `/user`. `Esc` opens Pause in a review and Settings from Home, with
 > brightness/timings, Sync now, the setup portal and About; `S` on Home starts
 > the same sync. Normal boots show setup/sync states; the M0 debug screen is
-> only in the development build. The remaining v1 gaps are lesson hardware
-> verification and API robustness.
+> only in the development build. Rejected and stuck reviews are kept in the
+> Outbox (`O` on Home) with their HTTP code or `gave up`, attempts and age, and
+> can be dismissed after a confirmation. A shared 429 gate shows a countdown
+> and a shared 401 gate stops API calls until the token changes; a 403 stays
+> endpoint-specific. The remaining v1 gaps are lesson ordering (LESSON-08), the
+> last lesson hardware checks (radical-only lessons, notes/`lower_levels_first`),
+> a deliberate offline boot, hardware verification of the 429/auth/parse-retry
+> paths and the final OUTBOX screen (currently native/host-inspected), OTA and
+> the license.
 >
 > KaniKey is an **unofficial** third-party app for WaniKani. It is not
 > affiliated with, endorsed by or sponsored by WaniKani or Tofugu LLC. WaniKani
@@ -62,7 +71,7 @@ syncs with the user's account. The SRS still lives in WaniKani.
 
 ## What it will do (MVP)
 
-- Sync the summary, the assignments and the subjects that are due.
+- Sync the summary and fetch the assignments and subjects that are due.
 - Review with **typed answers**: meaning and reading, with romaji-to-kana
   conversion as you type.
 - Show the correct answer, the accepted meanings/readings and a short hint when
@@ -70,12 +79,14 @@ syncs with the user's account. The SRS still lives in WaniKani.
 - Send each review to WaniKani as you complete it, with the failure counters the
   API expects.
 - **Offline mode**: sessions from the local cache and a queue of pending reviews
-  that syncs when the network comes back.
-- Lessons (phase 2): meaning card, readings, mnemonic and components; then
-  `PUT /assignments/{id}/start`.
-- Home screen with pending reviews/lessons, next review time and the breakdown by
-  SRS stage.
-- Settings, Wi-Fi, time, OTA and clear error states.
+  that syncs when the network comes back. Rejected/stuck reviews are kept for
+  inspection and dismissal instead of disappearing.
+- Lessons: list/picker, meaning/reading card, mnemonic and components, an
+  optional local quiz, then `PUT /assignments/{id}/start`.
+- Home screen with pending reviews/lessons, next review time, the breakdown by
+  SRS stage and the sync/outbox status.
+- Settings, Wi-Fi, time, a sync screen with cancel/retry, and clear
+  auth/rate-limit/offline states. OTA is still planned.
 - UI in English (WaniKani meanings are in English).
 
 ## What it won't do (for now)

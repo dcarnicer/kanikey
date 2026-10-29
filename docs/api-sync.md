@@ -1,7 +1,8 @@
 # KaniKey — API, cache and synchronization
 
-> Design, 2026-10-25. This document is the contract between the firmware and the
-> WaniKani API, and between the firmware and local storage.
+> Design, 2026-10-25; implementation notes through 2026-10-29. This document is
+> the contract between the firmware and the WaniKani API, and between the
+> firmware and local storage.
 
 ---
 
@@ -64,15 +65,18 @@ ISO 8601 in UTC, with microseconds and `Z`. KaniKey only needs seconds.
 
 | Method | Endpoint | What for | Frequency |
 |---|---|---|---|
-| GET | `/user` | User, level, subscription, preferences | Boot / 1 day |
-| GET | `/summary` | Reviews/lessons per hour, `next_reviews_at` | 30–60 min |
-| GET | `/assignments` | Stages, `available_at`, assignment IDs | Every sync |
-| GET | `/subjects` | Meanings, readings, components, mnemonics | When IDs are missing |
+| GET | `/user` | User, level, subscription, preferences | Every sync (boot or manual) |
+| GET | `/summary` | Reviews/lessons per hour, `next_reviews_at` | Every sync (boot or manual) |
+| GET | `/assignments` | Stages, `available_at`, assignment IDs | Per review/lesson batch; five SRS count requests per sync |
+| GET | `/subjects` | Meanings, readings, components, mnemonics | When the batch IDs need data |
 | GET | `/study_materials` | User synonyms and notes | Per review/lesson batch |
 | GET | `/review_statistics` | Per-subject accuracy and streaks | Per review batch |
 | GET | `/level_progressions` | Current level and level-up timestamps | Every sync |
 | POST | `/reviews` | Send a completed review | Per item |
 | PUT | `/assignments/{id}/start` | Start a lesson | Per lesson |
+
+There is no ETag/conditional-request path in the current client; `304` is listed
+below for completeness only.
 
 Optional for phase 2:
 
@@ -105,21 +109,27 @@ data.next_reviews_at
 - The buckets are hourly. For the home screen, the `subject_ids` of buckets
   with `available_at <= now` are added up.
 - The sum does not replace assignments for reviewing: it only gives the counter.
-- It is cached for 30–60 min; after a session it is adjusted locally or refreshed.
+- The response is cached with the Home snapshot and replaced on every sync;
+  after a session the local counter is adjusted. A snapshot older than 24 h is
+  shown as stale rather than blocked.
+- A structurally valid summary with empty `lessons`/`reviews` arrays and no
+  `next_reviews_at` is an all-clear account, not a parse failure. The streaming
+  parser requires the `data`, `lessons` and `reviews` keys to be present.
 
 ### 3.3 `/assignments`
 
-Filters that are used:
+Filters used by the current client:
 
 | Filter | Use |
 |---|---|
-| `immediately_available_for_review=true` | Review queue |
-| `immediately_available_for_lessons=true` | Lessons |
-| `updated_after=<ISO>` | Changes since the last sync |
-| `hidden=false` | Exclude hidden |
-| `subject_ids=...` | Refresh specific assignments |
-| `levels=...` | Limit to allowed levels |
+| `subject_ids=...` | Fetch the assignment for a review/lesson batch |
 | `srs_stages=...` | Home distribution buckets |
+| `hidden=false` | Exclude hidden from the distribution counts |
+| `page_after_id=999999999` | Ask for an empty data page in the distribution counts |
+
+`immediately_available_for_review`, `immediately_available_for_lessons`,
+`updated_after` and `levels` remain design filters for a future global sync;
+the current queue comes from `/summary` and is resolved by `subject_ids`.
 
 The Home distribution makes five small collection requests with
 `srs_stages=1,2,3,4`, `5,6`, `7`, `8`, `9`, `hidden=false` and
@@ -146,7 +156,8 @@ available_at, resurrected_at, hidden, data_updated_at
 
 ### 3.4 `/subjects`
 
-Filters: `ids=...`, `types=...`, `levels=...`, `updated_after=...`.
+Filters: `ids=...` is used by the current batches; `types=...`, `levels=...`
+and `updated_after=...` remain design filters.
 
 Common fields:
 
@@ -161,7 +172,7 @@ data.component_subject_ids[], data.amalgamation_subject_ids[],
 data.visually_similar_subject_ids[],
 data.character_images[] (radicals only; SVG),
 data.parts_of_speech[] (vocabulary),
-data.context_sentences[] (vocabulary, phase 2),
+data.context_sentences[] (vocabulary; up to 4 stored),
 data.pronunciation_audios[] (vocabulary, phase 2),
 data.readings[] { reading, primary, accepted_answer, type }
 ```
@@ -190,7 +201,7 @@ already present in the batch.
 
 Fields: `subject_id`, `meaning_note`, `reading_note`, `meaning_synonyms[]`,
 `hidden`. The synonyms are used as correct answers. They are requested only for
-subjects in the cache, by `subject_ids` or `updated_after`.
+subjects in the current batch, by `subject_ids`.
 
 **Implementation (2026-10-28).** Review and lesson batches request the
 materials for their own subject IDs in groups of 10, after the subjects are
@@ -221,14 +232,18 @@ Body:
 - `created_at` is optional; if omitted, the server uses the request time.
 - It must be in the past and later than `assignment.available_at`.
 - The response carries `resources_updated.assignment` and
-  `resources_updated.review_statistic`; they are applied to the local state.
+  `resources_updated.review_statistic`. The current client uses the assignment's
+  SRS stage for display; `available_at` is parsed but not written back, and the
+  statistic is not merged from this response (it comes from the next
+  `/review_statistics` batch).
 - There is no idempotency key. See §6.
 
 **Implementation (2026-10-28).** The 2xx response is parsed for
-`resources_updated.assignment.data.srs_stage` and `available_at`. The review
-header shows the assignment's stage before completion; the session summary
-shows the stage returned by the POST (with the previous stage when the same
-session queued it). A 201 with a body that cannot be parsed still counts as
+`resources_updated.assignment.data.srs_stage` and `available_at`. Only the SRS
+stage is displayed/applied; `available_at` is not written back to the cache.
+The review header shows the assignment's stage before completion; the session
+summary shows the stage returned by the POST (with the previous stage when the
+same session queued it). A 201 with a body that cannot be parsed still counts as
 sent; only the stage display is skipped.
 
 ### 3.7 `PUT /assignments/{id}/start`
@@ -242,7 +257,9 @@ Body:
 - `started_at` is optional; it defaults to now.
 - It requires `srs_stage == 0`, `started_at == null`, `unlocked_at != null` and an
   allowed level.
-- It returns the assignment with `srs_stage = 1` and `available_at`.
+- It returns the assignment with `srs_stage = 1` and `available_at`. The current
+  client only checks the status; the refreshed data arrives with the next
+  batch/sync.
 
 ### 3.8 `/review_statistics`
 
@@ -286,9 +303,10 @@ value.
   - (Phase 2: read **reviews**.)
 - It is stored in NVS; it is shown masked; it is deleted on logout.
 - It is validated with `GET /user` before storing it.
-- If the token lacks permissions, `403`; what is missing is shown and updating it
-  is offered. A 403 is per endpoint and does not stop requests that are still in
-  scope (for example, study materials can fail while reviews work).
+- If the token lacks permissions, `403`; a missing-permissions state is shown
+  and updating the token is offered. A 403 is per endpoint and does not stop
+  requests that are still in scope (for example, study materials can fail while
+  reviews work).
 - If the token is revoked, `401`; returning to setup is offered. A 401 arms a
   session-wide gate: later requests are answered locally with 401 until setup
   starts, the token is saved/validated/cleared, or the user signs out.
@@ -304,85 +322,91 @@ value.
 | `cold` | No cache or no token | Setup / first sync |
 | `warm` | Cache and token, network available | Normal home |
 | `syncing` | Requests in progress | Progress |
-| `offline` | No network, with cache | `Offline · N cached · M to sync` |
-| `stale` | Old cache (more than 24 h) | `Last sync 1d ago` notice |
-| `auth_error` | 401/403 | `Token rejected` / `Missing permissions` |
-| `server_error` | Persistent 5xx | `WaniKani is not answering` |
+| `offline` | No network, with cache | `Offline - 2h old` |
+| `stale` | Old cache (more than 24 h) | `Stale cache - 2d old` |
+| `auth_error` | 401 | `Auth: token rejected` (Home) / `Token rejected` (Boot) |
+| `forbidden` | 403 | `Auth: missing permissions` / `Missing permissions` |
+| `rate_limited` | 429 and the shared gate is active | `Rate limited; retry in 42s` |
+| `server_error` | Persistent 5xx | `WaniKani error; retry` |
 
-### 5.2 Full sync (cold)
-
-```
-1. Ensure time (SNTP or portal)
-2. GET /user                     → user, level, max_level_granted
-3. GET /summary                  → counters
-4. GET /assignments?hidden=false&levels=1..max_level_granted
-                                 → all assignments (paginated)
-5. Collect subject_ids of the relevant assignments
-6. GET /subjects?ids=...         → in batches of 100
-7. GET /study_materials          → synonyms
-8. Save meta and ETags
-```
-
-- The initial cache may be large (up to ~10,000 assignments). It is stored in
-  LittleFS; subjects only for the relevant IDs (reviews/lessons), not all of them.
-- If the user wants a full offline cache, a “Download all subjects” setting
-  walks all assignments and stores the subjects on the SD card.
-- `GET /assignments?hidden=false` may be several pages; it is written as pages
-  arrive.
-
-### 5.3 Warm sync
+### 5.2 Cold start
 
 ```
-1. If there is an outbox: flush (see §6)
-2. GET /user (ETag)
-3. GET /summary (TTL 30 min)
-4. GET /assignments?updated_after=<last_sync>
-5. GET /assignments?immediately_available_for_review=true
-6. GET /assignments?immediately_available_for_lessons=true
-7. For new IDs: GET /subjects?ids=...
-8. GET /study_materials?updated_after=<last_sync>
-9. Save meta
+1. Mount LittleFS and microSD
+2. Load the outbox; load the cached Home/user/batch if the card/pack and
+   account match
+3. If the token or Wi-Fi is missing: use the cache if there is one, otherwise
+   open the setup portal
+4. Otherwise: run the sync below
 ```
 
-- Order matters: the outbox first, so that the assignments returned by the
-  server already reflect the reviews that were sent.
-- If the flush fails due to network, it switches to offline and no assignments
-  are requested.
+- Boot draws the cached Home before Wi-Fi work, so a saved cache is usable
+  offline.
+- A missing or unreadable cache with a configured token goes to sync; an
+  unconfigured device goes to setup. Neither is a hard error.
+
+### 5.3 Sync (boot or manual)
+
+```
+1. Join Wi-Fi; wait up to 5 s for SNTP
+2. Flush the outbox (see §6)
+3. GET /user                     → user, level, max_level_granted
+4. GET /summary                  → counters (streaming parser)
+5. GET /level_progressions       → current level timestamps
+6. Five GET /assignments count requests for the SRS bar
+7. The summary/level/SRS steps save the snapshot as they succeed
+```
+
+- Order matters: the outbox first, so a later `/summary` reflects the reviews
+  that were sent.
+- Account and Summary are blocking steps: an error stops the sync and leaves
+  the sync screen on `Sync failed`. Level and SRS are non-critical; a failure
+  is a warning (or a still-valid cached value) and keeps the previous data.
+- If the outbox flush fails due to network, the sync continues with the
+  remaining steps. No assignment list is fetched by the sync itself in any case.
 - If the flush hits 422/409, that item is marked `rejected` with its HTTP code
   and kept for the Outbox screen; the flush continues with the next pending
-  item.
-- `updated_after` may return changes to assignments that are not in the queue
-  (because they were reviewed on another device); they are applied.
+  item. A 401 arms the session gate and a 403 is reported for the endpoint;
+  both leave the item `Pending` (see §6).
+- A 429 arms the shared rate-limit gate; later requests are answered locally
+  until the reset and the sync reports the countdown.
 
-**Current implementation:** there is no global assignment/subject sync yet, so
-review and lesson batches fetch their own `/study_materials` by `subject_ids`
-(see §3.5). The notes/synonyms then live in the cached subject.
+**Not implemented yet:** the global `assignments`/`subjects` delta, ETag/304 and
+`updated_after` warm sync. Review and lesson batches fetch their own
+`/assignments`, `/subjects`, `/study_materials` and (reviews only)
+`/review_statistics` by `subject_ids`; those records are merged into the cached
+batch.
 
 ### 5.4 Review session
 
 ```
 session_start:
-  - if there is network and last_sync > 15 min: sync
-  - due = assignments with stage 1..8, available_at <= now, hidden=false
+  - if the batch is not cached: flush the outbox, then fetch it (not a full sync)
+  - due = summary subject IDs with stage 1..8, available_at <= now, hidden=false
   - filter out those already in the outbox
   - sort according to reviews_presentation_order (shuffled by default; if it is
     lower_levels_first, respect it) and freeze the list
-  - for each subject_id without a subject: subjects sync (if there is network)
-  - if a subject is missing: do not offer the item; show a notice
+  - fetch assignments/subjects/materials/statistics for the batch
+  - if a subject is missing: do not offer the item; if none remain, the
+    session does not start
 
 item_complete:
   - write outbox (assignment_id, counts, created_at, subject_id)
   - if there is network: try an immediate POST
       - ok: apply assignment, delete from outbox
-      - 429/5xx/timeout: leave pending
+      - network: leave pending
+      - 429/5xx/timeout: leave pending or ambiguous (see §6)
   - if there is no network: leave pending
   - advance
 ```
 
+- There is no background or 15-minute sync; boot and the manual `S`/Settings ›
+  `Sync now` action run the sync in §5.3.
 - The session list does not change if the server adds reviews in the meantime.
 - Completed items are removed from the local queue even if the POST remains
   pending.
-- At the end, the summary shows `N waiting to sync` if an outbox remains.
+- At the end, the summary shows `N pending` or `N need attention` if an outbox
+  remains.
 
 **Implementation (2026-10-28).** `ReviewQueue` shuffles the frozen batch and
 then stable-sorts by subject level when the cached `User` says
@@ -391,8 +415,10 @@ setting is separate and only selects meaning-first or reading-first.
 
 ### 5.5 After syncing
 
-- `summary` is refreshed; local counters are recalculated.
-- If the server returns new assignments, the home screen shows `N new reviews`.
+- `summary` is refreshed; Home recalculates the due/lesson counters and the
+  next review time from it.
+- There is no separate “N new reviews” banner; the Home counters are the
+  authoritative display.
 - If an outbox item was rejected (422/409) or reached the attempt cap, it is
   marked `rejected`/`stuck` with its HTTP code or attempt count and kept; it is
   not deleted or reconciled automatically. Home shows `N need attention` and
@@ -426,8 +452,8 @@ offset  field              type
   header carries the CRC32 over the records.
 - `http_code` uses the two reserved bytes at offset 22; the record and the file
   version do not change. Files written before this field load with `0`.
-- `sending` is marked before the POST; if there is a power cut, on startup it is
-  treated as `ambiguous`, not blindly as `pending`.
+- `sending` is marked before the POST; if there is a power cut, the next flush
+  treats it like `ambiguous` and reconciles it, not blindly as `pending`.
 - `rejected` is kept until the user sees it; the Home status line shows
   `N need attention` and `O: outbox` opens the list. Discarding is confirmed
   and removes only the selected `seq`, never a pending, sending or ambiguous
@@ -447,30 +473,35 @@ offset  field              type
 1. Sort by `seq`.
 2. Skip `rejected` and `stuck`; they are not failures and do not block later
    items.
-3. For each `pending`:
+3. For each `pending` (and each `sending`/`ambiguous`, reconciled first):
    - Before the POST, if `attempts >= 50`, mark `stuck`, save and continue with
      the next item without sending.
    - POST.
-   - 200: apply `resources_updated.assignment`; delete.
+   - 2xx: use the returned SRS stage for display; delete.
    - 401: arm the session-wide auth gate and stop; later requests are answered
      locally with the stored 401. The item stays `Pending` and is remembered as
      a deferred auth issue.
-   - 403: stop this endpoint and request permissions; the item stays `Pending`
-     and is remembered as a deferred auth issue. Other endpoints are not gated
-     because the missing scope may be local to one resource.
+   - 403: report missing permissions and stop this endpoint; the item stays
+     `Pending` and is remembered as a deferred auth issue. Other endpoints are
+     not gated because the missing scope may be local to one resource.
    - 422/409: mark `rejected` with the HTTP code; keep it for the Outbox
      screen.
    - 429: wait for `RateLimit-Reset`; leave pending. The shared gate makes the
      next attempt local until the reset (no immediate retry).
-   - 5xx/timeout: mark `ambiguous`; stop the flush (do not continue with the
-     following ones to avoid creating a mess).
+   - connect/DNS/TLS failure before the request is sent: leave pending and stop
+     this flush.
+   - timeout or `httpCode == 0` after the request was sent, or a 5xx: mark
+     `ambiguous`; stop the flush (do not continue with the following ones to
+     avoid creating a mess).
 4. `ambiguous` ones are resolved before retrying:
-   - `GET /assignments/{assignment_id}`.
-   - If `data_updated_at` is later than our `created_at` and the SRS stage
-     changed, assume the review arrived; delete.
-   - If the assignment still has the same stage and `available_at` earlier than
-     `created_at`, the POST did not arrive; set it back to `pending`.
-   - If it cannot be decided, show `Needs attention` and do not duplicate.
+   - `GET /assignments?ids={assignment_id}` (not the single-resource path).
+   - If `data_updated_at` is later than our `created_at` **and** `available_at`
+     is later than `created_at`, assume the review arrived; delete it and prune
+     the cache.
+   - Otherwise the current implementation sets it back to `pending` and lets
+     the next flush retry it. This is a heuristic: the API has no idempotency
+     key, so a review that arrived without changing `available_at` can be
+     duplicated. The UI never calls this “sent”.
    - If the shared 429 or 401 gate is active during reconciliation, keep the
      item `ambiguous` and stop rather than retrying the POST.
 
@@ -478,8 +509,9 @@ offset  field              type
 
 The API does not accept an idempotency key. A timeout after the server has
 processed the review produces a duplicate if it is resent. Duplicating a review
-alters the SRS stage and the user's statistics. We prefer to leave the item as
-`ambiguous` and reconcile rather than risk it.
+alters the SRS stage and the user's statistics. The client reconciles with the
+assignment before retrying; when the assignment cannot prove delivery, the
+current heuristic retries, and that duplicate risk remains documented in §6.4.
 
 A rejected or stuck review is never resent automatically. The user opens
 Outbox from Home, sees the stored HTTP code or `gave up`, the attempt count and
@@ -490,9 +522,10 @@ the cache or assignments.
 ### 6.4 Limitations
 
 - Reconciliation is heuristic: another device could have reviewed the same item
-  in the same window.
+  in the same window. If the assignment does not prove delivery, the current
+  path retries, so a duplicate remains possible.
 - If the user reviews in KaniKey and on the web at the same time, there may be
-  conflicts. The UI warns and prioritizes not duplicating.
+  conflicts.
 - The outbox is not synchronized between devices.
 
 **Implementation (2026-10-29).** `attempts` is incremented before each POST and
@@ -509,22 +542,23 @@ confirmation.
 | Data | Where | Lifetime | Invalidation |
 |---|---|---|---|
 | Token, Wi-Fi, settings | NVS | Until logout | User action |
-| `user` | LittleFS | 1 day | Sync / 401 |
-| `summary` | LittleFS | 30–60 min | Sync / after session |
-| Assignments | LittleFS | Until sync | `updated_after`, review response |
+| `user` | LittleFS snapshot | Until next sync | Sync / token change |
+| `summary` | LittleFS snapshot | Until next sync; stale after 24 h | Sync / after session |
+| Assignments | LittleFS snapshot | Until next sync | Sync / review response |
 | Subjects | microSD | Immutable by ID | `data_updated_at` if refreshed |
 | Study materials | merged into Subjects (microSD) | Until subject refresh | New review/lesson batch |
 | Review statistics | merged into Subjects (microSD) | Until subject refresh | New review batch |
 | Visual pack | microSD | Until regenerated | Builder version / new characters |
-| Local stats | LittleFS | Persistent | Manual reset |
+| Session stats | RAM only | Current session | Session end / reboot |
 
 ### 7.1 Sizes
 
-- Assignments: ~10,000 × 32 B ≈ 320 KB; fits in LittleFS.
-- Outbox: 100 × 32 B ≈ 3.2 KB.
+- A full assignment cache would be ~10,000 × 19 B ≈ 190 KB with the current
+  inline record; the snapshot keeps only the batch (tens of records).
+- Outbox: 128 × 24 B ≈ 3 KB plus the 16-byte header.
 - Subjects: ~300 B on average + mnemonics; ~20 MB if all are cached; that is why
   they live on the SD card and are requested by ID.
-- Visual pack: 7–9 MB; SD card.
+- Visual pack: 3.7 MB for the token pack (2.9 MB tokenless); SD card.
 
 ### 7.2 Atomic writes
 
@@ -610,7 +644,7 @@ with a DOM. It still needs a DOM and duplicates temporary storage.
 |---|---|---|
 | 200 | OK | Apply |
 | 200, truncated / invalid JSON | Incomplete response | Retry once, then report the parse error |
-| 304 | Not modified | Use cache |
+| 304 | Not modified | Not used yet; the client sends no conditional request |
 | 401 | Invalid token | Arm the session-wide auth gate; stop until token validation/save, setup start, sign-out or dev token clear; outbox items stay Pending |
 | 403 | No permissions / subscription | Per-endpoint only; explain and keep the outbox item Pending; do not gate other requests |
 | 404 | Resource does not exist | Discard, refresh |
@@ -618,15 +652,19 @@ with a DOM. It still needs a DOM and duplicates temporary storage.
 | 422 | Validation | Mark rejected, do not retry; keep until the user discards in Outbox |
 | 50 attempts | Retry cap | Mark stuck before the next POST; not pending, keep until the user discards in Outbox |
 | 429 | Rate limit | Wait for `RateLimit-Reset`; shared gate, no immediate retry |
-| 5xx | Server | Retry with backoff |
-| timeout / DNS / TLS | Network | 2 retries, then offline |
+| 5xx | Server | Retry once in the GET helpers; an outbox POST becomes `ambiguous` |
+| DNS / TLS / connect failure before sending | Network | One retry in the GET helpers, then offline; outbox POST stays `pending` |
+| timeout after sending / `httpCode == 0` | Response unknown | One retry in the GET helpers; outbox POST becomes `ambiguous` |
 
-- Backoff: 1 s, 2 s, 4 s, 8 s, with jitter; maximum 60 s.
+- Retry policy: the JSON/body helpers make two attempts with a 300 ms delay for
+  a truncated/unparsable 200, `httpCode == 0` or 5xx. Other 4xx and 429 are not
+  retried. The direct outbox POST/PUT and reconciliation GET are single-shot.
 - 429: use `RateLimit-Reset` (epoch) if present; otherwise 60 s. A far-future
-  reset is capped at 120 s; no request starts before the gate deadline.
+  reset is capped at 120 s; no request starts before the shared gate deadline.
 - Budget: a normal sync < 30 s; a cold one < 2 min.
 - No requests are made in parallel. One at a time.
-- The radio is turned off when done.
+- Wi-Fi is joined for setup/sync/serial work; review and lesson input do not
+  require the radio.
 
 **Implementation (2026-10-29).** `WkClient` stores a real 401 in one shared
 session-wide auth gate. While it is armed, every GET/POST/PUT returns a
@@ -680,71 +718,75 @@ blocked by the 429 or 401 gate, the item stays `ambiguous`.
 
 ## 11. Storage format
 
-### 11.1 Subject
+### 11.1 Subject (current cache)
+
+`KKCS` stores variable-length subject records: id, type, level and characters;
+count-prefixed meanings/readings and synonym/whitelist/blacklist lists;
+component/similar/amalgamation ID lists; mnemonic, hint and note strings; parts
+of speech and context sentences; and the review-statistics counters. Every
+string is `u16` length + UTF-8. There is no fixed-size subject record or shared
+string pool.
+
+The fixed `SubjectRecord` + string-pool layout below is a future design and is
+not written by the current firmware.
 
 ```
-SubjectRecord (fixed)
+SubjectRecord (future, not used)
+  id, type, level, flags, lesson_position
+  count fields and string-pool offsets
+  data_updated_at
+```
+
+### 11.2 Assignment (current cache)
+
+The snapshot stores each cached batch assignment inline as a 19-byte record:
+
+```
+Assignment (current, 19 B)
   id                u32
-  type              u8
-  level             u8
-  flags             u16   has_characters, hidden, has_mnemonic
-  lesson_position   u16
-  meaning_count     u8
-  reading_count     u8
-  component_count   u16
-  similar_count     u16
-  chars_off         u32   offset into the pool
-  meanings_off      u32
-  readings_off      u32
-  auxiliary_off     u32
-  components_off    u32
-  similar_off       u32
-  meaning_mnemonic_off u32
-  reading_mnemonic_off u32
-  data_updated_at   u32
-```
-
-String pool: length `u16` + UTF-8, aligned to 2 bytes. Lists are
-`count` + `count` 8-byte references (`offset`, flags/type).
-
-### 11.2 Assignment
-
-```
-AssignmentRecord (fixed, 32 B)
-  assignment_id     u32
   subject_id        u32
-  srs_stage         u8
   subject_type      u8
-  flags             u8   hidden, started, passed, burned, pending_review
+  srs_stage         u8
   available_at      u32  0 = null
-  started_at        u32
-  unlocked_at       u32
   data_updated_at   u32
+  flags             u8   hidden, pending_review
 ```
 
-They are stored sorted by `subject_id`; the file is rewritten on every sync
-(320 KB is fast on LittleFS).
+The snapshot is rewritten whenever the cache is saved (sync, batch fetch,
+review/lesson change). The larger fixed 32-byte `AssignmentRecord` from the
+original design is not used.
 
 ### 11.3 Outbox
 
-See §6.1. Append-only file; it is compacted when emptied.
+See §6.1. The whole file is rewritten with `temp + rename`; `.bak` keeps the
+previous version. It is not an append-only log.
 
-### 11.4 Meta
+### 11.4 Cache header
+
+Both `KKCA` (LittleFS) and `KKCS` (SD) start with the same 24-byte header:
 
 ```
-magic "KKM1", version u16
-user_id, username, level, max_level_granted
-last_user_sync, last_summary_sync, last_assignment_sync, last_outbox_flush
-etag_user, etag_summary (hash or short string)
-clock_trusted, last_known_utc
-schema_version
+0   magic         4 B   "KKCA" or "KKCS"
+4   version       u16   currently 10
+6   reserved      u16   0
+8   saved_at      u32   UTC epoch; 0 when the clock was not trusted
+12  account_key   u32   FNV-1a of the API token
+16  payload_len   u32
+20  payload_crc   u32   CRC32 of the payload
+24  payload...
 ```
 
-### 11.5 Local statistics
+There is no ETag/last-sync meta in the current files; the snapshot payload holds
+the summary, user, level, SRS counts and batch assignments, and `KKCS` holds the
+subjects.
 
-Session and lifetime counters: reviews, correct, incorrect by type, time,
-initial/final stage. They can be partially rebuilt; they are not the source of
-truth.
+### 11.5 Session statistics
+
+The current build keeps session counters in RAM only (`SessionStats`): reviews,
+correct/incorrect by type, accuracy and elapsed time for the summary screen.
+They are discarded when the session ends and are not written to LittleFS.
+Lifetime counters, initial/final-stage history and rebuild logic are future
+work.
 
 ---
 
@@ -765,15 +807,19 @@ Minimal fixtures, hand-written, with attribution:
 - `review_ok.json`: `resources_updated.assignment`.
 - `errors.json`: 401, 403, 422, 429.
 
-Tests:
+Tests (current native coverage):
 
-- Parsing each fixture into the model and back to the binary format.
-- Chained pages with `next_url`.
-- `updated_after` and ETag/304.
-- Outbox: ok, 429, timeout, 422, cut mid-write, `.bak`.
-- Reconciliation: assignment updated, not updated, ambiguous.
-- Clock: valid `created_at`, earlier than `available_at`, unreliable.
+- Fixture parsing into the models; cache snapshot/subject round trips and CRC
+  rejection.
+- JSON values, escapes and bad input; summary buckets, IDs and a valid empty
+  summary.
+- Outbox model counts, HTTP code default, attempt cap and stuck add/remove.
 - Rate limit: respects `Reset` (42 s, fallback, untrusted clock, 120 s cap).
+
+Not covered natively (host/device checks or planned): HTTP/TLS requests, outbox
+append/compaction/retries/reconciliation, outbox 429/timeout/422/cut-mid-write/
+`.bak`, `next_url` pagination, filesystem atomic writes/version migration, and
+`created_at`/untrusted-clock edge cases.
 
 ---
 
@@ -781,11 +827,11 @@ Tests:
 
 | # | Decision | Recommendation |
 |---|---|---|
-| 1 | Store all subjects or only the ones in the queue? | Only the ones in the queue; optional “download all” |
+| 1 | Store all subjects or only the ones in the queue? | Only the ones in the queue; optional “download all” is not implemented |
 | 2 | Mnemonics in the base cache? | Yes, for offline lessons; truncate if needed |
-| 3 | `updated_after` or full sync? | Delta with `updated_after`; full on cold |
-| 4 | Retry an ambiguous POST? | No; reconcile first |
+| 3 | `updated_after` or full sync? | Planned delta with `updated_after`; full on cold |
+| 4 | Retry an ambiguous POST? | Reconcile first; the current heuristic retries when delivery cannot be proven |
 | 5 | Send `created_at` offline? | Only if the clock is reliable; otherwise omit |
-| 6 | Offline lessons? | Phase 2; v1 requires network for `start` |
+| 6 | Offline lessons? | Lessons are v1; `start` still requires network |
 | 7 | User synonyms? | Yes, `study_materials`; shown in the detail view |
-| 8 | Store audio/context? | Phase 2; not in v1 |
+| 8 | Store audio/context? | Context sentences are stored (up to 4); pronunciation audio is phase 2 |

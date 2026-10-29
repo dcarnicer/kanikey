@@ -1,9 +1,12 @@
 # KaniKey — product design and architecture
 
-> **Status:** design approved, 2026-10-25. Firmware M1 is working: display,
-> keyboard controller, microSD, Wi-Fi, SNTP, authenticated `/user` + `/summary`,
-> live Home, a 20-item due batch and a typed review session that submits with
-> `POST /v2/reviews` (201). Measurements: [hardware.md](hardware.md).
+> **Status:** design approved, 2026-10-25; implementation status 2026-10-29.
+> The firmware has Home, cached offline sessions, the outbox, lessons, the item
+> detail card, the sync screen and the 429/auth/parse-retry handling. Review and
+> lesson writes use the real API; the remaining v1 work is lesson ordering
+> (LESSON-08), the last hardware verification, OTA and the license/notices.
+> Measurements:
+> [hardware.md](hardware.md).
 >
 > **Working name:** KaniKey. It's provisional; the design doesn't depend on it.
 >
@@ -38,7 +41,7 @@ lets you review from the cache and leaves the results in a queue.
 | Content | No WaniKani content in the repo; user token and cache |
 | Rendering | Pre-rendered glyph pack on the microSD |
 | Base | Pruned fork of Tangocho (HAL, rendering, UI, Wi-Fi, OTA) |
-| v1 scope | Reviews; lessons in phase 2 |
+| v1 scope | Reviews and lessons (lessons landed in M4) |
 | Board | Cardputer ADV only |
 
 ---
@@ -111,23 +114,26 @@ doing something else.
 **A. Daily review with network**
 
 1. Turn on the Cardputer (or wake it from sleep).
-2. KaniKey shows 28 reviews and 5 lessons; it syncs in the background if it's
-   been more than 15 minutes.
+2. KaniKey shows 28 reviews and 5 lessons; a configured device syncs on boot
+   and `S`/Settings › `Sync now` run the same sync manually.
 3. `Enter` → session. Type the meaning, then the reading.
 4. When each item is completed, it is sent to WaniKani. If that fails, it is
    left in the queue.
-5. When done: summary, next review time, and “all caught up”.
+5. When done: the session summary; `Enter` returns Home with the next review
+   time and the outbox status.
 
 **B. Review without network**
 
 1. The cache has the items that were due and their subjects.
-2. The screen shows `Offline · 18 cached · 4 to sync`.
+2. The single status line shows the offline age or the outbox pending/attention
+   count; an outbox message replaces the offline line.
 3. Review the same way; completed reviews are stored in the local queue.
 4. When the network returns, it syncs the queue and updates the assignments.
 
 **C. Lessons**
 
-1. `L` → list of available lessons, sorted by level and `lesson_position`.
+1. `L` → list of available lessons, sorted by level and `lesson_position`;
+   the candidate pool is the first 10 summary subjects (LESSON-08).
 2. Lesson card: character, meanings, readings, mnemonic, and components.
 3. `Enter` → `PUT /assignments/{id}/start`; the assignment moves to the review
    queue.
@@ -141,7 +147,7 @@ doing something else.
    second page on the home network at the station IP shown on screen.
 3. The phone enters the WaniKani token; the portal validates `GET /user`, shows
    the user/level, and closes the network.
-4. The Cardputer syncs and checks the visual pack on the microSD.
+4. The Cardputer checks the visual pack on the microSD, then syncs.
 5. If the pack is missing, it shows how to generate it on the computer and copy
    it.
 
@@ -160,7 +166,7 @@ sync afterwards may flush reviews already waiting in the outbox.
 | Boot | HAL, display, keyboard, microSD, battery, sleep |
 | Setup | Wi-Fi + token + time; temporary portal |
 | Home | Level, user, reviews, lessons, next review, SRS distribution |
-| Sync | `user`, `summary`, `assignments`, `subjects`, `study_materials` |
+| Sync | `user`, `summary`, `level_progressions`, SRS count buckets; batches fetch their own subjects/materials |
 | Review | Typed meaning and reading; romaji→kana; feedback; requeueing |
 | Submission | `POST /reviews` with incorrect-answer counters |
 | Cache | Subjects and assignments on SD/LittleFS; boot without network |
@@ -170,19 +176,25 @@ sync afterwards may flush reviews already waiting in the outbox.
 
 ### 5.2 After the MVP (v0.4)
 
-- Advanced reconciliation of ambiguous submissions and conflicts between
-  devices.
-- Lessons with mnemonic and `start`.
-- Session statistics and accuracy.
+Delivered since the MVP: lessons with mnemonic and `start`, session statistics
+and accuracy, the sync screen with progress/cancel, user synonyms and notes, and
+the rejected/stuck outbox path with reconciliation.
+
+Still open:
+
 - OTA with an HTTPS manifest and SHA-256 (reusing Tangocho).
-- Sync screen with progress and cancel.
+- Hardware verification of the 429/auth/parse-retry paths, which are currently
+  code/native/host-inspected only.
+- A deliberate offline boot, a radical-only lesson and the last lesson-ordering
+  check.
+- Reconciliation remains heuristic; a duplicate is still possible when the
+  assignment cannot prove delivery.
 
 ### 5.3 Later
 
 - Pronunciation audio (ES8311).
 - Stroke order with KanjiVG.
 - Extra practice with local FSRS (doesn't affect WaniKani).
-- User synonyms and notes.
 - Review forecast, heatmap, streak.
 - Multiple-choice mode to review without a keyboard.
 - Multiple accounts.
@@ -296,14 +308,14 @@ Details are in [ux.md](ux.md). Map:
 |---|---|---|---|
 | Boot | Boot, mounting, checks | — | MVP |
 | Setup | Wi-Fi, token, time, first sync | Typing, Enter, Esc | MVP |
-| Home | Overview and gateway to everything | Enter, L, S, Tab | MVP |
-| Sync | Sync progress | Esc | MVP |
-| Review | Question and typed answer | Letters, Enter, Esc, Tab | MVP |
-| Feedback | Correct/incorrect, correct answer, hint | Enter, Tab | MVP |
-| Item detail | Mnemonic, components, notes | ↑↓, Space, Esc | MVP |
-| Session summary | Result and next step | Enter, R | MVP |
-| Lessons | List of available lessons | ↑↓, Enter, Esc | Phase 2 |
-| Lesson card | Teaching before starting | Space, ←→, Enter | Phase 2 |
+| Home | Overview and gateway to everything | Enter, L, O, S, Esc | MVP |
+| Sync | Sync progress | Esc, Enter | MVP |
+| Review | Question and typed answer | Letters, Enter, Esc | MVP |
+| Feedback | Correct/incorrect, correct answer, hint | Enter, Tab, Esc | MVP |
+| Item detail | Mnemonic, components, notes | ←→, Space, Tab/Esc | MVP |
+| Session summary | Result and next step | Enter | MVP |
+| Lessons | List of available lessons | ↑↓, Enter, Esc | Implemented; ordering partial |
+| Lesson card | Teaching before starting | Space, ←→, Q, Enter, Esc | Implemented; hardware check partial |
 | Settings | Account, study, sync, device | ↑↓, Enter, Esc | MVP |
 | Stats | Level, distribution, accuracy | Esc | Phase 2 |
 | Error / empty | What happened and what to do | Enter, Esc | MVP |
@@ -321,7 +333,7 @@ Details are in [ux.md](ux.md). Map:
                           │
               ┌───────────▼───────────┐
               │  platform/WkClient    │  HTTP, TLS, streaming JSON
-              │  (Arduino/ESP32)      │  rate limit, ETag, retries
+              │  (Arduino/ESP32)      │  rate limit, auth gate, retries
               └───────────┬───────────┘
                           │ events / records
               ┌───────────▼───────────┐
@@ -379,8 +391,8 @@ discipline as Tangocho.
 | Outbox | LittleFS | Critical; written before advancing to the next item |
 | Subjects (meanings/readings) | microSD | Large; can be downloaded again |
 | Visual pack (glyphs/radicals) | microSD | Large; generated by the user |
-| Local statistics | LittleFS | Small; can be rebuilt |
-| HTTP cache (ETag/dates) | LittleFS | Small; avoids downloads |
+| Session statistics | RAM only | Current session; lifetime stats are future |
+| Cache snapshot (summary/user/batch) | LittleFS | Small; avoids a cold boot |
 
 If the card is removed during a session, KaniKey pauses and asks for it to be
 inserted. Assignments and the queue remain in LittleFS; progress isn't lost.
@@ -496,8 +508,8 @@ public:
 - UI text: M5GFX bitmap fonts.
 - Meaning text: bitmap fonts; Japanese text: glyphs from the pack.
 - Text is composed character by character for vocabulary words.
-- Radicals: the format has 16-byte radical entries; drawing them is the next
-  renderer step.
+- Radicals: the pack has 16-byte radical entries; `GlyphPack` draws the 96 px
+  bitmap when the subject has no Unicode character.
 
 ---
 
@@ -508,13 +520,16 @@ Summary; details are in [api-sync.md](api-sync.md).
 - **Authentication:** personal token in `Authorization: Bearer`; revision
   `Wanikani-Revision: 20170710`.
 - **Endpoints:** `/user`, `/summary`, `/assignments`, `/subjects`,
-  `/study_materials`, `POST /reviews`, `PUT /assignments/{id}/start`.
-- **Cache:** `summary` 30–60 min; assignments with `updated_after`; subjects
-  immutable per ID; ETag/If-None-Match when possible.
+  `/study_materials`, `/review_statistics`, `/level_progressions`,
+  `POST /reviews`, `PUT /assignments/{id}/start`.
+- **Cache:** the summary, user, level and a batch snapshot live in LittleFS;
+  subjects live on SD. They are replaced on sync and marked stale after 24 h.
+  There is no ETag/`updated_after` delta yet; batches are fetched by
+  `subject_ids`.
 - **Review:** one `POST /reviews` per completed item, with
   `incorrect_meaning_answers` and `incorrect_reading_answers`. The response
-  carries the updated assignment (`resources_updated.assignment`), which is
-  stored.
+  carries the updated assignment (`resources_updated.assignment`); the client
+  uses its SRS stage for display but does not write `available_at` back.
 - **Offline:** the completed review is written to the outbox **before**
   advancing. When the network returns, it's sent in order, one at a time.
 - **Duplicates:** the API has no idempotency key. If a POST is left in doubt
@@ -578,8 +593,8 @@ Internal heap in bytes after the static response buffer and the 8-bit canvas:
 | After boot | 225,464 | 188,404 | — |
 | After SD mount | 208,044 | 180,212 | — |
 | Before TLS `/user` | 148,476 | 139,252 | 143,796 |
-| After `/user` | 145,492 | 73,716 | 73,132 |
-| After `/summary` | 145,292 | 65,524 | 73,132 |
+| After `/user` | 145,492 | 69,620 | 73,116 |
+| After `/summary` | 145,488 | 65,524 | 70,880 |
 | Idle after sync | ~146,800 | — | — |
 
 During review fetches the canvas is released and restored around each TLS
@@ -607,8 +622,9 @@ request. After 20 subjects the free heap is ~134 KB and the largest block
 - HTTPS with certificate verification against a set of root CAs, like Tangocho.
   Never `setInsecure()`.
 - The setup portal is temporary: a WPA2 network with a key shown on screen, then
-  the station page on the home network while setup finishes. It is never
-  reachable after setup and makes no lesson or review writes.
+  the station page on the home network while setup finishes. It closes when
+  setup finishes and is only reachable again when the user reopens it from
+  Settings; it makes no lesson or review writes.
 - There's no telemetry and no own server. Requests go directly to
   `api.wanikani.com` and to WaniKani's CDN for radical images (only in the pack
   generator).
@@ -650,17 +666,23 @@ request. After 20 subjects the free heap is ~134 KB and the largest block
   `n` error.
 - `ReviewQueue`: shuffled/lower-levels-first order, requeueing, counters,
   completed item, exiting midway.
+- `SessionStats`: accuracy and duration formatting.
+- `RateLimit`: reset delta, fallback, untrusted clock, 120 s cap.
 - `LessonQuiz`: meaning/reading sequence, warnings, mistake count, completion.
 - `ReviewStatistics`: counts, streaks and percentage merge into subjects.
 - `LevelProgress`: current/highest level selection and timestamp parsing.
 - Vocabulary details: parts of speech and context sentences in the cache.
 - Related subjects: similar/amalgamation IDs survive the cache round trip.
-- `Outbox`: append, compaction, retries, reconciliation, corruption.
-- `JsonStream`: WaniKani fixtures with radicals, kanji, vocabulary, kana,
-  pagination, errors, `\uXXXX` escapes, invalid UTF-8.
-- `Store`: atomic writes, CRC, `.bak` recovery, version migration.
-- `SyncPolicy`: what to request, when, ETag, `updated_after`, rate limit.
-- `Time`: ISO 8601, UTC/local, `created_at`, unreliable clock.
+- `Outbox`: model counts, HTTP code default, attempt cap and stuck add/remove.
+- `Cache`: account key, snapshot/subject round trip and CRC rejection.
+- `Json`/`SummaryParser`: JSON values/escapes/bad input; summary buckets, IDs
+  and a valid empty summary.
+- `Time`: ISO 8601 round trip.
+- Not covered natively: HTTP/TLS, outbox append/compaction/retries/
+  reconciliation, `.bak`/cut-mid-write, filesystem atomic writes and version
+  migration, `next_url` pagination, and `created_at`/untrusted-clock edge cases.
+  These are host/device checks or planned.
+- Planned `SyncPolicy`: what to request, when, ETag, `updated_after`, rate limit.
 
 ### 15.2 Hardware
 
@@ -675,11 +697,11 @@ request. After 20 subjects the free heap is ~134 KB and the largest block
 
 ### 15.3 CI
 
-- `pio run -e cardputer-adv`.
-- `pio test -e native`.
-- Release build with `KK_VERSION`.
-- Automated screenshots with the serial remote, like Tangocho.
-- `clang-format`/`clang-tidy` if Tangocho's style is adopted.
+- `pio test -e native` and `pio run -e cardputer-adv` run in GitHub Actions on
+  pushes to `main` and pull requests.
+- Gitleaks scans the full history.
+- Planned: a `KK_VERSION` release artifact, automated screenshots with the
+  serial remote and `clang-format`/`clang-tidy` if Tangocho's style is adopted.
 
 ### 15.4 Observability
 
@@ -718,37 +740,46 @@ account; Enter fetches the batch.
 
 - Review screen, IME, answer checker and feedback work.
 - `POST /reviews` submits completed items (201) and the session advances.
-- The SD visual pack draws 64/32/20 px Japanese text; the efont fallback is
-  only for missing characters.
+- The SD visual pack draws 64/32/20 px Japanese text; missing glyphs show an
+  explicit state (the efont fallback was removed).
 
 **Output:** a full review session against WaniKani with real Japanese glyphs.
 
-### M3 — Offline and queue (mostly done)
+### M3 — Offline, queue and API robustness (code-complete)
 
 - Persistent outbox with CRC, `.bak` recovery, retries and ambiguous-request
   reconciliation: implemented and tested with a real 201, a synthetic 422 and
-  the full offline path (Wi-Fi off → review → reboot → 201).
-- Home shows pending/attention counts; rejected items can be inspected and
-  dismissed from the `OUTBOX` screen (`O` on Home).
-- Rate-limit backoff and a few API edge cases remain.
-- Boot without network and the sync screen have landed.
+  the offline path (Wi-Fi off → review → reconnect → 201). A deliberate
+  offline boot is still untested.
+- Home shows pending/attention counts; rejected and stuck items can be
+  inspected and dismissed from the `OUTBOX` screen (`O` on Home).
+- 429 backoff, the shared 401 auth gate, parse-failure retries and the
+  50-attempt stuck cap landed. The final OUTBOX screen (API-01) and the
+  API-02…05 paths are native/host-inspected only; hardware verification is
+  pending.
+- Booting from the cache and the sync screen are implemented; only the
+  deliberate offline-boot hardware check remains.
 
 **Output:** review on the subway and sync when you get out.
 
-### M4 — Lessons (in progress)
+### M4 — Lessons (implemented; hardware check partial)
 
 - Lesson card with meaning/reading, mnemonic paging and
   `PUT /assignments/{id}/start` (200) is working.
 - Lesson list, components and the optional local quiz (`Q`, no `/start`) are
-  implemented; hardware verification and the last ordering work remain.
+  implemented. The list/card/quiz run on hardware used GETs only; a live
+  `PUT /start` returned 200 in an earlier run.
+- The last ordering work, a radical-only lesson on a low-level account and
+  note/`lower_levels_first` display remain.
 
 **Output:** complete lessons on the device (card + start already usable).
 
-### M5 — Polish
+### M5 — Polish (mostly done)
 
-- Statistics, full settings, OTA, About.
-- Accessibility, contrast, error texts.
-- Screenshots and user documentation.
+- Statistics, full settings and About are implemented; OTA remains.
+- Accessibility, contrast and error texts are mostly in place; hardware
+  verification of the latest screens is partial.
+- Screenshots and user documentation exist.
 
 **Output:** shippable v1.0.
 
@@ -785,7 +816,7 @@ account; Enter fetches the batch.
 | 2 | Base | Pruned Tangocho fork | The Cardputer HAL is the most expensive part |
 | 3 | Visual pack | Python generator + SD | Best quality/memory; no content in the repo |
 | 4 | Offline | Enabled by default | It's the point of the device; with reconciliation |
-| 5 | Lessons | Phase 2 | The MVP is already big; solid reviews first |
+| 5 | Lessons | Implemented after reviews | Solid reviews first; the lesson list/card/quiz now exist |
 | 6 | UI language | English only | The project is English; WaniKani content is English |
 | 7 | Correction | Strict + warnings | Faithful to WaniKani; warnings prevent frustration |
 | 8 | Session size | 20 by default, “all” optional | Short sessions on a small device |

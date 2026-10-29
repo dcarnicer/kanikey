@@ -125,8 +125,8 @@ E (221) esp_core_dump_flash: No core dump partition found!
   32 px and feedback uses 20 px. `efontJA_16` is no longer linked.
 - `POST /v2/reviews` returns **201** with the updated resources; the client
   accepts any 2xx. One completed item was submitted and the session moved on.
-- The app still lacks a persistent outbox: if the immediate POST fails, that
-  review is lost. This is the next reliability item.
+- At this point the app still lacked a persistent outbox. **Superseded:** the
+  outbox landed in M3; see “Persistent outbox (M3 start)” below.
 
 ### Persistent outbox (M3 start)
 
@@ -139,16 +139,18 @@ E (221) esp_core_dump_flash: No core dump partition found!
   (`loaded 1 pending`), flushed on the next boot, got **422**, stayed in the
   file as `Rejected` (`need attention`), and was cleared manually.
 - **Offline end to end passed:** Wi-Fi off, a real review completed, outbox
-  `Pending`; reboot loaded 1 pending, flushed it, `POST /reviews` returned 201,
-  and the outbox was empty. This is the key reliability path.
+  `Pending`; reboot loaded 1 pending, then after reconnecting it flushed,
+  `POST /reviews` returned 201, and the outbox was empty. This is the key
+  reliability path; a reboot with Wi-Fi still unavailable was not part of it.
 - Ambiguous requests (timeout/5xx after the request was sent) are marked
   `Ambiguous` and reconciled with `GET /assignments?ids=...` before retrying.
   That reconciliation has unit-level coverage but not a hardware timeout test.
 - Rejected records stay until the user opens `O: outbox` on Home, inspects the
   HTTP reason and confirms a per-item discard; the dev command `z` still clears
   the whole outbox.
-- Flash headroom is now ~498 KB after removing the efont fallback; the next
-  large blocks are lessons and settings.
+- Flash headroom was ~498 KB at this point after removing the efont fallback.
+  The later lessons/settings/cache work used part of it; see `ROADMAP.md` for
+  the current build size.
 - Home shows `Outbox: N pending` or `N need attention` below the sync time.
 - Power: dim after 30 s, blank after 60 s, deep sleep after 2 min only when no
   review is active and the device is on battery. A key wakes the panel; the
@@ -278,14 +280,16 @@ WaniKani subjects and mnemonics.
 - Upload: `S` starts a one-shot HTTP server on port 8080 and
   `tools/device.py push` writes the file with `curl -T`; 2.9 MB transferred
   reliably. The USB `up` path uses 8 KiB ACKed chunks and is a fallback.
-- Offline cache: `/state/cache.bin` (LittleFS, `KKCA` v9) and
-  `/kanikey/cache/subjects.bin` (SD, `KKCS` v9), with the summary
+- Offline cache: `/state/cache.bin` (LittleFS, `KKCA` v10) and
+  `/kanikey/cache/subjects.bin` (SD, `KKCS` v10), with the summary
   `data_updated_at`, 24 h stale state and manual clear/sync. A synthetic-cache
   run on 2026-10-28 restored Home offline, ran a cached session, kept the
-  completed review in the outbox and restored both after a reboot. Real-account
-  fetch/reconnect is still pending.
-- Still missing: real review/lesson prompts on a configured account and a
-  radical-only lesson on a low-level account.
+  completed review in the outbox and restored both after a reboot. The
+  real-account online fetch → Wi-Fi off → review → reconnect → 201 path is
+  recorded above; a deliberate reboot with Wi-Fi unavailable is still untested.
+- Still missing: a radical-only lesson on a low-level account, study-material
+  notes/`lower_levels_first` on a configured account, and the final OUTBOX
+  screen/API-02…05 hardware passes.
 
 ### Next
 
@@ -327,3 +331,13 @@ WaniKani subjects and mnemonics.
 - The failure and cancel checks used temporary builds; the final image was
   reflashed and completed a normal sync. The cancel input is cooperative: a key
   pressed during a blocking request is read when it returns.
+
+### 2026-10-29 — API robustness (implementation landed, hardware check pending)
+
+- The shared 429 gate, shared 401 gate, parse-failure retries and the 50-attempt
+  stuck state are code/native/host-inspected only. They have not been exercised
+  on hardware.
+- The earlier outbox hardware runs covered a real 201, a synthetic 422 retained
+  as `Rejected`, and the offline flush. The final `OUTBOX` screen, attempts/age
+  detail and per-item discard still need a hardware pass.
+- No firmware was flashed or changed for this documentation audit.
