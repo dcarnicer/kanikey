@@ -1,13 +1,10 @@
 #include "platform/WkJson.h"
 
+#include "wk/HttpRetry.h"
+
 namespace kk {
 
 namespace {
-bool retryable(const WkResponse& http, bool parsed) {
-    if (http.httpCode == 0 || http.httpCode >= 500) return true;
-    return http.httpCode == 200 && (http.truncated || !parsed);
-}
-
 void logAttempt(const char* result, const String& path, const WkResponse& http, bool parsed) {
     Serial.printf("[http] %s %s (%d, %u bytes%s%s)\n", result, path.c_str(), http.httpCode,
                   static_cast<unsigned>(http.bytes), http.truncated ? ", truncated" : "",
@@ -28,7 +25,7 @@ bool getParsed(const String& path, const String& token, size_t maxBodyBytes,
         reset();
         *http = wkGet(path, token, maxBodyBytes, timeoutMs);
         parsed = http->httpCode == 200 && parse(http->body);
-        if (!retryable(*http, parsed)) break;
+        if (!httpRetryable(http->httpCode, http->truncated, parsed)) break;
         if (i + 1 < attempts) {
             logAttempt("retry", path, *http, parsed);
             delay(300);

@@ -114,11 +114,11 @@ Working on hardware:
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 61 native tests and the `cardputer-adv` build run in GitHub Actions alongside
+- 63 native tests and the `cardputer-adv` build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests.
 
-Current build: **1,403,645 B / 1,835,008 B flash (76.5%)**, **94,704 B /
-327,680 B static RAM (28.9%)**. The dev image is 1,411,545 B. Removing
+Current build: **1,403,689 B / 1,835,008 B flash (76.5%)**, **94,704 B /
+327,680 B static RAM (28.9%)**. The dev image is 1,411,557 B. Removing
 `efontJA_16` freed ~468 KB and leaves ~421 KB of flash headroom.
 
 ## Priority summary
@@ -565,8 +565,11 @@ SRS and deck catalog remain intentionally dropped. See
   (`.github/workflows/firmware.yml`) runs `pio test -e native` and the
   `cardputer-adv` release build; PlatformIO and pip caches are keyed by
   `firmware/platformio.ini`.
-- **TECH-05 — Host tests.** Add pack/RLE reader tests and more outbox/HTTP edge
-  cases.
+- **TECH-05 — Host tests. Done (2026-10-29).** The retry predicate moved to
+  native-buildable `wk/HttpRetry` (`httpRetryable`) and is table-tested across
+  200/4xx/3xx/2xx and 0/5xx; the outbox capacity edge is covered too. 63 native
+  tests pass; release build 1,403,689 B flash and 94,704 B static RAM. Pack/RLE
+  reads, HTTP transport and outbox persistence stay platform-only.
 - **TECH-06 — Release.** Decide the license, finalize third-party notices,
   version the firmware, integrate OTA/About and review WaniKani API/branding
   compliance.

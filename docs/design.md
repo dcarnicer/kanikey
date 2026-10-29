@@ -673,7 +673,10 @@ request. After 20 subjects the free heap is ~134 KB and the largest block
 - `LevelProgress`: current/highest level selection and timestamp parsing.
 - Vocabulary details: parts of speech and context sentences in the cache.
 - Related subjects: similar/amalgamation IDs survive the cache round trip.
-- `Outbox`: model counts, HTTP code default, attempt cap and stuck add/remove.
+- `Outbox`: model counts, HTTP code default, attempt cap, capacity/sequence edges
+  and stuck add/remove.
+- `HttpRetry`: retryable transport error (0), 5xx and truncated/unparsable 200;
+  final 4xx/3xx and other 2xx.
 - `Cache`: account key, snapshot/subject round trip and CRC rejection.
 - `Json`/`SummaryParser`: JSON values/escapes/bad input; summary buckets, IDs
   and a valid empty summary.

@@ -7,6 +7,7 @@
 #include "wk/Assignment.h"
 #include "wk/Cache.h"
 #include "wk/Crc32.h"
+#include "wk/HttpRetry.h"
 #include "wk/Outbox.h"
 #include "wk/Json.h"
 #include "wk/LessonQuiz.h"
@@ -793,6 +794,22 @@ static void test_outbox_attempt_cap() {
     TEST_ASSERT_TRUE(outboxShouldGiveUp(255));
 }
 
+static void test_outbox_capacity_and_next_seq() {
+    std::vector<OutboxItem> empty;
+    TEST_ASSERT_EQUAL_UINT32(0, outboxAdd(empty, 0, 1, 0, 0, 0));
+    TEST_ASSERT_EQUAL(0, empty.size());
+
+    std::vector<OutboxItem> box;
+    for (size_t i = 0; i < kOutboxMax; ++i)
+        TEST_ASSERT_EQUAL_UINT32(i + 1, outboxAdd(box, i + 1, 1, 0, 0, 0));
+    TEST_ASSERT_EQUAL(kOutboxMax, box.size());
+    TEST_ASSERT_EQUAL_UINT32(0, outboxAdd(box, 999, 1, 0, 0, 0));
+    TEST_ASSERT_EQUAL(kOutboxMax, box.size());
+    TEST_ASSERT_TRUE(outboxRemove(box, 1));
+    TEST_ASSERT_EQUAL_UINT32(kOutboxMax + 1, outboxAdd(box, 1000, 1, 0, 0, 0));
+    TEST_ASSERT_EQUAL(kOutboxMax, box.size());
+}
+
 static void test_outbox_stuck_counts() {
     std::vector<OutboxItem> box;
     TEST_ASSERT_EQUAL_UINT32(1, outboxAdd(box, 301, 30, 0, 0, 0));
@@ -824,6 +841,38 @@ static void test_outbox_stuck_remove() {
     TEST_ASSERT_EQUAL(2, outboxPendingCount(box));
     TEST_ASSERT_EQUAL(0, outboxStuckCount(box));
     TEST_ASSERT_EQUAL(0, outboxAttentionCount(box));
+}
+
+// ---------------------------------------------------------------- http retry
+static void test_http_retry_policy() {
+    struct RetryCase {
+        int code;
+        bool truncated;
+        bool parsed;
+        bool retry;
+    };
+    const RetryCase cases[] = {
+        {200, false, true, false},   // complete, parsed body
+        {200, true, true, true},     // truncated body, even if it parsed
+        {200, false, false, true},   // parse failure
+        {0, false, false, true},     // transport error
+        {500, false, false, true},   // server error
+        {503, false, false, true},
+        {401, false, false, false},  // auth/rate-limit/refused 4xx are final
+        {403, false, false, false},
+        {404, false, false, false},
+        {409, false, false, false},
+        {422, false, false, false},
+        {429, false, false, false},
+        {301, false, false, false},  // redirects are not followed
+        {204, false, false, false},  // no body to parse, not a retryable 200
+    };
+    for (const RetryCase& c : cases) {
+        if (c.retry)
+            TEST_ASSERT_TRUE(httpRetryable(c.code, c.truncated, c.parsed));
+        else
+            TEST_ASSERT_FALSE(httpRetryable(c.code, c.truncated, c.parsed));
+    }
 }
 
 
@@ -1315,8 +1364,10 @@ int main(int, char**) {
     RUN_TEST(test_outbox_model);
     RUN_TEST(test_outbox_http_code_default);
     RUN_TEST(test_outbox_attempt_cap);
+    RUN_TEST(test_outbox_capacity_and_next_seq);
     RUN_TEST(test_outbox_stuck_counts);
     RUN_TEST(test_outbox_stuck_remove);
+    RUN_TEST(test_http_retry_policy);
     RUN_TEST(test_cache_account_key);
     RUN_TEST(test_cache_snapshot_round_trip);
     RUN_TEST(test_cache_corruption_is_rejected);
