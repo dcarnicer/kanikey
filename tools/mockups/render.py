@@ -337,7 +337,7 @@ def screen_sync() -> Image.Image:
     header(d, "SYNC", pct=84)
 
     rows = [
-        ("Wi-Fi", "192.168.1.181", "ok"),
+        ("Wi-Fi", "192.168.1.42", "ok"),
         ("Outbox", "sent", "ok"),
         ("Account", "you L12", "ok"),
         ("Summary", "28 due, 5 lessons", "ok"),

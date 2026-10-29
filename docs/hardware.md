@@ -420,7 +420,7 @@ WaniKani subjects and mnemonics.
   no longer in release code.
 - **OTA check:** the default GitHub URL returned a clean `404` (no release
   published yet) and the Firmware screen showed the HTTP error without changing
-  the badge. A local `http://192.168.1.143:8765/kanikey-firmware.txt` test
+  the badge. A local `http://192.168.1.10:8765/kanikey-firmware.txt` test
   manifest (dev override `U`) parsed and offered v0.1.1/v0.1.2/v0.1.3.
 - **OTA install:** v0.1.0 in `app0` installed a v0.1.2 dev image into `app1`
   (1,474,016 B, SHA-256 checked) and booted it. v0.1.2 then installed v0.1.3
