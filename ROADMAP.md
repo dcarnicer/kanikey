@@ -104,8 +104,8 @@ Working on hardware:
 - 57 native tests and the release build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests.
 
-Current build: **1,400,881 B / 1,835,008 B flash (76.3%)**, **94,696 B /
-327,680 B static RAM (28.9%)**. The dev image is 1,408,329 B. Removing
+Current build: **1,401,005 B / 1,835,008 B flash (76.3%)**, **94,696 B /
+327,680 B static RAM (28.9%)**. The dev image is 1,408,461 B. Removing
 `efontJA_16` freed ~468 KB and leaves ~425 KB of flash headroom.
 
 ## Priority summary
@@ -137,7 +137,7 @@ lesson flow.
 | 3 | Setup and device UX | TNG-02 | OTA release path (setup/settings complete) |
 | 4 | WaniKani data and detail | WK-11 (WK-01/03/04/05/06/07/08/09/10 done) | Review history and progress |
 | 5 | API robustness | API-05 → API-07 (API-01/02/03/04/06 done) | Recoverable rate-limited and auth errors |
-| 6 | UI, stats and sync | UI-05 → UI-08 (UI-01/02/03/04 done) | Polish |
+| 6 | UI, stats and sync | UI-05 → UI-08 (UI-01/02/03/04/06 done) | Polish |
 | 7 | Technical debt and release | TECH-01 → TECH-07 (TECH-04 done) | Refactor, version, OTA and license |
 | 8 | Kakehashi-inspired extras | EXT-01 → EXT-09 | Practice modes, critical items, audio and stats |
 
@@ -450,7 +450,14 @@ the device; account/study preferences and clear error actions remain.
 - **UI-05 — Level progress.** Current level, progress to next level and
   level-up feedback (with WK-07).
 - **UI-06 — Lesson layout fixes.** Page counter, hint bar spacing and the
-  `drawLoading` Japanese subtitle that can be blank.
+  `drawLoading` Japanese subtitle that can be blank. **Done (2026-10-29):**
+  the header keeps `2/5` and adds `p1/3` to its right with an 8 px gap, well
+  clear of `LESSON`; the old y=117 page line is gone. A 2 px item progress bar
+  at y=14 fills for completed items and leaves a 4 px gap before the card. The
+  y=125 hint bar holds `Space p  Q quiz` (90 px) left and
+  `Enter start  Esc list` (126 px) right, leaving a 12 px gap in 228 px.
+  `startCurrentLesson()` passes the English main meaning to `drawLoading`.
+  Mockups and docs updated; 57 native tests and both firmware builds pass.
 - **UI-07 — Missing pack/glyph states.** The prompt state exists; finish the
   full startup/setup wording and actions.
 - **UI-08 — Palette and screenshots.** Revisit the RGB332 palette after real

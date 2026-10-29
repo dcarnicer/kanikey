@@ -2078,17 +2078,81 @@ void drawLesson() {
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
 
+    std::string meaning;
+    for (const kk::Meaning& m : s->meanings)
+        if (m.accepted) {
+            meaning = m.text;
+            break;
+        }
+    if (meaning.empty() && !s->meanings.empty()) meaning = s->meanings[0].text;
+
+    std::string reading;
+    for (const kk::Reading& r : s->readings)
+        if (r.accepted && r.primary) {
+            reading = r.text;
+            break;
+        }
+    if (reading.empty())
+        for (const kk::Reading& r : s->readings)
+            if (r.accepted) {
+                reading = r.text;
+                break;
+            }
+
+    std::string mnemonic = s->meaningMnemonic;
+    if (mnemonic.empty()) mnemonic = s->readingMnemonic;
+    if (mnemonic.empty()) mnemonic = s->meaningHint;
+    if (mnemonic.empty()) mnemonic = "No mnemonic cached.";
+    std::string components;
+    for (uint32_t id : s->componentSubjectIds) {
+        const kk::Subject* c = lessonComponentById(id);
+        if (!c) continue;
+        const std::string componentMeaning = subjectMainMeaning(*c);
+        if (componentMeaning.empty()) continue;
+        if (!components.empty()) components += " + ";
+        components += componentMeaning;
+    }
+    std::string extra;
+    if (!components.empty()) extra += "Components: " + components + ". ";
+    if (!s->meaningHint.empty()) extra += "Hint: " + s->meaningHint + ". ";
+    if (!s->readingHint.empty()) extra += "Reading hint: " + s->readingHint + ". ";
+    if (!s->meaningNote.empty()) extra += "Meaning note: " + s->meaningNote + ". ";
+    if (!s->readingNote.empty()) extra += "Reading note: " + s->readingNote + ". ";
+    if (!extra.empty()) mnemonic += " " + extra;
+    const std::vector<std::string> lines = wrapLines(d, mnemonic, 232);
+    const size_t pages = (lines.size() + 2) / 3;
+    if (gLessonPage >= pages) gLessonPage = pages - 1;
+
     d.setTextFont(1);
     d.setTextSize(1);
     d.setTextColor(kDim, kBg);
     d.drawString("LESSON", 6, 3);
-    d.setTextFont(0);
-    d.setTextDatum(lgfx::top_right);
+    const size_t total = gLessonBatch.assignments.size();
     char pos[20];
     snprintf(pos, sizeof pos, "%u/%u", static_cast<unsigned>(gLessonIndex + 1),
-             static_cast<unsigned>(gLessonBatch.assignments.size()));
-    d.drawString(pos, 233, 5);
+             static_cast<unsigned>(total));
+    char page[20];
+    snprintf(page, sizeof page, "p%u/%u", static_cast<unsigned>(gLessonPage + 1),
+             static_cast<unsigned>(pages));
+    // Keep both counters in the header row: the page is right-aligned and the
+    // item position sits to its left. In the 6 px font, "p12/12" plus "10/10"
+    // and the 8 px gap still leave the header's left side free.
+    constexpr int kHeaderRight = 233;
+    constexpr int kHeaderGap = 8;
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextDatum(lgfx::top_right);
+    d.setTextColor(kFaint, kBg);
+    d.drawString(page, kHeaderRight, 5);
+    d.setTextColor(kDim, kBg);
+    d.drawString(pos, kHeaderRight - d.textWidth(page) - kHeaderGap, 5);
     d.setTextDatum(lgfx::top_left);
+
+    d.fillRect(0, 14, 240, 2, kSurfaceHi);
+    if (total > 0) {
+        const int progressWidth = static_cast<int>(240u * gLessonIndex / total);
+        d.fillRect(0, 14, progressWidth, 2, kAccentHi);
+    }
 
     d.fillRect(4, 20, 74, 64, kSurface);
     d.drawRect(4, 20, 74, 64, kLine);
@@ -2105,31 +2169,12 @@ void drawLesson() {
     d.setTextSize(1);
     drawPill(d, 86, 20, type, kDim, kSurfaceHi);
 
-    std::string meaning;
-    for (const kk::Meaning& m : s->meanings)
-        if (m.accepted) {
-            meaning = m.text;
-            break;
-        }
-    if (meaning.empty() && !s->meanings.empty()) meaning = s->meanings[0].text;
     d.setTextFont(1);
     d.setTextSize(1);
     d.setTextColor(kText, kBg);
     while (meaning.size() > 1 && d.textWidth(meaning.c_str()) > 148) meaning.pop_back();
     d.drawString(meaning.c_str(), 86, 38);
 
-    std::string reading;
-    for (const kk::Reading& r : s->readings)
-        if (r.accepted && r.primary) {
-            reading = r.text;
-            break;
-        }
-    if (reading.empty())
-        for (const kk::Reading& r : s->readings)
-            if (r.accepted) {
-                reading = r.text;
-                break;
-            }
     if (!reading.empty()) {
         if (!gPack.drawTextFit(d, reading, 86, 80, 32, 148, kReading, kBg,
                                kk::ClipRect{86, 50, 236, 88}) &&
@@ -2142,29 +2187,6 @@ void drawLesson() {
         }
     }
 
-    std::string mnemonic = s->meaningMnemonic;
-    if (mnemonic.empty()) mnemonic = s->readingMnemonic;
-    if (mnemonic.empty()) mnemonic = s->meaningHint;
-    if (mnemonic.empty()) mnemonic = "No mnemonic cached.";
-    std::string components;
-    for (uint32_t id : s->componentSubjectIds) {
-        const kk::Subject* c = lessonComponentById(id);
-        if (!c) continue;
-        const std::string meaning = subjectMainMeaning(*c);
-        if (meaning.empty()) continue;
-        if (!components.empty()) components += " + ";
-        components += meaning;
-    }
-    std::string extra;
-    if (!components.empty()) extra += "Components: " + components + ". ";
-    if (!s->meaningHint.empty()) extra += "Hint: " + s->meaningHint + ". ";
-    if (!s->readingHint.empty()) extra += "Reading hint: " + s->readingHint + ". ";
-    if (!s->meaningNote.empty()) extra += "Meaning note: " + s->meaningNote + ". ";
-    if (!s->readingNote.empty()) extra += "Reading note: " + s->readingNote + ". ";
-    if (!extra.empty()) mnemonic += " " + extra;
-    const std::vector<std::string> lines = wrapLines(d, mnemonic, 232);
-    const size_t pages = (lines.size() + 2) / 3;
-    if (gLessonPage >= pages) gLessonPage = pages - 1;
     d.setTextFont(0);
     d.setTextSize(1);
     d.setTextColor(kDim, kBg);
@@ -2173,13 +2195,6 @@ void drawLesson() {
         if (idx >= lines.size()) break;
         d.drawString(lines[idx].c_str(), 5, 92 + static_cast<int>(i) * 9);
     }
-    char page[20];
-    snprintf(page, sizeof page, "p%u/%u", static_cast<unsigned>(gLessonPage + 1),
-             static_cast<unsigned>(pages));
-    d.setTextDatum(lgfx::top_right);
-    d.setTextColor(kFaint, kBg);
-    d.drawString(page, 233, 117);
-    d.setTextDatum(lgfx::top_left);
 
     d.setTextColor(kFaint, kBg);
     d.drawString("Space p  Q quiz", 5, 125);
@@ -2559,7 +2574,8 @@ void startCurrentLesson() {
     if (!gLessonActive || gLessonIndex >= gLessonBatch.assignments.size()) return;
     const kk::Assignment& a = gLessonBatch.assignments[gLessonIndex];
     const kk::Subject* s = lessonSubjectById(a.subjectId);
-    drawLoading("Starting lesson...", s ? s->characters.c_str() : "");
+    const std::string subtitle = s ? subjectMainMeaning(*s) : std::string();
+    drawLoading("Starting lesson...", subtitle.c_str());
     const uint32_t now = static_cast<uint32_t>(time(nullptr));
     gFreeCanvasForRequest = true;
     const int httpCode = kk::startAssignment(kk::DevToken::load(), a.id,

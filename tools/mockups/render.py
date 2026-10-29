@@ -283,7 +283,13 @@ def screen_feedback(correct: bool) -> Image.Image:
 def screen_lesson() -> Image.Image:
     im = Image.new("RGB", (W, H), BG)
     d = ImageDraw.Draw(im)
-    header(d, "LESSON", "2/5", done=2, total=5)
+    text(d, (6, 3), "LESSON", 11, DIM, medium=True)
+    page = "p1/3"
+    text(d, (W - 7, 3), page, 8, FAINT, anchor="rt")
+    text(d, (W - 7 - tw(d, page, 8) - 8, 3), "2/5", 8, DIM, anchor="rt")
+    # Item 2/5 means one completed item, so the bar is 1/5 wide.
+    rect(d, 0, 14, W, 2, SURFACE_HI)
+    rect(d, 0, 14, round(W / 5), 2, ACCENT_HI)
 
     panel(d, 4, 20, 74, 60)
     text(d, (41, 50), "休", 48, TEXT, anchor="mm")
@@ -298,9 +304,9 @@ def screen_lesson() -> Image.Image:
     lines = wrap(d, mnemonic, 9, 224)[:3]
     for i, line in enumerate(lines):
         text(d, (10, 90 + i * 10), line, 9, DIM)
-    text(d, (232, 116), "p1/3", 8, FAINT, anchor="ra")
 
-    hints(d, [("Space", "next page"), ("Enter", "start")], [("Esc", "back")])
+    text(d, (5, 125), "Space p  Q quiz", 8, FAINT, anchor="lt")
+    text(d, (W - 7, 125), "Enter start  Esc list", 8, FAINT, anchor="rt")
     return im
 
 

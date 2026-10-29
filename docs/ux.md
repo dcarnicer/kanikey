@@ -460,15 +460,23 @@ the mnemonic.
 
 ![Lesson](screens/lesson.png)
 
-- Header `LESSON`, `2/5`, progress.
+- Header `LESSON`: item position `2/5` and mnemonic page `p1/3` are
+  right-aligned on the same row with an 8 px gap. This screen has no
+  Wi-Fi/battery icons.
+- A live 2 px progress bar at y=14 shows the completed lesson items; the card
+  starts at y=20.
 - Left panel: 48 px character/radical.
 - Right: pill `KANJI · L5`, main meaning in 20 px, readings in teal at 14 px,
   `person + tree` in gray.
-- Mnemonic in a 3-line, 10 px panel; `Space` turns the page.
-- `p1/3` in the corner.
+- Mnemonic in a 3-line, 10 px panel; `Space` turns the page. The page counter
+  stays in the header so it never covers the third line.
 - `Q quiz` opens the optional local quiz; `Enter start` / `Needs connection` if
   there's no network.
-- On start, a brief progress animation and the next card; `Esc` returns to the
+- Bottom hint: `Space p  Q quiz` left and `Enter start  Esc list` right at
+  y=125, with a gap between them.
+- On start, `drawLoading` shows the English main meaning as its subtitle; the
+  built-in font has no Japanese glyphs, so the character is not used there.
+  Then a brief progress animation and the next card; `Esc` returns to the
   list. The card itself only reads until `Enter`.
 
 ### 5.10 Lesson quiz
