@@ -37,6 +37,9 @@ int gAuthHttpCode = 0;
 // been set yet, so an epoch reset header cannot be compared against it.
 constexpr uint32_t kTrustedClockEpoch = 1700000000u;
 
+// A stalled TLS handshake otherwise waits for the framework's 120 s default.
+constexpr unsigned long kHandshakeTimeoutS = 15;
+
 struct RequestHooks {
     RequestHooks() {
         if (gBeforeRequest) gBeforeRequest();
@@ -111,6 +114,7 @@ WkResponse request(const String& method, const String& path, const String& token
 
     WiFiClientSecure client;
     client.setCACert(tgc::kRootCaPem);
+    client.setHandshakeTimeout(kHandshakeTimeoutS);
     client.setTimeout(timeoutMs / 1000);
 
     if (!client.connect("api.wanikani.com", 443)) {
@@ -124,6 +128,11 @@ WkResponse request(const String& method, const String& path, const String& token
         return r;
     }
     r.connected = true;
+    // WiFiClientSecure::setTimeout() hides Stream::setTimeout(): the former
+    // sets the socket options, the latter the readStringUntil() limit, which
+    // would otherwise stay at the 1 s default.
+    client.setTimeout(timeoutMs / 1000);
+    static_cast<Stream&>(client).setTimeout(timeoutMs);
 
     client.print(method);
     client.print(" ");

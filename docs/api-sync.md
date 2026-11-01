@@ -551,6 +551,11 @@ the age, and either keeps the item or confirms a local discard. Dismissing only
 removes the unsent outbox record; it does not change WaniKani and does not touch
 the cache or assignments.
 
+Each request sets the stream read timeout to its own `timeoutMs` after the TLS
+connection is up, and bounds the handshake at 15 s. A slow server is therefore
+waited for instead of failing on the framework's 1 s `Stream` default, and a
+stalled handshake gives up with the TLS error line after 15 s.
+
 ### 6.4 Limitations
 
 - Reconciliation is heuristic: another device could have reviewed the same item
