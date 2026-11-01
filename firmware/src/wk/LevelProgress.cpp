@@ -1,56 +1,152 @@
 #include "wk/LevelProgress.h"
 
+#include "wk/JsonStream.h"
 #include "wk/Time.h"
 
 namespace kk {
 
 namespace {
-uint32_t u32Field(const JsonValue& data, const char* key) {
-    const JsonValue* value = data.find(key);
-    if (!value || !value->isNumber() || value->number < 0) return 0;
-    return static_cast<uint32_t>(value->number);
-}
+// The collection is an array of level_progression objects; each one has a
+// nested "data" object with the fields below. Only the entry for the current
+// level is copied out, so a 60-level body costs the same as a 1-level body.
+class ProgressSink : public JsonSink {
+public:
+    explicit ProgressSink(uint8_t currentLevel) : currentLevel_(currentLevel) {}
 
-uint32_t timeField(const JsonValue& data, const char* key) {
-    const JsonValue* value = data.find(key);
-    if (!value || !value->isString()) return 0;
-    uint32_t epoch = 0;
-    return parseIso8601(value->string, &epoch) ? epoch : 0;
-}
+    const LevelProgress& found() const { return found_; }
+    const LevelProgress& highest() const { return highest_; }
 
-LevelProgress parseEntry(const JsonValue& item) {
-    LevelProgress p;
-    const JsonValue* d = item.find("data");
-    if (!d || !d->isObject()) return p;
-    p.level = static_cast<uint8_t>(u32Field(*d, "level"));
-    p.unlockedAt = timeField(*d, "unlocked_at");
-    p.startedAt = timeField(*d, "started_at");
-    p.passedAt = timeField(*d, "passed_at");
-    p.completedAt = timeField(*d, "completed_at");
-    p.valid = p.level > 0;
-    return p;
-}
+    bool onObjectStart() override {
+        if (depth_ == 2 && inData_) {
+            current_ = LevelProgress{};
+            active_ = true;
+        } else if (depth_ == 3 && active_ && pending_ == Key::Data) {
+            inEntryData_ = true;
+        }
+        pending_ = Key::None;
+        ++depth_;
+        return true;
+    }
+
+    bool onObjectEnd() override {
+        if (depth_ == 4 && inEntryData_) {
+            inEntryData_ = false;
+        } else if (depth_ == 3 && active_) {
+            if (current_.valid) {
+                if (current_.level == currentLevel_) found_ = current_;
+                if (!highest_.valid || current_.level > highest_.level) highest_ = current_;
+            }
+            active_ = false;
+            inEntryData_ = false;
+        }
+        --depth_;
+        return true;
+    }
+
+    bool onArrayStart() override {
+        if (depth_ == 1 && pending_ == Key::Data) inData_ = true;
+        pending_ = Key::None;
+        ++depth_;
+        return true;
+    }
+
+    bool onArrayEnd() override {
+        if (depth_ == 2 && inData_) inData_ = false;
+        --depth_;
+        return true;
+    }
+
+    bool onKey(std::string_view key) override {
+        pending_ = Key::None;
+        if (depth_ == 1) {
+            if (key == "data") pending_ = Key::Data;
+        } else if (depth_ == 3 && active_ && !inEntryData_) {
+            if (key == "data") pending_ = Key::Data;
+        } else if (depth_ == 4 && inEntryData_) {
+            if (key == "level")
+                pending_ = Key::Level;
+            else if (key == "unlocked_at")
+                pending_ = Key::UnlockedAt;
+            else if (key == "started_at")
+                pending_ = Key::StartedAt;
+            else if (key == "passed_at")
+                pending_ = Key::PassedAt;
+            else if (key == "completed_at")
+                pending_ = Key::CompletedAt;
+        }
+        return true;
+    }
+
+    bool onString(std::string_view value) override {
+        if (depth_ == 4 && inEntryData_) {
+            if (pending_ == Key::UnlockedAt)
+                parseIso8601(value, &current_.unlockedAt);
+            else if (pending_ == Key::StartedAt)
+                parseIso8601(value, &current_.startedAt);
+            else if (pending_ == Key::PassedAt)
+                parseIso8601(value, &current_.passedAt);
+            else if (pending_ == Key::CompletedAt)
+                parseIso8601(value, &current_.completedAt);
+        }
+        pending_ = Key::None;
+        return true;
+    }
+
+    bool onNumber(double value) override {
+        if (depth_ == 4 && inEntryData_ && pending_ == Key::Level) {
+            if (value > 0) {
+                const double capped = value > 255 ? 255 : value;
+                current_.level = static_cast<uint8_t>(capped);
+                current_.valid = true;
+            }
+        }
+        pending_ = Key::None;
+        return true;
+    }
+
+    bool onBool(bool) override {
+        pending_ = Key::None;
+        return true;
+    }
+
+    bool onNull() override {
+        pending_ = Key::None;
+        return true;
+    }
+
+private:
+    enum class Key : uint8_t {
+        None,
+        Data,
+        Level,
+        UnlockedAt,
+        StartedAt,
+        PassedAt,
+        CompletedAt,
+    };
+
+    uint8_t currentLevel_;
+    LevelProgress current_;
+    LevelProgress found_;
+    LevelProgress highest_;
+    Key pending_ = Key::None;
+    int depth_ = 0;
+    bool inData_ = false;
+    bool inEntryData_ = false;
+    bool active_ = false;
+};
 }  // namespace
 
-bool parseLevelProgressions(const JsonValue& root, uint8_t currentLevel, LevelProgress* out) {
+bool parseLevelProgressionsText(std::string_view body, uint8_t currentLevel, LevelProgress* out) {
     if (!out) return false;
     *out = LevelProgress{};
-    const JsonValue* data = root.find("data");
-    if (!data || !data->isArray()) return false;
-
-    LevelProgress current;
-    LevelProgress highest;
-    for (const JsonValue& item : data->array) {
-        const LevelProgress p = parseEntry(item);
-        if (!p.valid) continue;
-        if (!highest.valid || p.level > highest.level) highest = p;
-        if (p.level == currentLevel) current = p;
-    }
-    if (current.valid)
-        *out = current;
-    else if (highest.valid)
-        *out = highest;
-    return out->valid;
+    ProgressSink sink(currentLevel);
+    JsonStreamParser parser(&sink);
+    if (!parser.parse(body)) return false;
+    // As before the streaming parser: the current level's entry, or the highest
+    // level in the response when the current one is missing.
+    *out = sink.found().valid ? sink.found() : sink.highest();
+    return true;
 }
 
 uint8_t levelKanjiPercent(uint16_t passed, uint16_t total) {

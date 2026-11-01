@@ -1,5 +1,7 @@
 #include "platform/WkLevelProgress.h"
 
+#include <string_view>
+
 #include "platform/WkClient.h"
 #include "platform/WkJson.h"
 #include "wk/Json.h"
@@ -8,6 +10,16 @@
 namespace kk {
 
 namespace {
+struct LevelProgressArgs {
+    uint8_t level = 0;
+    LevelProgress* out = nullptr;
+};
+
+bool parseProgressBody(std::string_view body, void* out) {
+    auto* args = static_cast<LevelProgressArgs*>(out);
+    return parseLevelProgressionsText(body, args->level, args->out);
+}
+
 bool fetchCount(const String& token, const String& path, uint16_t* out) {
     const WkJsonResult r = wkGetJsonRetry(path, token, 4096, 12000);
     if (r.http.httpCode != 200) {
@@ -31,7 +43,9 @@ bool fetchCount(const String& token, const String& path, uint16_t* out) {
 
 LevelProgress fetchLevelProgress(const String& token, uint8_t currentLevel) {
     LevelProgress progress;
-    const WkJsonResult r = wkGetJsonRetry("/v2/level_progressions", token, 32768, 12000);
+    LevelProgressArgs args{currentLevel, &progress};
+    const WkBodyResult r = wkGetBodyRetry("/v2/level_progressions", token, 32768,
+                                          parseProgressBody, &args, 12000);
     if (r.http.httpCode != 200) {
         Serial.printf("[level] HTTP %d\n", r.http.httpCode);
         if (r.http.httpCode == 401 || r.http.httpCode == 403)
@@ -43,7 +57,7 @@ LevelProgress fetchLevelProgress(const String& token, uint8_t currentLevel) {
                       static_cast<unsigned>(r.http.body.size()), r.http.truncated ? 1 : 0);
         return progress;
     }
-    if (!parseLevelProgressions(r.json, currentLevel, &progress)) {
+    if (!progress.valid) {
         Serial.println("[level] no matching progression");
         return progress;
     }

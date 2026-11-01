@@ -296,8 +296,12 @@ without the accuracy display.
 Fields used: `level`, `unlocked_at`, `started_at`, `passed_at`, `completed_at`,
 `abandoned_at`.
 
-**Implementation (2026-10-29).** Sync fetches the collection once and keeps the
-entry for the current level (falling back to the highest level). It then makes
+**Implementation (2026-10-29; streaming parser 2026-11-01).** Sync fetches the
+collection once and keeps the entry for the current level (falling back to the
+highest level); the body is walked with the streaming `wk/JsonStream` sink, so
+memory use does not grow with the number of progressions. An empty, malformed
+or truncated body leaves the level progress invalid and Home keeps its previous
+value. It then makes
 two tiny `total_count` requests for that level: `/subjects?levels=<level>&types=kanji&hidden=false&page_after_id=999999999`
 for the kanji total, and
 `/assignments?levels=<level>&subject_types=kanji&srs_stages=5,6,7,8,9&hidden=false&page_after_id=999999999`
@@ -590,6 +594,8 @@ confirmation.
 
 - Write `.tmp`, `fsync`/`close`, rename over the destination.
 - Keep a `.bak` of assignments and outbox.
+- The outbox save copies `main` to `.bak` first, then renames `.tmp` over
+  `main`, so a power cut between the two steps keeps the previous outbox.
 - On startup, if the main file fails CRC, use `.bak` and warn.
 - Never delete the outbox before the POST is confirmed.
 

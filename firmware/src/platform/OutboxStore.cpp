@@ -129,14 +129,38 @@ bool outboxSave(const std::vector<OutboxItem>& items) {
         LittleFS.remove(kTmp);
         return false;
     }
+    // Copy the old file instead of renaming it away: a power cut before the
+    // last rename then leaves either the previous outbox (main intact) or the
+    // new one, never neither. LittleFS rename replaces the destination in one
+    // step.
     if (LittleFS.exists(kBak)) LittleFS.remove(kBak);
-    if (LittleFS.exists(kPath)) LittleFS.rename(kPath, kBak);
-    if (!LittleFS.rename(kTmp, kPath)) {
-        LittleFS.remove(kPath);
-        if (!LittleFS.rename(kTmp, kPath)) {
+    if (LittleFS.exists(kPath)) {
+        File src = LittleFS.open(kPath, "r");
+        File dst = LittleFS.open(kBak, "w");
+        bool copied = src && dst;
+        const size_t expected = src ? src.size() : 0;
+        size_t total = 0;
+        uint8_t buf[512];
+        while (copied) {
+            const size_t n = src.read(buf, sizeof buf);
+            if (n == 0) break;
+            if (dst.write(buf, n) != n) {
+                copied = false;
+                break;
+            }
+            total += n;
+        }
+        if (src) src.close();
+        if (dst) dst.close();
+        if (!copied || total != expected) {
+            LittleFS.remove(kBak);
             LittleFS.remove(kTmp);
             return false;
         }
+    }
+    if (!LittleFS.rename(kTmp, kPath)) {
+        LittleFS.remove(kTmp);
+        return false;
     }
     return true;
 }
