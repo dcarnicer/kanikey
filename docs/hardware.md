@@ -499,3 +499,33 @@ review):
 A dev build with a forced small cap should show the 5 → 2 → 1 and 3 → 1 retry
 lines. Two shuffled 30-item sessions on the same account should start with
 different items.
+
+### 2026-11-01 — subject cache bad_alloc (FIX-27)
+
+Crash on hardware (2026-11-01): a 20-item review batch with 55 subjects (20
+assigned + 35 components) aborted with `std::bad_alloc` right after the batch
+fetch. Backtrace: `runBatch()` → `saveCacheAll()` → `kk::cacheSaveSubjects()`
+(`platform/CacheStore.cpp`) → `kk::encodeSubjectCache()` (`wk/Cache.cpp`) →
+`Writer::str()` → vector insert → `operator new` → abort. Heap at that moment:
+103 KB free, 73 KB largest block. The encoder built the whole payload in one
+`std::vector` that grows by doubling, and `encodeFile()` then copied it into a
+second vector with the header, so a save needed about three times the payload
+in large contiguous blocks. The load had the same shape: `readFile()` resized
+one vector to the whole file before `decodeSubjectCache()`, and
+`loadCachedBatch()` runs from `startReview()` on Home after the batch was
+evicted, when the heap is just as tight.
+
+Fix: the subject cache is streamed through fixed 1 KB blocks in both
+directions (`wk/Cache.h`: `ByteSink`/`ByteSource`, `writeSubjectCache()`,
+`readSubjectCache()`; `platform/CacheStore.cpp`: `FileSink`/`FileSource`). The
+save counts the payload and CRC in a first pass, writes the 24-byte `KKCS` v11
+header, then streams the payload in 1 KB blocks. The load validates the header,
+decodes from a 1 KB refill buffer with a running CRC, and requires the payload
+to be fully consumed. The on-disk bytes are unchanged (no version bump); the
+old vector encoder and decoder still exist and share the same field code. Peak
+extra memory is one 1 KB stack buffer per direction instead of ~3× the payload
+on the heap. Hardware check still open: repeat the 20-item/55-subject batch and
+confirm the save and load log lines (`[cache] subjects saved: … bytes, … ms`)
+with no `bad_alloc`, especially after `startReview()` on Home with an evicted
+batch.
+

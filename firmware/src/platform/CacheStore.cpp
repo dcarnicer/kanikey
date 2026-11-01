@@ -18,6 +18,35 @@ constexpr const char* kSubjectsBak = "/kanikey/cache/subjects.bak";
 constexpr size_t kMaxSnapshotBytes = 256 * 1024;
 constexpr size_t kMaxSubjectsBytes = 1024 * 1024;
 
+// Streams the subject cache through a File. Both directions hold a 1 KB block
+// at a time, so a save or load never needs the whole payload in one allocation
+// (FIX-27).
+class FileSink : public ByteSink {
+public:
+    explicit FileSink(File& file) : file_(file) {}
+
+    bool write(const uint8_t* data, size_t size) override {
+        if (size == 0) return true;
+        if (file_.write(data, size) != size) return false;
+        written_ += size;
+        return true;
+    }
+    size_t written() const { return written_; }
+
+private:
+    File& file_;
+    size_t written_ = 0;
+};
+
+class FileSource : public ByteSource {
+public:
+    explicit FileSource(File& file) : file_(file) {}
+    size_t read(uint8_t* data, size_t size) override { return file_.read(data, size); }
+
+private:
+    File& file_;
+};
+
 bool readFile(fs::FS& fs, const char* path, size_t maxBytes, std::vector<uint8_t>* out) {
     if (!fs.exists(path)) return false;
     File f = fs.open(path, "r");
@@ -66,6 +95,25 @@ bool copyFile(fs::FS& fs, const char* from, const char* to) {
     return ok && total == expected;
 }
 
+// Installs a closed tmp file over `path`, keeping the previous file as `bak`.
+// The old file is copied rather than renamed away, as OutboxStore does: a power
+// cut before the last rename then leaves either the previous file (main intact)
+// or the new one, never neither. LittleFS rename replaces the destination in
+// one step; FAT (the SD card) refuses to rename onto an existing file, so there
+// main is removed first. .bak already holds its copy, and the loaders fall back
+// to .bak if power is cut between the remove and the rename.
+bool installTmp(fs::FS& fs, const char* path, const char* tmp, const char* bak) {
+    if (fs.exists(path) && !copyFile(fs, path, bak)) {
+        fs.remove(bak);
+        fs.remove(tmp);
+        return false;
+    }
+    if (fs.rename(tmp, path)) return true;
+    if (fs.exists(path) && fs.remove(path) && fs.rename(tmp, path)) return true;
+    fs.remove(tmp);
+    return false;
+}
+
 bool writeAtomic(fs::FS& fs, const char* path, const char* tmp, const char* bak,
                  const std::vector<uint8_t>& bytes) {
     // "w" truncates a tmp file left behind by a crashed save, so no exists() +
@@ -79,20 +127,32 @@ bool writeAtomic(fs::FS& fs, const char* path, const char* tmp, const char* bak,
         fs.remove(tmp);
         return false;
     }
-    // Copy the old file instead of renaming it away, as OutboxStore does: a
-    // power cut before the last rename then leaves either the previous file
-    // (main intact) or the new one, never neither. LittleFS rename replaces
-    // the destination in one step.
-    if (fs.exists(path) && !copyFile(fs, path, bak)) {
-        fs.remove(bak);
-        fs.remove(tmp);
+    return installTmp(fs, path, tmp, bak);
+}
+
+void logSubjectCache(const char* what, size_t subjects, size_t bytes, uint32_t ms) {
+    char line[96];
+    snprintf(line, sizeof line, "[cache] subjects %s: %u subjects, %u bytes, %u ms", what,
+             static_cast<unsigned>(subjects), static_cast<unsigned>(bytes),
+             static_cast<unsigned>(ms));
+    Serial.println(line);
+}
+
+// Opens and streams one subject cache file. Leaves *out untouched on failure.
+bool loadSubjectsFile(fs::FS& fs, const char* path, SubjectCache* out, size_t* bytes) {
+    if (!fs.exists(path)) return false;
+    File f = fs.open(path, "r");
+    if (!f) return false;
+    const size_t size = static_cast<size_t>(f.size());
+    if (size < kCacheHeaderBytes || size > kMaxSubjectsBytes) {
+        f.close();
         return false;
     }
-    if (!fs.rename(tmp, path)) {
-        fs.remove(tmp);
-        return false;
-    }
-    return true;
+    FileSource source(f);
+    const bool ok = readSubjectCache(&source, size, out);
+    f.close();
+    if (ok && bytes) *bytes = size;
+    return ok;
 }
 
 }  // namespace
@@ -134,17 +194,18 @@ void cacheClearSnapshot() {
 }
 
 bool cacheLoadSubjects(fs::FS& sd, SubjectCache* out) {
-    std::vector<uint8_t> bytes;
-    if (readFile(sd, kSubjectsPath, kMaxSubjectsBytes, &bytes)) {
-        if (decodeSubjectCache(bytes.data(), bytes.size(), out)) return true;
-        Serial.println("[cache] subject CRC/format error");
+    const uint32_t started = millis();
+    size_t bytes = 0;
+    if (loadSubjectsFile(sd, kSubjectsPath, out, &bytes)) {
+        logSubjectCache("loaded", out->subjects.size(), bytes, millis() - started);
+        return true;
     }
-    bytes.clear();
-    if (readFile(sd, kSubjectsBak, kMaxSubjectsBytes, &bytes)) {
-        if (decodeSubjectCache(bytes.data(), bytes.size(), out)) {
-            Serial.println("[cache] recovered subjects from .bak");
-            return true;
-        }
+    Serial.println("[cache] subject CRC/format error");
+    bytes = 0;
+    if (loadSubjectsFile(sd, kSubjectsBak, out, &bytes)) {
+        Serial.println("[cache] recovered subjects from .bak");
+        logSubjectCache("loaded", out->subjects.size(), bytes, millis() - started);
+        return true;
     }
     return false;
 }
@@ -154,17 +215,28 @@ bool cacheSaveSubjects(fs::FS& sd, const SubjectCache& cache) {
 }
 
 bool cacheSaveSubjects(fs::FS& sd, const CacheMeta& meta, const std::vector<Subject>& subjects) {
-    std::vector<uint8_t> bytes;
-    if (!encodeSubjectCache(meta, subjects, &bytes)) {
-        Serial.println("[cache] subjects encode failed");
-        return false;
-    }
+    const uint32_t started = millis();
     sd.mkdir("/kanikey");
     sd.mkdir("/kanikey/cache");
-    if (!writeAtomic(sd, kSubjectsPath, kSubjectsTmp, kSubjectsBak, bytes)) {
+    // "w" truncates a tmp left by a crashed save (see writeAtomic).
+    File f = sd.open(kSubjectsTmp, "w");
+    if (!f) {
         Serial.println("[cache] subjects write failed");
         return false;
     }
+    FileSink sink(f);
+    const bool encoded = writeSubjectCache(meta, subjects, &sink);
+    f.close();
+    if (!encoded) {
+        sd.remove(kSubjectsTmp);
+        Serial.println("[cache] subjects encode failed");
+        return false;
+    }
+    if (!installTmp(sd, kSubjectsPath, kSubjectsTmp, kSubjectsBak)) {
+        Serial.println("[cache] subjects write failed");
+        return false;
+    }
+    logSubjectCache("saved", subjects.size(), sink.written(), millis() - started);
     return true;
 }
 
