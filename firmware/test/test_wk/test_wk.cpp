@@ -1404,8 +1404,6 @@ static void test_markup_and_subject_details() {
 }
 
 static void test_level_progressions_parse() {
-    JsonParser p;
-    JsonValue v;
     const char* text =
         "{\"data\":["
         "{\"id\":1,\"object\":\"level_progression\",\"data\":{\"level\":7,"
@@ -1417,9 +1415,8 @@ static void test_level_progressions_parse() {
         "{\"id\":3,\"object\":\"level_progression\",\"data\":{\"level\":9,"
         "\"unlocked_at\":null,\"started_at\":null,\"passed_at\":null,"
         "\"completed_at\":null}}]}";
-    TEST_ASSERT_TRUE(p.parse(text, &v));
     LevelProgress progress;
-    TEST_ASSERT_TRUE(parseLevelProgressions(v, 8, &progress));
+    TEST_ASSERT_TRUE(parseLevelProgressionsText(text, 8, &progress));
     TEST_ASSERT_EQUAL(8, progress.level);
     uint32_t unlocked = 0;
     TEST_ASSERT_TRUE(parseIso8601("2026-10-12T12:00:00Z", &unlocked));
@@ -1428,7 +1425,7 @@ static void test_level_progressions_parse() {
     TEST_ASSERT_EQUAL_UINT32(0, progress.passedAt);
 
     LevelProgress highest;
-    TEST_ASSERT_TRUE(parseLevelProgressions(v, 20, &highest));
+    TEST_ASSERT_TRUE(parseLevelProgressionsText(text, 20, &highest));
     TEST_ASSERT_EQUAL(9, highest.level);
 }
 
@@ -1979,6 +1976,7 @@ static void test_ota_url_resolution() {
 void run_queue_tests();
 void run_ota_tests();
 void run_answer_tests();
+void run_store_tests();
 
 int main(int, char**) {
     UNITY_BEGIN();
@@ -2062,5 +2060,6 @@ int main(int, char**) {
     run_queue_tests();
     run_ota_tests();
     run_answer_tests();
+    run_store_tests();
     return UNITY_END();
 }

@@ -2,8 +2,7 @@
 // The current level's progression from GET /level_progressions: when it
 // unlocked/started/passed/completed. Pure C++.
 #include <cstdint>
-
-#include "wk/Json.h"
+#include <string_view>
 
 namespace kk {
 
@@ -20,9 +19,12 @@ struct LevelProgress {
     bool valid = false;
 };
 
-// Picks the entry for `currentLevel`; when it is missing, the highest level in
-// the response is used.
-bool parseLevelProgressions(const JsonValue& root, uint8_t currentLevel, LevelProgress* out);
+// Streams the collection and keeps the entry for `currentLevel`; when it is
+// missing, the highest level in the response is used. Memory use does not grow
+// with the number of progressions. Returns false when the body is not valid
+// JSON; an intact body with no usable entry returns true and leaves `out` at
+// its defaults.
+bool parseLevelProgressionsText(std::string_view body, uint8_t currentLevel, LevelProgress* out);
 
 // Rounded percentage of the level's kanji that reached Guru. Returns 0 when the
 // total is unknown and never exceeds 100.
