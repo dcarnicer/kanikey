@@ -68,8 +68,11 @@ lgfx::LGFX_Sprite* gCanvas = nullptr;
 bool gDirty = true;
 uint32_t gLastStatusMs = 0;
 uint32_t gLastDrawMs = 0;
+uint32_t gLastHomeRefreshMs = 0;
 
 bool gSdOk = false;
+bool gFsOk = false;
+bool gFsFormatPrompt = false;
 char gSdLine[48] = "SD: not mounted";
 uint32_t gLastInputAt = 0;
 bool gDimmed = false;
@@ -106,6 +109,7 @@ bool gReviewActive = false;
 bool gReviewSummary = false;
 bool gFeedback = false;
 bool gNeedsSubmit = false;
+uint32_t gPendingSeq = 0;  // outbox record queued at completion, sent on Enter
 bool gFeedbackCompleted = false;
 bool gReviewDetail = false;
 int gReviewDetailPage = 0;
@@ -217,6 +221,20 @@ char gOutboxNote[40] = "";
 bool gLowBatteryPrompt = false;
 int gLowBatteryAction = 0;  // 1 = review, 2 = lessons
 bool gLowBatteryConfirmed = false;
+// One blocking notice frame for the review empty/error states, a full outbox
+// and the storage prompt. Drawing lives in drawNotice().
+enum class NoticeAction : uint8_t {
+    None,
+    ReviewEmpty,
+    ReviewError,
+    LessonError,
+    OutboxFull,
+    StorageFormat,
+};
+bool gNoticeActive = false;
+NoticeAction gNoticeAction = NoticeAction::None;
+char gNoticeLine[64] = "";
+char gNoticeLine2[64] = "";
 char gSettingsNote[48] = "";
 uint16_t gSettingsNoteColor = kFaint;
 #ifdef KANIKEY_DEV
@@ -251,6 +269,9 @@ void drawAbout();
 void drawSignOutConfirm();
 void drawLowBattery();
 void drawOutbox();
+void drawNotice();
+void noticeKey(const KeyEvent& e);
+void continueBootAfterStorage();
 void openPause();
 void wakeScreen();
 void openFirmware();
@@ -303,6 +324,13 @@ bool outboxHasAssignment(uint32_t assignmentId) {
     return false;
 }
 
+// Every record occupies a slot, whatever its state (rejected, stuck, sending
+// and ambiguous included). startReview() refuses to start when this is smaller
+// than the batch, so a completed review always has a place to go.
+size_t outboxFreeSlots() {
+    return gOutbox.size() < kk::kOutboxMax ? kk::kOutboxMax - gOutbox.size() : 0;
+}
+
 void removeSubjectFromReviews(kk::Summary& summary, uint32_t subjectId) {
     for (kk::SummaryBucket& b : summary.reviews) {
         auto it = std::find(b.subjectIds.begin(), b.subjectIds.end(), subjectId);
@@ -346,6 +374,7 @@ void pruneBatchToSummary(uint32_t now) {
 }
 
 void saveCacheSnapshot() {
+    if (!gFsOk) return;  // no storage: keep everything in memory only
     if (!gHaveSummary || !kk::DevToken::has()) return;
     kk::CacheSnapshot snapshot;
     snapshot.meta.savedAt = gSyncedAt;
@@ -376,6 +405,7 @@ void saveCacheSnapshot() {
 }
 
 void saveSubjectCache() {
+    if (!gFsOk) return;  // no storage: keep everything in memory only
     if (!gSdOk || !gBatch.ok || gBatch.subjects.empty() || !kk::DevToken::has()) return;
     kk::CacheMeta meta;
     meta.savedAt = gBatch.fetchedAt ? gBatch.fetchedAt : gSyncedAt;
@@ -394,7 +424,7 @@ void saveCacheAll() {
 }
 
 bool loadCache() {
-    if (!gSdOk || !kk::DevToken::has()) return false;
+    if (!gFsOk || !gSdOk || !kk::DevToken::has()) return false;
     kk::CacheSnapshot snapshot;
     if (!kk::cacheLoadSnapshot(&snapshot)) return false;
     const uint32_t key = currentAccountKey();
@@ -441,7 +471,7 @@ bool loadCache() {
 // snapshot is authoritative for the assignment list; the subject cache on SD
 // supplies the data used by the review screens.
 bool loadCachedBatch() {
-    if (!gSdOk || !kk::DevToken::has()) return false;
+    if (!gFsOk || !gSdOk || !kk::DevToken::has()) return false;
     kk::CacheSnapshot snapshot;
     if (!kk::cacheLoadSnapshot(&snapshot) || snapshot.assignments.empty()) return false;
     const uint32_t key = currentAccountKey();
@@ -895,7 +925,10 @@ void showReview() {
         view.typed = gFeedbackInput;
         view.status = gCheck.status;
         view.message = gCheck.message;
-        view.answer = correctAnswer(*s, part);
+        // A warning must not leak the answer through the feedback frame or the
+        // detail card; the user is expected to fix the typed text instead.
+        if (gCheck.status != kk::AnswerStatus::Warning)
+            view.answer = correctAnswer(*s, part);
     }
 
     auto& d = target();
@@ -995,6 +1028,7 @@ void showReviewSummary() {
 }
 
 void saveOutbox() {
+    if (!gFsOk) return;  // no storage: the in-memory outbox is all we have
     if (!kk::outboxSave(gOutbox)) Serial.println("[outbox] save failed");
 }
 
@@ -1143,7 +1177,7 @@ bool sendOutboxItem(uint32_t seq) {
     return false;
 }
 
-void queueReview(const kk::SessionItem& item) {
+bool queueReviewLocal(const kk::SessionItem& item) {
     gPendingStageAssignment = item.assignmentId;
     gPendingStageFrom = item.srsStage;
     uint32_t created = static_cast<uint32_t>(time(nullptr));
@@ -1151,13 +1185,22 @@ void queueReview(const kk::SessionItem& item) {
     const uint32_t seq = kk::outboxAdd(gOutbox, item.assignmentId, item.subjectId,
                                        item.incorrectMeaning, item.incorrectReading, created);
     if (!seq) {
+        // A session starts only with enough free slots (startReview), so this
+        // is a safety net: report loudly, never drop the review silently.
         Serial.println("[outbox] full; review not queued");
-        return;
+        snprintf(gNetLine, sizeof gNetLine, "Outbox full; review not saved");
+        gPendingSeq = 0;
+        return false;
     }
+    gPendingSeq = seq;
     saveOutbox();
     Serial.printf("[outbox] queued seq %u assignment %u\n", static_cast<unsigned>(seq),
                   static_cast<unsigned>(item.assignmentId));
-    sendOutboxItem(seq);
+    return true;
+}
+
+void sendQueuedReview(uint32_t seq) {
+    if (seq) sendOutboxItem(seq);
 }
 
 void flushOutbox() {
@@ -1317,7 +1360,7 @@ void discardSelectedOutboxItem() {
     // the in-memory item and shows a note instead of pretending it is gone.
     std::vector<kk::OutboxItem> next = gOutbox;
     if (!kk::outboxRemove(next, seq)) return;
-    if (!kk::outboxSave(next)) {
+    if (gFsOk && !kk::outboxSave(next)) {
         snprintf(gOutboxNote, sizeof gOutboxNote, "Could not save outbox");
         Serial.println("[outbox] discard save failed");
         gDirty = true;
@@ -1364,10 +1407,24 @@ void checkCurrent() {
         const kk::AnswerOutcome o = gQueue.answer(gCheck.status);
         if (o.completed) {
             gCompletedItem = gQueue.completed().back();
-            gNeedsSubmit = true;
+            // Queue and persist before the feedback is drawn: a crash, power
+            // loss or an OTA install on the feedback screen keeps the review.
+            gNeedsSubmit = queueReviewLocal(gCompletedItem);
             gFeedbackCompleted = true;
             if (gDueReviews > 0) --gDueReviews;
             markCacheCompleted(gCompletedItem.subjectId, gCompletedItem.assignmentId);
+            if (!gNeedsSubmit) {
+                // Unreachable when startReview() checked the free slots; show
+                // the failure instead of silently losing the review.
+                gFeedback = false;
+                gReviewActive = false;
+                gReviewSummary = false;
+                gShowHome = false;
+                snprintf(gNoticeLine, sizeof gNoticeLine, "Review not saved; outbox full.");
+                gNoticeLine2[0] = 0;
+                gNoticeAction = NoticeAction::OutboxFull;
+                gNoticeActive = true;
+            }
         }
     }
     gDirty = true;
@@ -1375,13 +1432,15 @@ void checkCurrent() {
 
 void advanceFeedback() {
     if (gCheck.status == kk::AnswerStatus::Warning) {
-        clearReviewInput();
+        // Keep the typed text (meaning string and IME raw) so Enter returns to
+        // the same question ready for a correction.
         gFeedback = false;
         gDirty = true;
         return;
     }
     if (gNeedsSubmit) {
-        queueReview(gCompletedItem);
+        sendQueuedReview(gPendingSeq);
+        gPendingSeq = 0;
         gNeedsSubmit = false;
     }
     gReviewDetail = false;
@@ -1398,7 +1457,8 @@ void advanceFeedback() {
 
 void endReview() {
     if (gNeedsSubmit) {
-        queueReview(gCompletedItem);
+        sendQueuedReview(gPendingSeq);
+        gPendingSeq = 0;
         gNeedsSubmit = false;
     }
     gPauseActive = false;
@@ -1436,6 +1496,7 @@ void requestLowBatteryConfirm(int action) {
 }
 
 void startReview() {
+    if (gFsFormatPrompt) return;  // wait for the storage choice
     if (!gHaveSummary) return;
     gLessonQuizActive = false;
     gReviewDetail = false;
@@ -1451,11 +1512,21 @@ void startReview() {
     }
     gLowBatteryConfirmed = false;
     const size_t reviewLimit = static_cast<size_t>(kk::settingsReviewBatchSize());
+    if (outboxFreeSlots() < reviewLimit) {
+        snprintf(gNoticeLine, sizeof gNoticeLine, "Sync to send pending reviews first.");
+        gNoticeLine2[0] = 0;
+        gNoticeAction = NoticeAction::OutboxFull;
+        gNoticeActive = true;
+        gShowHome = false;
+        gDirty = true;
+        return;
+    }
     if (gBatch.assignments.empty() && gBatchEvicted) loadCachedBatch();
     if (gBatch.assignments.empty()) {
         char subtitle[48];
+        const uint32_t dueNow = gSummary.dueReviews(effectiveNow());
         snprintf(subtitle, sizeof subtitle, "%u due items, please wait",
-                 static_cast<unsigned>(reviewLimit));
+                 static_cast<unsigned>(dueNow));
         drawLoading("Fetching reviews...", subtitle);
         flushOutbox();
         if (!runBatch()) {
@@ -1463,7 +1534,12 @@ void startReview() {
                 setSyncIssue(gBatch.httpCode, true, 0, "Reviews");
             else if (kk::wkAuthBlocked())
                 setSyncIssue(401, true, 0, "Reviews");
-            drawLoading("Could not load reviews", gNetLine);
+            snprintf(gNoticeLine, sizeof gNoticeLine, "%s", gNetLine);
+            gNoticeLine2[0] = 0;
+            gNoticeAction = NoticeAction::ReviewError;
+            gNoticeActive = true;
+            gShowHome = false;
+            gDirty = true;
             return;
         }
     }
@@ -1471,7 +1547,12 @@ void startReview() {
         // Optional study materials/statistics/components can arm the gate after
         // the main batch succeeded; do not start a session with a rejected token.
         setSyncIssue(401, true, 0, "Reviews");
-        drawLoading("Could not load reviews", gNetLine);
+        snprintf(gNoticeLine, sizeof gNoticeLine, "%s", gNetLine);
+        gNoticeLine2[0] = 0;
+        gNoticeAction = NoticeAction::ReviewError;
+        gNoticeActive = true;
+        gShowHome = false;
+        gDirty = true;
         return;
     }
     drawLoading("Starting session...", "");
@@ -1495,6 +1576,13 @@ void startReview() {
     Serial.println();
     if (gQueue.empty()) {
         Serial.println("[review] no reviewable items");
+        // Leave the "Starting session..." frame instead of freezing on it.
+        snprintf(gNoticeLine, sizeof gNoticeLine, "Next review  %s", gNextReview);
+        gNoticeLine2[0] = 0;
+        gNoticeAction = NoticeAction::ReviewEmpty;
+        gNoticeActive = true;
+        gShowHome = false;
+        gDirty = true;
         return;
     }
     gReviewActive = true;
@@ -1508,6 +1596,7 @@ void startReview() {
     gFeedback = false;
     gFeedbackCompleted = false;
     gNeedsSubmit = false;
+    gPendingSeq = 0;
     clearReviewInput();
     Serial.printf("[review] session with %u items\n", static_cast<unsigned>(gQueue.remaining()));
     for (size_t i = 0; i < gQueue.queue().size() && i < 5; ++i) {
@@ -1528,7 +1617,7 @@ bool reviewKey(const KeyEvent& e) {
     if (gFeedback) {
         if (e.key == Key::Enter) advanceFeedback();
         else if (e.key == Key::Esc) openPause();
-        else if (e.key == Key::Tab) {
+        else if (e.key == Key::Tab && gCheck.status != kk::AnswerStatus::Warning) {
             const kk::Subject* detail = subjectById(gFeedbackSubjectId);
             gReviewDetailPages = detail ? detailPageCount(*detail) : 5;
             gReviewDetail = true;
@@ -1789,8 +1878,9 @@ void showLessonQuiz() {
     }
     if (!view.complete) {
         view.typed = lessonQuizInput(meaning);
-        view.answer = correctAnswer(s, meaning ? kk::ReviewPart::Meaning
-                                               : kk::ReviewPart::Reading);
+        if (!view.feedback || view.status != kk::AnswerStatus::Warning)
+            view.answer = correctAnswer(s, meaning ? kk::ReviewPart::Meaning
+                                                   : kk::ReviewPart::Reading);
         view.romaji = gLessonQuizIme.raw();
     }
 
@@ -1819,8 +1909,12 @@ void lessonQuizKey(const KeyEvent& e) {
     }
     if (gLessonQuiz.feedback()) {
         if (e.key == Key::Enter) {
+            const bool warning =
+                gLessonQuiz.result().status == kk::AnswerStatus::Warning;
             gLessonQuiz.advance();
-            clearLessonQuizInput();
+            // A warning retries the same part; keep the typed text so the user
+            // can correct it instead of retyping.
+            if (!warning) clearLessonQuizInput();
             gDirty = true;
         }
         return;
@@ -1917,7 +2011,11 @@ void startLessons() {
             lessonError = gNetLine;
         }
         drawLoading("No lessons available", lessonError);
-        gShowHome = true;
+        gShowHome = false;
+        snprintf(gNoticeLine, sizeof gNoticeLine, "%s", lessonError);
+        gNoticeLine2[0] = 0;
+        gNoticeAction = NoticeAction::LessonError;
+        gNoticeActive = true;
         gDirty = true;
         return;
     }
@@ -1958,7 +2056,11 @@ void startLessons() {
         // before showing a lesson list that cannot be started.
         setSyncIssue(401, true, 0, "Lessons");
         drawLoading("No lessons available", gNetLine);
-        gShowHome = true;
+        gShowHome = false;
+        snprintf(gNoticeLine, sizeof gNoticeLine, "%s", gNetLine);
+        gNoticeLine2[0] = 0;
+        gNoticeAction = NoticeAction::LessonError;
+        gNoticeActive = true;
         gDirty = true;
         return;
     }
@@ -2209,7 +2311,7 @@ void settingsAction() {
             gSettingsNote[0] = 0;
             break;
         case 11:
-            kk::cacheClearSnapshot();
+            if (gFsOk) kk::cacheClearSnapshot();
             if (gSdOk) kk::cacheClearSubjects(SD);
             gCacheSavedAt = 0;
             setSettingsNote("Cache cleared; next boot is cold", kOk);
@@ -2232,7 +2334,7 @@ void settingsKey(const KeyEvent& e) {
             kk::DevToken::clear();
             kk::wkClearAuthBlock();
             gDeferredAuthIssue = SyncIssue::None;
-            kk::cacheClearSnapshot();
+            if (gFsOk) kk::cacheClearSnapshot();
             if (gSdOk) kk::cacheClearSubjects(SD);
             gOutbox.clear();
             saveOutbox();
@@ -2404,6 +2506,10 @@ void onKey(const KeyEvent& e) {
         }
         return;
     }
+    if (gNoticeActive) {
+        noticeKey(e);
+        return;
+    }
     if (gLowBatteryPrompt) {
         if (e.down && e.key == Key::Enter) {
             const int action = gLowBatteryAction;
@@ -2493,10 +2599,21 @@ void onKey(const KeyEvent& e) {
         return;
     }
     if (e.down && e.key == Key::Enter) {
-        if (gShowHome && gHaveSummary)
-            startReview();
-        else
+        if (gShowHome && gHaveSummary) {
+            if (gSummary.dueReviews(effectiveNow()) == 0) {
+                // Nothing due: no network call, just the next time.
+                snprintf(gNoticeLine, sizeof gNoticeLine, "Next review  %s", gNextReview);
+                gNoticeLine2[0] = 0;
+                gNoticeAction = NoticeAction::ReviewEmpty;
+                gNoticeActive = true;
+                gShowHome = false;
+                gDirty = true;
+            } else {
+                startReview();
+            }
+        } else {
             retryBoot();
+        }
         return;
     }
     if (e.down && gShowHome && e.key == Key::Other &&
@@ -2689,6 +2806,7 @@ void finishSyncCancelled() {
 }
 
 void startSync() {
+    if (gFsFormatPrompt) return;  // wait for the storage choice
     if (!gSdOk || !gPack.ready() || !kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
         gSyncScreen = false;
         gDirty = true;
@@ -2722,8 +2840,9 @@ void startSync() {
         return;
     }
 
-    kk::settingsApplyTimeZone();
-    configTime(0, 0, "pool.ntp.org", "time.cloudflare.com");
+    // configTzTime applies the POSIX rule and starts SNTP in one step. Plain
+    // configTime() would overwrite the rule with UTC right after applying it.
+    configTzTime(kk::settingsTimeZoneRule().c_str(), "pool.ntp.org", "time.cloudflare.com");
     const uint32_t ntpStart = millis();
     while (time(nullptr) < 1700000000 && millis() - ntpStart < 5000) delay(100);
     const uint32_t utc = static_cast<uint32_t>(time(nullptr));
@@ -3062,6 +3181,8 @@ kk::app::HomeView buildHomeView() {
     view.srs = gSrs;
     view.outboxAttention = static_cast<uint32_t>(kk::outboxAttentionCount(gOutbox));
     view.outboxPending = static_cast<uint32_t>(kk::outboxPendingCount(gOutbox));
+    // "Nearly full" starts at 96 of 128 slots; every state occupies a slot.
+    view.outboxNearlyFull = gOutbox.size() >= (kk::kOutboxMax * 3u) / 4u;
 
     // Status priority: API/auth, outbox, offline cache, then notices.
     if (gSyncIssue == SyncIssue::Auth) {
@@ -3089,6 +3210,9 @@ kk::app::HomeView buildHomeView() {
         snprintf(view.statusText, sizeof view.statusText, "Outbox: %u pending",
                  static_cast<unsigned>(view.outboxPending));
         view.statusColor = kWarn;
+    } else if (!gFsOk) {
+        snprintf(view.statusText, sizeof view.statusText, "Storage unavailable");
+        view.statusColor = kErr;
     } else if (gOffline) {
         cacheStatusLine(view.statusText, sizeof view.statusText);
         view.statusColor = cacheIsStale() ? kErr : kWarn;
@@ -3240,6 +3364,116 @@ void drawSignOutConfirm() {
     kk::app::drawSignOutScreen(d);
     d.endWrite();
     present();
+}
+
+// Blocking notice frame: the lessons empty state's shape with a caller-supplied
+// title, line and key hint. Used for review empty/error states, a full outbox
+// and the storage prompt.
+void drawNotice() {
+    if (!gDisp) return;
+    const char* header = "REVIEWS";
+    const char* title = "";
+    const char* hint = "Enter: retry  Esc: home";
+    switch (gNoticeAction) {
+        case NoticeAction::ReviewEmpty:
+            title = "No reviews now";
+            hint = "Enter: sync  Esc: home";
+            break;
+        case NoticeAction::ReviewError:
+            title = "Could not load reviews";
+            break;
+        case NoticeAction::LessonError:
+            header = "LESSONS";
+            title = "No lessons available";
+            break;
+        case NoticeAction::OutboxFull:
+            title = "Outbox full";
+            hint = "Enter: sync  Esc: home";
+            break;
+        case NoticeAction::StorageFormat:
+            header = "STORAGE";
+            title = "Storage unreadable";
+            hint = "Enter: format  Esc: continue";
+            break;
+        default:
+            return;
+    }
+
+    auto& d = target();
+    d.startWrite();
+    d.fillScreen(ui::kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(ui::kDim, ui::kBg);
+    d.drawString(header, 6, 3);
+    d.setTextFont(4);
+    d.setTextSize(1);
+    d.setTextColor(ui::kText, ui::kBg);
+    d.drawString(title, 8, 38);
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(ui::kDim, ui::kBg);
+    d.drawString(gNoticeLine, 8, 82);
+    if (gNoticeLine2[0]) d.drawString(gNoticeLine2, 8, 102);
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextColor(ui::kFaint, ui::kBg);
+    d.drawString(hint, 8, 125);
+    d.endWrite();
+    present();
+}
+
+void noticeKey(const KeyEvent& e) {
+    if (!e.down) return;
+    if (gFsFormatPrompt) {
+        if (e.key == Key::Esc) {
+            // Continue without storage: the in-memory outbox and cache only.
+            gFsFormatPrompt = false;
+            gFsOk = false;
+            gNoticeActive = false;
+            gNoticeAction = NoticeAction::None;
+            snprintf(gNetLine, sizeof gNetLine, "Storage unavailable");
+            Serial.println("[kk] continuing without storage");
+            continueBootAfterStorage();
+            return;
+        }
+        if (e.key == Key::Enter) {
+            if (LittleFS.begin(true)) {
+                gFsOk = true;
+                gFsFormatPrompt = false;
+                gNoticeActive = false;
+                gNoticeAction = NoticeAction::None;
+                kk::outboxLoad(gOutbox);
+                Serial.printf("[outbox] pending %u\n",
+                              static_cast<unsigned>(kk::outboxPendingCount(gOutbox)));
+                continueBootAfterStorage();
+            } else {
+                snprintf(gNoticeLine, sizeof gNoticeLine, "Format failed; try again");
+                gDirty = true;
+            }
+            return;
+        }
+        return;
+    }
+    if (e.key == Key::Esc) {
+        gNoticeActive = false;
+        gShowHome = gHaveSummary;
+        gDirty = true;
+        return;
+    }
+    if (e.key != Key::Enter) return;
+    const NoticeAction action = gNoticeAction;
+    gNoticeActive = false;
+    if (action == NoticeAction::ReviewError) {
+        startReview();
+    } else if (action == NoticeAction::LessonError) {
+        startLessons();
+    } else if (action == NoticeAction::OutboxFull || action == NoticeAction::ReviewEmpty) {
+        startSync();
+    }
+    gDirty = true;
 }
 
 // ---------------------------------------------------------------- firmware
@@ -4165,6 +4399,10 @@ void seedDevRejectedOutbox() {
 #endif
 
 void draw() {
+    if (gNoticeActive) {
+        drawNotice();
+        return;
+    }
     if (gPortalActive) {
         drawSetupPortal();
         return;
@@ -4818,6 +5056,28 @@ void handleSerial() {
     }
 }
 
+// Shared boot tail: load the cache when storage is available, then start the
+// setup portal or a sync. Used by setup() and after the storage prompt.
+void continueBootAfterStorage() {
+    const bool cacheLoaded = gSdOk && gPack.ready() && loadCache();
+    Serial.printf("[wifi] saved credentials: %s\n", kk::DevWifi::hasSaved() ? "yes" : "no");
+    if (!gSdOk) {
+        snprintf(gNetLine, sizeof gNetLine, "SD: not mounted");
+    } else if (!gPack.ready()) {
+        snprintf(gNetLine, sizeof gNetLine, "Pack: %s", gPack.statusLine());
+    } else if (!kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
+        if (cacheLoaded)
+            snprintf(gNetLine, sizeof gNetLine, "NET: offline (cached)");
+        else
+            startSetupPortal();
+    } else {
+        startSync();
+    }
+    gDirty = true;
+    drawStatus();
+    gLastStatusMs = millis();
+}
+
 }  // namespace
 
 void setup() {
@@ -4850,12 +5110,20 @@ void setup() {
                                                                          MALLOC_CAP_8BIT)));
     Serial.printf("[kk] keyboard: %s\n", tgc::board::hasKeyboard() ? "yes" : "no");
 
-    if (!LittleFS.begin(true)) {
-        Serial.println("[kk] LittleFS mount failed");
-    } else {
+    // Mount without formatting first: a failed mount must not wipe unsent
+    // reviews. The format choice is explicit on the storage prompt.
+    gFsOk = LittleFS.begin(false);
+    if (gFsOk) {
         kk::outboxLoad(gOutbox);
         Serial.printf("[outbox] pending %u\n",
                       static_cast<unsigned>(kk::outboxPendingCount(gOutbox)));
+    } else {
+        Serial.println("[kk] LittleFS mount failed");
+        gFsFormatPrompt = true;
+        gNoticeAction = NoticeAction::StorageFormat;
+        gNoticeActive = true;
+        snprintf(gNoticeLine, sizeof gNoticeLine, "Pending reviews cannot be read.");
+        gNoticeLine2[0] = 0;
     }
 
     gSdOk = mountSd();
@@ -4863,7 +5131,15 @@ void setup() {
         gPack.open(SD, "/kanikey/glyphs.kgp");
         Serial.printf("[pack] %s\n", gPack.statusLine());
     }
-    const bool cacheLoaded = gSdOk && gPack.ready() && loadCache();
+    if (gFsFormatPrompt) {
+        gLastInputAt = millis();
+        gDirty = true;
+        Serial.println("[kk] waiting for the storage choice");
+        draw();
+        gDirty = false;
+        gLastDrawMs = millis();
+        return;  // no sync or review before the choice
+    }
     gLastInputAt = millis();
     gDirty = true;
     Serial.println("[kk] first draw");
@@ -4872,22 +5148,7 @@ void setup() {
     gDirty = false;
     gLastDrawMs = millis();
 
-    Serial.printf("[wifi] saved credentials: %s\n", kk::DevWifi::hasSaved() ? "yes" : "no");
-    if (!gSdOk) {
-        snprintf(gNetLine, sizeof gNetLine, "SD: not mounted");
-    } else if (!gPack.ready()) {
-        snprintf(gNetLine, sizeof gNetLine, "Pack: %s", gPack.statusLine());
-    } else if (!kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
-        if (cacheLoaded)
-            snprintf(gNetLine, sizeof gNetLine, "NET: offline (cached)");
-        else
-            startSetupPortal();
-    } else {
-        startSync();
-    }
-    gDirty = true;
-    drawStatus();
-    gLastStatusMs = millis();
+    continueBootAfterStorage();
 }
 
 void loop() {
@@ -4967,6 +5228,11 @@ void loop() {
             gDirty = true;
         lastRateWait = rateWait;
     }
+    // Home's battery and clock otherwise freeze until the next keypress.
+    if (gShowHome && now - gLastHomeRefreshMs >= 30000) {
+        gLastHomeRefreshMs = now;
+        gDirty = true;
+    }
 
     // G0: a short press wakes the screen; a long press is the future power
     // action. For M0 it just logs, so the button can be checked too.
@@ -4988,9 +5254,10 @@ void loop() {
         tgc::board::setDisplayOn(false);
         gScreenOff = true;
     }
-    if (!gPortalActive && !gReviewActive && !gReviewSummary && !gFeedback && !gLessonActive &&
-        !gLessonListActive && !gLessonEmptyActive && !gPauseActive && !gSettingsActive &&
-        !gAboutActive && !gOutboxScreen && !gFirmwareActive && gFirmwareStep == FirmwareStep::Idle &&
+    if (!gPortalActive && !gNoticeActive && !gReviewActive && !gReviewSummary && !gFeedback &&
+        !gLessonActive && !gLessonListActive && !gLessonEmptyActive && !gLessonQuizActive &&
+        !gPauseActive && !gSettingsActive && !gAboutActive && !gOutboxScreen &&
+        !gFirmwareActive && gFirmwareStep == FirmwareStep::Idle &&
         !gLowBatteryPrompt && !gAssetServerActive && sleepMs &&
         now - gLastInputAt > sleepMs && !tgc::board::externalPower()) {
         Serial.println("[power] idle sleep");

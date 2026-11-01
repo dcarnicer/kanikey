@@ -324,7 +324,10 @@ Home ──L──► Lessons ──Enter──► Lesson card
   `Outbox: N pending` in amber or `Outbox: N need attention` in red at 8 px,
   replacing the offline/stale/vacation/level line. The attention
   count is rejected + stuck; pending does not include either. When items need
-  attention, the hint swaps `L: lessons` for `O: outbox` (§5.13).
+  attention, the hint swaps `L: lessons` for `O: outbox` (§5.13). Above 75%
+  (96 of 128 slots, every state counted) the line appends `(nearly full)`.
+  The status line and battery are redrawn at least every 30 s while Home is
+  visible, so charging shows without a keypress.
 - Priority of the status line: auth/rate/server error, outbox, offline/stale,
   level-up notice, vacation, level line. A level-up notice keeps priority over
   vacation and level until sign-out.
@@ -345,8 +348,11 @@ Home ──L──► Lessons ──Enter──► Lesson card
   - **Offline:** when no outbox item is pending or needs attention, the status
     line in `warn` reads `Offline - 2h old`; after 24 h, `Stale cache - 2d old`.
   - **Empty:** the counters show `0` and `Next review` shows the next time (or
-    `all clear`); there is no separate “All caught up” screen or forecast
-    detail yet.
+    `all clear`); `Enter` with nothing due opens `No reviews now` with
+    `Next review HH:MM` and `Enter: sync  Esc: home`, without a network call.
+  - **Fetch errors:** a failed review fetch shows `Could not load reviews` with
+    the error line and `Enter: retry  Esc: home`; a failed lesson fetch shows
+    `No lessons available` with the same keys (§5.15).
   - **Vacation:** `Vacation mode` in amber in the status line when no more
     urgent sync/outbox/offline/level-up message is shown.
   - **Level:** `L8 42% since 03 Feb` (or `L8 42%`) in faint text in the status
@@ -424,6 +430,13 @@ kept inside each level.
   - `You typed` and the user's answer.
   - `Correct` with the correct answer.
   - `Comes back later in this session`.
+- Warning (`CHECK` pill in amber):
+  - Only the pill and the message are shown; no typed row and no answer row, so
+    the expected answer cannot leak.
+  - `Tab` does nothing. The hint bar reads `Enter: edit  Esc: pause`.
+  - `Enter` returns to the same question with the typed text intact (meaning
+    string and IME raw buffer), ready to be corrected and resubmitted. A strict
+    typo warning says `Close. Check the spelling` without naming the answer.
 - Feedback doesn't last a fixed time: it waits for `Enter` (or for the user to
   start typing the next one, if auto-advance is enabled).
 - `Tab` opens the full card: meanings, readings, mnemonic and components.
@@ -536,7 +549,9 @@ the mnemonic.
 - Meaning first, then reading when the subject has one.
 - Typed answers use the same romaji-to-kana input and answer checker as reviews.
 - Wrong answers show `NOT QUITE`, the correct answer and are retried; a mistake
-  count is kept. Warnings show `CHECK` and retry the same part.
+  count is kept. Warnings show `CHECK` and retry the same part without showing
+  the typed or answer row; the hint reads `Enter: edit  Esc: card`, and the
+  typed text (meaning string and IME raw buffer) is kept for the retry.
 - Completion shows `Practice complete`, the mistake count and
   `No /start sent.`; `Enter` returns to the card.
 - `Esc` also returns to the card. The quiz never calls `PUT /start`; starting
@@ -566,6 +581,9 @@ the mnemonic.
   still-valid cached Level value can remain `ok`.
 - The rows are drawn between the blocking TLS requests, so a cancel pressed
   during a request takes effect when it finishes.
+- SNTP starts with the stored POSIX rule (`configTzTime`), so Home `Synced
+  HH:MM`, `Next review` and the level date are local time. Changing the zone in
+  Settings applies at the next sync without a reboot.
 
 ### 5.12 Settings
 
@@ -621,6 +639,13 @@ the mnemonic.
   returns to the list. Pending, sending and ambiguous items are never removed
   here, and the cache/assignments are not touched. If the outbox file cannot be
   written, the item stays and the screen shows `Could not save outbox`.
+- A completed review is queued and saved before its feedback frame is drawn, so
+  a reboot or an OTA install on the feedback screen keeps it. `Enter` sends it
+  once; it is never added twice.
+- Starting a session needs as many free slots as the batch size (all states
+  count, 128 total). Otherwise the device shows `Outbox full` with
+  `Enter: sync  Esc: home` instead of starting. Home appends `(nearly full)`
+  above 75% (§5.3).
 
 ### 5.14 Stats (phase 2)
 
@@ -648,7 +673,19 @@ the mnemonic.
 - **Server:** Home `WaniKani error; retry`; Boot `WaniKani error` + `Enter:
   retry`.
 - **Empty:** the counters show `0` and `Next review` shows the next time (or
-  `all clear`). A separate caught-up/empty-session screen is not implemented.
+  `all clear`). `Enter` on Home with nothing due opens `No reviews now` with
+  `Next review HH:MM` and `Enter: sync  Esc: home`; no request is made. An
+  empty review queue after `Starting session...` shows the same frame instead of
+  leaving the wait screen up.
+- **Review fetch:** `Could not load reviews` with the network line and
+  `Enter: retry  Esc: home`.
+- **Lesson fetch:** `No lessons available` with the error line and
+  `Enter: retry  Esc: home`.
+- **Storage:** a LittleFS mount failure never formats on its own. The device
+  shows `Storage unreadable` / `Pending reviews cannot be read.` /
+  `Enter: format  Esc: continue`. `Enter` formats and loads the outbox;
+  `Esc` continues without storage (no outbox and no cache writes) and Home
+  shows `Storage unavailable`.
 
 Error screens never show stack traces, URLs with a token, or JSON.
 

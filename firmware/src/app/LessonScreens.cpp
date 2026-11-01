@@ -283,6 +283,15 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
         d.setTextFont(0);
         d.setTextSize(1);
         d.setTextColor(ui::kFaint, ui::kBg);
+        if (warn) {
+            // Warnings keep the typed input and never show the answer.
+            drawWrapped(d, view.message, 86, 40, 150, 4, ui::kFaint, ui::kBg);
+            d.setTextFont(0);
+            d.setTextSize(1);
+            d.setTextColor(ui::kFaint, ui::kBg);
+            d.drawString("Enter: edit  Esc: card", 5, 125);
+            return;
+        }
         const bool japanese = !meaning;
         std::string typed = view.typed;
         std::string answer = view.answer;

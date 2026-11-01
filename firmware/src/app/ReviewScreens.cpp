@@ -124,6 +124,19 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const ReviewView&
         d.setTextFont(0);
         d.setTextSize(1);
         d.setTextColor(ui::kFaint, ui::kBg);
+        if (warn) {
+            // A warning must not reveal the expected answer: pill and message
+            // only, so the user can fix the typed text and retry.
+            drawWrapped(d, view.message, 100, 40, 136, 4, ui::kFaint, ui::kBg);
+            d.setTextFont(0);
+            d.setTextSize(1);
+            d.setTextColor(ui::kFaint, ui::kBg);
+            d.drawString("Enter: edit", 6, 125);
+            d.setTextDatum(lgfx::top_right);
+            d.drawString("Esc: pause", 233, 125);
+            d.setTextDatum(lgfx::top_left);
+            return;
+        }
         const bool japanese = part == kk::ReviewPart::Reading;
         std::string typed = view.typed;
         std::string answer = view.answer;
