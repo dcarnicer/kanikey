@@ -3453,6 +3453,8 @@ void drawNotice() {
     d.setTextFont(4);
     d.setTextSize(1);
     d.setTextColor(ui::kText, ui::kBg);
+    // "Could not start lesson" is wider than the screen in Font4.
+    if (d.textWidth(title) > 228) d.setTextFont(2);
     d.drawString(title, 8, 38);
     d.setTextFont(1);
     d.setTextSize(1);
