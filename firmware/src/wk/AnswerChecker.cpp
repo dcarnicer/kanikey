@@ -1,7 +1,6 @@
 #include "wk/AnswerChecker.h"
 
 #include <algorithm>
-#include <cstring>
 #include <utility>
 #include <vector>
 
@@ -32,11 +31,12 @@ bool anyAcceptedReading(const Subject& s) {
 
 std::string normalizedReading(std::string_view input) {
     std::string s = trim(input);
-    // If the user typed romaji, convert it. Kana input passes through.
+    // If the user typed romaji, convert it. Kana input passes through. The table
+    // is lowercase-only, so lowercase ASCII first: "Ichi" is いち, not Iち.
     bool hasAsciiLetter = false;
     for (char c : s)
         if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) hasAsciiLetter = true;
-    if (hasAsciiLetter) s = romajiToHiragana(s);
+    if (hasAsciiLetter) s = romajiToHiragana(lowerAscii(s));
     s = toHiragana(s);
     s = stripReadingMarks(s);
     return s;
@@ -67,6 +67,9 @@ bool closeMeaning(const Subject& s, const std::string& normalized, std::string* 
         const std::string n = normalizeMeaning(text);
         if (n.empty()) return;
         const int d = levenshtein(normalized, n);
+        // The allowance belongs to the expected answer, not to the typed text:
+        // a long wrong answer must not become "close" to a short one.
+        if (d > typoTolerance(n.size())) return;
         if (d < best) {
             best = d;
             bestText = text;
@@ -77,10 +80,8 @@ bool closeMeaning(const Subject& s, const std::string& normalized, std::string* 
     for (const std::string& m : s.meaningSynonyms) consider(m);
     for (const std::string& m : s.whitelist) consider(m);
     if (best == 1000) return false;
-    if (normalized.size() < 4) return false;
-    const bool close = best <= typoTolerance(normalized.size());
-    if (close && closest) *closest = bestText;
-    return close;
+    if (closest) *closest = bestText;
+    return true;
 }
 
 bool matchesCharacters(const Subject& s, std::string_view input) {
@@ -122,6 +123,88 @@ bool matchesReading(const Subject& s, const std::string& normalized, std::string
     return false;
 }
 
+// A reading that is on the subject but not accepted. `matchesReading()` already
+// rejected the accepted ones, so only the accepted=false entries are checked.
+bool matchesRejectedReading(const Subject& s, const std::string& normalized) {
+    const bool any = anyAcceptedReading(s);
+    for (const Reading& r : s.readings) {
+        if (isAccepted(r, any)) continue;
+        if (stripReadingMarks(toHiragana(r.text)) == normalized) return true;
+    }
+    return false;
+}
+
+// The type WaniKani wants: the single known type shared by the accepted
+// readings. Unknown when the item accepts several types (or none is typed).
+ReadingType wantedReadingType(const Subject& s) {
+    const bool any = anyAcceptedReading(s);
+    ReadingType type = ReadingType::Unknown;
+    for (const Reading& r : s.readings) {
+        if (!isAccepted(r, any) || r.type == ReadingType::Unknown) continue;
+        if (type == ReadingType::Unknown) {
+            type = r.type;
+        } else if (type != r.type) {
+            return ReadingType::Unknown;
+        }
+    }
+    return type;
+}
+
+std::string readingTypeHint(ReadingType type) {
+    switch (type) {
+        case ReadingType::Onyomi: return "WaniKani wants the on'yomi";
+        case ReadingType::Kunyomi: return "WaniKani wants the kun'yomi";
+        case ReadingType::Nanori: return "WaniKani wants the nanori";
+        default: return "That reading is not accepted for this item";
+    }
+}
+
+// The IME reads a romaji "n" before a vowel as な/に/… (konya → こにゃ, like
+// WanaKana), while the reading usually needs ん (こんや). Try the ん + vowel
+// spelling at each n-row kana: one variant per kana, a second for に + small
+// ya/yu/yo.
+bool nHintMatches(const std::string& input, const Subject& s) {
+    static const struct {
+        uint32_t first;
+        uint32_t second;  // 0 = single kana
+        const char* fixed;
+    } kFixes[] = {
+        {0x306B, 0x3083, "んや"},  // にゃ -> んや
+        {0x306B, 0x3085, "んゆ"},  // にゅ -> んゆ
+        {0x306B, 0x3087, "んよ"},  // にょ -> んよ
+        {0x306A, 0, "んあ"},       // な -> んあ
+        {0x306B, 0, "んい"},       // に -> んい
+        {0x306C, 0, "んう"},       // ぬ -> んう
+        {0x306D, 0, "んえ"},       // ね -> んえ
+        {0x306E, 0, "んお"},       // の -> んお
+    };
+    if (input.size() > 64 * 3) return false;  // readings are short; bound the work
+    const char* p = input.data();
+    const char* end = p + input.size();
+    while (p < end) {
+        const char* start = p;
+        const uint32_t first = utf8Next(&p);
+        if (first == 0) break;
+        const char* afterFirst = p;
+        uint32_t second = 0;
+        if (p < end) second = utf8Next(&p);
+        const size_t pos = static_cast<size_t>(start - input.data());
+        const size_t firstLen = static_cast<size_t>(afterFirst - start);
+        const size_t secondLen = second ? static_cast<size_t>(p - afterFirst) : 0;
+        for (const auto& f : kFixes) {
+            if (f.first != first) continue;
+            if (f.second != 0 && f.second != second) continue;
+            const size_t replaceLen = firstLen + (f.second ? secondLen : 0);
+            std::string fixed = input.substr(0, pos);
+            fixed += f.fixed;
+            fixed += input.substr(pos + replaceLen);
+            if (matchesReading(s, fixed, nullptr, nullptr, nullptr)) return true;
+        }
+        p = afterFirst;
+    }
+    return false;
+}
+
 bool matchesMeaningText(const Subject& s, std::string_view input) {
     const std::string normalized = normalizeMeaning(input);
     if (normalized.empty()) return false;
@@ -132,31 +215,6 @@ bool matchesMeaningText(const Subject& s, std::string_view input) {
         if (normalizeMeaning(m) == normalized) return true;
     for (const std::string& m : s.whitelist)
         if (normalizeMeaning(m) == normalized) return true;
-    return false;
-}
-
-bool nConversionFix(const std::string& input, const Subject& s) {
-    static const struct {
-        const char* from;
-        const char* to;
-    } kFixes[] = {
-        {"にゃ", "んや"}, {"にゅ", "んゆ"}, {"にょ", "んよ"}, {"にあ", "んあ"},
-        {"にい", "んい"}, {"にう", "んう"}, {"にえ", "んえ"}, {"にお", "んお"},
-    };
-    const bool any = anyAcceptedReading(s);
-    for (const auto& f : kFixes) {
-        std::string fixed = input;
-        size_t pos = 0;
-        while ((pos = fixed.find(f.from, pos)) != std::string::npos) {
-            fixed.replace(pos, std::strlen(f.from), f.to);
-            pos += std::strlen(f.to);
-        }
-        if (fixed == input) continue;
-        for (const Reading& r : s.readings) {
-            if (!isAccepted(r, any)) continue;
-            if (stripReadingMarks(toHiragana(r.text)) == fixed) return true;
-        }
-    }
     return false;
 }
 
@@ -218,17 +276,19 @@ AnswerCheck checkAnswer(const Subject& subject, AnswerKind kind, std::string_vie
     if (normalized.empty()) return incorrect("Type the reading");
     if (!isKanaString(normalized)) return warning("Type the reading in kana");
 
-    std::string matched;
-    bool primary = false, stemOnly = false;
-    if (matchesReading(subject, normalized, &matched, &primary, &stemOnly)) {
+    bool stemOnly = false;
+    if (matchesReading(subject, normalized, nullptr, nullptr, &stemOnly)) {
         if (stemOnly) return warning("Check the okurigana");
-        if (subject.type == SubjectType::Kanji && !primary && strict)
-            return warning("That is a valid reading, but WaniKani wants the primary one");
         return correct();
     }
 
-    if (nConversionFix(normalized, subject))
-        return warning("Try nn before a vowel or y");
+    if (nHintMatches(normalized, subject))
+        return warning("Use n' before a vowel or y");
+
+    // WaniKani shakes without a penalty for a reading the item lists but does
+    // not accept; name the type it wants when the accepted readings share one.
+    if (subject.type == SubjectType::Kanji && matchesRejectedReading(subject, normalized))
+        return warning(readingTypeHint(wantedReadingType(subject)));
 
     return incorrect("Incorrect reading");
 }

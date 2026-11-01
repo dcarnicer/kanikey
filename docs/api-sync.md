@@ -189,6 +189,10 @@ data.readings[] { reading, primary, accepted_answer, type }
 
 - Reading `type`: `onyomi`, `kunyomi`, `nanori` (kanji); in vocabulary it is
   usually missing.
+- Any reading with `accepted_answer=true` is a correct answer, primary or not.
+  A listed reading with `accepted_answer=false` is a warning, not a mistake; it
+  names the type the accepted readings share (`on'yomi`, `kun'yomi`, `nanori`)
+  when one type applies.
 - A radical's `characters` may be `null`: the image has to be drawn.
 - Mnemonics carry `<radical>`, `<kanji>`, `<vocabulary>`, `<meaning>`,
   `<reading>` markup; it is stripped when displaying.

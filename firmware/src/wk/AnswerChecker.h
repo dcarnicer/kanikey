@@ -1,7 +1,8 @@
 #pragma once
 // WaniKani answer checking: accepted meanings, user synonyms, whitelist and
-// blacklist meanings, primary vs valid readings, okurigana and the common
-// "n before a vowel" romaji mistake. Pure C++, no Arduino.
+// blacklist meanings, accepted readings (primary or not), readings the item
+// lists but does not accept, okurigana and the common "n before a vowel" romaji
+// mistake. Pure C++, no Arduino.
 #include <string>
 #include <string_view>
 
@@ -23,9 +24,9 @@ struct AnswerCheck {
     bool close = false;  // a typo / okurigana / valid-reading warning
 };
 
-// `strict` (default) treats typos and non-primary kanji readings as warnings
-// that can be retried without counting a mistake. With strict=false, a close
-// meaning is accepted and any accepted kanji reading is correct.
+// `strict` (default) treats a close meaning as a warning that can be retried
+// without counting a mistake. With strict=false, a close meaning is accepted.
+// Any reading with accepted_answer=true is correct either way.
 AnswerCheck checkAnswer(const Subject& subject, AnswerKind kind, std::string_view input,
                         bool strict = true);
 

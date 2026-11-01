@@ -12,17 +12,19 @@ struct Pair {
 };
 
 // Longest match wins, so order is not significant. The table is deliberately
-// Hepburn-first (shi, chi, tsu, fu) with the common IME aliases (si, ti, tu, hu)
-// alongside it.
+// Hepburn-first (shi, chi, tsu, fu) with the common IME aliases (si, ti, tu,
+// hu, sya, zya, jya, cya, xtsu, …) alongside it.
 constexpr Pair kTable[] = {
     {"a", "あ"}, {"i", "い"}, {"u", "う"}, {"e", "え"}, {"o", "お"},
     {"ka", "か"}, {"ki", "き"}, {"ku", "く"}, {"ke", "け"}, {"ko", "こ"},
     {"kya", "きゃ"}, {"kyu", "きゅ"}, {"kyo", "きょ"},
     {"sa", "さ"}, {"shi", "し"}, {"si", "し"}, {"su", "す"}, {"se", "せ"}, {"so", "そ"},
     {"sha", "しゃ"}, {"shu", "しゅ"}, {"sho", "しょ"},
+    {"sya", "しゃ"}, {"syu", "しゅ"}, {"syo", "しょ"}, {"she", "しぇ"},
     {"ta", "た"}, {"chi", "ち"}, {"ti", "ち"}, {"tsu", "つ"}, {"tu", "つ"}, {"te", "て"},
     {"to", "と"}, {"cha", "ちゃ"}, {"chu", "ちゅ"}, {"cho", "ちょ"},
     {"tya", "ちゃ"}, {"tyu", "ちゅ"}, {"tyo", "ちょ"},
+    {"cya", "ちゃ"}, {"cyu", "ちゅ"}, {"cyo", "ちょ"}, {"che", "ちぇ"},
     {"tcha", "っちゃ"}, {"tchi", "っち"}, {"tchu", "っちゅ"}, {"tcho", "っちょ"},
     {"na", "な"}, {"ni", "に"}, {"nu", "ぬ"}, {"ne", "ね"}, {"no", "の"},
     {"nya", "にゃ"}, {"nyu", "にゅ"}, {"nyo", "にょ"},
@@ -37,7 +39,9 @@ constexpr Pair kTable[] = {
     {"ga", "が"}, {"gi", "ぎ"}, {"gu", "ぐ"}, {"ge", "げ"}, {"go", "ご"},
     {"gya", "ぎゃ"}, {"gyu", "ぎゅ"}, {"gyo", "ぎょ"},
     {"za", "ざ"}, {"ji", "じ"}, {"zi", "じ"}, {"zu", "ず"}, {"ze", "ぜ"}, {"zo", "ぞ"},
-    {"ja", "じゃ"}, {"ju", "じゅ"}, {"jo", "じょ"},
+    {"ja", "じゃ"}, {"ju", "じゅ"}, {"jo", "じょ"}, {"je", "じぇ"},
+    {"zya", "じゃ"}, {"zyu", "じゅ"}, {"zyo", "じょ"},
+    {"jya", "じゃ"}, {"jyu", "じゅ"}, {"jyo", "じょ"},
     {"da", "だ"}, {"di", "ぢ"}, {"du", "づ"}, {"de", "で"}, {"do", "ど"},
     {"dya", "ぢゃ"}, {"dyu", "ぢゅ"}, {"dyo", "ぢょ"}, {"dzu", "づ"},
     {"ba", "ば"}, {"bi", "び"}, {"bu", "ぶ"}, {"be", "べ"}, {"bo", "ぼ"},
@@ -50,7 +54,8 @@ constexpr Pair kTable[] = {
     {"la", "ぁ"}, {"li", "ぃ"}, {"lu", "ぅ"}, {"le", "ぇ"}, {"lo", "ぉ"},
     {"xya", "ゃ"}, {"xyu", "ゅ"}, {"xyo", "ょ"},
     {"lya", "ゃ"}, {"lyu", "ゅ"}, {"lyo", "ょ"},
-    {"xtu", "っ"}, {"ltu", "っ"}, {"xwa", "ゎ"}, {"lwa", "ゎ"},
+    {"xtu", "っ"}, {"ltu", "っ"}, {"xtsu", "っ"}, {"ltsu", "っ"},
+    {"xwa", "ゎ"}, {"lwa", "ゎ"},
     {"xka", "ヵ"}, {"xke", "ヶ"},
 };
 
