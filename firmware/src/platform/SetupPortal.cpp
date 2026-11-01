@@ -272,7 +272,7 @@ bool SetupPortal::unlocked() {
 
 bool SetupPortal::requireUnlock() {
     if (mode_ != Mode::Station || unlocked()) return true;
-    sendPage("Enter the unlock code shown on the KaniKey screen.", false, 403);
+    sendPage("Enter the code shown on the KaniKey.", false, 403);
     return false;
 }
 
@@ -353,6 +353,8 @@ x.send('ms='+d.getTime()+'&tz='+(-d.getTimezoneOffset())+'&zone='+encodeURICompo
 
 void SetupPortal::sendPage(const String& notice, bool ok, int code) {
     if (!server_) return;
+    // The device also shows the notice on one Font0 line (~38 characters), so
+    // notices a LAN user may trigger before unlocking stay that short.
     if (notice.length()) snprintf(message_, sizeof message_, "%s", notice.c_str());
 
     const String pack = htmlEscape(packStatus());
@@ -505,7 +507,7 @@ void SetupPortal::handleUnlock() {
                        sizeof sessionCode_);
         wrongCodes_ = 0;
         redraw_ = true;
-        sendPage("Too many wrong codes. The device shows a new code.", false, 403);
+        sendPage("Too many tries. New code on screen.", false, 403);
         Serial.println("[setup] too many wrong unlock codes; new code generated");
         return;
     }
