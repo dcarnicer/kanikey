@@ -47,6 +47,7 @@
 #include "platform/WkReview.h"
 #include "platform/WkSrsCounts.h"
 #include "wk/AnswerChecker.h"
+#include "wk/IdSample.h"
 #include "wk/LessonQuiz.h"
 #include "wk/Outbox.h"
 #include "wk/ReviewQueue.h"
@@ -147,6 +148,9 @@ kk::RomajiIme gLessonQuizIme;
 kk::GlyphPack gPack;
 WiFiServer gAssetServer(8080);
 bool gAssetServerActive = false;
+// A portal "Check pack" that needs an open is deferred to loop(): a File opened
+// inside the HTTP request can lose its descriptor when the client closes.
+bool gPackRecheckPending = false;
 bool gLessonActive = false;
 bool gLessonListActive = false;
 bool gLessonEmptyActive = false;
@@ -228,6 +232,7 @@ enum class NoticeAction : uint8_t {
     ReviewEmpty,
     ReviewError,
     LessonError,
+    LessonStart,
     OutboxFull,
     StorageFormat,
 };
@@ -806,8 +811,18 @@ bool runBatch() {
     }
     const size_t limit = static_cast<size_t>(kk::settingsReviewBatchSize());
     const uint32_t now = effectiveNow();
-    const std::vector<uint32_t> ids = gSummary.dueSubjectIds(now, limit);
-    Serial.printf("[review] %u due subject ids\n", static_cast<unsigned>(ids.size()));
+    const std::vector<uint32_t> due = gSummary.dueSubjectIds(now, 1000);
+    // The summary keeps up to 1000 ids per bucket, so the batch can be chosen
+    // from every due item. lower_levels_first keeps the summary order; the
+    // shuffled order takes a fresh sample per session.
+    std::vector<uint32_t> ids;
+    if (gHaveUser && gUser.reviewsOrder == kk::ReviewOrder::Shuffled) {
+        ids = kk::sampleIds(due, limit, esp_random());
+    } else {
+        ids.assign(due.begin(), due.begin() + std::min(due.size(), limit));
+    }
+    Serial.printf("[review] %u due, %u chosen\n", static_cast<unsigned>(due.size()),
+                  static_cast<unsigned>(ids.size()));
     gFreeCanvasForRequest = true;
     kk::ReviewBatch batch = kk::fetchReviewBatch(kk::DevToken::load(), ids, now, limit);
     gFreeCanvasForRequest = false;
@@ -2086,7 +2101,10 @@ void startCurrentLesson() {
     const int httpCode = kk::startAssignment(kk::DevToken::load(), a.id,
                                              now >= 1700000000u ? now : 0);
     gFreeCanvasForRequest = false;
-    if (httpCode >= 200 && httpCode < 300) {
+    if ((httpCode >= 200 && httpCode < 300) || httpCode == 422) {
+        // 422 means the item was already started on WaniKani; either way the
+        // card is done and the summary's lesson bucket is stale.
+        gSummary.removeLessonSubject(a.subjectId);
         if (gLessons > 0) --gLessons;
         saveCacheSnapshot();
         ++gLessonIndex;
@@ -2103,6 +2121,16 @@ void startCurrentLesson() {
         gLessonListActive = false;
         gShowHome = true;
         releaseLessonData();
+    } else {
+        // Keep the card (gLessonActive, gLessonIndex) so Enter can retry.
+        if (httpCode == 0)
+            snprintf(gNoticeLine, sizeof gNoticeLine, "No connection");
+        else
+            snprintf(gNoticeLine, sizeof gNoticeLine, "HTTP %d", httpCode);
+        gNoticeLine2[0] = 0;
+        gNoticeAction = NoticeAction::LessonStart;
+        gNoticeActive = true;
+        gShowHome = false;
     }
     gDirty = true;
 }
@@ -3009,9 +3037,16 @@ bool portalValidateToken(const String& token, String* username, int* level, Stri
 }
 
 bool portalRecheckPack() {
+    // A ready pack is only reported: re-opening it here was the FIX-25 repro
+    // (the new descriptor died when the HTTP client closed).
+    if (gPack.ready()) return true;
     if (!gSdOk) gSdOk = mountSd();
-    if (gSdOk) gPack.open(SD, "/kanikey/glyphs.kgp");
-    return gPack.ready();
+    if (!gSdOk) return false;
+    // Opening inside the handler is unsafe and the CRC takes ~3.6 s. loop()
+    // does it with the CRC after the response, so the next page load shows the
+    // new status.
+    gPackRecheckPending = true;
+    return false;
 }
 
 String portalPackStatus() { return String(gPack.statusLine()); }
@@ -3386,6 +3421,11 @@ void drawNotice() {
             header = "LESSONS";
             title = "No lessons available";
             break;
+        case NoticeAction::LessonStart:
+            header = "LESSONS";
+            title = "Could not start lesson";
+            hint = "Enter: retry  Esc: home";
+            break;
         case NoticeAction::OutboxFull:
             title = "Outbox full";
             hint = "Enter: sync  Esc: home";
@@ -3459,7 +3499,17 @@ void noticeKey(const KeyEvent& e) {
     }
     if (e.key == Key::Esc) {
         gNoticeActive = false;
-        gShowHome = gHaveSummary;
+        if (gNoticeAction == NoticeAction::LessonStart) {
+            // Leave the lesson like the 401 path does; the card is still the
+            // current item until the summary is refreshed by a sync.
+            gNoticeAction = NoticeAction::None;
+            gLessonActive = false;
+            gLessonListActive = false;
+            gShowHome = true;
+            releaseLessonData();
+        } else {
+            gShowHome = gHaveSummary;
+        }
         gDirty = true;
         return;
     }
@@ -3470,6 +3520,11 @@ void noticeKey(const KeyEvent& e) {
         startReview();
     } else if (action == NoticeAction::LessonError) {
         startLessons();
+    } else if (action == NoticeAction::LessonStart) {
+        // gLessonActive and gLessonIndex were kept, so this retries the same
+        // card; the failure branch can raise the notice again.
+        gNoticeAction = NoticeAction::None;
+        startCurrentLesson();
     } else if (action == NoticeAction::OutboxFull || action == NoticeAction::ReviewEmpty) {
         startSync();
     }
@@ -3533,9 +3588,19 @@ void firmwareBoot() {
             Serial.printf("[ota] %s did not start in %s: back on %s\n",
                           gOtaState.installing.c_str(), gOtaState.installSlot.c_str(),
                           kk::kFirmwareVersion);
-            gOtaState.failedVersion = gOtaState.installing;
-            kk::ota::saveFailedVersion(gOtaState.failedVersion);
-            firmwareNote("Last update rolled back", kWarn);
+            // Two-strike rule: one rollback may be a power cut, so the version
+            // stays on offer; the second one blacklists it.
+            const kk::ota::RollbackRecord record = kk::ota::loadRollbackRecord();
+            const kk::ota::RollbackDecision d =
+                kk::ota::rollbackDecision(record, gOtaState.installing);
+            kk::ota::saveRollbackRecord(d.record);
+            if (d.blacklist) {
+                gOtaState.failedVersion = gOtaState.installing;
+                kk::ota::saveFailedVersion(gOtaState.failedVersion);
+                firmwareNote("Update failed twice; not offered", kWarn);
+            } else {
+                firmwareNote("Last update rolled back", kWarn);
+            }
         }
         gOtaState.installing.clear();
         gOtaState.installSlot.clear();
@@ -3544,7 +3609,7 @@ void firmwareBoot() {
     gOtaPending = layout && kk::ota::pendingVerify();
     if (gOtaPending) {
         gOtaLoopAt = millis();
-        Serial.printf("[ota] first boot of %s: valid after 10 s of the loop\n",
+        Serial.printf("[ota] first boot of %s: valid after an API success or 10 minutes\n",
                       kk::kFirmwareVersion);
     }
     // A badge for the running version (or for a failed one) is stale.
@@ -3567,23 +3632,30 @@ void firmwareBoot() {
                       gOtaState.failedVersion.c_str());
 }
 
-void firmwareTick(uint32_t now) {
-    if (!gOtaPending) return;
+// A pending image is valid after the first 2xx API response or 10 minutes of
+// loop, whichever comes first. The time fallback keeps an offline device from
+// staying in the verification window forever.
+bool otaVerificationDue(uint32_t now) {
     if (!gOtaLoopAt) gOtaLoopAt = now ? now : 1;
-    if (now - gOtaLoopAt < 10000) return;
-    if (kk::ota::markValid()) {
-        gOtaPending = false;
-        Serial.printf("[ota] %s marked valid after 10 s of the loop\n", kk::kFirmwareVersion);
-    }
+    return kk::wkHadApiSuccess() || now - gOtaLoopAt >= 600000;
 }
 
-void firmwareBeforeSleep() {
-    if (!gOtaPending) return;
-    if (kk::ota::markValid()) {
-        gOtaPending = false;
-        Serial.printf("[ota] %s marked valid before sleep\n", kk::kFirmwareVersion);
-    }
+void otaMarkValidIfDue(uint32_t now, const char* when) {
+    if (!gOtaPending || !otaVerificationDue(now)) return;
+    const bool apiOk = kk::wkHadApiSuccess();
+    if (!kk::ota::markValid()) return;
+    gOtaPending = false;
+    Serial.printf("[ota] %s marked valid %s (%s)\n", kk::kFirmwareVersion, when,
+                  apiOk ? "API success" : "10 min loop");
+    // A good image clears the two-strike record of its own version only.
+    const kk::ota::RollbackRecord record = kk::ota::loadRollbackRecord();
+    if (record.version[0] && std::strcmp(record.version, kk::kFirmwareVersion) == 0)
+        kk::ota::clearRollbackRecord();
 }
+
+void firmwareTick(uint32_t now) { otaMarkValidIfDue(now, "after boot"); }
+
+void firmwareBeforeSleep() { otaMarkValidIfDue(millis(), "before sleep"); }
 
 void buildFirmwareView(kk::app::FirmwareView* view) {
     view->version = kk::kFirmwareVersion;
@@ -4230,7 +4302,7 @@ void seedDevCache() {
     snapshot.meta.savedAt = stamp;
     snapshot.meta.accountKey = currentAccountKey();
     snapshot.summary.reviews.push_back(
-        kk::SummaryBucket{stamp - 60, 3, {1, 2, 3}});
+        kk::SummaryBucket{stamp - 60, 6, {1, 2, 3, 4, 5, 6}});
     snapshot.user.username = "dev";
     snapshot.user.level = 3;
     snapshot.user.subscriptionActive = true;
@@ -4256,6 +4328,9 @@ void seedDevCache() {
     addAssignment(1001, 1, kk::SubjectType::Radical);
     addAssignment(1002, 2, kk::SubjectType::Kanji);
     addAssignment(1003, 3, kk::SubjectType::Vocabulary);
+    addAssignment(1004, 4, kk::SubjectType::Kanji);
+    addAssignment(1005, 5, kk::SubjectType::Vocabulary);
+    addAssignment(1006, 6, kk::SubjectType::Vocabulary);
 
     kk::SubjectCache subjects;
     subjects.meta = snapshot.meta;
@@ -4297,6 +4372,37 @@ void seedDevCache() {
     vocabulary.componentSubjectIds = {2};
     vocabulary.visuallySimilarSubjectIds = {2};
     subjects.subjects.push_back(vocabulary);
+
+    // Answer-checker seeds: a kanji with two accepted on'yomi and one rejected
+    // kun'yomi, plus two vocabulary items with a single reading.
+    kk::Subject person;
+    person.id = 4;
+    person.type = kk::SubjectType::Kanji;
+    person.level = 1;
+    person.characters = "人";
+    person.meanings = {{"person", true, true}};
+    person.readings = {
+        {"じん", true, true, kk::ReadingType::Onyomi},
+        {"にん", false, true, kk::ReadingType::Onyomi},
+        {"ひと", false, false, kk::ReadingType::Kunyomi},
+    };
+    subjects.subjects.push_back(person);
+    kk::Subject tonight;
+    tonight.id = 5;
+    tonight.type = kk::SubjectType::Vocabulary;
+    tonight.level = 1;
+    tonight.characters = "今夜";
+    tonight.meanings = {{"tonight", true, true}};
+    tonight.readings = {{"こんや", true, true, kk::ReadingType::Kunyomi}};
+    subjects.subjects.push_back(tonight);
+    kk::Subject photograph;
+    photograph.id = 6;
+    photograph.type = kk::SubjectType::Vocabulary;
+    photograph.level = 1;
+    photograph.characters = "写真";
+    photograph.meanings = {{"photograph", true, true}};
+    photograph.readings = {{"しゃしん", true, true, kk::ReadingType::Kunyomi}};
+    subjects.subjects.push_back(photograph);
 
     auto stats = [](kk::Subject& s, uint32_t meaningCorrect, uint32_t meaningIncorrect,
                     uint32_t readingCorrect, uint32_t readingIncorrect,
@@ -4596,12 +4702,16 @@ void serviceAssetServer() {
     }
     const bool isPack = path == "/kanikey/glyphs.kgp";
     if (isPack) gPack.close();
-    if (SD.exists(path)) SD.remove(path);
-    File f = SD.open(path, FILE_WRITE);
+    // Write a tmp file and rename it over the old one, so an interrupted
+    // upload never leaves a broken pack or asset behind (FIX-24 c).
+    const String tmpPath = path + ".tmp";
+    if (SD.exists(tmpPath)) SD.remove(tmpPath);
+    File f = SD.open(tmpPath, FILE_WRITE);
     if (!f) {
-        Serial.printf("[asset] cannot open %s\n", path.c_str());
+        Serial.printf("[asset] cannot open %s\n", tmpPath.c_str());
         assetRespond(client, 500, "Cannot Open");
         stopAssetServer();
+        if (isPack) gPack.open(SD, "/kanikey/glyphs.kgp");
         return;
     }
 
@@ -4609,6 +4719,7 @@ void serviceAssetServer() {
     Serial.printf("[asset] writing %s (%d bytes)\n", path.c_str(), contentLength);
     uint8_t buf[1024];
     uint32_t got = 0;
+    bool writeOk = true;
     uint32_t lastData = millis();
     while (got < static_cast<uint32_t>(contentLength)) {
         const int avail = client.available();
@@ -4618,7 +4729,10 @@ void serviceAssetServer() {
                                             contentLength - static_cast<int>(got)));
             const int n = client.read(buf, take);
             if (n > 0) {
-                f.write(buf, n);
+                if (f.write(buf, n) != static_cast<size_t>(n)) {
+                    writeOk = false;
+                    break;
+                }
                 got += static_cast<uint32_t>(n);
                 lastData = millis();
                 continue;
@@ -4629,18 +4743,55 @@ void serviceAssetServer() {
         delay(1);
     }
     f.close();
-    if (got != static_cast<uint32_t>(contentLength)) SD.remove(path);
+    const bool complete = writeOk && got == static_cast<uint32_t>(contentLength);
     Serial.printf("[asset] done %u/%d\n", got, contentLength);
-    if (got == static_cast<uint32_t>(contentLength))
-        assetRespond(client, 201, "Created");
-    else
-        assetRespond(client, 500, "Short Body");
+    if (!complete) {
+        // Keep the old file; only the tmp file goes away.
+        SD.remove(tmpPath);
+        assetRespond(client, 500, writeOk ? "Short Body" : "Write Failed");
+        stopAssetServer();
+        if (isPack) {
+            gPack.open(SD, "/kanikey/glyphs.kgp");
+            Serial.printf("[pack] kept old: %s\n", gPack.statusLine());
+        }
+        return;
+    }
 
-    if (isPack && got == static_cast<uint32_t>(contentLength)) {
+    if (isPack) {
+        // A new pack is verified before it replaces the working one. The CRC
+        // runs here, not at boot (3,587 ms for the 3.7 MB pack).
+        const bool crcOk = gPack.open(SD, tmpPath.c_str(), true);
+        char status[48];
+        snprintf(status, sizeof status, "%s", gPack.statusLine());
+        gPack.close();
+        Serial.printf("[pack] tmp %s\n", status);
+        if (!crcOk) {
+            SD.remove(tmpPath);
+            assetRespond(client, 422, "Bad Pack");
+            stopAssetServer();
+            gPack.open(SD, "/kanikey/glyphs.kgp");
+            Serial.printf("[pack] kept old: %s\n", gPack.statusLine());
+            return;
+        }
+    }
+    if (SD.exists(path)) SD.remove(path);
+    if (!SD.rename(tmpPath, path)) {
+        SD.remove(tmpPath);
+        assetRespond(client, 500, "Rename Failed");
+        stopAssetServer();
+        if (isPack) {
+            gPack.open(SD, "/kanikey/glyphs.kgp");
+            Serial.printf("[pack] %s\n", gPack.statusLine());
+        }
+        return;
+    }
+    assetRespond(client, 201, "Created");
+    // The client is closed before the pack is opened again (FIX-25).
+    stopAssetServer();
+    if (isPack) {
         gPack.open(SD, "/kanikey/glyphs.kgp");
         Serial.printf("[pack] %s\n", gPack.statusLine());
     }
-    stopAssetServer();
 }
 
 void startAssetServer() {
@@ -4685,10 +4836,14 @@ void uploadSdFile(const String& line) {
     }
     const bool isPack = path == "/kanikey/glyphs.kgp";
     if (isPack) gPack.close();
-    if (SD.exists(path)) SD.remove(path);
-    File f = SD.open(path, FILE_WRITE);
+    // Same tmp-and-rename as the Wi-Fi upload: a short transfer keeps the old
+    // file, a bad pack CRC never replaces a working pack.
+    const String tmpPath = path + ".tmp";
+    if (SD.exists(tmpPath)) SD.remove(tmpPath);
+    File f = SD.open(tmpPath, FILE_WRITE);
     if (!f) {
-        Serial.printf("[up] cannot open %s\n", path.c_str());
+        Serial.printf("[up] cannot open %s\n", tmpPath.c_str());
+        if (isPack) gPack.open(SD, "/kanikey/glyphs.kgp");
         return;
     }
 
@@ -4696,6 +4851,7 @@ void uploadSdFile(const String& line) {
     Serial.printf("[up] ready %s %u\n", path.c_str(), static_cast<unsigned>(size));
     static uint8_t buf[8192];
     uint32_t got = 0;
+    bool writeOk = true;
     uint32_t lastLog = millis();
     while (got < size) {
         const size_t want = std::min<size_t>(sizeof buf, size - got);
@@ -4720,7 +4876,11 @@ void uploadSdFile(const String& line) {
             Serial.println("[up] timeout");
             break;
         }
-        f.write(buf, have);
+        if (f.write(buf, have) != have) {
+            Serial.println("[up] write failed");
+            writeOk = false;
+            break;
+        }
         got += have;
         Serial.printf("[up] ack %u\n", static_cast<unsigned>(got));
         if (millis() - lastLog > 1000) {
@@ -4731,14 +4891,48 @@ void uploadSdFile(const String& line) {
         if (have < want) break;
     }
     f.close();
-    if (got != size) SD.remove(path);
     Serial.printf("[up] done %u/%u\n", static_cast<unsigned>(got),
                   static_cast<unsigned>(size));
-    if (isPack && got == size) {
-        if (gPack.open(SD, "/kanikey/glyphs.kgp"))
+    if (!writeOk || got != size) {
+        SD.remove(tmpPath);
+        Serial.printf("[up] failed, kept %s\n", path.c_str());
+        if (isPack) {
+            gPack.open(SD, "/kanikey/glyphs.kgp");
             Serial.printf("[pack] %s\n", gPack.statusLine());
-        else
+        }
+        gDirty = true;
+        return;
+    }
+
+    if (isPack) {
+        const bool crcOk = gPack.open(SD, tmpPath.c_str(), true);
+        char status[48];
+        snprintf(status, sizeof status, "%s", gPack.statusLine());
+        gPack.close();
+        Serial.printf("[pack] tmp %s\n", status);
+        if (!crcOk) {
+            SD.remove(tmpPath);
+            Serial.println("[up] bad pack crc, kept the old pack");
+            gPack.open(SD, "/kanikey/glyphs.kgp");
             Serial.printf("[pack] %s\n", gPack.statusLine());
+            gDirty = true;
+            return;
+        }
+    }
+    if (SD.exists(path)) SD.remove(path);
+    if (!SD.rename(tmpPath, path)) {
+        SD.remove(tmpPath);
+        Serial.printf("[up] rename failed, %s removed\n", path.c_str());
+        if (isPack) {
+            gPack.open(SD, "/kanikey/glyphs.kgp");
+            Serial.printf("[pack] %s\n", gPack.statusLine());
+        }
+        gDirty = true;
+        return;
+    }
+    if (isPack) {
+        gPack.open(SD, "/kanikey/glyphs.kgp");
+        Serial.printf("[pack] %s\n", gPack.statusLine());
     }
     gDirty = true;
 }
@@ -5033,6 +5227,7 @@ void handleSerial() {
         } else if (gSerialLine == "Y") {
             gOtaState.failedVersion.clear();
             kk::ota::saveFailedVersion("");
+            kk::ota::clearRollbackRecord();
             firmwareNote("Rollback record cleared", kOk);
             Serial.println("[ota] rollback record cleared");
         } else if (gSerialLine.startsWith("R")) {
@@ -5167,6 +5362,17 @@ void loop() {
         }
     }
     if (!gPortalActive) serviceAssetServer();
+    if (gPackRecheckPending) {
+        // Deferred from portalRecheckPack(): the HTTP request has returned, so
+        // the new handle cannot be invalidated by the client closing.
+        gPackRecheckPending = false;
+        if (!gSdOk) gSdOk = mountSd();
+        if (gSdOk) {
+            gPack.open(SD, "/kanikey/glyphs.kgp", true);
+            Serial.printf("[pack] %s\n", gPack.statusLine());
+        }
+        gDirty = true;
+    }
 
     const uint32_t now = millis();
     firmwareTick(now);
@@ -5258,7 +5464,9 @@ void loop() {
         !gLessonActive && !gLessonListActive && !gLessonEmptyActive && !gLessonQuizActive &&
         !gPauseActive && !gSettingsActive && !gAboutActive && !gOutboxScreen &&
         !gFirmwareActive && gFirmwareStep == FirmwareStep::Idle &&
-        !gLowBatteryPrompt && !gAssetServerActive && sleepMs &&
+        // A deep-sleep wake is a reset, so sleeping while the new image is
+        // pending would roll it back; the 10-minute window bounds the wait.
+        !gOtaPending && !gLowBatteryPrompt && !gAssetServerActive && sleepMs &&
         now - gLastInputAt > sleepMs && !tgc::board::externalPower()) {
         Serial.println("[power] idle sleep");
         saveCacheSnapshot();

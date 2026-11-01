@@ -39,7 +39,9 @@ void GlyphPack::close() {
     snprintf(status_, sizeof status_, "no pack");
 }
 
-bool GlyphPack::open(fs::FS& fs, const char* path) { return openPath(fs, path, true); }
+bool GlyphPack::open(fs::FS& fs, const char* path, bool checkCrc) {
+    return openPath(fs, path, checkCrc);
+}
 
 bool GlyphPack::reopen() {
     if (!fs_ || !path_[0]) return false;
@@ -90,8 +92,9 @@ bool GlyphPack::openPath(fs::FS& fs, const char* path, bool crcCheck) {
     // The header CRC covers the entry table and the payload, from the table
     // offset to the end of the data (tools/glyph-pack/build.py packs the table
     // right after the 32-byte header and stores the CRC at offset 24). The
-    // full pack is streamed in 1 KB chunks, so this costs a few seconds of SD
-    // reads, not RAM; the line below measures it on hardware.
+    // full pack is streamed in 1 KB chunks, so this costs no extra RAM, but it
+    // took 3,587 ms for the 3.7 MB pack on hardware: only an explicit check or
+    // a file that was just written pays for it, never the boot path.
     if (crcCheck) {
         const uint32_t t0 = millis();
         const bool ok = checkStoredCrc(le32(h + 24));

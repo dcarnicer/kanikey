@@ -532,8 +532,10 @@ the mnemonic.
 - Mnemonic in a 3-line, 10 px panel; `Space` turns the page. The page counter
   stays in the header so it never covers the third line.
 - `Q quiz` opens the optional local quiz. `Enter start` always attempts the
-  `PUT`; offline it fails and the screen currently has no separate
-  `Needs connection` state.
+  `PUT`; a start that cannot reach WaniKani (or gets a 5xx/other 4xx) shows
+  `Could not start lesson` with `HTTP n` or `No connection` and
+  `Enter: retry  Esc: home`, and keeps the card so `Enter` retries it. A 422
+  counts as already started and advances the card like a 2xx.
 - Bottom hint: `Space p  Q quiz` left and `Enter start  Esc list` right at
   y=125, with a gap between them.
 - On start, `drawLoading` shows the English main meaning as its subtitle; the

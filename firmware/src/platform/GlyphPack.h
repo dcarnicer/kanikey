@@ -52,7 +52,10 @@ public:
 
     // Opens the pack read-only. On failure `statusLine()` explains why and the
     // object stays not-ready; callers fall back to the built-in font.
-    bool open(fs::FS& fs, const char* path);
+    // The CRC-32 pass covers the whole payload and takes ~3.6 s on a 3.7 MB
+    // card pack, so it is off by default: pass `checkCrc` only for an explicit
+    // check or a newly written file, never on the boot path.
+    bool open(fs::FS& fs, const char* path, bool checkCrc = false);
     // Re-opens the pack from the fs and path of the last open(). Validates the
     // header and table like open() but skips the CRC pass, which covers the
     // whole payload. Used when a File handle died after the pack was already

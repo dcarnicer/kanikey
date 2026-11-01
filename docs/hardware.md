@@ -455,10 +455,13 @@ Implementation landed, hardware checks still open (no device was attached).
   field at offset 24. This matches `tools/glyph-pack/build.py`, which stores
   `zlib.crc32(table + data)` at offset 24 and verifies `raw[32:data_off+len]`
   (it asserts `table_off == 32`). A mismatch fails with `pack: bad crc`. Every
-  full open logs `[pack] crc ok, N ms` (or `bad`); **the duration is not
-  measured yet**. With 3,600 chunks expect roughly 1–4 s of boot delay on the
-  SPI card. If the first measurement is above ~1 s, the check must move behind
-  the existing pack check instead of the boot path (FIX-24 verify note).
+  full open logs `[pack] crc ok, N ms` (or `bad`). **Measured: 3,587 ms for the
+  3.7 MB card pack** (hardware, 2026-11-01). That is far above the ~1 s bound,
+  so the CRC is no longer on the boot path: `open()` takes
+  `checkCrc = false` by default, and `setup()`, `retryBoot()` and the recovery
+  path open without it. Only an explicit check (the portal's *Check pack*, on
+  the next `loop()`) or a newly uploaded pack (verified as `glyphs.kgp.tmp`
+  before it replaces the old file) runs the pass.
 - **Pack handle recovery (FIX-25).** Repro of 2026-11-01: open the station page,
   press *Check pack*, finish setup and start a review — every prompt showed
   "no glyph · check SD" until a reboot while `i` still reported 7,269 glyphs.
@@ -468,9 +471,11 @@ Implementation landed, hardware checks still open (no device was attached).
   draw seeks now re-open the file once when `seek()` fails, `position()` reads
   `UINT32_MAX` or a read is short, log `[pack] file handle lost, re-opening`,
   and retry; the recovery path validates the header and table but not the CRC.
-  `GlyphPack::reopen()` (same validation, no CRC) is public for the app. The
-  App parts (`portalRecheckPack()`, upload re-open) belong to a later round, so
-  the repro itself is still to be re-run.
+  `GlyphPack::reopen()` (same validation, no CRC) is public for the app.
+  `portalRecheckPack()` only reports a ready pack; a missing one is opened by
+  `loop()` after the HTTP request, with the CRC. Both upload paths close the
+  client (Wi-Fi) before re-opening the new pack on its final path. The repro
+  still has to be re-run on hardware.
 - **Cache save (FIX-26).** A snapshot save called `exists("/state/cache.tmp")`,
   which logged `open(): … does not exist, no permits for creation` on every
   save. The tmp file is now opened with `w` (truncates a leftover) and the old
