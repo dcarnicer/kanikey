@@ -193,9 +193,12 @@ bool fixedLandscape() { return true; }
 bool hasKeyboard() { return true; }
 
 // The microSD slot: SCK G40, MISO G39, MOSI G14, CS G12, no card-detect pin.
-// M5GFX puts the panel on SPI2_HOST (MOSI G35, SCLK G36: its ESP32-S3 default,
-// which its autodetect for board_M5CardputerADV keeps), so the card takes SPI3
-// (platform/Storage's own SPIClass on HSPI), not Arduino's global `SPI` (SPI2).
+// M5GFX ends up driving the panel (MOSI G35, SCLK G36) on SPI3_HOST through
+// Arduino's HSPI bus: verified 2026-11-01 with GDB, lgfx::v1::spi::_spi_handle[2]
+// is &_spi_bus_array[1]. The card used to take HSPI too; the two then shared one
+// non-recursive bus mutex, and a card read inside a display transaction (the
+// "drawing directly" fallback) deadlocked the loop. The card now takes SPI2
+// (mountSd()'s own SPIClass on FSPI); Arduino's global `SPI` stays unused.
 // The EXT header carries the same SCK, MOSI and MISO, and the Cap LoRa-1262
 // (Meshtastic's radio on this board) sits there with its SX1262 select on G5:
 // left floating, the radio answered along with the card and the card's init

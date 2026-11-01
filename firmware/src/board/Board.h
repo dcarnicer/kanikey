@@ -48,8 +48,8 @@ inline bool nextKeyEvent(KeyEvent*) { return false; }
 
 // --- microSD slot --------------------------------------------------------------
 // The SPI pins of the board's microSD slot (docs/microsd.md §1), -1 for none.
-// The card has a bus of its own, SPI3 (an SPIClass on HSPI in
-// platform/Storage), apart from the display's SPI2. `otherCs` is the select
+// The card has a bus of its own, SPI2 (an SPIClass on FSPI in mountSd()),
+// apart from the display's SPI3. `otherCs` is the select
 // line of another chip that can sit on the same lines (an expansion module),
 // driven high before the card is used so that chip never answers with it.
 // sdPins() is false on a board without a slot (the StickS3, the

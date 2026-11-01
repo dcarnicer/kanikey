@@ -415,12 +415,9 @@ void saveSubjectCache() {
     kk::CacheMeta meta;
     meta.savedAt = gBatch.fetchedAt ? gBatch.fetchedAt : gSyncedAt;
     meta.accountKey = currentAccountKey();
-    if (kk::cacheSaveSubjects(SD, meta, gBatch.subjects)) {
-        Serial.printf("[cache] subjects saved: %u\n",
-                      static_cast<unsigned>(gBatch.subjects.size()));
-    } else {
+    // cacheSaveSubjects() logs the count, size and time of a good save.
+    if (!kk::cacheSaveSubjects(SD, meta, gBatch.subjects))
         Serial.println("[cache] subjects save failed");
-    }
 }
 
 void saveCacheAll() {
@@ -2697,7 +2694,10 @@ bool mountSd() {
         pinMode(pins.otherCs, OUTPUT);
         digitalWrite(pins.otherCs, HIGH);
     }
-    static SPIClass spi(HSPI);
+    // FSPI (SPI2): M5GFX drives the Cardputer panels through Arduino's HSPI
+    // bus (SPI3), and sharing that bus's mutex deadlocked a card read made
+    // inside a display transaction (the canvas-less "drawing directly" path).
+    static SPIClass spi(FSPI);
     spi.begin(pins.sck, pins.miso, pins.mosi, pins.cs);
     const size_t heapBefore = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
     const uint32_t t0 = millis();
@@ -5277,6 +5277,18 @@ void handleSerial() {
             Serial.println("[ota] rollback record cleared");
         } else if (gSerialLine.startsWith("K ")) {
             injectKeys(gSerialLine.substring(2));
+        } else if (gSerialLine == "N") {
+            // Drop the canvas so the next frames take the "drawing directly"
+            // path that a fragmented heap forces.
+            releaseCanvas();
+            gDirty = true;
+            Serial.println("[kk] canvas released; drawing directly");
+        } else if (gSerialLine == "W") {
+            // Debug aid: a loop blocked for 5 s panics with a backtrace.
+            // Long requests and the pack CRC trip it too, so arm it only
+            // right before the step under test.
+            enableLoopWDT();
+            Serial.println("[kk] loop watchdog on (5 s)");
         } else if (gSerialLine.startsWith("R")) {
             String arg = gSerialLine.substring(1);
             arg.trim();
