@@ -643,12 +643,22 @@ confirmation.
   `main`, so a power cut between the two steps keeps the previous outbox.
 - The Home/batch snapshot and the subject cache use the same order (FIX-26):
   the old file is copied to `.bak`, then `.tmp` replaces `main` in one rename.
-  The save opens `.tmp` with `w`, which truncates a leftover from a crashed
+  FAT (the SD card, where the subject cache lives) refuses to rename onto an
+  existing file, so there `main` is removed just before the rename; a power
+  cut in between leaves `.bak`, which the loader falls back to. The save opens `.tmp` with `w`, which truncates a leftover from a crashed
   save; on this framework `exists()` and `remove()` both log an error when the
   file is absent, so the happy path calls neither. The first save on an empty
   device still logs one line for the missing `main` before it is copied; every
   later save is silent.
 - On startup, if the main file fails CRC, use `.bak` and warn.
+- The subject cache is written and read in streaming blocks (FIX-27). A save
+  counts the payload length and CRC in a first pass over the subjects, writes
+  the 24-byte `KKCS` header, then streams the payload to the SD file in 1 KB
+  blocks. A load reads the header, then decodes from a 1 KB refill buffer while
+  updating the CRC over the consumed payload bytes. Neither path builds the
+  whole file in one vector: the peak extra memory is one 1 KB stack buffer
+  (plus the subject data that is already in RAM), independent of the file size.
+  The bytes on disk and the version are unchanged.
 - Never delete the outbox before the POST is confirmed.
 - LittleFS is mounted read-only first (`LittleFS.begin(false)`); a failed mount
   never formats. The device asks (`Storage unreadable`, `Enter: format  Esc:

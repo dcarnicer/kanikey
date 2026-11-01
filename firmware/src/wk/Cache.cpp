@@ -21,6 +21,7 @@ constexpr uint16_t kMaxReadings = 32;
 constexpr uint16_t kMaxList = 64;
 constexpr uint16_t kMaxContextSentences = 8;
 constexpr uint16_t kMaxString = 16384;
+constexpr size_t kStreamBufferBytes = 1024;
 
 void put16(uint8_t* p, uint16_t v) {
     p[0] = static_cast<uint8_t>(v);
@@ -40,19 +41,29 @@ uint32_t get32(const uint8_t* p) {
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
+class NullSink : public ByteSink {
+public:
+    bool write(const uint8_t*, size_t) override { return true; }
+};
+
+// The encoder runs twice for the streaming path: pass 1 has a sink that counts
+// bytes and CRC, pass 2 writes them. Without a sink it appends to `bytes_` as
+// before, so the snapshot encoder and encodeSubjectCache() share one code path.
 class Writer {
 public:
-    void u8(uint8_t v) { bytes_.push_back(v); }
+    Writer() = default;
+    explicit Writer(ByteSink* sink) : sink_(sink) {}
+
+    void u8(uint8_t v) { put(&v, 1); }
     void u16(uint16_t v) {
-        if (!ok_) return;
-        bytes_.push_back(static_cast<uint8_t>(v));
-        bytes_.push_back(static_cast<uint8_t>(v >> 8));
+        uint8_t b[2];
+        put16(b, v);
+        put(b, sizeof b);
     }
     void u32(uint32_t v) {
-        if (!ok_) return;
-        const size_t at = bytes_.size();
-        bytes_.resize(at + 4);
-        put32(bytes_.data() + at, v);
+        uint8_t b[4];
+        put32(b, v);
+        put(b, sizeof b);
     }
     void str(std::string_view s) {
         if (!ok_) return;
@@ -61,57 +72,164 @@ public:
             return;
         }
         u16(static_cast<uint16_t>(s.size()));
-        bytes_.insert(bytes_.end(), s.begin(), s.end());
+        put(reinterpret_cast<const uint8_t*>(s.data()), s.size());
     }
     bool ok() const { return ok_; }
     void fail() { ok_ = false; }
     std::vector<uint8_t>& bytes() { return bytes_; }
+    // Payload bytes written so far and their CRC-32. Valid after a flush and
+    // even when the sink discarded the bytes.
+    uint32_t size() const { return size_; }
+    uint32_t crc() const { return crc_ ^ 0xFFFFFFFFu; }
+    // Writes a partially filled block to the sink. Without a sink it is a no-op.
+    bool flush() {
+        if (!ok_) return false;
+        if (!used_) return true;
+        if (!sink_ || !sink_->write(buf_, used_)) {
+            ok_ = false;
+            used_ = 0;
+            return false;
+        }
+        used_ = 0;
+        return true;
+    }
 
 private:
+    void put(const uint8_t* data, size_t n) {
+        if (!ok_ || n == 0) return;
+        crc_ = crc32Update(crc_, data, n);
+        size_ += static_cast<uint32_t>(n);
+        if (!sink_) {
+            bytes_.insert(bytes_.end(), data, data + n);
+            return;
+        }
+        while (n) {
+            const size_t room = sizeof buf_ - used_;
+            const size_t chunk = n < room ? n : room;
+            std::memcpy(buf_ + used_, data, chunk);
+            used_ += chunk;
+            data += chunk;
+            n -= chunk;
+            if (used_ == sizeof buf_ && !flush()) return;
+        }
+    }
+
+    ByteSink* sink_ = nullptr;
     std::vector<uint8_t> bytes_;
+    uint8_t buf_[kStreamBufferBytes];
+    size_t used_ = 0;
+    uint32_t size_ = 0;
+    uint32_t crc_ = 0xFFFFFFFFu;
     bool ok_ = true;
 };
+
+// Reads exactly `size` bytes from the source, across short reads.
+bool readExact(ByteSource* source, uint8_t* data, size_t size) {
+    size_t got = 0;
+    while (got < size) {
+        const size_t n = source->read(data + got, size - got);
+        if (n == 0 || n > size - got) return false;
+        got += n;
+    }
+    return true;
+}
 
 class Reader {
 public:
     Reader() = default;
     Reader(const uint8_t* data, size_t size) : data_(data), size_(size) {}
+    // Streams the payload from `source`, which is already positioned after the
+    // header. `payloadSize` bounds how many bytes are read.
+    Reader(ByteSource* source, size_t payloadSize)
+        : source_(source), remaining_(payloadSize) {}
 
     bool u8(uint8_t* v) {
-        if (!ok_ || pos_ + 1 > size_) return fail();
+        if (!ok_) return false;
+        if (source_) return take(v, 1);
+        if (pos_ + 1 > size_) return fail();
         *v = data_[pos_++];
         return true;
     }
     bool u16(uint16_t* v) {
-        if (!ok_ || pos_ + 2 > size_) return fail();
-        *v = get16(data_ + pos_);
-        pos_ += 2;
+        if (!ok_) return false;
+        uint8_t b[2];
+        if (!bytes(b, sizeof b)) return false;
+        *v = get16(b);
         return true;
     }
     bool u32(uint32_t* v) {
-        if (!ok_ || pos_ + 4 > size_) return fail();
-        *v = get32(data_ + pos_);
-        pos_ += 4;
+        if (!ok_) return false;
+        uint8_t b[4];
+        if (!bytes(b, sizeof b)) return false;
+        *v = get32(b);
         return true;
     }
     bool str(std::string* out) {
         uint16_t n = 0;
-        if (!u16(&n) || n > kMaxString || pos_ + n > size_) return fail();
-        out->assign(reinterpret_cast<const char*>(data_ + pos_), n);
-        pos_ += n;
-        return true;
+        if (!u16(&n) || n > kMaxString) return fail();
+        if (!source_) {
+            if (pos_ + n > size_) return fail();
+            out->assign(reinterpret_cast<const char*>(data_ + pos_), n);
+            pos_ += n;
+            return true;
+        }
+        if (n > remaining_) return fail();
+        out->resize(n);
+        if (n == 0) return true;
+        return take(reinterpret_cast<uint8_t*>(&(*out)[0]), n);
     }
-    bool done() const { return ok_ && pos_ == size_; }
+    // True when the payload was consumed exactly: no trailing bytes.
+    bool done() const { return ok_ && (source_ ? remaining_ == 0 : pos_ == size_); }
     bool ok() const { return ok_; }
+    // CRC-32 over the consumed payload bytes (streaming mode).
+    uint32_t crc() const { return crc_ ^ 0xFFFFFFFFu; }
 
 private:
     bool fail() {
         ok_ = false;
         return false;
     }
+    bool bytes(uint8_t* out, size_t n) {
+        if (source_) return take(out, n);
+        if (pos_ + n > size_) return fail();
+        std::memcpy(out, data_ + pos_, n);
+        pos_ += n;
+        return true;
+    }
+    // Consumes exactly n bytes from the buffer, refilling it as needed.
+    bool take(uint8_t* out, size_t n) {
+        if (!ok_) return false;
+        if (n > remaining_) return fail();
+        while (n) {
+            if (pos_ == end_ && !refill()) return false;
+            const size_t chunk = n < end_ - pos_ ? n : end_ - pos_;
+            std::memcpy(out, buf_ + pos_, chunk);
+            crc_ = crc32Update(crc_, buf_ + pos_, chunk);
+            pos_ += chunk;
+            out += chunk;
+            n -= chunk;
+            remaining_ -= chunk;
+        }
+        return true;
+    }
+    bool refill() {
+        if (!source_ || remaining_ == 0) return fail();
+        const size_t want = remaining_ < sizeof buf_ ? remaining_ : sizeof buf_;
+        const size_t got = source_->read(buf_, want);
+        if (got == 0 || got > want) return fail();
+        pos_ = 0;
+        end_ = got;
+        return true;
+    }
+
     const uint8_t* data_ = nullptr;
     size_t size_ = 0;
     size_t pos_ = 0;
+    ByteSource* source_ = nullptr;
+    uint8_t buf_[kStreamBufferBytes];
+    size_t end_ = 0;
+    size_t remaining_ = 0;
+    uint32_t crc_ = 0xFFFFFFFFu;
     bool ok_ = true;
 };
 
@@ -480,6 +598,21 @@ bool decodeSubject(Reader& r, Subject* s) {
     return true;
 }
 
+// Decodes the subject list from a payload reader and requires the payload to be
+// fully consumed. The caller validates the header CRC (vector path) or the
+// running CRC (streaming path).
+bool decodeSubjects(Reader& r, SubjectCache* cache) {
+    uint16_t count = 0;
+    if (!r.u16(&count) || count > kMaxSubjects) return false;
+    cache->subjects.reserve(count);
+    for (uint16_t i = 0; i < count; ++i) {
+        Subject s;
+        if (!decodeSubject(r, &s)) return false;
+        cache->subjects.push_back(std::move(s));
+    }
+    return r.done();
+}
+
 }  // namespace
 
 uint32_t cacheAccountKey(std::string_view token) {
@@ -557,15 +690,71 @@ bool decodeSubjectCache(const uint8_t* data, size_t size, SubjectCache* out) {
     if (!decodeFile(kSubjectsMagic, data, size, &meta, &r)) return false;
     SubjectCache cache;
     cache.meta = meta;
-    uint16_t count = 0;
-    if (!r.u16(&count) || count > kMaxSubjects) return false;
-    cache.subjects.reserve(count);
-    for (uint16_t i = 0; i < count; ++i) {
-        Subject s;
-        if (!decodeSubject(r, &s)) return false;
-        cache.subjects.push_back(std::move(s));
+    if (!decodeSubjects(r, &cache)) return false;
+    *out = std::move(cache);
+    return true;
+}
+
+bool writeSubjectCache(const CacheMeta& meta, const std::vector<Subject>& subjects,
+                       ByteSink* sink) {
+    if (!sink) return false;
+    if (subjects.size() > kMaxSubjects) return false;
+
+    // Pass 1: measure the payload and its CRC without keeping any bytes.
+    uint32_t payloadSize = 0;
+    uint32_t payloadCrc = 0;
+    {
+        NullSink discard;
+        Writer counter(&discard);
+        counter.u16(static_cast<uint16_t>(subjects.size()));
+        for (const Subject& s : subjects) encodeSubject(counter, s);
+        if (!counter.ok()) return false;
+        payloadSize = counter.size();
+        payloadCrc = counter.crc();
     }
-    if (!r.done()) return false;
+
+    // The header is the same as encodeFile() would build.
+    uint8_t header[kCacheHeaderBytes];
+    std::memset(header, 0, sizeof header);
+    std::memcpy(header, kSubjectsMagic, 4);
+    put16(header + 4, kCacheVersion);
+    put16(header + 6, 0);
+    put32(header + 8, meta.savedAt);
+    put32(header + 12, meta.accountKey);
+    put32(header + 16, payloadSize);
+    put32(header + 20, payloadCrc);
+    if (!sink->write(header, sizeof header)) return false;
+
+    // Pass 2: the same encoder again, now with a 1 KB block per sink write.
+    Writer writer(sink);
+    writer.u16(static_cast<uint16_t>(subjects.size()));
+    for (const Subject& s : subjects) encodeSubject(writer, s);
+    if (!writer.ok() || !writer.flush()) return false;
+    return writer.size() == payloadSize && writer.crc() == payloadCrc;
+}
+
+bool readSubjectCache(ByteSource* source, size_t fileSize, SubjectCache* out) {
+    if (!source || !out) return false;
+    if (fileSize < kCacheHeaderBytes) return false;
+    uint8_t header[kCacheHeaderBytes];
+    if (!readExact(source, header, sizeof header)) return false;
+    if (std::memcmp(header, kSubjectsMagic, 4) != 0) return false;
+    if (get16(header + 4) != kCacheVersion) return false;
+    if (get16(header + 6) != 0) return false;
+    const uint32_t payloadSize = get32(header + 16);
+    if (payloadSize != fileSize - kCacheHeaderBytes) return false;
+
+    CacheMeta meta;
+    meta.savedAt = get32(header + 8);
+    meta.accountKey = get32(header + 12);
+
+    Reader r(source, payloadSize);
+    SubjectCache cache;
+    cache.meta = meta;
+    // Same end checks as decodeSubjectCache(): the whole payload must be used
+    // and its CRC must match the header.
+    if (!decodeSubjects(r, &cache)) return false;
+    if (r.crc() != get32(header + 20)) return false;
     *out = std::move(cache);
     return true;
 }

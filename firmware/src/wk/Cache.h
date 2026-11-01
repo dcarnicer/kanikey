@@ -9,6 +9,7 @@
 // Both files carry a magic, a format version, the save time, an account key
 // (FNV-1a of the API token), the payload length and a CRC32. A cache written
 // for another token is discarded instead of shown.
+#include <cstddef>
 #include <cstdint>
 #include <string_view>
 #include <vector>
@@ -43,6 +44,19 @@ struct SubjectCache {
     std::vector<Subject> subjects;
 };
 
+// Byte interfaces for the streaming subject cache. The platform layer wraps the
+// SD file; the encoder and decoder only ever hold a fixed 1 KB block, so a save
+// or load never needs the whole payload in one contiguous allocation (FIX-27).
+struct ByteSink {
+    virtual bool write(const uint8_t* data, size_t size) = 0;
+    virtual ~ByteSink() = default;
+};
+
+struct ByteSource {
+    virtual size_t read(uint8_t* data, size_t size) = 0;
+    virtual ~ByteSource() = default;
+};
+
 uint32_t cacheAccountKey(std::string_view token);
 
 bool encodeCacheSnapshot(const CacheSnapshot& snapshot, std::vector<uint8_t>* out);
@@ -52,5 +66,15 @@ bool encodeSubjectCache(const SubjectCache& cache, std::vector<uint8_t>* out);
 bool encodeSubjectCache(const CacheMeta& meta, const std::vector<Subject>& subjects,
                         std::vector<uint8_t>* out);
 bool decodeSubjectCache(const uint8_t* data, size_t size, SubjectCache* out);
+
+// Streams the subject cache to `sink` with exactly the bytes that
+// encodeSubjectCache() produces. Two passes over the subjects count the payload
+// length and CRC first, so the 24-byte header can be written before the payload.
+// Returns false on a sink failure, an over-long string or too many subjects.
+bool writeSubjectCache(const CacheMeta& meta, const std::vector<Subject>& subjects,
+                       ByteSink* sink);
+// Reads a subject cache of `fileSize` bytes from `source`. On any error *out is
+// left untouched.
+bool readSubjectCache(ByteSource* source, size_t fileSize, SubjectCache* out);
 
 }  // namespace kk

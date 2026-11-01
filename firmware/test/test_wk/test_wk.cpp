@@ -1981,6 +1981,7 @@ void run_portal_tests();
 void run_storage_tests();
 void run_net_tests();
 void run_app_tests();
+void run_cache_tests();
 
 int main(int, char**) {
     UNITY_BEGIN();
@@ -2069,5 +2070,6 @@ int main(int, char**) {
     run_storage_tests();
     run_net_tests();
     run_app_tests();
+    run_cache_tests();
     return UNITY_END();
 }
