@@ -96,22 +96,39 @@ bool copyFile(fs::FS& fs, const char* from, const char* to) {
 }
 
 // Installs a closed tmp file over `path`, keeping the previous file as `bak`.
-// The old file is copied rather than renamed away, as OutboxStore does: a power
-// cut before the last rename then leaves either the previous file (main intact)
-// or the new one, never neither. LittleFS rename replaces the destination in
-// one step; FAT (the SD card) refuses to rename onto an existing file, so there
-// main is removed first. .bak already holds its copy, and the loaders fall back
-// to .bak if power is cut between the remove and the rename.
+// On LittleFS the old file is copied rather than renamed away, as OutboxStore
+// does: rename replaces the destination in one step, so a power cut leaves
+// either the previous file or the new one, never neither.
 bool installTmp(fs::FS& fs, const char* path, const char* tmp, const char* bak) {
     if (fs.exists(path) && !copyFile(fs, path, bak)) {
         fs.remove(bak);
         fs.remove(tmp);
         return false;
     }
-    if (fs.rename(tmp, path)) return true;
-    if (fs.exists(path) && fs.remove(path) && fs.rename(tmp, path)) return true;
-    fs.remove(tmp);
-    return false;
+    if (!fs.rename(tmp, path)) {
+        fs.remove(tmp);
+        return false;
+    }
+    return true;
+}
+
+// FAT (the SD card) refuses to rename onto an existing file, so a copy would
+// not save the remove; it would also need a second open file on a card mounted
+// with two slots, one of them held by the glyph pack. main moves to .bak, then
+// tmp to main. A power cut between the two renames leaves .bak, which the
+// loader falls back to.
+bool installTmpFat(fs::FS& fs, const char* path, const char* tmp, const char* bak) {
+    if (fs.exists(bak)) fs.remove(bak);
+    if (fs.exists(path) && !fs.rename(path, bak)) {
+        fs.remove(tmp);
+        return false;
+    }
+    if (!fs.rename(tmp, path)) {
+        fs.rename(bak, path);
+        fs.remove(tmp);
+        return false;
+    }
+    return true;
 }
 
 bool writeAtomic(fs::FS& fs, const char* path, const char* tmp, const char* bak,
@@ -232,7 +249,7 @@ bool cacheSaveSubjects(fs::FS& sd, const CacheMeta& meta, const std::vector<Subj
         Serial.println("[cache] subjects encode failed");
         return false;
     }
-    if (!installTmp(sd, kSubjectsPath, kSubjectsTmp, kSubjectsBak)) {
+    if (!installTmpFat(sd, kSubjectsPath, kSubjectsTmp, kSubjectsBak)) {
         Serial.println("[cache] subjects write failed");
         return false;
     }

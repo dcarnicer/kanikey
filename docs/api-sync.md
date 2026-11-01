@@ -644,8 +644,10 @@ confirmation.
 - The Home/batch snapshot and the subject cache use the same order (FIX-26):
   the old file is copied to `.bak`, then `.tmp` replaces `main` in one rename.
   FAT (the SD card, where the subject cache lives) refuses to rename onto an
-  existing file, so there `main` is removed just before the rename; a power
-  cut in between leaves `.bak`, which the loader falls back to. The save opens `.tmp` with `w`, which truncates a leftover from a crashed
+  existing file, so there `main` is renamed to `.bak` and `.tmp` to `main`,
+  without a copy (the card is mounted with two file slots and the glyph pack
+  holds one); a power cut in between leaves `.bak`, which the loader falls
+  back to. The save opens `.tmp` with `w`, which truncates a leftover from a crashed
   save; on this framework `exists()` and `remove()` both log an error when the
   file is absent, so the happy path calls neither. The first save on an empty
   device still logs one line for the missing `main` before it is copied; every
