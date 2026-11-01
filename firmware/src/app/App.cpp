@@ -2629,7 +2629,9 @@ void onKey(const KeyEvent& e) {
     if (e.down && e.key == Key::Enter) {
         if (gShowHome && gHaveSummary) {
             if (gSummary.dueReviews(effectiveNow()) == 0) {
-                // Nothing due: no network call, just the next time.
+                // Nothing due: no network call, just the next time. Refresh it
+                // first: answering the last due item leaves gNextReview at "now".
+                applySummary(effectiveNow());
                 snprintf(gNoticeLine, sizeof gNoticeLine, "Next review  %s", gNextReview);
                 gNoticeLine2[0] = 0;
                 gNoticeAction = NoticeAction::ReviewEmpty;
@@ -3063,7 +3065,7 @@ void portalSwitchToStation() {
         return;
     }
     const bool ok = gSetupPortal.beginStation(
-        gSetupHooks, "Wi-Fi connected. Enter your WaniKani token and press Finish when ready.");
+        gSetupHooks, "Wi-Fi OK. Add the token, then Finish.");
     gPortalActive = ok;
     if (!ok) snprintf(gNetLine, sizeof gNetLine, "Setup portal failed");
     gDirty = true;
@@ -3113,7 +3115,7 @@ bool startSetupPortal() {
         }
         if (kk::DevWifi::connected() &&
             gSetupPortal.beginStation(gSetupHooks,
-                                      "Enter your WaniKani token and press Finish when ready.")) {
+                                      "Enter the token, then press Finish.")) {
             gPortalActive = true;
             gLastInputAt = millis();
             gDirty = true;
