@@ -53,6 +53,11 @@ public:
     // Opens the pack read-only. On failure `statusLine()` explains why and the
     // object stays not-ready; callers fall back to the built-in font.
     bool open(fs::FS& fs, const char* path);
+    // Re-opens the pack from the fs and path of the last open(). Validates the
+    // header and table like open() but skips the CRC pass, which covers the
+    // whole payload. Used when a File handle died after the pack was already
+    // open (FIX-25) and by the app after it replaced the pack file.
+    bool reopen();
     void close();
 
     bool ready() const { return ready_; }
@@ -97,7 +102,16 @@ private:
         GlyphInfo info;
     };
 
+    bool openPath(fs::FS& fs, const char* path, bool crcCheck);
+    // Re-opens the file once after seek()/position()/read() showed that its
+    // handle is dead. One log line; false when the pack was not ready or the
+    // new handle fails validation.
+    bool reopenAfterLoss() const;
     bool readAt(uint32_t offset, uint8_t* out, size_t length) const;
+    // Seek for the streaming reads in drawGlyph() and drawRadical(), with the
+    // same one-shot recovery as readAt().
+    bool seekToData(uint32_t offset) const;
+    bool checkStoredCrc(uint32_t want);
     bool readGlyph(uint16_t index, GlyphInfo* out) const;
     uint16_t lowerBound(uint32_t cp) const;
     bool findExact(uint32_t cp, uint8_t size, GlyphInfo* out) const;
@@ -106,6 +120,8 @@ private:
                    uint16_t fg, uint16_t bg, const ClipRect& clip) const;
 
     mutable File file_;
+    fs::FS* fs_ = nullptr;
+    char path_[96] = {};
     bool ready_ = false;
     uint16_t glyphCount_ = 0;
     uint16_t radicalCount_ = 0;

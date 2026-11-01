@@ -438,3 +438,42 @@ WaniKani subjects and mnemonics.
   and `h` after sync showed 141,284 B free / 63,476 B largest / 47,664 B min /
   17,812 B stack headroom. No `[ota] rolled back` line was present after the
   test record was cleared.
+
+### 2026-11-01 — storage robustness (FIX-24/25/26)
+
+Implementation landed, hardware checks still open (no device was attached).
+
+- **Key queue (FIX-24 a).** `push()` wrote the "events lost" marker at the slot
+  of the event it had just dropped, so the marker was never delivered. The
+  marker is now the newest event (`wk/RingQueue.h`, five native
+  `test_key_queue_*` cases model push/pop order). Hardware: hold a key through a
+  key storm in a dev build and check that the `Key::None` event arrives last in
+  the burst, not in the middle of a press/release pair.
+- **Pack CRC (FIX-24 b).** `GlyphPack::open()` now streams the entry table and
+  the payload — `[tableOffset, dataOffset + dataLength)`, 3,698,444 B of the
+  3,698,476 B card pack — in 1 KB chunks and compares the CRC-32 with the header
+  field at offset 24. This matches `tools/glyph-pack/build.py`, which stores
+  `zlib.crc32(table + data)` at offset 24 and verifies `raw[32:data_off+len]`
+  (it asserts `table_off == 32`). A mismatch fails with `pack: bad crc`. Every
+  full open logs `[pack] crc ok, N ms` (or `bad`); **the duration is not
+  measured yet**. With 3,600 chunks expect roughly 1–4 s of boot delay on the
+  SPI card. If the first measurement is above ~1 s, the check must move behind
+  the existing pack check instead of the boot path (FIX-24 verify note).
+- **Pack handle recovery (FIX-25).** Repro of 2026-11-01: open the station page,
+  press *Check pack*, finish setup and start a review — every prompt showed
+  "no glyph · check SD" until a reboot while `i` still reported 7,269 glyphs.
+  Debug output showed `seek 72712 failed, size 3698476 pos 4294967295`: the
+  `File` of a pack that was re-opened inside the HTTP request had a dead
+  descriptor even though its header and table had loaded. `readAt()` and the
+  draw seeks now re-open the file once when `seek()` fails, `position()` reads
+  `UINT32_MAX` or a read is short, log `[pack] file handle lost, re-opening`,
+  and retry; the recovery path validates the header and table but not the CRC.
+  `GlyphPack::reopen()` (same validation, no CRC) is public for the app. The
+  App parts (`portalRecheckPack()`, upload re-open) belong to a later round, so
+  the repro itself is still to be re-run.
+- **Cache save (FIX-26).** A snapshot save called `exists("/state/cache.tmp")`,
+  which logged `open(): … does not exist, no permits for creation` on every
+  save. The tmp file is now opened with `w` (truncates a leftover) and the old
+  file is copied to `.bak` before `.tmp` is renamed over `main`, as the outbox
+  does. Hardware: a sync in a release build should print no `cache.tmp` line,
+  and the cache should still load after a reboot.
