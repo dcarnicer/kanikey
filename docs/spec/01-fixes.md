@@ -4,7 +4,7 @@ Every item below was found and reproduced in the 2026-11-01 review of the firmwa
 
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
-| FIX-01 | OTA cannot follow GitHub's redirect | P0 | S | none | 0a | review |
+| FIX-01 | OTA cannot follow GitHub's redirect | P0 | S | none | 0a | done |
 | FIX-02 | Times shown in UTC after every sync | P0 | S | none | 0b | todo |
 | FIX-03 | A warning reveals the answer and allows a free retry | P0 | M | none | 0b | todo |
 | FIX-04 | Kanji readings are judged the opposite way from WaniKani | P1 | S | none | 0a | review |
@@ -12,22 +12,24 @@ Every item below was found and reproduced in the 2026-11-01 review of the firmwa
 | FIX-06 | Real HTTP read timeout is 1 s | P1 | S | none | 0a | review |
 | FIX-07 | Setup AP password derivable from the beacon | P1 | S | none | 0a | review |
 | FIX-08 | Review batches are capped at 20 and always the same items | P1 | M | none | 0a+0b | todo |
-| FIX-09 | After a wrong first part, the failed part is asked again immediately | P1 | S | none | 0a | review |
+| FIX-09 | After a wrong first part, the failed part is asked again immediately | P1 | S | none | 0a | done |
 | FIX-10 | A completed review is not in the outbox until the next Enter | P1 | S | none | 0b | todo |
 | FIX-11 | Lesson start errors are silent | P1 | M | none | 0a+0b | todo |
 | FIX-12 | Deep sleep during the lesson quiz | P2 | S | none | 0b | todo |
 | FIX-13 | A full outbox drops reviews silently | P2 | S | none | 0b | todo |
 | FIX-14 | Fixed 32 KB body cap with no fallback | P2 | M | none | 0a | todo |
 | FIX-15 | Typo tolerance uses the typed length | P2 | S | none | 0a | review |
-| FIX-16 | Capitalised romaji in the meaning field is not recognised as a reading | P2 | S | none | 0a | review |
+| FIX-16 | Capitalised romaji in the meaning field is not recognised as a reading | P2 | S | none | 0a | done |
 | FIX-17 | IME lacks common romaji aliases | P2 | S | none | 0a | review |
-| FIX-18 | `/level_progressions` parsed into a full DOM | P2 | M | none | 0a | review |
-| FIX-19 | Station setup page has no authentication | P2 | S | FIX-07 | 0a | review |
+| FIX-18 | `/level_progressions` parsed into a full DOM | P2 | M | none | 0a | done |
+| FIX-19 | Station setup page has no authentication | P2 | S | FIX-07 | 0a | done |
 | FIX-20 | OTA marked valid after only 10 s of loop | P2 | S | none | 0b | todo |
 | FIX-21 | LittleFS formats on any mount failure | P3 | S | none | 0b | todo |
-| FIX-22 | Outbox save rename order | P3 | S | none | 0a | review |
+| FIX-22 | Outbox save rename order | P3 | S | none | 0a | done |
 | FIX-23 | Small UX bugs | P3 | S | none | 0b | todo |
 | FIX-24 | Latent robustness | P3 | S | none | 0a+0b | todo |
+| FIX-25 | Re-opening the visual pack from the setup page breaks every glyph | P1 | S | none | 0a+0b | todo |
+| FIX-26 | Cache store: noisy error log and rename order | P3 | S | none | 0a | todo |
 
 ### FIX-01 — OTA cannot follow GitHub's redirect
 
@@ -710,18 +712,75 @@ Notes for later tasks:
 - FIX-01 only helps devices that already run this code: v0.1.0 devices need one
   USB flash.
 
-Hardware checks still to run (move them to the DOC-05 log when it exists):
+Hardware run on 2026-11-01 (Cardputer ADV, dev image then release image of
+`spec/round-2`; synthetic cache and Wi-Fi off for the review checks, so nothing
+was sent to WaniKani; outbox empty before and after):
 
-| Task | Check |
-|---|---|
-| FIX-01 | Settings › Firmware › Check now follows 302 → 302 → 200 to the manifest; an install from a GitHub release succeeds |
-| FIX-04 | 人: `hito` shows the type warning without a mistake, `nin` and `jin` are correct |
-| FIX-05 | 今夜: `konya` shows the `n'` hint, `kon'ya` is correct; 単位 `tani` shows the hint |
-| FIX-06 | A slow `POST /reviews` is not marked ambiguous after 1 s; a stalled handshake gives up after ~15 s |
-| FIX-07 | The AP key on screen joins the network; a second portal start shows a new key; 15 idle minutes close the portal ("Setup timed out") |
-| FIX-09 | Meaning wrong + reading right: the item comes back ~4 cards later, in both question orders |
-| FIX-17 | `syasin` types しゃしん |
-| FIX-18 | A real sync still shows `L8 … since …`; a high-level account syncs without a heap drop |
-| FIX-19 | Station page: `curl -X POST /wifi` without the cookie → 403; the on-screen code unlocks; `curl /` never contains the code; the "Page code" line fits the screen |
-| FIX-22 | Normal outbox save/load after a review; `.bak` fallback still loads |
+| Task | Check | Result |
+|---|---|---|
+| FIX-01 | Firmware check against the real GitHub release (302 → 302 → 200) | **pass**: "Up to date: v0.1.0, http 200, 152 bytes"; v0.1.0 fails the same check |
+| FIX-06 | Boot sync, 10 requests, after the timeout change | **pass** for normal traffic; the slow-server path was not provoked |
+| FIX-09 | 日: meaning wrong, reading right | **pass**: the next prompt is another item, not 日's meaning |
+| FIX-16 | 日: `Nichi` in the meaning field | **pass**: CHECK "That is the reading. Type the meaning" |
+| FIX-18 | Real sync of `/level_progressions` | **pass**: `L8 3% since 03 Feb`, as before |
+| FIX-19 | Station page from another host | **pass**: GET shows only the unlock form; POST `/pack` and `/time` → 403; wrong code → 403; right code → 303 + `HttpOnly; SameSite=Strict` cookie; the code never appears in a served page; 5 wrong codes → new code on screen, old code rejected, issued cookie still valid; "Page code" line fits |
+| FIX-22 | Outbox save after adding and clearing an item | **pass**: no save error |
+| FIX-04, FIX-05, FIX-15, FIX-17 | — | native tests only; the synthetic cache has no subject that exercises them |
+| FIX-07 | AP key and 15-minute close | not run: the device has a saved network, so the portal opens in station mode |
+| FIX-02 (open) | Home clock after a sync | **still failing** as expected: "Synced 13:19" at 14:19 CET |
 
+Found during the run: FIX-25 (below), FIX-26, and the serial console's 80-char
+line limit (fixed in commit "fix: accept serial commands longer than 80
+characters"). The device message after five wrong unlock codes is cut at the
+screen edge ("Too many wrong codes. The device shows"); shorten it in DOC/UX
+work.
+
+---
+
+### FIX-25 — Re-opening the visual pack from the setup page breaks every glyph
+
+- **Priority:** P1
+- **Size:** S
+- **Depends on:** none
+- **Touches:** `firmware/src/platform/GlyphPack.cpp/.h` (`open()` :41, `readAt()` :104); `firmware/src/app/App.cpp` `portalRecheckPack()` :2892-2896 and the asset-upload re-open (:4359-4398)
+- **Settings:** none
+
+**Problem / goal.** Reproduced on hardware (2026-11-01): open the station setup page, press *Check pack* (`POST /pack` → `portalRecheckPack()` → `gPack.open()` on an already open pack), finish setup, start a review: every prompt, reading and radical shows "no glyph · check SD" until a reboot, while `i` still reports `7269 glyphs, 498 radicals`. Without *Check pack* the same sequence draws correctly. Debug logging in `readAt()` showed `seek 72712 failed, size 3698476 pos 4294967295`: the re-opened `File` reports position −1 (its descriptor is dead) although `open()` read the header and table successfully. Likely cause (not proven): the pack is re-opened inside an HTTP request and gets a descriptor number that a socket close later invalidates. The Wi-Fi asset upload re-opens the pack the same way.
+
+**Behaviour.** *Check pack* never leaves the device without glyphs. A pack that loses its file handle recovers on the next draw instead of needing a reboot.
+
+**Design.**
+- `GlyphPack` keeps the `fs::FS*` and path from `open()`; when `readAt()` sees `seek()` fail or `position()` return `UINT32_MAX`, it re-opens the file once (same validation) and retries the read; a second failure returns false as today. Log one line per recovery.
+- `portalRecheckPack()`: if `gPack.ready()`, only report the status; open the pack only when it is not ready (as `retryBoot()` does), and defer that open until the HTTP handler has returned (set a flag, open in `loop()`).
+- Asset upload: re-open after the client is closed, not while it is active.
+
+**Tests.** No native test (Arduino `File`). Hardware: the exact repro above (portal → *Check pack* → finish → review) draws glyphs; replace the pack through the Wi-Fi upload and draw a review without rebooting.
+
+**Docs.** `docs/hardware.md` (the repro and the result); `docs/setup.md` if it mentions *Check pack*.
+
+**Acceptance.**
+- [ ] The repro draws every glyph after *Check pack*.
+- [ ] A dead pack handle recovers once without a reboot, with one log line.
+- [ ] `portalRecheckPack()` does not re-open a ready pack.
+
+### FIX-26 — Cache store: noisy error log and rename order
+
+- **Priority:** P3
+- **Size:** S
+- **Depends on:** none
+- **Touches:** `firmware/src/platform/CacheStore.cpp` (:47, :56-57)
+- **Settings:** none
+
+**Problem / goal.** Every snapshot save prints `[E][vfs_api.cpp:105] open(): /littlefs/state/cache.tmp does not exist, no permits for creation`, because `fs.exists(tmp)` (:47) goes through `open()` on this core; the log looks like a failure in every hardware session. The save also renames main → `.bak` before tmp → main (:56-57), the order FIX-22 fixed for the outbox (here only an older snapshot is lost on a power cut).
+
+**Behaviour.** Saves print nothing at error level; a power cut during a save keeps the previous snapshot as the main file.
+
+**Design.** Remove the tmp unconditionally (ignore the result) instead of `exists()` + `remove()`; copy main to `.bak`, then rename tmp over main, as `OutboxStore` does after FIX-22.
+
+**Tests.** Hardware: a sync prints no `cache.tmp` error; the cache still loads after a reboot.
+
+**Docs.** `docs/api-sync.md` §7.2.
+
+**Acceptance.**
+- [ ] No `[E]` line on a normal snapshot or subject-cache save.
+- [ ] Main is copied to `.bak` before tmp replaces it.
