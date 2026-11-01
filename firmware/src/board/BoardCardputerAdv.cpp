@@ -17,6 +17,8 @@
 // reading, and the deep sleep's wake on a key (ext1 on G11).
 #include "board/Board.h"
 
+#include "wk/RingQueue.h"
+
 // In the M5 image (TGC_BOARD_M5) this file is board/BoardM5.cpp's
 // tgc::board::cardputer, picked at boot.
 #if defined(TGC_BOARD_CARDPUTER_ADV) || defined(TGC_BOARD_M5)
@@ -69,16 +71,13 @@ KeyEvent gQueue[kQueueLen];
 int gQueueHead = 0, gQueueCount = 0;
 
 void push(const KeyEvent& e) {
-    if (gQueueCount == kQueueLen) {
-        // Full: the oldest event goes, and the main loop hears that events
-        // were lost (every key up) rather than seeing a press without release.
-        gQueueHead = (gQueueHead + 1) % kQueueLen;
-        --gQueueCount;
-        gQueue[(gQueueHead + gQueueCount) % kQueueLen] = KeyEvent{Key::None, false};
-        return;
-    }
-    gQueue[(gQueueHead + gQueueCount) % kQueueLen] = e;
-    ++gQueueCount;
+    // Full: the oldest event goes and the "events lost" marker takes its place
+    // as the newest one, so the main loop hears about the loss as the last
+    // event it reads instead of seeing a press without its release. Writing
+    // the marker at the slot of the dropped event would never deliver it.
+    const bool lost = gQueueCount == kQueueLen;
+    gQueue[kk::ringAppendIndex(&gQueueHead, &gQueueCount, kQueueLen)] =
+        lost ? KeyEvent{Key::None, false} : e;
 }
 
 bool tcaWrite(uint8_t reg, uint8_t v) { return M5.In_I2C.writeRegister8(kTcaAddr, reg, v, kTcaFreq); }

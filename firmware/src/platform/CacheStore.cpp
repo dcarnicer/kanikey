@@ -42,9 +42,35 @@ bool readFile(fs::FS& fs, const char* path, size_t maxBytes, std::vector<uint8_t
     return true;
 }
 
+// Copies `from` to `to` in 512 B chunks. Returns false when a file cannot be
+// opened, a write is short or the byte count does not match; the caller keeps
+// the destination file out of use in that case.
+bool copyFile(fs::FS& fs, const char* from, const char* to) {
+    File src = fs.open(from, "r");
+    File dst = fs.open(to, "w");
+    bool ok = src && dst;
+    const size_t expected = src ? src.size() : 0;
+    size_t total = 0;
+    uint8_t buf[512];
+    while (ok) {
+        const size_t n = src.read(buf, sizeof buf);
+        if (n == 0) break;
+        if (dst.write(buf, n) != n) {
+            ok = false;
+            break;
+        }
+        total += n;
+    }
+    if (src) src.close();
+    if (dst) dst.close();
+    return ok && total == expected;
+}
+
 bool writeAtomic(fs::FS& fs, const char* path, const char* tmp, const char* bak,
                  const std::vector<uint8_t>& bytes) {
-    if (fs.exists(tmp)) fs.remove(tmp);
+    // "w" truncates a tmp file left behind by a crashed save, so no exists() +
+    // remove() runs first: on this core both log an error when the file is
+    // absent (FIX-26). The remove below only touches a tmp that exists.
     File f = fs.open(tmp, "w");
     if (!f) return false;
     const size_t wrote = f.write(bytes.data(), bytes.size());
@@ -53,8 +79,15 @@ bool writeAtomic(fs::FS& fs, const char* path, const char* tmp, const char* bak,
         fs.remove(tmp);
         return false;
     }
-    if (fs.exists(bak)) fs.remove(bak);
-    if (fs.exists(path)) fs.rename(path, bak);
+    // Copy the old file instead of renaming it away, as OutboxStore does: a
+    // power cut before the last rename then leaves either the previous file
+    // (main intact) or the new one, never neither. LittleFS rename replaces
+    // the destination in one step.
+    if (fs.exists(path) && !copyFile(fs, path, bak)) {
+        fs.remove(bak);
+        fs.remove(tmp);
+        return false;
+    }
     if (!fs.rename(tmp, path)) {
         fs.remove(tmp);
         return false;

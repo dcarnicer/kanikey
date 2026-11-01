@@ -7,6 +7,7 @@
 #include <cstring>
 
 #include "render/Blend565.h"
+#include "wk/Crc32.h"
 #include "wk/Utf8.h"
 
 namespace kk {
@@ -38,8 +39,19 @@ void GlyphPack::close() {
     snprintf(status_, sizeof status_, "no pack");
 }
 
-bool GlyphPack::open(fs::FS& fs, const char* path) {
+bool GlyphPack::open(fs::FS& fs, const char* path) { return openPath(fs, path, true); }
+
+bool GlyphPack::reopen() {
+    if (!fs_ || !path_[0]) return false;
+    char path[sizeof path_];
+    snprintf(path, sizeof path, "%s", path_);
+    return openPath(*fs_, path, false);
+}
+
+bool GlyphPack::openPath(fs::FS& fs, const char* path, bool crcCheck) {
     close();
+    fs_ = &fs;
+    snprintf(path_, sizeof path_, "%s", path);
     file_ = fs.open(path, FILE_READ);
     if (!file_) {
         snprintf(status_, sizeof status_, "pack missing");
@@ -69,10 +81,24 @@ bool GlyphPack::open(fs::FS& fs, const char* path) {
     if (dataOffset_ > fileSize || dataLength_ > fileSize - dataOffset_)
         return fail("pack: truncated");
     if (dataLength_ == 0 || glyphCount_ == 0) return fail("pack: empty");
+    if (tableOffset_ < kHeaderBytes) return fail("pack: bad table");
     const uint64_t tableEnd = static_cast<uint64_t>(tableOffset_) +
                               static_cast<uint64_t>(glyphCount_) * kGlyphBytes +
                               static_cast<uint64_t>(radicalCount_) * kRadicalBytes;
     if (tableEnd > dataOffset_) return fail("pack: bad table");
+
+    // The header CRC covers the entry table and the payload, from the table
+    // offset to the end of the data (tools/glyph-pack/build.py packs the table
+    // right after the 32-byte header and stores the CRC at offset 24). The
+    // full pack is streamed in 1 KB chunks, so this costs a few seconds of SD
+    // reads, not RAM; the line below measures it on hardware.
+    if (crcCheck) {
+        const uint32_t t0 = millis();
+        const bool ok = checkStoredCrc(le32(h + 24));
+        Serial.printf("[pack] crc %s, %u ms\n", ok ? "ok" : "bad",
+                      static_cast<unsigned>(millis() - t0));
+        if (!ok) return fail("pack: bad crc");
+    }
 
     // The first entries repeat the same code point at every stored size; a
     // short scan is enough to discover all sizes without reading the table.
@@ -101,10 +127,54 @@ bool GlyphPack::open(fs::FS& fs, const char* path) {
     return true;
 }
 
+bool GlyphPack::checkStoredCrc(uint32_t want) {
+    // One seek, then 1 KB chunks: the card streams the table and the payload
+    // without touching the glyph cache or allocating a file-sized buffer.
+    if (!file_ || !file_.seek(tableOffset_)) return false;
+    if (file_.position() == static_cast<size_t>(UINT32_MAX)) return false;
+    uint64_t remaining = static_cast<uint64_t>(dataOffset_) + dataLength_ - tableOffset_;
+    uint32_t crc = 0xFFFFFFFFu;
+    uint8_t buf[1024];
+    while (remaining > 0) {
+        const size_t n = static_cast<size_t>(std::min<uint64_t>(sizeof buf, remaining));
+        const size_t got = file_.read(buf, n);
+        if (got == 0) return false;
+        crc = crc32Update(crc, buf, got);
+        remaining -= got;
+    }
+    return (crc ^ 0xFFFFFFFFu) == want;
+}
+
+bool GlyphPack::reopenAfterLoss() const {
+    // A File whose descriptor died (seen after a re-open inside an HTTP
+    // request: seek() failed and position() read UINT32_MAX although the
+    // header and table had loaded) returns false here until the file is opened
+    // again. Only one re-open per failed access; the caller's retry decides.
+    if (!ready_) return false;
+    Serial.println("[pack] file handle lost, re-opening");
+    GlyphPack* self = const_cast<GlyphPack*>(this);
+    return self->reopen();
+}
+
 bool GlyphPack::readAt(uint32_t offset, uint8_t* out, size_t length) const {
-    if (!file_) return false;
-    if (!file_.seek(offset)) return false;
-    return file_.read(out, length) == length;
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        if (file_ && file_.seek(offset) &&
+            file_.position() != static_cast<size_t>(UINT32_MAX) &&
+            file_.read(out, length) == length)
+            return true;
+        if (attempt > 0 || !reopenAfterLoss()) return false;
+    }
+    return false;
+}
+
+bool GlyphPack::seekToData(uint32_t offset) const {
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        if (file_ && file_.seek(offset) &&
+            file_.position() != static_cast<size_t>(UINT32_MAX))
+            return true;
+        if (attempt > 0 || !reopenAfterLoss()) return false;
+    }
+    return false;
 }
 
 bool GlyphPack::readGlyph(uint16_t index, GlyphInfo* out) const {
@@ -250,7 +320,7 @@ bool GlyphPack::drawRadical(lgfx::LovyanGFX& gfx, uint32_t subjectId, int cx, in
     }
     if (dstW <= 0 || dstH <= 0 || dstW > 240 || dstH > 240) return false;
 
-    if (!file_.seek(g.offset)) return false;
+    if (!seekToData(g.offset)) return false;
 
     const int left = cx - dstW / 2;
     const int top = cy - dstH / 2;
@@ -327,7 +397,7 @@ bool GlyphPack::drawGlyph(lgfx::LovyanGFX& gfx, const GlyphInfo& glyph, int x, i
                           uint16_t fg, uint16_t bg, const ClipRect& clip) const {
     if (!file_ || glyph.encoding != kEncodingRle4 || glyph.width == 0 || glyph.height == 0)
         return false;
-    if (!file_.seek(glyph.offset)) return false;
+    if (!seekToData(glyph.offset)) return false;
 
     const int total = static_cast<int>(glyph.width) * glyph.height;
     uint8_t buf[128];

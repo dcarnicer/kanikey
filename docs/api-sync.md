@@ -611,6 +611,13 @@ confirmation.
 - Keep a `.bak` of assignments and outbox.
 - The outbox save copies `main` to `.bak` first, then renames `.tmp` over
   `main`, so a power cut between the two steps keeps the previous outbox.
+- The Home/batch snapshot and the subject cache use the same order (FIX-26):
+  the old file is copied to `.bak`, then `.tmp` replaces `main` in one rename.
+  The save opens `.tmp` with `w`, which truncates a leftover from a crashed
+  save; on this framework `exists()` and `remove()` both log an error when the
+  file is absent, so the happy path calls neither. The first save on an empty
+  device still logs one line for the missing `main` before it is copied; every
+  later save is silent.
 - On startup, if the main file fails CRC, use `.bak` and warn.
 - Never delete the outbox before the POST is confirmed.
 
