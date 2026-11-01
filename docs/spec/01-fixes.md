@@ -5,31 +5,33 @@ Every item below was found and reproduced in the 2026-11-01 review of the firmwa
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
 | FIX-01 | OTA cannot follow GitHub's redirect | P0 | S | none | 0a | done |
-| FIX-02 | Times shown in UTC after every sync | P0 | S | none | 0b | todo |
-| FIX-03 | A warning reveals the answer and allows a free retry | P0 | M | none | 0b | todo |
-| FIX-04 | Kanji readings are judged the opposite way from WaniKani | P1 | S | none | 0a | review |
-| FIX-05 | The "n" hint makes users fail | P1 | S | none | 0a | review |
+| FIX-02 | Times shown in UTC after every sync | P0 | S | none | 0b | done |
+| FIX-03 | A warning reveals the answer and allows a free retry | P0 | M | none | 0b | done |
+| FIX-04 | Kanji readings are judged the opposite way from WaniKani | P1 | S | none | 0a | done |
+| FIX-05 | The "n" hint makes users fail | P1 | S | none | 0a | done |
 | FIX-06 | Real HTTP read timeout is 1 s | P1 | S | none | 0a | review |
 | FIX-07 | Setup AP password derivable from the beacon | P1 | S | none | 0a | review |
-| FIX-08 | Review batches are capped at 20 and always the same items | P1 | M | none | 0a+0b | todo |
+| FIX-08 | Review batches are capped at 20 and always the same items | P1 | M | none | 0a+0b | done |
 | FIX-09 | After a wrong first part, the failed part is asked again immediately | P1 | S | none | 0a | done |
-| FIX-10 | A completed review is not in the outbox until the next Enter | P1 | S | none | 0b | todo |
-| FIX-11 | Lesson start errors are silent | P1 | M | none | 0a+0b | todo |
-| FIX-12 | Deep sleep during the lesson quiz | P2 | S | none | 0b | todo |
-| FIX-13 | A full outbox drops reviews silently | P2 | S | none | 0b | todo |
-| FIX-14 | Fixed 32 KB body cap with no fallback | P2 | M | none | 0a | todo |
-| FIX-15 | Typo tolerance uses the typed length | P2 | S | none | 0a | review |
+| FIX-10 | A completed review is not in the outbox until the next Enter | P1 | S | none | 0b | done |
+| FIX-11 | Lesson start errors are silent | P1 | M | none | 0a+0b | review |
+| FIX-12 | Deep sleep during the lesson quiz | P2 | S | none | 0b | review |
+| FIX-13 | A full outbox drops reviews silently | P2 | S | none | 0b | done |
+| FIX-14 | Fixed 32 KB body cap with no fallback | P2 | M | none | 0a | review |
+| FIX-15 | Typo tolerance uses the typed length | P2 | S | none | 0a | done |
 | FIX-16 | Capitalised romaji in the meaning field is not recognised as a reading | P2 | S | none | 0a | done |
-| FIX-17 | IME lacks common romaji aliases | P2 | S | none | 0a | review |
+| FIX-17 | IME lacks common romaji aliases | P2 | S | none | 0a | done |
 | FIX-18 | `/level_progressions` parsed into a full DOM | P2 | M | none | 0a | done |
 | FIX-19 | Station setup page has no authentication | P2 | S | FIX-07 | 0a | done |
-| FIX-20 | OTA marked valid after only 10 s of loop | P2 | S | none | 0b | todo |
-| FIX-21 | LittleFS formats on any mount failure | P3 | S | none | 0b | todo |
+| FIX-20 | OTA marked valid after only 10 s of loop | P2 | S | none | 0b | review |
+| FIX-21 | LittleFS formats on any mount failure | P3 | S | none | 0b | review |
 | FIX-22 | Outbox save rename order | P3 | S | none | 0a | done |
-| FIX-23 | Small UX bugs | P3 | S | none | 0b | todo |
-| FIX-24 | Latent robustness | P3 | S | none | 0a+0b | todo |
-| FIX-25 | Re-opening the visual pack from the setup page breaks every glyph | P1 | S | none | 0a+0b | todo |
-| FIX-26 | Cache store: noisy error log and rename order | P3 | S | none | 0a | todo |
+| FIX-23 | Small UX bugs | P3 | S | none | 0b | review |
+| FIX-24 | Latent robustness | P3 | S | none | 0a+0b | review |
+| FIX-25 | Re-opening the visual pack from the setup page breaks every glyph | P1 | S | none | 0a+0b | done |
+| FIX-26 | Cache store: noisy error log and rename order | P3 | S | none | 0a | done |
+| FIX-27 | Subject cache save aborts with bad_alloc | P0 | M | none | 0a | done |
+| FIX-28 | SD card and display share one SPI bus mutex | P1 | S | none | 0b | done |
 
 ### FIX-01 — OTA cannot follow GitHub's redirect
 
@@ -784,3 +786,114 @@ work.
 **Acceptance.**
 - [ ] No `[E]` line on a normal snapshot or subject-cache save.
 - [ ] Main is copied to `.bak` before tmp replaces it.
+
+---
+
+## Wave 2 log (2026-11-01)
+
+Implemented by DeepSeek v4.1 flash through opencode in four worktrees
+(`app`, `net`, `storage`, then `wire` for the App.cpp parts of FIX-08/11/20/
+24/25), reviewed and merged into `spec/round-2`; FIX-27 and FIX-28 were found
+on hardware during this run. After the merge: 163 native tests pass; release
+image 1,476,465 B flash (80.5%), 95,528 B RAM; the dev image builds.
+
+Review changes before merge:
+
+- FIX-20: `loadRollbackRecord()` read the count with `getUInt()` but it is
+  stored with `putUChar()`; NVS returns the default on a type mismatch, so the
+  second strike could never blacklist. Idle sleep now also waits while the new
+  image is pending (a deep-sleep wake is a reset, which would roll it back).
+- FIX-24 (b): the pack CRC took **3,587 ms** at boot on hardware, so it runs
+  only for an explicit *Check pack* and for a newly uploaded pack.
+- FIX-23 (a): the empty state showed "Next review now" after the last due item
+  was answered; the summary is applied again first.
+- FIX-26: on the SD card every subject-cache save failed once the file existed
+  (FAT refuses to rename onto an existing file, and the copy to `.bak` needed a
+  third open file on a card mounted with two slots). The SD path renames
+  `main` to `.bak`, then `.tmp` to `main`.
+- Notices: the long station-page notices and the notice titles "Could not start
+  lesson" / "Could not load reviews" were cut at the screen edge.
+
+Two dev serial commands were added for hardware checks: `K <keys>` types on the
+key grid through `onKey()` (`\n`, `\e`, `\t`, `\b` for Enter, Esc, Tab,
+Backspace), so the real key handlers and the romaji IME can be driven; `N`
+drops the canvas and `W` arms the loop watchdog.
+
+Hardware run on 2026-11-01 (Cardputer ADV, dev image of `spec/round-2`). Review
+checks used the dev seed with Wi-Fi off; the synthetic outbox and cache were
+cleared before reconnecting, so nothing was sent to WaniKani. Real-account
+checks only used GET requests; the lesson start was made offline.
+
+| Task | Check | Result |
+|---|---|---|
+| FIX-02 | Home after a sync | **pass**: "Synced 14:48" at 14:48 CET. Other zones and a zone change not run |
+| FIX-03 | `nichi` for 日's meaning; Tab; Enter | **pass**: CHECK pill and message only, `Enter: edit  Esc: pause`, Tab ignored, `nichi` kept for editing. Lesson quiz not run |
+| FIX-04 | 人 (seed): `hito`, then `nin` | **pass**: "WaniKani wants the on'yomi", then CORRECT |
+| FIX-05 | 今夜 (seed): `konya`, then `kon'ya` | **pass**: "Use n' before a vowel or y", then CORRECT |
+| FIX-08 | Two fresh batches, owner's account | **pass**: "416 due, 20 chosen" both times, different subjects |
+| FIX-10 | Complete an item, `o` before Enter | **pass**: queued and saved on the feedback screen; Enter sends without a second record. Power cut on the feedback screen not run |
+| FIX-11 | Lesson card, Wi-Fi off, Enter | **pass**: "Could not start lesson · No connection", Esc home, lesson count unchanged. The 2xx/422 paths need a real lesson start (account change), not run |
+| FIX-13 | 97 and 110 synthetic outbox records | **pass**: "Outbox: 97 pending (nearly full)"; at 110 the session is refused with "Outbox full" |
+| FIX-15 | 今夜: `tonigth` | **pass**: "Close. Check the spelling", no answer shown |
+| FIX-17 | 写真 (seed): `syasin` through the IME | **pass**: しゃしん, CORRECT |
+| FIX-23 | (a) Enter on Home with 0 due | **pass**: no request, "No reviews now". (b)-(e) not run |
+| FIX-24 | (b) pack CRC | measured 3,587 ms, moved off boot; bad CRC, key storm and upload not run |
+| FIX-25 | Portal → *Check pack* → Finish → review | **pass**: the radical glyph draws; no re-open of a ready pack |
+| FIX-26 | Snapshot saves; subject cache over an existing file | **pass** after the SD fix above: no `cache.tmp` error; 22,948 B in 162 ms and 25,550 B in 215 ms |
+| FIX-27 | 20-item batch (46-54 subjects) | **pass**: saved 20-26 KB in 137-1,381 ms, loaded in 51-838 ms, no abort |
+| FIX-28 | `N` (drop canvas) + review | **pass**: no freeze; the boot log no longer prints `addApbChangeCallback(): duplicate` |
+| FIX-06, 07, 12, 14, 20, 21 | — | not run: slow server, AP mode, battery idle, forced small cap, a bad OTA image and a corrupted LittleFS are still needed |
+
+Measured sizes (owner's account, 416 due, 120 lessons): `/summary` 4,345 B;
+review subject pages of 5 subjects 11,405-15,405 B; lesson subject pages of 3
+subjects 2,484-6,791 B. All are well below the 32 KB cap.
+
+Known limitation: the dev command `b` fetches a new batch while the old one is
+still in RAM; a second `b` dropped the minimum free heap to 3.5 KB and TLS
+certificate checks failed (`esp-sha: Failed to allocate buf memory`). The app
+flow evicts the batch first, so only the dev command is affected.
+
+### FIX-27 — Subject cache save aborts with bad_alloc
+
+- **Priority:** P0
+- **Size:** M
+- **Depends on:** none
+- **Touches:** `firmware/src/wk/Cache.h/.cpp`, `firmware/src/platform/CacheStore.cpp`, `firmware/test/test_wk/test_cache.cpp`
+- **Settings:** none
+
+**Problem / goal.** Found on hardware 2026-11-01: a 20-item batch with 55 subjects aborted after the fetch. Backtrace: `runBatch()` → `saveCacheAll()` → `cacheSaveSubjects()` → `encodeSubjectCache()` → `Writer::str()` → vector growth → `operator new` → `abort()`. The encoder grew one vector by doubling and `encodeFile()` copied it again, about three times the payload in large blocks, with 73 KB as the largest free block. `readFile()` had the same shape on load.
+
+**Behaviour.** Saving and loading the subject cache never needs the payload in one allocation; the on-disk `KKCS` format is unchanged.
+
+**Design.** `writeSubjectCache()` encodes twice through `ByteSink` (size and CRC, then the bytes through a 1 KB block); `readSubjectCache()` decodes from a `ByteSource` through a 1 KB block with a running CRC and leaves the output untouched on any error. `CacheStore` wraps `File` in `FileSink`/`FileSource` and logs count, bytes and time.
+
+**Tests.** `test_cache.cpp`: `stream_write_matches_vector_encoder`, `stream_read_decodes_vector_encoded_file`, `stream_roundtrip_small_source_chunks`, `stream_read_rejects_bad_crc`, `stream_read_rejects_truncated_file`, `stream_read_rejects_trailing_bytes`, `stream_read_leaves_output_untouched_on_error`, `stream_write_reports_sink_failure`, `stream_write_rejects_too_long_string`. Hardware: see the wave 2 log.
+
+**Docs.** `docs/api-sync.md` §7.2; `docs/hardware.md`.
+
+**Acceptance.**
+- [x] No whole-payload allocation on save or load.
+- [x] The on-disk format is byte-for-byte unchanged.
+- [x] A real 20-item batch saves and loads on hardware.
+
+### FIX-28 — SD card and display share one SPI bus mutex
+
+- **Priority:** P1
+- **Size:** S
+- **Depends on:** none
+- **Touches:** `firmware/src/app/App.cpp` `mountSd()`; comments in `firmware/src/board/Board.h` and `BoardCardputerAdv.cpp`
+- **Settings:** none
+
+**Problem / goal.** When the heap is too fragmented to re-allocate the 32,400 B canvas after a request, the app draws directly to the panel. The first review frame then froze the device. GDB over the built-in USB JTAG showed `loopTask` blocked in `spiTransaction()` on Arduino's HSPI bus mutex, which `loopTask` itself held: M5GFX drives the Cardputer ADV panel through that HSPI bus (`lgfx::v1::spi::_spi_handle[2] == &_spi_bus_array[1]`), and `mountSd()` used `SPIClass(HSPI)` too, so a glyph read inside a display transaction waited on itself. The boot log's `addApbChangeCallback(): duplicate` line was the same bus started twice. The board comment that placed the panel on SPI2 was wrong for this M5GFX version.
+
+**Behaviour.** The device never freezes when it has to draw without the canvas.
+
+**Design.** The card uses its own `SPIClass(FSPI)` (SPI2); Arduino's global `SPI` stays unused.
+
+**Tests.** Hardware: `N` then a review draws and the loop keeps answering; the boot log has no `duplicate` line; SD mount, pack reads and cache saves still work.
+
+**Docs.** This entry; the board comments.
+
+**Acceptance.**
+- [x] A review drawn without the canvas does not freeze.
+- [x] The boot log has no `addApbChangeCallback(): duplicate` line.

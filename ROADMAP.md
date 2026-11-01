@@ -5,6 +5,11 @@ cache and the `efontJA_16` removal landed, not the original product
 plan. Product scope and UX live in [docs/design.md](docs/design.md),
 [docs/ux.md](docs/ux.md) and [docs/api-sync.md](docs/api-sync.md).
 
+Round 2 (branch `spec/round-2`, 2026-11-01): the fixes from the 2026-11-01
+review are tracked in [docs/spec/01-fixes.md](docs/spec/01-fixes.md). 19 of 28
+are done and hardware-checked; FIX-06, 07, 11, 12, 14, 20, 21, 23 and 24 are
+implemented and wait for the hardware checks listed in its wave 2 log.
+
 The review loop works on hardware. The main v1 gaps are the last lesson
 hardware checks and the lesson-ordering limitation, a deliberate offline boot,
 and hardware verification of the 429/auth/parse-retry paths and the final

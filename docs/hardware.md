@@ -105,12 +105,13 @@ uv run --with pyserial python3 tools/device.py monitor
 
 ```
 E (221) esp_core_dump_flash: No core dump partition found!
-[   707][E][esp32-hal-cpu.c:110] addApbChangeCallback(): duplicate func=...
 ```
 
 - No coredump partition is configured; the app does not use one yet.
-- The APB callback warning comes from the M5Unified/SD bring-up path and does
-  not affect the run.
+- Builds before 2026-11-01 also printed `addApbChangeCallback(): duplicate`.
+  It was not benign: the SD card and M5GFX's panel were started on the same
+  Arduino SPI bus (HSPI), which could freeze the device (FIX-28). The card now
+  has its own bus and the line is gone; if it comes back, check the buses.
 
 ### Review session (M1)
 
@@ -482,23 +483,22 @@ Implementation landed, hardware checks still open (no device was attached).
   file is copied to `.bak` before `.tmp` is renamed over `main`, as the outbox
   does. Hardware: a sync in a release build should print no `cache.tmp` line,
   and the cache should still load after a reboot.
-### 2026-11-01 — Response sizes (to measure on hardware)
+### 2026-11-01 — Response sizes
 
-The serial log now prints `[summary] body N bytes` and
+The serial log prints `[summary] body N bytes` and
 `[review] subject page a-b: N bytes` (lessons print the same with `[lesson]`).
-Record the numbers here, on the owner's account (409 due at the time of the
-review):
+Measured on the owner's account (416 reviews due, 120 lessons):
 
 | Request | Body bytes | Notes |
 |---|---:|---|
-| `GET /summary` (1000 IDs per bucket) | (to measure on hardware) | must stay below the 32 KB cap |
-| `GET /summary` (owner account) | (to measure on hardware) | |
-| `GET /subjects?ids=` 5 review subjects | (to measure on hardware) | fallback 5 → 2 → 1 |
-| `GET /subjects?ids=` 3 lesson subjects | (to measure on hardware) | fallback 3 → 1 |
+| `GET /summary` (owner account, 1000 IDs per bucket kept) | 4,345 | well below the 32 KB cap |
+| `GET /subjects?ids=` 5 review subjects | 11,405-15,405 | fallback 5 → 2 → 1 not needed |
+| `GET /subjects?ids=` 3 lesson subjects | 2,484-6,791 | fallback 3 → 1 not needed |
+| Subject cache file, 20-item batch (46-54 subjects) | 20,319-25,550 | streamed (FIX-27): save 137-1,381 ms, load 51-838 ms |
 
-A dev build with a forced small cap should show the 5 → 2 → 1 and 3 → 1 retry
-lines. Two shuffled 30-item sessions on the same account should start with
-different items.
+The 5 → 2 → 1 and 3 → 1 retry paths still need a dev build with a forced small
+cap. Two fresh 20-item batches from the 416 due started with different items
+(FIX-08).
 
 ### 2026-11-01 — subject cache bad_alloc (FIX-27)
 
