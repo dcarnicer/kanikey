@@ -4937,6 +4937,49 @@ void uploadSdFile(const String& line) {
     gDirty = true;
 }
 
+#ifdef KANIKEY_DEV
+// "K <keys>" presses grid keys as if typed, so hardware checks can drive the
+// real key handlers and the romaji IME. \n Enter, \e Esc, \t Tab, \b
+// Backspace; any other character is found on the main or Shift layer.
+void injectKeys(const String& keys) {
+    const auto press = [](int x, int y, bool shift) {
+        const bool savedShift = gShift;
+        gShift = shift;
+        KeyEvent e;
+        e.key = tgc::cardputerKeyAt(x, y);
+        e.x = static_cast<uint8_t>(x);
+        e.y = static_cast<uint8_t>(y);
+        e.down = true;
+        onKey(e);
+        e.down = false;
+        onKey(e);
+        gShift = savedShift;
+    };
+    for (unsigned i = 0; i < keys.length(); ++i) {
+        char c = keys[i];
+        if (c == '\\' && i + 1 < keys.length()) {
+            const char next = keys[++i];
+            if (next == 'n') press(13, 2, false);
+            else if (next == 'e') press(0, 0, false);
+            else if (next == 't') press(0, 1, false);
+            else if (next == 'b') press(13, 0, false);
+            else if (next == '\\') c = '\\';
+            if (next != '\\') continue;
+        }
+        bool found = false;
+        for (int layer = 0; layer < 2 && !found; ++layer)
+            for (int y = 0; y < tgc::kCardputerRows && !found; ++y)
+                for (int x = 0; x < tgc::kCardputerCols && !found; ++x)
+                    if (tgc::cardputerCharAt(x, y, layer == 1) == c) {
+                        press(x, y, layer == 1);
+                        found = true;
+                    }
+        if (!found) Serial.printf("[key] no key for '%c'\n", c);
+    }
+    gLastInputAt = millis();
+}
+#endif
+
 void handleSerial() {
     if (Serial.available()) {
         gLastInputAt = millis();
@@ -5230,6 +5273,8 @@ void handleSerial() {
             kk::ota::clearRollbackRecord();
             firmwareNote("Rollback record cleared", kOk);
             Serial.println("[ota] rollback record cleared");
+        } else if (gSerialLine.startsWith("K ")) {
+            injectKeys(gSerialLine.substring(2));
         } else if (gSerialLine.startsWith("R")) {
             String arg = gSerialLine.substring(1);
             arg.trim();
@@ -5241,7 +5286,7 @@ void handleSerial() {
 #endif
         } else if (!gSerialLine.isEmpty()) {
 #ifdef KANIKEY_DEV
-            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear J=attention-outbox Y=clear-rollback C=dev-cache X=clear-cache R<id>=radical U <url>=manifest F=firmware-check I=firmware-install V=firmware-screen k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload\n");
+            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear J=attention-outbox Y=clear-rollback C=dev-cache X=clear-cache K <keys>=type R<id>=radical U <url>=manifest F=firmware-check I=firmware-install V=firmware-screen k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload\n");
 #else
             Serial.printf("[kk] commands: h=heap i=pack S=asset-server p=picture r=restart up <bytes> <path>=sd-upload\n");
 #endif
