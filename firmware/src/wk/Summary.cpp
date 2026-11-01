@@ -1,5 +1,6 @@
 #include "wk/Summary.h"
 
+#include <algorithm>
 #include <utility>
 
 #include "wk/Time.h"
@@ -76,6 +77,19 @@ std::vector<uint32_t> Summary::lessonSubjectIds(size_t limit) const {
             out.push_back(id);
         }
     return out;
+}
+
+bool Summary::removeLessonSubject(uint32_t id) {
+    bool changed = false;
+    for (SummaryBucket& b : lessons) {
+        const auto end = std::remove(b.subjectIds.begin(), b.subjectIds.end(), id);
+        const size_t removed = static_cast<size_t>(b.subjectIds.end() - end);
+        if (removed == 0) continue;
+        b.subjectIds.erase(end, b.subjectIds.end());
+        b.count = b.count > removed ? static_cast<uint16_t>(b.count - removed) : 0;
+        changed = true;
+    }
+    return changed;
 }
 
 bool parseSummary(const JsonValue& root, Summary* out) {

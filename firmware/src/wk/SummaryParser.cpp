@@ -22,10 +22,14 @@ public:
         return pos_ == text_.size();
     }
     bool complete() const { return hasData_ && hasLessons_ && hasReviews_; }
+    bool truncated() const { return truncated_; }
     const std::string& error() const { return error_; }
 
 private:
     bool fail(const char* what) {
+        // Running out of text while a value is still open is a cut body, not a
+        // malformed one. The callers use this to retry with a smaller page.
+        if (pos_ >= text_.size()) truncated_ = true;
         if (error_.empty()) {
             error_ = std::string(what) + " at " + std::to_string(pos_);
         }
@@ -71,7 +75,10 @@ private:
                 case 'r': out->push_back('\r'); break;
                 case 't': out->push_back('\t'); break;
                 case 'u': {
-                    if (pos_ + 4 > text_.size()) return fail("short \\u");
+                    if (pos_ + 4 > text_.size()) {
+                        truncated_ = true;
+                        return fail("short \\u");
+                    }
                     uint32_t cp = 0;
                     for (int i = 0; i < 4; ++i) {
                         const char h = text_[pos_++];
@@ -264,10 +271,13 @@ private:
     bool hasData_ = false;
     bool hasLessons_ = false;
     bool hasReviews_ = false;
+    bool truncated_ = false;
 };
 }  // namespace
 
-bool parseSummaryText(std::string_view text, Summary* out, size_t maxIdsPerBucket) {
+bool parseSummaryText(std::string_view text, Summary* out, size_t maxIdsPerBucket,
+                      bool* truncated) {
+    if (truncated) *truncated = false;
     if (!out) return false;
     out->lessons.clear();
     out->reviews.clear();
@@ -275,6 +285,7 @@ bool parseSummaryText(std::string_view text, Summary* out, size_t maxIdsPerBucke
     out->dataUpdatedAt = 0;
     Reader r(text, maxIdsPerBucket);
     if (!r.parse(out) || !r.complete()) {
+        if (truncated) *truncated = r.truncated();
         out->lessons.clear();
         out->reviews.clear();
         out->nextReviewsAt.clear();

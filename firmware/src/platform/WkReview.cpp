@@ -64,17 +64,31 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
         if (std::find(ids.begin(), ids.end(), a.subjectId) == ids.end())
             ids.push_back(a.subjectId);
 
-    constexpr size_t kSubjectBatch = 5;
-    for (size_t begin = 0; begin < ids.size(); begin += kSubjectBatch) {
-        const size_t end = std::min(ids.size(), begin + kSubjectBatch);
+    size_t pageSize = 5;
+    for (size_t begin = 0; begin < ids.size();) {
+        const size_t count = std::min(pageSize, ids.size() - begin);
+        const size_t end = begin + count;
         String sp = "/v2/subjects?ids=" + idList(ids, begin, end);
         WkSubjectsResult sr = wkGetSubjectsRetry(sp, token, 32768, true);
+        Serial.printf("[review] subject page %u-%u: %u bytes%s\n", static_cast<unsigned>(begin),
+                      static_cast<unsigned>(end), static_cast<unsigned>(sr.http.bytes),
+                      sr.http.truncated ? " (truncated)" : "");
         if (sr.http.httpCode != 200) {
             batch.httpCode = sr.http.httpCode;
             batch.error = "subjects HTTP " + String(sr.http.httpCode);
             return batch;
         }
         if (!sr.parsed) {
+            if (sr.http.truncated && count > 1) {
+                // A truncated page is retried with 5 -> 2 -> 1 subjects. The
+                // smaller size stays for the following pages.
+                const size_t smaller = count > 2 ? 2 : 1;
+                Serial.printf("[review] subject page %u-%u truncated, retrying with %u\n",
+                              static_cast<unsigned>(begin), static_cast<unsigned>(end),
+                              static_cast<unsigned>(smaller));
+                pageSize = smaller;
+                continue;
+            }
             const size_t n = sr.http.body.size();
             Serial.printf("[review] subjects JSON failed: len=%u trunc=%d\n",
                           static_cast<unsigned>(n), sr.http.truncated ? 1 : 0);
@@ -88,6 +102,7 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
         Serial.printf("[review] subjects %u/%u, total %u\n", static_cast<unsigned>(end),
                       static_cast<unsigned>(ids.size()),
                       static_cast<unsigned>(batch.subjects.size()));
+        begin = end;
     }
 
     attachStudyMaterials(token, &batch.subjects);

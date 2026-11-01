@@ -1979,6 +1979,7 @@ void run_answer_tests();
 void run_store_tests();
 void run_portal_tests();
 void run_storage_tests();
+void run_net_tests();
 
 int main(int, char**) {
     UNITY_BEGIN();
@@ -2065,5 +2066,6 @@ int main(int, char**) {
     run_store_tests();
     run_portal_tests();
     run_storage_tests();
+    run_net_tests();
     return UNITY_END();
 }

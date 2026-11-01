@@ -477,3 +477,20 @@ Implementation landed, hardware checks still open (no device was attached).
   file is copied to `.bak` before `.tmp` is renamed over `main`, as the outbox
   does. Hardware: a sync in a release build should print no `cache.tmp` line,
   and the cache should still load after a reboot.
+### 2026-11-01 — Response sizes (to measure on hardware)
+
+The serial log now prints `[summary] body N bytes` and
+`[review] subject page a-b: N bytes` (lessons print the same with `[lesson]`).
+Record the numbers here, on the owner's account (409 due at the time of the
+review):
+
+| Request | Body bytes | Notes |
+|---|---:|---|
+| `GET /summary` (1000 IDs per bucket) | (to measure on hardware) | must stay below the 32 KB cap |
+| `GET /summary` (owner account) | (to measure on hardware) | |
+| `GET /subjects?ids=` 5 review subjects | (to measure on hardware) | fallback 5 → 2 → 1 |
+| `GET /subjects?ids=` 3 lesson subjects | (to measure on hardware) | fallback 3 → 1 |
+
+A dev build with a forced small cap should show the 5 → 2 → 1 and 3 → 1 retry
+lines. Two shuffled 30-item sessions on the same account should start with
+different items.
