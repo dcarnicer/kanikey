@@ -29,6 +29,9 @@ struct Summary {
     // Due subject IDs, oldest bucket first, at most `limit`.
     std::vector<uint32_t> dueSubjectIds(uint32_t now, size_t limit) const;
     std::vector<uint32_t> lessonSubjectIds(size_t limit) const;
+    // Drops `id` from every lesson bucket and decrements the bucket counts.
+    // Returns true when at least one bucket changed; used after a lesson start.
+    bool removeLessonSubject(uint32_t id);
 };
 
 bool parseSummary(const JsonValue& root, Summary* out);

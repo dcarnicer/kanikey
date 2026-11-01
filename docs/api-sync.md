@@ -118,6 +118,13 @@ data.next_reviews_at
 - A structurally valid summary with empty `lessons`/`reviews` arrays and no
   `next_reviews_at` is an all-clear account, not a parse failure. The streaming
   parser requires the `data`, `lessons` and `reviews` keys to be present.
+- The parser keeps counts for every bucket and up to 1000 IDs per bucket (4 B
+  per ID, about 4 KB per bucket). `dueSubjectIds()` reads across buckets, so a
+  10/20/30-item batch is chosen from the whole due set instead of the first 20.
+- A 1000-ID-per-bucket body stays below the 32 KB response cap; the measured
+  size goes in `docs/hardware.md` (to measure on hardware). If a summary is
+  ever truncated, the probe retries once with a 64 KB heap buffer when the heap
+  leaves room, otherwise it reports the truncation as an error.
 
 ### 3.3 `/assignments`
 
@@ -210,7 +217,10 @@ stored (up to 4) and the English sentence is shown on the sixth detail page;
 `pronunciation_audios` remains phase 2 (EXT-06). The related IDs
 (`visually_similar_subject_ids`, `amalgamation_subject_ids`, up to 32 each) are
 stored and the detail card adds a related page with counts and any meanings
-already present in the batch.
+already present in the batch. A subject page cut at the 32 KB cap is retried
+with smaller pages instead of failing the batch: 5 → 2 → 1 subjects for
+reviews and 3 → 1 for lessons, merged back in order. The serial log prints one
+`subject page a-b: N bytes` line per request for the hardware measurement.
 
 The Level step requests `/subjects?levels=<level>&types=kanji&hidden=false&page_after_id=999999999`
 and reads only the top-level `total_count` for the level's kanji denominator;
@@ -280,6 +290,11 @@ Body:
 - It returns the assignment with `srs_stage = 1` and `available_at`. The current
   client only checks the status; the refreshed data arrives with the next
   batch/sync.
+- The client sends `Content-Type: application/json` and `Content-Length` on
+  the PUT, as it does on POST.
+- A 422 means the assignment was already started: the client treats it as
+  success, removes the subject from the lesson buckets and advances the card.
+  Any other non-2xx keeps the item and shows a retry screen.
 
 ### 3.8 `/review_statistics`
 
@@ -446,6 +461,11 @@ item_complete:
 then stable-sorts by subject level when the cached `User` says
 `lower_levels_first`; the shuffle stays inside each level. The local `Order`
 setting is separate and only selects meaning-first or reading-first.
+
+The shuffled batch is a sample of the whole due set: `runBatch()` reads all due
+IDs (up to 1000 per bucket), `sampleIds()` picks the configured batch size with
+a per-batch seed and `fetchReviewBatch()` slices that list to the same limit.
+`lower_levels_first` keeps the current slice until REV-08 decides its sampling.
 
 **Requeue (2026-11-01).** A wrong part is not asked again right after the
 feedback for the other part: once both parts were attempted and one is still
@@ -766,7 +786,10 @@ without opening TLS, calling the request hooks or touching the body buffer.
 policy. They retry a truncated or unparsable 200, `httpCode == 0` or 5xx once,
 with a short delay between attempts. Each 200 body is parsed before the next
 request, so a short JSON body gets one more attempt; other 4xx and 429 are not
-retried by the helpers, and a 429 still arms the shared gate. The wait is the
+retried by the helpers, and a 429 still arms the shared gate. A truncated
+`/summary` is retried once with a 64 KB heap buffer when the largest free block
+leaves room for it and the next TLS handshake; otherwise the truncation is
+reported as a summary error. The wait is the
 reset delta clamped to 120 s, or 60 s when the header is absent/past or the
 clock is untrusted. The boot screen, Home status line and sync error line show
 the countdown; an outbox POST 429 stays `Pending` and the next attempt is

@@ -60,17 +60,28 @@ LessonBatch fetchLessonBatch(const String& token, const std::vector<uint32_t>& l
         if (std::find(ids.begin(), ids.end(), a.subjectId) == ids.end())
             ids.push_back(a.subjectId);
 
-    constexpr size_t kSubjectBatch = 3;
-    for (size_t begin = 0; begin < ids.size(); begin += kSubjectBatch) {
-        const size_t end = std::min(ids.size(), begin + kSubjectBatch);
+    size_t pageSize = 3;
+    for (size_t begin = 0; begin < ids.size();) {
+        const size_t count = std::min(pageSize, ids.size() - begin);
+        const size_t end = begin + count;
         String sp = "/v2/subjects?ids=" + idList(ids, begin, end);
         WkSubjectsResult sr = wkGetSubjectsRetry(sp, token, 32768, true);
+        Serial.printf("[lesson] subject page %u-%u: %u bytes%s\n", static_cast<unsigned>(begin),
+                      static_cast<unsigned>(end), static_cast<unsigned>(sr.http.bytes),
+                      sr.http.truncated ? " (truncated)" : "");
         if (sr.http.httpCode != 200) {
             batch.httpCode = sr.http.httpCode;
             batch.error = "subjects HTTP " + String(sr.http.httpCode);
             return batch;
         }
         if (!sr.parsed) {
+            if (sr.http.truncated && count > 1) {
+                // Lesson mnemonics are large: fall back from 3 subjects to 1.
+                Serial.printf("[lesson] subject page %u-%u truncated, retrying with 1\n",
+                              static_cast<unsigned>(begin), static_cast<unsigned>(end));
+                pageSize = 1;
+                continue;
+            }
             batch.error = "subjects JSON";
             return batch;
         }
@@ -79,6 +90,7 @@ LessonBatch fetchLessonBatch(const String& token, const std::vector<uint32_t>& l
         Serial.printf("[lesson] subjects %u/%u, total %u\n", static_cast<unsigned>(end),
                       static_cast<unsigned>(ids.size()),
                       static_cast<unsigned>(batch.subjects.size()));
+        begin = end;
     }
     attachStudyMaterials(token, &batch.subjects);
 

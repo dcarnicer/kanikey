@@ -33,6 +33,9 @@ bool gRateLimitGateActive = false;
 bool gAuthBlocked = false;
 int gAuthHttpCode = 0;
 
+// Set by the first 2xx status; read by the OTA verification window.
+bool gHadApiSuccess = false;
+
 // The Cardputer has no RTC; anything earlier than this is a clock that has not
 // been set yet, so an epoch reset header cannot be compared against it.
 constexpr uint32_t kTrustedClockEpoch = 1700000000u;
@@ -81,9 +84,12 @@ void wkClearAuthBlock() {
     gAuthHttpCode = 0;
 }
 
+bool wkHadApiSuccess() { return gHadApiSuccess; }
+
 namespace {
 WkResponse request(const String& method, const String& path, const String& token,
-                    const String& body, size_t maxBodyBytes, uint32_t timeoutMs) {
+                    const String& body, size_t maxBodyBytes, uint32_t timeoutMs,
+                    char* externalBuffer = nullptr, size_t externalCapacity = 0) {
     const uint32_t startMs = millis();
     if (gAuthBlocked) {
         WkResponse r;
@@ -145,7 +151,7 @@ WkResponse request(const String& method, const String& path, const String& token
                  "Wanikani-Revision: 20170710\r\n"
                  "Accept: application/json\r\n"
                  "Connection: close\r\n");
-    if (method == "POST") {
+    if (method == "POST" || method == "PUT") {
         client.print("Content-Type: application/json\r\n");
         client.print("Content-Length: ");
         client.print(body.length());
@@ -165,6 +171,7 @@ WkResponse request(const String& method, const String& path, const String& token
         const int sp = r.statusLine.indexOf(' ');
         if (sp > 0) r.httpCode = r.statusLine.substring(sp + 1, sp + 4).toInt();
     }
+    if (r.httpCode >= 200 && r.httpCode < 300) gHadApiSuccess = true;
 
     int contentLength = -1;
     while (client.connected() || client.available()) {
@@ -182,7 +189,10 @@ WkResponse request(const String& method, const String& path, const String& token
         if (millis() - t0 > timeoutMs) break;
     }
 
-    const size_t cap = std::min<size_t>(maxBodyBytes, sizeof gBodyBuffer);
+    const size_t bufferSize = externalBuffer && externalCapacity ? externalCapacity
+                                                                 : sizeof gBodyBuffer;
+    char* const buffer = externalBuffer && externalCapacity ? externalBuffer : gBodyBuffer;
+    const size_t cap = std::min<size_t>(maxBodyBytes, bufferSize);
     size_t bodyLen = 0;
     if (contentLength >= 0) {
         size_t want = static_cast<size_t>(contentLength);
@@ -200,7 +210,7 @@ WkResponse request(const String& method, const String& path, const String& token
                                                                   want - bodyLen));
                 const int n = client.read(buf, take);
                 if (n > 0) {
-                    std::memcpy(gBodyBuffer + bodyLen, buf, static_cast<size_t>(n));
+                    std::memcpy(buffer + bodyLen, buf, static_cast<size_t>(n));
                     bodyLen += static_cast<size_t>(n);
                     lastData = millis();
                     continue;
@@ -224,11 +234,11 @@ WkResponse request(const String& method, const String& path, const String& token
             }
             const int c = client.read();
             if (c < 0) break;
-            gBodyBuffer[bodyLen++] = static_cast<char>(c);
+            buffer[bodyLen++] = static_cast<char>(c);
         }
     }
 
-    r.body = std::string_view(gBodyBuffer, bodyLen);
+    r.body = std::string_view(buffer, bodyLen);
     r.bytes = bodyLen;
     r.ms = millis() - t0;
     Serial.printf("[http] %s -> %d, %u body bytes, %u ms, cl=%d%s\n", path.c_str(),
@@ -262,6 +272,13 @@ WkResponse request(const String& method, const String& path, const String& token
 WkResponse wkGet(const String& path, const String& token, size_t maxBodyBytes,
                  uint32_t timeoutMs) {
     return request("GET", path, token, String(), maxBodyBytes, timeoutMs);
+}
+
+WkResponse wkGetToBuffer(const String& path, const String& token, char* body,
+                         size_t capacity, size_t maxBodyBytes, uint32_t timeoutMs) {
+    if (!body || capacity == 0)
+        return request("GET", path, token, String(), maxBodyBytes, timeoutMs);
+    return request("GET", path, token, String(), maxBodyBytes, timeoutMs, body, capacity);
 }
 
 WkResponse wkPost(const String& path, const String& token, const String& body,

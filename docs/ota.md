@@ -74,18 +74,35 @@ truncated URL.
 3. **Install** (two Enters) saves the cache and outbox, streams the image into
    `Update`, checks the exact size and SHA-256 while it writes, then calls
    `Update.end()` and switches the boot slot. The device restarts.
-4. The new image boots in `PENDING_VERIFY`. After 10 seconds of `loop()` it is
-   marked valid; a crash, watchdog, reset or power cut before that makes the
-   bootloader return to the previous slot. A deep sleep before the 10 seconds
-   also marks it valid, because the device has already run its setup and is
-   about to leave the loop normally.
-5. After a rollback, the failed version is recorded in NVS and is never offered
-   again. The next boot is the old image, with settings and progress intact.
+4. The new image boots in `PENDING_VERIFY`. It is marked valid after the first
+   successful WaniKani request (any 2xx) or after 10 minutes of `loop()`,
+   whichever comes first. A crash, watchdog, reset or power cut before that
+   makes the bootloader return to the previous slot. A deep sleep uses the same
+   rule: the image is not marked valid just because it slept.
+5. After a rollback, the failed version is counted in NVS. The first failed
+   first boot keeps the version on offer; the second blacklists it and it is
+   never offered again. A different version starts the count again. The next
+   boot is the old image, with settings and progress intact.
 
 The install needs enough contiguous heap for TLS. The review batch is evicted
 while the user is on Home and during lessons, and the UI canvas is released for
 the download, so a 1.75 MiB slot has comfortable headroom (the release image is
 about 1.46 MB).
+
+## Verification window
+
+An updated image is on probation until it proves that it can reach the API. It
+is marked valid on the **first 2xx response** from WaniKani, or after **10
+minutes of loop()** when the device is offline, whichever comes first. Before
+that, a crash, watchdog, reset or power cut rolls the bootloader back.
+
+A version is blacklisted only after **two failed first boots** of the same
+version. The first rollback stores a count of 1 and leaves the version on
+offer, because a single failed boot can be a power cut. The second rollback
+stores `fwfailed` and stops offering it. When that version later boots and
+reaches valid (for example after a manual USB flash), the count is cleared.
+The decision is the pure `ota::rollbackDecision()` helper; the record lives in
+NVS under `fwfailver` / `fwfailcnt`.
 
 ## Trust and safety
 

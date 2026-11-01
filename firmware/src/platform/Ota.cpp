@@ -572,6 +572,42 @@ void saveLastCheck(uint32_t epoch) {
     p.end();
 }
 
+RollbackRecord loadRollbackRecord() {
+    RollbackRecord record;
+    Preferences p;
+    if (!p.begin("kanikey", true)) return record;
+    if (p.isKey("fwfailver")) {
+        const String value = p.getString("fwfailver", "");
+        const size_t n = std::min<size_t>(value.length(), kRollbackVersionChars);
+        std::memcpy(record.version, value.c_str(), n);
+        record.version[n] = '\0';
+    }
+    record.count = p.getUChar("fwfailcnt", 0);  // stored with putUChar()
+    p.end();
+    return record;
+}
+
+void saveRollbackRecord(const RollbackRecord& record) {
+    Preferences p;
+    if (!p.begin("kanikey", false)) return;
+    if (record.version[0] == '\0') {
+        p.remove("fwfailver");
+        p.remove("fwfailcnt");
+    } else {
+        p.putString("fwfailver", String(record.version));
+        p.putUChar("fwfailcnt", record.count);
+    }
+    p.end();
+}
+
+void clearRollbackRecord() {
+    Preferences p;
+    if (!p.begin("kanikey", false)) return;
+    p.remove("fwfailver");
+    p.remove("fwfailcnt");
+    p.end();
+}
+
 }  // namespace kk::ota
 
 // initArduino() marks a pending image valid before setup() unless this returns

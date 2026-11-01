@@ -17,6 +17,7 @@
 #include <string>
 
 #include "ota/Manifest.h"
+#include "ota/Rollback.h"
 
 namespace kk::ota {
 
@@ -99,5 +100,12 @@ void saveFailedVersion(std::string_view version);
 void saveInstallRecord(std::string_view version, std::string_view slot);
 void clearInstallRecord();
 void saveLastCheck(uint32_t epoch);
+
+// Two-strike rollback record (NVS `fwfailver` / `fwfailcnt`). The caller
+// applies `rollbackDecision()` and stores the result; a version that reaches
+// valid clears it.
+RollbackRecord loadRollbackRecord();
+void saveRollbackRecord(const RollbackRecord& record);
+void clearRollbackRecord();
 
 }  // namespace kk::ota

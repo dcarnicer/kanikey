@@ -32,10 +32,20 @@ void wkSetRequestHooks(WkMemHook before, WkMemHook after);
 // `path` starts with /v2/. `maxBodyBytes` bounds the String body.
 WkResponse wkGet(const String& path, const String& token, size_t maxBodyBytes,
                  uint32_t timeoutMs = 20000);
+// Same as wkGet(), but writes the body into `body` (capacity `capacity` bytes).
+// The caller keeps the buffer alive until it has parsed `r.body`. A truncated
+// response still reports `WkResponse::truncated`; the shared buffer is not used.
+WkResponse wkGetToBuffer(const String& path, const String& token, char* body,
+                         size_t capacity, size_t maxBodyBytes,
+                         uint32_t timeoutMs = 20000);
 WkResponse wkPost(const String& path, const String& token, const String& body,
                   size_t maxBodyBytes, uint32_t timeoutMs = 20000);
 WkResponse wkPut(const String& path, const String& token, const String& body,
                  size_t maxBodyBytes, uint32_t timeoutMs = 20000);
+
+// True once any request has returned a 2xx status since boot. The OTA
+// verification window uses it to mark a new image valid before 10 minutes.
+bool wkHadApiSuccess();
 
 // Whole seconds left in the shared 429 gate; 0 when requests may go out.
 // Safe across the millis() wrap. While the gate is active every request returns
