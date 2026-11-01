@@ -148,6 +148,19 @@ AnswerOutcome ReviewQueue::answer(AnswerStatus status) {
         return out;
     }
 
+    // The other part is still pending and was already answered wrong: bring
+    // the item back a few positions later instead of asking the failed part
+    // right after the feedback showed it.
+    const bool otherPending = meaning ? (item.needsReading && !item.readingDone)
+                                      : (item.needsMeaning && !item.meaningDone);
+    const bool otherAttempted = meaning ? item.readingAttempted : item.meaningAttempted;
+    if (otherPending && otherAttempted) {
+        requeueFront();
+        out.advanced = true;
+        out.requeued = true;
+        return out;
+    }
+
     // Move to the part that still needs an answer.
     setPart(item);
     out.advanced = true;

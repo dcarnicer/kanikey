@@ -439,6 +439,12 @@ then stable-sorts by subject level when the cached `User` says
 `lower_levels_first`; the shuffle stays inside each level. The local `Order`
 setting is separate and only selects meaning-first or reading-first.
 
+**Requeue (2026-11-01).** A wrong part is not asked again right after the
+feedback for the other part: once both parts were attempted and one is still
+open, the item goes back `kRequeueGap` (4) positions later with both attempted
+flags reset. The incorrect counters keep their values, so `POST /reviews` is
+unchanged.
+
 ### 5.5 After syncing
 
 - `summary` is refreshed; Home recalculates the due/lesson counters and the

@@ -64,7 +64,9 @@ public:
 
     // Applies one answer to the current part. Warning leaves the item and the
     // part untouched (the UI retries the same answer). Incorrect increments the
-    // counter and either switches to the other part or requeues the item.
+    // counter and either switches to the other part or requeues the item. A
+    // correct part also requeues the item when the other part was answered
+    // wrong already, so the failed part is not asked immediately.
     AnswerOutcome answer(AnswerStatus status);
 
     // Drop the current item (the user skipped it). It is not submitted.
