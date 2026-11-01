@@ -4514,7 +4514,7 @@ void handleSerial() {
         const char c = static_cast<char>(Serial.read());
         if (c == '\r') continue;
         if (c != '\n') {
-            if (gSerialLine.length() < 80) gSerialLine += c;
+            if (gSerialLine.length() < 256) gSerialLine += c;  // U <url> takes up to 200
             continue;
         }
         gSerialLine.trim();
