@@ -249,7 +249,7 @@ AnswerCheck checkAnswer(const Subject& subject, AnswerKind kind, std::string_vie
         std::string closest;
         if (closeMeaning(subject, normalized, &closest)) {
             if (strict)
-                return warning("Close. Check the spelling: " + closest);
+                return warning("Close. Check the spelling");
             return correct("Correct, with a small typo");
         }
 

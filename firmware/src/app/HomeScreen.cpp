@@ -108,8 +108,14 @@ void drawHomeScreen(lgfx::LovyanGFX& d, const HomeView& view) {
     d.setTextFont(0);
     d.setTextSize(1);
     if (view.statusText[0]) {
+        char status[56];
+        snprintf(status, sizeof status, "%s%s", view.statusText,
+                 view.outboxNearlyFull ? " (nearly full)" : "");
         d.setTextColor(view.levelUp ? ui::kOk : view.statusColor, ui::kBg);
-        d.drawString(view.statusText, 8, 117);
+        d.drawString(status, 8, 117);
+    } else if (view.outboxNearlyFull) {
+        d.setTextColor(ui::kWarn, ui::kBg);
+        d.drawString("Outbox nearly full", 8, 117);
     } else if (view.levelLine[0]) {
         d.setTextColor(ui::kFaint, ui::kBg);
         d.drawString(view.levelLine, 8, 117);

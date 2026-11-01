@@ -28,6 +28,7 @@ struct HomeView {
     bool levelUp = false;  // statusText is the level-up notice
     uint32_t outboxAttention = 0;
     uint32_t outboxPending = 0;
+    bool outboxNearlyFull = false;  // 96 of 128 slots used
 };
 
 // Draws the Home frame into d. The caller owns startWrite()/endWrite() and

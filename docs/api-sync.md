@@ -514,6 +514,11 @@ offset  field              type
   version do not change. Files written before this field load with `0`.
 - `sending` is marked before the POST; if there is a power cut, the next flush
   treats it like `ambiguous` and reconciles it, not blindly as `pending`.
+- A completed review is appended and saved locally before the feedback frame is
+  drawn. `Enter`, the end of the session or the next flush sends that sequence;
+  the record is never added twice. When the outbox has fewer free slots than the
+  batch size the session does not start (see §6.4), so completion always has a
+  place to go.
 - `rejected` is kept until the user sees it; the Home status line shows
   `N need attention` and `O: outbox` opens the list. Discarding is confirmed
   and removes only the selected `seq`, never a pending, sending or ambiguous
@@ -592,6 +597,11 @@ stalled handshake gives up with the TLS error line after 15 s.
 - If the user reviews in KaniKey and on the web at the same time, there may be
   conflicts.
 - The outbox is not synchronized between devices.
+- The outbox holds 128 records, counting pending, sending, ambiguous, rejected
+  and stuck alike. A session cannot start when fewer slots than the batch size
+  are free (`Outbox full`, `Enter: sync`). Home appends `(nearly full)` above
+  96 records. A completion that still fails to queue (safety net) shows a
+  visible message instead of dropping the review.
 
 **Implementation (2026-10-29).** `attempts` is incremented before each POST and
 saturates at 255. After 50 started attempts the next send is replaced by
@@ -640,6 +650,10 @@ confirmation.
   later save is silent.
 - On startup, if the main file fails CRC, use `.bak` and warn.
 - Never delete the outbox before the POST is confirmed.
+- LittleFS is mounted read-only first (`LittleFS.begin(false)`); a failed mount
+  never formats. The device asks (`Storage unreadable`, `Enter: format  Esc:
+  continue`). `Esc` continues without storage: outbox and cache writes become
+  no-ops and Home shows `Storage unavailable`.
 
 **Implementation (2026-10-29).** The Home/user/batch snapshot is
 `/state/cache.bin` (`KKCA`, version 11); the batch subjects are

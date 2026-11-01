@@ -729,3 +729,23 @@ answer: 一 + "none" matched "one" and 手 + "handle" matched "hand".
 typo in a long answer still shows the warning in strict mode. The boundary is
 covered by native tests; it must be re-checked against WaniKani when REV-02
 decides the policy.
+
+---
+
+## 2026-11-01 — A warning hides the answer and keeps the typed text
+
+**Decision:** a `Warning` (typo, reading-as-meaning, n' hint, rejected reading)
+shows only the `CHECK` pill and the message, never the typed or answer row.
+`Tab` is ignored, the hint bar reads `Enter: edit  Esc: pause` (reviews) or
+`Enter: edit  Esc: card` (lesson quiz), and `Enter` returns to the same question
+with the meaning string and IME raw buffer intact. The strict typo message is
+`Close. Check the spelling` and never names the candidate answer.
+
+**Why:** the previous warning screen drew the correct answer and cleared the
+input, so typing the reading in the meaning field revealed the meaning and gave
+a free retry.
+
+**Implications:** a warning is still not counted and not sent to WaniKani; only
+the retry behaviour changes. The lesson quiz keeps its input for the same
+reason. `tests` cover the message text and that existing warning cases still
+return `Warning`.
