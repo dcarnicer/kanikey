@@ -14,6 +14,7 @@
 #include <memory>
 
 #include "Version.h"
+#include "ota/HttpHeader.h"
 #include "platform/RootCerts.h"
 
 #ifndef KANIKEY_ENV
@@ -24,7 +25,11 @@ namespace kk::ota {
 namespace {
 
 constexpr size_t kMaxRedirects = 4;
-constexpr size_t kHeaderLineMax = 512;
+// Bound the header block so a hostile server cannot spin: 64 lines or 16 KiB,
+// whichever comes first. The TLS handshake is bounded separately.
+constexpr size_t kMaxHeaderLines = 64;
+constexpr size_t kMaxHeaderBytes = 16 * 1024;
+constexpr unsigned long kHandshakeTimeoutS = 15;
 
 struct Url {
     bool https = true;
@@ -104,23 +109,6 @@ bool sameHex(std::string_view a, std::string_view b) {
     return true;
 }
 
-bool parseContentLength(const String& line, long* out) {
-    const int colon = line.indexOf(':');
-    if (colon < 0) return false;
-    String value = line.substring(colon + 1);
-    value.trim();
-    if (value.isEmpty()) return false;
-    long n = 0;
-    for (size_t i = 0; i < value.length(); ++i) {
-        const char c = value[i];
-        if (c < '0' || c > '9') return false;
-        if (n > 100000000L) return false;
-        n = n * 10 + (c - '0');
-    }
-    *out = n;
-    return true;
-}
-
 bool isOurSlot(const esp_partition_t* p) {
     if (!p || p->type != ESP_PARTITION_TYPE_APP) return false;
     return (p->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0 && std::strcmp(p->label, "app0") == 0) ||
@@ -159,6 +147,7 @@ FetchStatus request(const String& startUrl, long* contentLength, int* httpCode, 
         if (url.https) {
             secure.reset(new WiFiClientSecure());
             secure->setCACert(tgc::kRootCaPem);
+            secure->setHandshakeTimeout(kHandshakeTimeoutS);
             secure->setTimeout(timeoutMs / 1000);
             client = secure.get();
         } else {
@@ -173,6 +162,11 @@ FetchStatus request(const String& startUrl, long* contentLength, int* httpCode, 
             }
             return url.https && *tlsError ? FetchStatus::Tls : FetchStatus::Connect;
         }
+        // The connect timeout above only covers the socket and handshake;
+        // readStringUntil() uses Stream's own read timeout, which is still at
+        // the 1 s default until it is set here.
+        client->setTimeout(timeoutMs / 1000);
+        static_cast<Stream&>(*client).setTimeout(timeoutMs);
         client->print("GET ");
         client->print(url.path);
         client->print(" HTTP/1.0\r\nHost: ");
@@ -203,24 +197,27 @@ FetchStatus request(const String& startUrl, long* contentLength, int* httpCode, 
         }
         *httpCode = code;
         long length = -1;
-        String location;
+        ResponseHeaders headers;
+        size_t headerLines = 0;
+        size_t headerBytes = 0;
         while (millis() - started < timeoutMs) {
             if (!client->available() && !client->connected()) break;
-            String line = client->readStringUntil('\n');
-            line.trim();
-            if (line.isEmpty()) break;
-            if (line.length() > kHeaderLineMax) break;
-            String lower = line;
-            lower.toLowerCase();
-            if (lower.startsWith("content-length:")) parseContentLength(line, &length);
-            else if (lower.startsWith("location:")) {
-                location = line.substring(9);
-                location.trim();
+            // readStringUntil() allocates the whole line, so a 4 KB CSP header
+            // costs a transient String; the helper drops it and it is never
+            // copied into ResponseHeaders.
+            const String line = client->readStringUntil('\n');
+            headerBytes += line.length();
+            if (++headerLines > kMaxHeaderLines || headerBytes > kMaxHeaderBytes) {
+                client->stop();
+                return FetchStatus::Http;
             }
+            if (!applyHeaderLine(std::string_view(line.c_str(), line.length()), &headers)) break;
         }
-        if (code >= 300 && code < 400 && !location.isEmpty() && redirect < kMaxRedirects) {
+        length = headers.contentLength;
+        const std::string& location = headers.location;
+        if (code >= 300 && code < 400 && !location.empty() && redirect < kMaxRedirects) {
             current = resolveUrl(std::string_view(current.c_str(), current.length()),
-                                 std::string_view(location.c_str(), location.length())).c_str();
+                                 std::string_view(location.data(), location.size())).c_str();
             if (current.isEmpty()) return FetchStatus::BadUrl;
             client->stop();
             continue;

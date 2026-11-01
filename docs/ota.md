@@ -48,6 +48,23 @@ A development build may point at another manifest with the serial `U <url>`
 command; `http://` is accepted only in a `KANIKEY_DEV` build, for a local test
 server. Release builds require HTTPS.
 
+## Redirects
+
+GitHub does not serve the release files directly. The device follows two
+redirects: `releases/latest/download/…` → `releases/download/vX.Y.Z/…` → a
+signed URL on `release-assets.githubusercontent.com` (about 930 characters).
+Up to 4 redirects (`kMaxRedirects`) are followed, and a redirect without a
+`Location` is an HTTP error.
+
+The header block also carries a ~4 KB `Content-Security-Policy` line. Long
+headers are read and discarded, and a `Location` longer than 4096 characters is
+not stored, so a malformed redirect is reported as an HTTP error instead of a
+truncated URL.
+
+> A device still running v0.1.0 stops reading the headers at the first long
+> line, so its manifest check fails and it cannot update over the air. Flash
+> v0.1.0 once over USB; every later release can arrive over the air.
+
 ## Device flow
 
 1. The device checks the manifest after a successful sync at most once a day,

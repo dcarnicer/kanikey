@@ -1977,6 +1977,8 @@ static void test_ota_url_resolution() {
     TEST_ASSERT_EQUAL(ManifestError::BadApp, r.error);
 }
 
+void run_ota_tests();
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_romaji_common_words);
@@ -2056,5 +2058,6 @@ int main(int, char**) {
     RUN_TEST(test_ota_versions);
     RUN_TEST(test_ota_offer);
     RUN_TEST(test_ota_url_resolution);
+    run_ota_tests();
     return UNITY_END();
 }
