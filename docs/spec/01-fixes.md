@@ -4,28 +4,28 @@ Every item below was found and reproduced in the 2026-11-01 review of the firmwa
 
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
-| FIX-01 | OTA cannot follow GitHub's redirect | P0 | S | none | 0a | todo |
+| FIX-01 | OTA cannot follow GitHub's redirect | P0 | S | none | 0a | review |
 | FIX-02 | Times shown in UTC after every sync | P0 | S | none | 0b | todo |
 | FIX-03 | A warning reveals the answer and allows a free retry | P0 | M | none | 0b | todo |
-| FIX-04 | Kanji readings are judged the opposite way from WaniKani | P1 | S | none | 0a | todo |
-| FIX-05 | The "n" hint makes users fail | P1 | S | none | 0a | todo |
-| FIX-06 | Real HTTP read timeout is 1 s | P1 | S | none | 0a | todo |
-| FIX-07 | Setup AP password derivable from the beacon | P1 | S | none | 0a | todo |
+| FIX-04 | Kanji readings are judged the opposite way from WaniKani | P1 | S | none | 0a | review |
+| FIX-05 | The "n" hint makes users fail | P1 | S | none | 0a | review |
+| FIX-06 | Real HTTP read timeout is 1 s | P1 | S | none | 0a | review |
+| FIX-07 | Setup AP password derivable from the beacon | P1 | S | none | 0a | review |
 | FIX-08 | Review batches are capped at 20 and always the same items | P1 | M | none | 0a+0b | todo |
-| FIX-09 | After a wrong first part, the failed part is asked again immediately | P1 | S | none | 0a | todo |
+| FIX-09 | After a wrong first part, the failed part is asked again immediately | P1 | S | none | 0a | review |
 | FIX-10 | A completed review is not in the outbox until the next Enter | P1 | S | none | 0b | todo |
 | FIX-11 | Lesson start errors are silent | P1 | M | none | 0a+0b | todo |
 | FIX-12 | Deep sleep during the lesson quiz | P2 | S | none | 0b | todo |
 | FIX-13 | A full outbox drops reviews silently | P2 | S | none | 0b | todo |
 | FIX-14 | Fixed 32 KB body cap with no fallback | P2 | M | none | 0a | todo |
-| FIX-15 | Typo tolerance uses the typed length | P2 | S | none | 0a | todo |
-| FIX-16 | Capitalised romaji in the meaning field is not recognised as a reading | P2 | S | none | 0a | todo |
-| FIX-17 | IME lacks common romaji aliases | P2 | S | none | 0a | todo |
-| FIX-18 | `/level_progressions` parsed into a full DOM | P2 | M | none | 0a | todo |
-| FIX-19 | Station setup page has no authentication | P2 | S | FIX-07 | 0a | todo |
+| FIX-15 | Typo tolerance uses the typed length | P2 | S | none | 0a | review |
+| FIX-16 | Capitalised romaji in the meaning field is not recognised as a reading | P2 | S | none | 0a | review |
+| FIX-17 | IME lacks common romaji aliases | P2 | S | none | 0a | review |
+| FIX-18 | `/level_progressions` parsed into a full DOM | P2 | M | none | 0a | review |
+| FIX-19 | Station setup page has no authentication | P2 | S | FIX-07 | 0a | review |
 | FIX-20 | OTA marked valid after only 10 s of loop | P2 | S | none | 0b | todo |
 | FIX-21 | LittleFS formats on any mount failure | P3 | S | none | 0b | todo |
-| FIX-22 | Outbox save rename order | P3 | S | none | 0a | todo |
+| FIX-22 | Outbox save rename order | P3 | S | none | 0a | review |
 | FIX-23 | Small UX bugs | P3 | S | none | 0b | todo |
 | FIX-24 | Latent robustness | P3 | S | none | 0a+0b | todo |
 
@@ -688,3 +688,40 @@ Every item below was found and reproduced in the 2026-11-01 review of the firmwa
 - [ ] `GlyphPack::open()` verifies the stored CRC-32.
 - [ ] The asset upload writes to a tmp file and checks every write.
 - [ ] An interrupted upload leaves the previous file intact.
+
+---
+
+## Wave 1 log (2026-11-01)
+
+Implemented by DeepSeek v4.1 flash through opencode (one worktree per group),
+reviewed and merged into `spec/round-2`: FIX-01, FIX-04, FIX-05, FIX-06,
+FIX-07, FIX-09, FIX-15, FIX-16, FIX-17, FIX-18, FIX-19, FIX-22. After the
+merge: 131 native tests pass; release image 1,466,093 B flash (79.9%), 95,288 B
+RAM; the dev image builds. Review changes: FIX-18 keeps the old fallback to the
+highest level when the current level is missing.
+
+Notes for later tasks:
+
+- FIX-15 kept KaniKey's existing tolerance curve (≤3: 0, ≤5: 1, ≤8: 2, else 3)
+  because WaniKani's rule could not be confirmed; REV-02 owns the final policy.
+- FIX-19 leaves a residual risk: a LAN host can keep guessing unlock codes,
+  five per generated code. A short lockout after five wrong codes would close
+  it (not specified yet).
+- FIX-01 only helps devices that already run this code: v0.1.0 devices need one
+  USB flash.
+
+Hardware checks still to run (move them to the DOC-05 log when it exists):
+
+| Task | Check |
+|---|---|
+| FIX-01 | Settings › Firmware › Check now follows 302 → 302 → 200 to the manifest; an install from a GitHub release succeeds |
+| FIX-04 | 人: `hito` shows the type warning without a mistake, `nin` and `jin` are correct |
+| FIX-05 | 今夜: `konya` shows the `n'` hint, `kon'ya` is correct; 単位 `tani` shows the hint |
+| FIX-06 | A slow `POST /reviews` is not marked ambiguous after 1 s; a stalled handshake gives up after ~15 s |
+| FIX-07 | The AP key on screen joins the network; a second portal start shows a new key; 15 idle minutes close the portal ("Setup timed out") |
+| FIX-09 | Meaning wrong + reading right: the item comes back ~4 cards later, in both question orders |
+| FIX-17 | `syasin` types しゃしん |
+| FIX-18 | A real sync still shows `L8 … since …`; a high-level account syncs without a heap drop |
+| FIX-19 | Station page: `curl -X POST /wifi` without the cookie → 403; the on-screen code unlocks; `curl /` never contains the code; the "Page code" line fits the screen |
+| FIX-22 | Normal outbox save/load after a review; `.bak` fallback still loads |
+

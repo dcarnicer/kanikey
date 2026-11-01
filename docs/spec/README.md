@@ -186,12 +186,30 @@ IDs are stable; never renumber. Status lives in this table and in ROADMAP.md.
 
 ### 7.2 Running a task with DeepSeek through opencode
 
-Implementation runs use the `build` agent inside the repository:
+Implementation runs use the `build` agent in a **git worktree per task
+group** (`git worktree add <dir> -b spec/<wave>-<group> spec/round-2`), so
+parallel agents never share a working tree:
 
 ```sh
-opencode run -m opencode-go/deepseek-v4.1-flash --agent build \
-  --title "<ID>" "$(cat brief.md)"
+cd <worktree>
+OPENCODE_CONFIG=<permissions.json> opencode run --standalone \
+  -m opencode-go/deepseek-v4.1-flash --agent build \
+  --title "<ID>" "$(cat brief.md)" > report.txt 2> log.txt
 ```
+
+- `--standalone` matters: the shared background service ignores
+  `OPENCODE_CONFIG`, so the permission file would not apply.
+- The permission file allows editing and denies git history commands
+  (`git commit/push/reset/checkout/switch/rebase/merge/branch/stash/clean/
+  worktree`) and `rm -rf`. The reviewer commits.
+- When the shell must be narrower (or auto-approval is not allowed), use a
+  file that denies `*` and allows only `pio test*`, `pio run -e cardputer-adv*`,
+  read-only commands (`grep`, `cat`, `ls`, `sed -n`, `find`, …) and
+  `git diff`/`git status`, and drop `--auto`.
+- Each group writes its new tests in `firmware/test/test_wk/test_<group>.cpp`
+  with a `run_<group>_tests()` hook, so merges only conflict on two additive
+  lines in `test_wk.cpp`.
+- stdout is the agent's final report; the tool log goes to stderr.
 
 Read-only research or drafting uses `--agent plan` and captures stdout. The
 brief is built from the template in §7.3.
