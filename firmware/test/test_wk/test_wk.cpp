@@ -1977,6 +1977,7 @@ void run_queue_tests();
 void run_ota_tests();
 void run_answer_tests();
 void run_store_tests();
+void run_portal_tests();
 
 int main(int, char**) {
     UNITY_BEGIN();
@@ -2061,5 +2062,6 @@ int main(int, char**) {
     run_ota_tests();
     run_answer_tests();
     run_store_tests();
+    run_portal_tests();
     return UNITY_END();
 }

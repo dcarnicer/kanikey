@@ -53,22 +53,26 @@ void drawSetupScreen(lgfx::LovyanGFX& d, const SetupView& view) {
         drawLine(d, view.url, 110, ui::kAccentHi);
         drawLine(d, "Esc: cancel", 125, ui::kFaint, 0);
     } else {
-        drawLine(d, "Connected", 38, ui::kOk);
-        drawLine(d, view.ssid, 52, ui::kText, 2);
-        drawLine(d, "Open on this network", 74, ui::kDim);
-        drawLine(d, view.url, 84, ui::kAccentHi);
+        drawLine(d, "Connected", 36, ui::kOk);
+        drawLine(d, view.ssid, 48, ui::kText, 2);
+        drawLine(d, "Open on this network", 66, ui::kDim);
+        drawLine(d, view.url, 76, ui::kAccentHi);
+        // The station page asks for this code. It is shown here and nowhere
+        // else: a page that carried it could be read by any LAN host.
+        if (!view.sessionCode.empty())
+            drawLine(d, "Page code " + view.sessionCode, 88, ui::kText, 2);
         if (view.tokenValidated)
             drawLine(d,
                      "Token OK: " + view.tokenUser + " L" + std::to_string(view.tokenLevel),
-                     100, ui::kOk);
+                     106, ui::kOk);
         else if (view.tokenConfigured)
-            drawLine(d, "Token stored: validate on the page", 100, ui::kDim);
+            drawLine(d, "Token stored: validate on the page", 106, ui::kDim);
         else
-            drawLine(d, "Token needed: enter it on the page", 100, ui::kWarn);
+            drawLine(d, "Token needed: enter it on the page", 106, ui::kWarn);
         drawLine(d, view.message.size() ? view.message
                                         : "Pack: " + view.packStatus,
-                 114, ui::kFaint, 0);
-        drawLine(d, "Finish on the web page  Esc: cancel", 125, ui::kFaint, 0);
+                 116, ui::kFaint, 0);
+        drawLine(d, "Enter code on page  Esc: cancel", 126, ui::kFaint, 0);
     }
 }
 

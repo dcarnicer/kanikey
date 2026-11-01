@@ -10,8 +10,11 @@
 //     its station IP (shown on the device screen). The token is validated with
 //     GET /user and the browser sends the clock/time zone.
 //
-// The portal never logs or shows the Wi-Fi password or the token. Arduino/
-// ESP32 only; not part of the native test build.
+// The station page is reachable from the whole home network, so it stays
+// locked until the user types the 6-digit code shown on the device screen; the
+// unlock cookie is HttpOnly and SameSite=Strict. An idle portal closes itself
+// after 15 minutes. The portal never logs or shows the Wi-Fi password or the
+// token. Arduino/ESP32 only; not part of the native test build.
 #include <Arduino.h>
 #include <WebServer.h>
 
@@ -58,6 +61,10 @@ public:
     const char* tokenUser() const { return tokenUser_.c_str(); }
     int tokenLevel() const { return tokenLevel_; }
     uint32_t lastActivityMs() const { return lastActivity_; }
+    // The 6-digit station unlock code, shown on the device only.
+    const char* sessionCode() const { return sessionCode_; }
+    // True once after the device-visible state changed (a new unlock code).
+    bool takeRedrawRequest();
     String packStatus() const;
 
 private:
@@ -65,7 +72,11 @@ private:
 
     bool startServer(const SetupPortalHooks& hooks);
     void registerRoutes();
+    void generateCodes();
+    bool unlocked();
+    bool requireUnlock();
     void handleRoot();
+    void handleUnlock();
     void handleWifi();
     void handleToken();
     void handlePack();
@@ -83,8 +94,12 @@ private:
     Leave leave_ = Leave::None;
     uint32_t leaveAt_ = 0;
     uint32_t lastActivity_ = 0;
+    bool redraw_ = false;
     char ssid_[33] = "";
     char apPassword_[20] = "";
+    char sessionCode_[7] = "";
+    char sessionCookie_[17] = "";
+    uint8_t wrongCodes_ = 0;
     char url_[40] = "";
     char stationIp_[20] = "";
     char message_[96] = "ready";

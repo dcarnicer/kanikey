@@ -96,17 +96,27 @@ The card must be FAT32. If the system doesn't mount it, format it as FAT32
 
 1. Insert the card and turn on the Cardputer.
 2. If Wi-Fi or the token is missing, KaniKey brings up a temporary **WPA2**
-   network `KaniKey-XXXX`. The screen shows its password and
-   `http://192.168.4.1/`.
+   network `KaniKey-XXXX`. Each portal start shows a new random 10-character
+   password (no `0/O/1/I/l`) and `http://192.168.4.1/` on the screen.
 3. On your phone, connect to that network and open the URL. The page shows the
    visual-pack status and can re-check the card; the browser also sends its
-   clock and time zone.
+   clock and time zone. The AP page needs no unlock code: the WPA2 key already
+   protects it.
 4. Save the SSID and password for your home Wi-Fi. The setup AP closes, the
    Cardputer joins your network and the screen switches to
    `setup · Wi-Fi` with the station address (for example
-   `http://192.168.1.23/`).
+   `http://192.168.1.23/`) and a `Page code` of six digits.
 5. Move the phone to the same home network and open that address. The station
-   page asks for the WaniKani token:
+   page first asks for the 6-digit `Page code` shown on the device:
+   - the code is generated per portal start and is never sent to the browser
+     inside the page or the URL;
+   - a correct code sets an `HttpOnly; SameSite=Strict` session cookie, which
+     the browser sends with every later request from then on;
+   - without that cookie every Wi-Fi, token, clock, pack and Finish POST
+     answers 403 and shows the unlock field again;
+   - after five wrong codes the device shows a new code; a code or cookie from
+     an earlier portal start is rejected.
+   Then the page asks for the WaniKani token:
    - it is validated with `GET /user` before being stored;
    - a 401/403/TLS error is shown and nothing is saved;
    - the token is never logged or shown back.
@@ -117,6 +127,10 @@ The card must be FAT32. If the system doesn't mount it, format it as FAT32
    `/summary`, level and SRS counts; the review batch is fetched later).
 8. Go back to the home screen. You should see the review/lesson counters; Enter
    on Home fetches the review batch.
+
+After 15 minutes without a request the portal closes itself (the AP disappears)
+and the device returns to the boot state. Press `Enter` (or `P` over USB serial)
+to start it again with a fresh network key and page code.
 
 The portal only reads `/user` and does not call
 `PUT /assignments/{id}/start`, so configuring the device does not move lessons
@@ -181,6 +195,7 @@ uv run --with pillow --with cairosvg python3 tools/glyph-pack/build.py \
 | `Offline - ...` | No Wi-Fi or DNS | Check the network; offline review continues from the cache |
 | `Rate limited; retry in Ns` (429) | Rate limit | Wait for the countdown; the shared gate stops all requests until the reset |
 | `Clock not set` | No SNTP and no portal time | Connect once or set the time |
+| Station page shows `Unlock` | The page needs the code from the device screen | Type the 6-digit `Page code`; after five wrong codes the device shows a new one |
 | `HTTP 422` in Outbox | The item was reviewed elsewhere or is invalid | KaniKey marks it rejected; open `O: outbox` to inspect and dismiss it |
 | `HTTP 409` in Outbox | Conflict; the assignment changed | Inspect it in `O: outbox`; dismissing only removes the local review |
 | `gave up` in Outbox | 50 send attempts failed | Inspect the attempts/age in `O: outbox` and dismiss it if it is no longer useful |

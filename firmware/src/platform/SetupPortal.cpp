@@ -4,6 +4,7 @@
 
 #include <WiFi.h>
 #include <esp_mac.h>
+#include <esp_random.h>
 #include <sys/time.h>
 
 #include <cctype>
@@ -13,6 +14,7 @@
 #include "platform/DeviceSettings.h"
 #include "platform/DevToken.h"
 #include "platform/DevWifi.h"
+#include "wk/RandomCode.h"
 
 namespace kk {
 
@@ -22,6 +24,12 @@ constexpr size_t kMaxNearby = 12;
 constexpr int64_t kMinPlausibleMs = 1767225600000LL;  // 2026-01-01T00:00:00Z
 constexpr int64_t kMaxPlausibleMs = 4102444800000LL;  // 2100-01-01T00:00:00Z
 constexpr uint32_t kLeaveGraceMs = 1200;
+// No request for this long closes the portal and returns the device to boot.
+constexpr uint32_t kApIdleMs = 15u * 60u * 1000u;
+// Wrong station unlock codes before the code is replaced by a new one.
+constexpr uint8_t kMaxWrongCodes = 5;
+constexpr size_t kSessionCodeLen = 6;
+constexpr size_t kSessionCookieLen = 16;
 
 String htmlEscape(const String& in) {
     String out;
@@ -125,6 +133,10 @@ const char kPageStyle[] =
     "details{margin:.7rem 0}summary{cursor:pointer;font-weight:600}footer{margin-top:1.6rem;"
     "padding-top:.4rem;border-top:1px solid #ccc;font-size:.8rem;color:#666}</style>";
 
+const char kPageFoot[] =
+    "<footer>KaniKey is an unofficial WaniKani client. This page is served locally by the "
+    "device.</footer></body></html>";
+
 }  // namespace
 
 String SetupPortal::packStatus() const {
@@ -162,8 +174,9 @@ bool SetupPortal::beginAp(const SetupPortalHooks& hooks, const String& notice) {
     uint8_t mac[6] = {0, 0, 0, 0, 0, 0};
     esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
     snprintf(ssid_, sizeof ssid_, "KaniKey-%02X%02X", mac[4], mac[5]);
-    snprintf(apPassword_, sizeof apPassword_, "kani%02X%02X%02X%02X", mac[2], mac[3], mac[4],
-             mac[5]);
+    // A random WPA2 key per portal start: the SoftAP MAC is the broadcast BSSID,
+    // so a key derived from it would be readable by anyone nearby.
+    makeRandomCode(esp_random, kCodeAlphabet, 10, apPassword_, sizeof apPassword_);
     snprintf(stationIp_, sizeof stationIp_, "%s", "");
     snprintf(url_, sizeof url_, "http://192.168.4.1/");
 
@@ -214,6 +227,7 @@ bool SetupPortal::startServer(const SetupPortalHooks& hooks) {
         snprintf(message_, sizeof message_, "Not enough memory for the setup portal");
         return false;
     }
+    generateCodes();
     registerRoutes();
     server_->begin();
     active_ = true;
@@ -221,8 +235,52 @@ bool SetupPortal::startServer(const SetupPortalHooks& hooks) {
     return true;
 }
 
+// A new unlock code and cookie per portal start, so a code or cookie from an
+// earlier session stops working.
+void SetupPortal::generateCodes() {
+    makeRandomCode(esp_random, kDigitAlphabet, kSessionCodeLen, sessionCode_,
+                   sizeof sessionCode_);
+    makeRandomCode(esp_random, kCodeAlphabet, kSessionCookieLen, sessionCookie_,
+                   sizeof sessionCookie_);
+    wrongCodes_ = 0;
+}
+
+bool SetupPortal::takeRedrawRequest() {
+    const bool wanted = redraw_;
+    redraw_ = false;
+    return wanted;
+}
+
+// The station page is on the home network, so it needs the code from the
+// device screen. The AP page is already behind the WPA2 key and stays open.
+bool SetupPortal::unlocked() {
+    if (!server_) return false;
+    if (sessionCookie_[0] == '\0') return false;
+    const String want = String("kk=") + sessionCookie_;
+    const String cookie = server_->header("Cookie");
+    int start = 0;
+    while (start < static_cast<int>(cookie.length())) {
+        int end = cookie.indexOf(';', start);
+        if (end < 0) end = cookie.length();
+        String part = cookie.substring(start, end);
+        part.trim();
+        if (part == want) return true;
+        start = end + 1;
+    }
+    return false;
+}
+
+bool SetupPortal::requireUnlock() {
+    if (mode_ != Mode::Station || unlocked()) return true;
+    sendPage("Enter the unlock code shown on the KaniKey screen.", false, 403);
+    return false;
+}
+
 void SetupPortal::registerRoutes() {
+    static const char* kHeaderKeys[] = {"Cookie"};
+    server_->collectHeaders(kHeaderKeys, 1);
     server_->on("/", HTTP_GET, [this]() { touch(); handleRoot(); });
+    server_->on("/unlock", HTTP_POST, [this]() { touch(); handleUnlock(); });
     server_->on("/wifi", HTTP_POST, [this]() { touch(); handleWifi(); });
     server_->on("/token", HTTP_POST, [this]() { touch(); handleToken(); });
     server_->on("/pack", HTTP_POST, [this]() { touch(); handlePack(); });
@@ -246,6 +304,10 @@ void SetupPortal::poll() {
             if (hooks_.onFinish) hooks_.onFinish();
         }
     }
+    if (active_ && millis() - lastActivity_ > kApIdleMs) {
+        Serial.println("[setup] no request for 15 minutes; closing the portal");
+        end(false);
+    }
 }
 
 void SetupPortal::end(bool keepStation) {
@@ -267,6 +329,10 @@ void SetupPortal::end(bool keepStation) {
     active_ = false;
     leave_ = Leave::None;
     server_ = nullptr;
+    redraw_ = false;
+    sessionCode_[0] = '\0';
+    sessionCookie_[0] = '\0';
+    wrongCodes_ = 0;
     Serial.println("[setup] portal stopped");
 }
 
@@ -300,6 +366,30 @@ void SetupPortal::sendPage(const String& notice, bool ok, int code) {
     h += kPageStyle;
     h += "</head><body><h1>KaniKey <small>setup</small></h1>";
 
+    auto appendNotice = [&]() {
+        if (!notice.length()) return;
+        h += ok ? "<p class=\"ok\">" : "<p class=\"err\">";
+        h += htmlEscape(notice);
+        h += "</p>";
+    };
+
+    // The station page is reachable from the whole home network, so it stays
+    // locked until the code from the device screen is entered. The code itself
+    // is never part of the page or the URL. The AP page is already behind the
+    // WPA2 key and works as before.
+    if (mode_ == Mode::Station && !unlocked()) {
+        appendNotice();
+        h += "<h2>Unlock</h2><p class=\"muted\">Type the 6-digit code shown on the KaniKey "
+             "screen.</p>";
+        h += "<form method=\"post\" action=\"/unlock\"><input type=\"text\" name=\"code\" "
+             "inputmode=\"numeric\" maxlength=\"6\" placeholder=\"6-digit code\" "
+             "autocomplete=\"off\" required> <button type=\"submit\" class=\"main\">Unlock"
+             "</button></form>";
+        h += kPageFoot;
+        server_->send(code, "text/html", h);
+        return;
+    }
+
     if (mode_ == Mode::Ap) {
         h += "<p class=\"muted\">Setup access point</p><table>";
         h += "<tr><th>Wi-Fi</th><td><b>";
@@ -323,11 +413,7 @@ void SetupPortal::sendPage(const String& notice, bool ok, int code) {
         h += "</a></td></tr></table>";
     }
 
-    if (notice.length()) {
-        h += ok ? "<p class=\"ok\">" : "<p class=\"err\">";
-        h += htmlEscape(notice);
-        h += "</p>";
-    }
+    appendNotice();
 
     h += "<h2>Visual pack</h2><p class=\"muted\">";
     h += pack;
@@ -388,14 +474,46 @@ void SetupPortal::sendPage(const String& notice, bool ok, int code) {
     }
 
     h += timeScript();
-    h += "<footer>KaniKey is an unofficial WaniKani client. This page is served locally by the "
-         "device.</footer></body></html>";
+    h += kPageFoot;
     server_->send(code, "text/html", h);
 }
 
 void SetupPortal::handleRoot() { sendPage("", true); }
 
+void SetupPortal::handleUnlock() {
+    if (mode_ != Mode::Station) {
+        // The AP page needs no unlock; show it instead of a dead end.
+        sendPage("", true);
+        return;
+    }
+    String code = server_->arg("code");
+    code.trim();
+    if (code.length() == kSessionCodeLen && code == sessionCode_) {
+        wrongCodes_ = 0;
+        server_->sendHeader("Set-Cookie",
+                            String("kk=") + sessionCookie_ +
+                                "; HttpOnly; SameSite=Strict; Path=/");
+        server_->sendHeader("Location", "/");
+        server_->send(303, "text/plain", "");
+        Serial.println("[setup] station page unlocked");
+        return;
+    }
+    if (++wrongCodes_ >= kMaxWrongCodes) {
+        // Replace only the code: browsers that already unlocked keep working,
+        // and the device screen shows the new code at the next redraw.
+        makeRandomCode(esp_random, kDigitAlphabet, kSessionCodeLen, sessionCode_,
+                       sizeof sessionCode_);
+        wrongCodes_ = 0;
+        redraw_ = true;
+        sendPage("Too many wrong codes. The device shows a new code.", false, 403);
+        Serial.println("[setup] too many wrong unlock codes; new code generated");
+        return;
+    }
+    sendPage("Wrong code. Check the KaniKey screen.", false, 403);
+}
+
 void SetupPortal::handleWifi() {
+    if (!requireUnlock()) return;
     String ssid = server_->arg("ssid");
     String pass = server_->arg("pass");
     ssid.trim();
@@ -421,6 +539,7 @@ void SetupPortal::handleWifi() {
 }
 
 void SetupPortal::handleToken() {
+    if (!requireUnlock()) return;
     if (mode_ != Mode::Station) {
         sendPage("Connect the device to Wi-Fi first.", false, 400);
         return;
@@ -454,6 +573,7 @@ void SetupPortal::handleToken() {
 }
 
 void SetupPortal::handlePack() {
+    if (!requireUnlock()) return;
     if (!hooks_.recheckPack) {
         sendPage("Pack check is not available.", false, 500);
         return;
@@ -465,6 +585,7 @@ void SetupPortal::handlePack() {
 }
 
 void SetupPortal::handleTime() {
+    if (!requireUnlock()) return;
     int64_t ms = 0;
     int offset = 0;
     if (!parseDecimal(server_->arg("ms"), &ms) || ms < kMinPlausibleMs || ms > kMaxPlausibleMs ||
@@ -496,6 +617,7 @@ void SetupPortal::handleTime() {
 }
 
 void SetupPortal::handleFinish() {
+    if (!requireUnlock()) return;
     if (mode_ != Mode::Station) {
         sendPage("Connect the device to Wi-Fi first.", false, 400);
         return;
