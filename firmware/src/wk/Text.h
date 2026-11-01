@@ -181,6 +181,10 @@ inline std::string stripMarkup(std::string_view s) {
     return out;
 }
 
+// Allowed typo distance for an answer of this length. Callers pass the length
+// of the expected answer, not of the typed input. The curve is KaniKey's
+// current heuristic; WaniKani does not publish its rule (REV-02 owns the final
+// policy).
 inline int typoTolerance(size_t length) {
     if (length <= 3) return 0;
     if (length <= 5) return 1;

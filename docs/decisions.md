@@ -692,3 +692,40 @@ a release binary.
 from the card (no network round trip); the snapshot's assignment list is
 preserved when the subjects are evicted. `h` now prints the loop stack
 high-water mark. The trade-off is one extra disk read per review session.
+
+---
+
+## 2026-11-01 — Readings follow WaniKani's accepted flag
+
+**Decision:** any reading with `accepted_answer=true` is a correct answer for a
+kanji, primary or not. A reading that exists on the subject but is not accepted
+is a warning, not a mistake; it names the type WaniKani wants (`on'yomi`,
+`kun'yomi` or `nanori`) when the accepted readings share one type, otherwise it
+says "That reading is not accepted for this item". Vocabulary and kana
+vocabulary are unchanged.
+
+**Why:** WaniKani shakes without a penalty for a listed but non-accepted reading
+and marks every accepted reading correct. The previous primary-vs-valid warning
+in strict mode punished answers WaniKani accepts, and a non-accepted reading
+counted as wrong.
+
+**Implications:** `strict` now only affects meaning typos; the reading branch no
+longer has a primary-reading warning. A rejected reading is still a warning, so
+it is not counted and not sent to WaniKani.
+
+---
+
+## 2026-11-01 — Typo tolerance is measured on the expected answer
+
+**Decision:** a close meaning is judged with the length of the expected answer,
+not the typed input: up to 3 characters allow no typo, up to 5 allow one, up to 8
+allow two and longer answers allow three. This is KaniKey's existing curve;
+WaniKani does not publish its rule, so the final policy belongs to REV-02.
+
+**Why:** using the input length let a long wrong answer become "close" to a short
+answer: 一 + "none" matched "one" and 手 + "handle" matched "hand".
+
+**Implications:** short answers accept only exact spelling, while a one-character
+typo in a long answer still shows the warning in strict mode. The boundary is
+covered by native tests; it must be re-checked against WaniKani when REV-02
+decides the policy.

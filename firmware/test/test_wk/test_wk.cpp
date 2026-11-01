@@ -165,11 +165,10 @@ static void test_reading_accepts_romaji_kana_and_katakana() {
                       checkAnswer(s, AnswerKind::Reading, "たべる", false).status);
 }
 
-static void test_reading_primary_vs_valid() {
+static void test_reading_primary_and_valid_both_correct() {
     const Subject s = kanji();
     const AnswerCheck strict = checkAnswer(s, AnswerKind::Reading, "taberu");
-    TEST_ASSERT_EQUAL(AnswerStatus::Warning, strict.status);
-    TEST_ASSERT_TRUE(strict.close);
+    TEST_ASSERT_EQUAL(AnswerStatus::Correct, strict.status);
     TEST_ASSERT_EQUAL(AnswerStatus::Correct,
                       checkAnswer(s, AnswerKind::Reading, "taberu", false).status);
 }
@@ -187,7 +186,7 @@ static void test_reading_okurigana_and_n_conversion() {
     k.readings = {{"こんや", true, true, ReadingType::Kunyomi}};
     const AnswerCheck n = checkAnswer(k, AnswerKind::Reading, "konya");
     TEST_ASSERT_EQUAL(AnswerStatus::Warning, n.status);
-    TEST_ASSERT_TRUE(n.message.find("nn") != std::string::npos);
+    TEST_ASSERT_TRUE(n.message.find("n'") != std::string::npos);
 }
 
 static void test_vocabulary_and_radical_rules() {
@@ -259,7 +258,7 @@ static void test_lesson_quiz_retries_wrong_and_warning() {
     q.advance();
     TEST_ASSERT_EQUAL(AnswerKind::Reading, q.part());
 
-    q.submit("taberu");
+    q.submit("eat");
     TEST_ASSERT_EQUAL(AnswerStatus::Warning, q.result().status);
     q.advance();
     TEST_ASSERT_EQUAL(AnswerKind::Reading, q.part());
@@ -1977,6 +1976,8 @@ static void test_ota_url_resolution() {
     TEST_ASSERT_EQUAL(ManifestError::BadApp, r.error);
 }
 
+void run_answer_tests();
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_romaji_common_words);
@@ -1987,7 +1988,7 @@ int main(int, char**) {
     RUN_TEST(test_meaning_typo_is_a_warning_in_strict_mode);
     RUN_TEST(test_meaning_and_reading_confusion);
     RUN_TEST(test_reading_accepts_romaji_kana_and_katakana);
-    RUN_TEST(test_reading_primary_vs_valid);
+    RUN_TEST(test_reading_primary_and_valid_both_correct);
     RUN_TEST(test_reading_okurigana_and_n_conversion);
     RUN_TEST(test_vocabulary_and_radical_rules);
     RUN_TEST(test_empty_and_non_kana_readings);
@@ -2056,5 +2057,6 @@ int main(int, char**) {
     RUN_TEST(test_ota_versions);
     RUN_TEST(test_ota_offer);
     RUN_TEST(test_ota_url_resolution);
+    run_answer_tests();
     return UNITY_END();
 }

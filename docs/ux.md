@@ -371,6 +371,9 @@ Home ──L──► Lessons ──Enter──► Lesson card
   - Instruction: `Type the meaning` / `Type the reading`.
   - 32 px field with the answer; caret.
   - In reading, below: `romaji: tabe` in gray; the field shows `たべ`.
+  - Romaji follows WanaKana: `n` before a vowel or `y` is a syllable
+    (`konya` → こにゃ). Type `n'` for ん (`kon'ya` → こんや); `konya` shows
+    `Use n' before a vowel or y` and can be retried without a mistake.
   - `Tab: details` is shown on feedback; the question bar only has check/pause.
 - Bar: `Enter check`, `Esc quit` (which opens Pause).
 - The field is active as soon as the question appears. Nothing needs to be
