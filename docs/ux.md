@@ -189,9 +189,16 @@ Boot
 ```
 
 - The portal opens for first setup and can be reopened from Settings; it closes
-  when setup finishes.
-- The temporary network uses WPA2 with a random 8–10 character key visible on
-  screen. It's not an open network.
+  when setup finishes. After 15 minutes without a request it closes itself and
+  the device returns to the boot state (“Setup pending”).
+- The temporary network uses WPA2 with a new random 10-character key visible on
+  screen for each portal start (no `0/O/1/I/l`, so it is easy to read and type).
+  It's not an open network.
+- The station page is reachable from the whole home network, so it stays locked
+  until the 6-digit code shown on the device screen is typed into its unlock
+  field. That browser then keeps an HttpOnly, `SameSite=Strict` session cookie;
+  after five wrong codes the device shows a new code. The code itself is never
+  part of the served page or the URL.
 - The token is pasted in the portal; it's validated with `GET /user` before
   saving.
 - If the user cancels, the device stays in “Setup pending” and doesn't sync.
@@ -291,6 +298,9 @@ Home ──L──► Lessons ──Enter──► Lesson card
 - In step 1: list of networks, `Enter` to choose, text for the password.
 - In step 2: portal URL and temporary network key; the phone does the rest.
   The token can also be pasted with the keyboard.
+- On the station page the screen reads `Page code 123456`; the page asks for
+  that code before it shows the Wi-Fi, token, clock or Finish forms. A locked
+  page shows the device name, the address and the unlock field only.
 - In step 4: progress bar and `Cancel`.
 - In step 5: if the visual pack is missing, a screen with:
   `Copy glyphs.kgp to /kanikey/ on the SD card` and `Enter: check again`.

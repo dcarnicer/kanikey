@@ -15,6 +15,8 @@ struct SetupView {
     std::string ssid;
     std::string apPassword;
     std::string url;
+    // 6-digit unlock code for the station page; shown only on the device.
+    std::string sessionCode;
     bool tokenValidated = false;
     std::string tokenUser;
     int tokenLevel = 0;

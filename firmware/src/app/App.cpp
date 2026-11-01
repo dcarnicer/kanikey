@@ -3929,6 +3929,7 @@ void drawSetupPortal() {
     view.ssid = gSetupPortal.ssid();
     view.apPassword = gSetupPortal.apPassword();
     view.url = gSetupPortal.url();
+    view.sessionCode = gSetupPortal.sessionCode();
     view.tokenValidated = gSetupPortal.tokenValidated();
     view.tokenUser = gSetupPortal.tokenUser();
     view.tokenLevel = gSetupPortal.tokenLevel();
@@ -4892,7 +4893,18 @@ void setup() {
 void loop() {
     tgc::board::update();
     handleSerial();
-    if (gPortalActive) gSetupPortal.poll();
+    // The portal closes itself after 15 idle minutes; leave gPortalActive set
+    // until here so the hooks can keep their own messages.
+    if (gPortalActive) {
+        gSetupPortal.poll();
+        if (gPortalActive && !gSetupPortal.active()) {
+            gPortalActive = false;
+            snprintf(gNetLine, sizeof gNetLine, "Setup timed out");
+            gDirty = true;
+        } else if (gSetupPortal.takeRedrawRequest()) {
+            gDirty = true;
+        }
+    }
     if (!gPortalActive) serviceAssetServer();
 
     const uint32_t now = millis();
