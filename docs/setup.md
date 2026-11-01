@@ -122,9 +122,11 @@ The card must be FAT32. If the system doesn't mount it, format it as FAT32
    - the token is never logged or shown back.
 6. Check the visual pack on the portal page. If it is missing or incomplete:
    `Pack missing · Copy glyphs.kgp to /kanikey/`, then check again. Sync will
-   not run without the pack. Checking the pack again never leaves the device
-   without glyphs; a damaged file is rejected with `pack: bad crc` (the header
-   CRC-32 covers the entry table and the payload), so copy the pack again.
+   not run without the pack. *Check pack* reports a pack that is already open;
+   otherwise the device runs the full CRC check after the page has answered,
+   and the next page load shows the result. A damaged file is rejected with
+   `pack: bad crc` (the header CRC-32 covers the entry table and the payload),
+   so copy the pack again.
 7. **Start KaniKey** closes the portal and runs the first sync (`/user`,
    `/summary`, level and SRS counts; the review batch is fetched later).
 8. Go back to the home screen. You should see the review/lesson counters; Enter
@@ -182,6 +184,11 @@ there is no separate `check`/`--ids` command yet.
 uv run --with pillow --with cairosvg python3 tools/glyph-pack/build.py \
   --out /Volumes/KANIKEY/kanikey/glyphs.kgp
 ```
+
+An upload over the serial console (`up <bytes> <path>`) or the Wi-Fi asset
+server writes `<path>.tmp` first and checks every write. Only a complete file
+replaces the old one; a new pack is also CRC-checked as the tmp file before the
+rename. An interrupted upload therefore leaves the previous pack in place.
 
 ---
 
