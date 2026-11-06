@@ -74,6 +74,18 @@ uint32_t gLastHomeRefreshMs = 0;
 bool gSdOk = false;
 bool gFsOk = false;
 bool gFsFormatPrompt = false;
+#ifdef KANIKEY_DEV
+// Dev-only simulation: pretend the device is on battery so the idle-sleep
+// path can run while USB is attached for the serial log.
+bool gDevForceBattery = false;
+#endif
+bool devForceBattery() {
+#ifdef KANIKEY_DEV
+    return gDevForceBattery;
+#else
+    return false;
+#endif
+}
 char gSdLine[48] = "SD: not mounted";
 uint32_t gLastInputAt = 0;
 bool gDimmed = false;
@@ -143,6 +155,8 @@ kk::LessonQuiz gLessonQuiz;
 std::string gLessonQuizInput;
 #ifdef KANIKEY_DEV
 std::string gLessonQuizDirectReading;
+int gDevLessonStartCode = -1;  // <0 = use the real PUT /start
+bool gDevKeyTest = false;      // log the order of the injected key events
 #endif
 kk::RomajiIme gLessonQuizIme;
 kk::GlyphPack gPack;
@@ -2094,10 +2108,19 @@ void startCurrentLesson() {
     const std::string subtitle = s ? subjectMainMeaning(*s) : std::string();
     drawLoading("Starting lesson...", subtitle.c_str());
     const uint32_t now = static_cast<uint32_t>(time(nullptr));
-    gFreeCanvasForRequest = true;
-    const int httpCode = kk::startAssignment(kk::DevToken::load(), a.id,
-                                             now >= 1700000000u ? now : 0);
-    gFreeCanvasForRequest = false;
+    int httpCode;
+#ifdef KANIKEY_DEV
+    if (gDevLessonStartCode >= 0) {
+        httpCode = gDevLessonStartCode;
+        Serial.printf("[lesson] dev start code %d\n", httpCode);
+    } else
+#endif
+    {
+        gFreeCanvasForRequest = true;
+        httpCode = kk::startAssignment(kk::DevToken::load(), a.id,
+                                       now >= 1700000000u ? now : 0);
+        gFreeCanvasForRequest = false;
+    }
     if ((httpCode >= 200 && httpCode < 300) || httpCode == 422) {
         // 422 means the item was already started on WaniKani; either way the
         // card is done and the summary's lesson bucket is stale.
@@ -2520,6 +2543,13 @@ void syncScreenKey(const KeyEvent& e) {
 }
 
 void onKey(const KeyEvent& e) {
+#ifdef KANIKEY_DEV
+    if (gDevKeyTest) {
+        Serial.printf("[key] test %s %s\n", e.key == Key::None ? "marker" : "event",
+                      e.down ? "down" : "up");
+        if (e.key == Key::None) gDevKeyTest = false;
+    }
+#endif
     updateModifier(e.x, e.y, e.down);
     if (gPortalActive) {
         if (e.down && e.key == Key::Esc) {
@@ -4429,6 +4459,41 @@ void seedDevCache() {
     if (snapshotOk && loadCache()) gDirty = true;
 }
 
+// Dev-only `L`: a one-item lesson whose subject is a radical without a Unicode
+// character, so the card must use the pack's radical bitmap. It bypasses the
+// network and the summary so the radical-only path can be exercised without a
+// low-level account.
+void seedDevLesson() {
+    gLessonBatch = kk::LessonBatch{};
+    gLessonComponents.clear();
+    kk::Assignment a;
+    a.id = 2001;
+    a.subjectId = 1;
+    a.type = kk::SubjectType::Radical;
+    a.srsStage = 0;
+    a.lessonPosition = 0;
+    a.availableAt = static_cast<uint32_t>(time(nullptr));
+    gLessonBatch.assignments.push_back(a);
+    kk::Subject radical;
+    radical.id = 1;
+    radical.type = kk::SubjectType::Radical;
+    radical.level = 1;
+    radical.meanings = {{"ground", true, true}};
+    radical.meaningMnemonic = "The ground under your feet.";
+    radical.meaningHint = "A flat line.";
+    gLessonBatch.subjects.push_back(radical);
+    gLessonBatch.ok = true;
+    gLessonActive = false;
+    gLessonListActive = true;
+    gLessonEmptyActive = false;
+    gLessonQuizActive = false;
+    gShowHome = false;
+    gLessonIndex = 0;
+    gLessonPage = 0;
+    gDirty = true;
+    Serial.println("[lesson] dev radical-only lesson seeded");
+}
+
 void clearDevCache() {
     kk::cacheClearSnapshot();
     if (gSdOk) kk::cacheClearSubjects(SD);
@@ -4858,7 +4923,11 @@ void uploadSdFile(const String& line) {
     bool writeOk = true;
     uint32_t lastLog = millis();
     while (got < size) {
-        const size_t want = std::min<size_t>(sizeof buf, size - got);
+        // Keep the block at the host helper's 2 KiB chunk: the USB RX ring is
+        // 4 KiB, and tools/device.py waits for one ack per chunk. A larger
+        // `want` made both sides wait for each other (5 s timeout, then the
+        // transfer failed on anything over 2 KiB).
+        const size_t want = std::min<size_t>(2048, size - got);
         size_t have = 0;
         uint32_t lastByte = millis();
         while (have < want) {
@@ -5271,6 +5340,81 @@ void handleSerial() {
             clearDevCache();
         } else if (gSerialLine == "J") {
             seedDevRejectedOutbox();
+        } else if (gSerialLine == "T") {
+            if (kk::DevToken::save("dev-token")) {
+                Serial.println("[auth] dev token saved (no probe)");
+                gHaveUser = false;
+            } else {
+                Serial.println("[auth] dev token save failed");
+            }
+        } else if (gSerialLine == "L") {
+            seedDevLesson();
+        } else if (gSerialLine == "E") {
+            const uint32_t now = static_cast<uint32_t>(time(nullptr));
+            for (kk::SummaryBucket& bucket : gSummary.reviews)
+                bucket.availableAt = now + 3600;
+            gDueReviews = 0;
+            gShowHome = true;
+            gDirty = true;
+            Serial.println("[summary] dev due cleared");
+        } else if (gSerialLine == "H") {
+            // Failed-fetch path: keep the summary but drop the cached batch and
+            // add one lesson id, so Enter/l with Wi-Fi off reaches the notices.
+            gLessonBatch = kk::LessonBatch{};
+            gLessonComponents.clear();
+            gBatch = kk::ReviewBatch{};
+            gBatchEvicted = false;
+            gCachedBatchCount = 0;
+            if (gSdOk) kk::cacheClearSubjects(SD);
+            gSummary.lessons.clear();
+            kk::SummaryBucket lesson;
+            lesson.availableAt = static_cast<uint32_t>(time(nullptr));
+            lesson.count = 1;
+            lesson.subjectIds = {1};
+            gSummary.lessons.push_back(lesson);
+            gLessons = 1;
+            gShowHome = true;
+            gDirty = true;
+            Serial.println("[dev] cached batch dropped, one lesson bucket seeded");
+        } else if (gSerialLine.startsWith("A ")) {
+            gDevLessonStartCode = gSerialLine.substring(2).toInt();
+            Serial.printf("[lesson] fake start code %d\n", gDevLessonStartCode);
+        } else if (gSerialLine == "A") {
+            gDevLessonStartCode = -1;
+            Serial.println("[lesson] fake start code off");
+        } else if (gSerialLine == "B") {
+            if (!gSdOk) {
+                Serial.println("[pack] no SD");
+            } else {
+                kk::GlyphPack bad;
+                const bool opened = bad.open(SD, "/kanikey/glyphs-bad.kgp", true);
+                Serial.printf("[pack] bad-crc test opened=%d status=%s\n", opened ? 1 : 0,
+                              bad.statusLine());
+                gPack.close();
+                gPack.open(SD, "/kanikey/glyphs.kgp");
+                Serial.printf("[pack] restored: %s\n", gPack.statusLine());
+            }
+        } else if (gSerialLine == "O") {
+            gDevForceBattery = !gDevForceBattery;
+            Serial.printf("[power] force battery %d\n", gDevForceBattery ? 1 : 0);
+        } else if (gSerialLine.startsWith("Z ")) {
+            const int seconds = gSerialLine.substring(2).toInt();
+            if (kk::settingsSetSleepSeconds(seconds))
+                Serial.printf("[settings] sleep %d s\n", kk::settingsSleepSeconds());
+            else
+                Serial.println("[settings] sleep value rejected");
+        } else if (gSerialLine.startsWith("G ")) {
+            const int count = gSerialLine.substring(2).toInt();
+            gDevKeyTest = true;
+            for (int i = 0; i < count; ++i) {
+                KeyEvent e;
+                e.key = Key::Other;
+                e.x = 255;
+                e.y = 255;
+                e.down = (i % 2) == 0;
+                tgc::board::devPushKeyEvent(e);
+            }
+            Serial.printf("[key] pushed %d events\n", count);
         } else if (gSerialLine == "Y") {
             gOtaState.failedVersion.clear();
             kk::ota::saveFailedVersion("");
@@ -5302,7 +5446,7 @@ void handleSerial() {
 #endif
         } else if (!gSerialLine.isEmpty()) {
 #ifdef KANIKEY_DEV
-            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear J=attention-outbox Y=clear-rollback C=dev-cache X=clear-cache K <keys>=type R<id>=radical U <url>=manifest F=firmware-check I=firmware-install V=firmware-screen k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload\n");
+            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear J=attention-outbox Y=clear-rollback C=dev-cache X=clear-cache K <keys>=type R<id>=radical U <url>=manifest F=firmware-check I=firmware-install V=firmware-screen k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload T=dev-token L=radical-lesson E=zero-due H=drop-batch A<code>=fake-start B=bad-pack-crc O=force-battery Z<s>=sleep G<n>=key-storm\n");
 #else
             Serial.printf("[kk] commands: h=heap i=pack S=asset-server p=picture r=restart up <bytes> <path>=sd-upload\n");
 #endif
@@ -5468,6 +5612,12 @@ void loop() {
             if (gDimmed) wakeScreen();
         }
         if (e.key == Key::None) {
+#ifdef KANIKEY_DEV
+            if (gDevKeyTest) {
+                Serial.println("[key] test marker (all released)");
+                gDevKeyTest = false;
+            }
+#endif
             // The TCA8418 lost events: treat every key as released.
             gShift = gFn = gCtrl = gOpt = gAlt = false;
             pushLog("^ (all keys released)");
@@ -5528,7 +5678,8 @@ void loop() {
         // A deep-sleep wake is a reset, so sleeping while the new image is
         // pending would roll it back; the 10-minute window bounds the wait.
         !gOtaPending && !gLowBatteryPrompt && !gAssetServerActive && sleepMs &&
-        now - gLastInputAt > sleepMs && !tgc::board::externalPower()) {
+        now - gLastInputAt > sleepMs &&
+        (devForceBattery() || !tgc::board::externalPower())) {
         Serial.println("[power] idle sleep");
         saveCacheSnapshot();
         firmwareBeforeSleep();

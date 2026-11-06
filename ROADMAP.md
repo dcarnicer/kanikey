@@ -1,14 +1,16 @@
 # KaniKey roadmap
 
-Status snapshot: **2026-10-29**. This is the working backlog after the offline
+Status snapshot: **2026-11-06**. This is the working backlog after the offline
 cache and the `efontJA_16` removal landed, not the original product
 plan. Product scope and UX live in [docs/design.md](docs/design.md),
 [docs/ux.md](docs/ux.md) and [docs/api-sync.md](docs/api-sync.md).
 
 Round 2 (branch `spec/round-2`, 2026-11-01): the fixes from the 2026-11-01
-review are tracked in [docs/spec/01-fixes.md](docs/spec/01-fixes.md). 19 of 28
-are done and hardware-checked; FIX-06, 07, 11, 12, 14, 20, 21, 23 and 24 are
-implemented and wait for the hardware checks listed in its wave 2 log.
+review are tracked in [docs/spec/01-fixes.md](docs/spec/01-fixes.md). 23 of 28
+are done and verified on hardware (some with the dev-only simulations in the
+wave 3 log); FIX-06, 07, 14, 20 and 24 still need the network/OTA and Wi-Fi
+upload checks listed there. FIX-07's random AP key and FIX-24 (a)/(b) have
+passed; FIX-24 (c) is partial.
 
 The review loop works on hardware. The main v1 gaps are the last lesson
 hardware checks and the lesson-ordering limitation, a deliberate offline boot,
@@ -125,9 +127,9 @@ Working on hardware:
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Current build: **1,461,165 B / 1,835,008 B flash (79.6%)**, **95,248 B /
-327,680 B static RAM (29.1%)**. The dev image is 1,474,257 B. Removing
-`efontJA_16` freed ~468 KB and leaves ~374 KB of flash headroom. The loop task
+Current build: **1,476,485 B / 1,835,008 B flash (80.5%)**, **95,528 B /
+327,680 B static RAM (29.2%)**. The dev image is 1,495,169 B. Removing
+`efontJA_16` freed ~468 KB and leaves ~358 KB of flash headroom. The loop task
 uses a 24 KiB stack; the lazy review batch raised the lesson-fetch minimum free
 heap to ~56 KB.
 
@@ -135,9 +137,9 @@ heap to ~56 KB.
 
 | Priority | Workstream | Why | Status | Start with |
 |---:|---|---|---|---|
-| 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Done except a radical-only lesson | RAD-04 |
+| 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Done except a real low-level radical-only lesson; the synthetic radical lesson UI passed | RAD-04 |
 | 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Core and real-account E2E done; deliberate offline boot pending | CACHE-07 |
-| 3 | Complete lesson flow | List/picker, card, components, quiz, empty state and start exist; ordering/hardware remain | Partial | LESSON-08, RAD-04 |
+| 3 | Complete lesson flow | List/picker, card, components, quiz, empty state and start exist; ordering and a real low-level run remain | Partial; radical-only UI verified synthetically | LESSON-08, RAD-04 |
 | 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; review history and audio remain | Partial | WK-11, EXT-06 |
 | 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Code and docs done; hardware check pending for the final OUTBOX screen (API-01) and API-02…05 | — |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
@@ -148,11 +150,12 @@ heap to ~56 KB.
 
 ## Execution order
 
-Radicals and the offline cache are code-complete except for hardware checks.
-The lesson flow is implemented except LESSON-08 (only the first 10 summary
-candidates are sorted) and hardware checks. OTA, the license and the release
-tooling are done; the next work is LESSON-08, with the remaining UI, API and
-lesson hardware verification alongside.
+Radicals and the offline cache are code-complete except for the real low-level
+lesson and the deliberate offline boot. The lesson flow is implemented except
+LESSON-08 (only the first 10 summary candidates are sorted) and the real
+low-level checks. OTA, the license and the release tooling are done. The next
+work is LESSON-08, the remaining network/OTA checks (FIX-06, 14, 20 and the
+Wi-Fi upload part of FIX-24), and the API-01…05 hardware pass.
 
 | Order | Phase | Tasks | Outcome |
 |---:|---|---|---|

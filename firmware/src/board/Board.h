@@ -39,6 +39,11 @@ enum class Button : uint8_t {
 bool fixedLandscape();
 bool hasKeyboard();
 bool nextKeyEvent(KeyEvent* out);
+#ifdef KANIKEY_DEV
+// Test hook: append an event to the same ring queue the TCA8418 fills, so the
+// overflow-marker order can be checked without a physical key storm.
+void devPushKeyEvent(const KeyEvent& e);
+#endif
 #else
 // No keyboard, every orientation: the StickS3 and the T-Display-S3.
 inline bool fixedLandscape() { return false; }

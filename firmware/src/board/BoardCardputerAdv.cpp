@@ -220,6 +220,10 @@ bool nextKeyEvent(KeyEvent* out) {
     return true;
 }
 
+#ifdef KANIKEY_DEV
+void devPushKeyEvent(const KeyEvent& e) { push(e); }
+#endif
+
 lgfx::LGFX_Device& display() { return M5.Display; }
 int width() { return M5.Display.width(); }
 int height() { return M5.Display.height(); }

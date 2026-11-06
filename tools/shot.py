@@ -88,8 +88,12 @@ def capture(port: str, timeout: float = 60.0, before: str | None = None,
                     text = log.decode("utf-8", "replace")
                     if marker in text:
                         if before:
-                            s.write((before + "\n").encode())
-                            s.flush()
+                            # Several UI steps can be needed to reach a screen
+                            # (`L;e` opens the lesson card, `L;e;Q` the quiz).
+                            for command in before.split(";"):
+                                s.write((command.strip() + "\n").encode())
+                                s.flush()
+                                time.sleep(0.6)
                         time.sleep(delay)
                         s.write(b"p\n")
                         s.flush()

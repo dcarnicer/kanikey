@@ -529,3 +529,32 @@ confirm the save and load log lines (`[cache] subjects saved: … bytes, … ms`
 with no `bad_alloc`, especially after `startReview()` on Home with an evicted
 batch.
 
+### 2026-11-06 — round 2 verification (dev image)
+
+Dev image of `spec/round-2` (1,495,169 B, 81.5% flash, 95,576 B RAM), synthetic
+cache (6 assignments: 1 radical, 2 kanji, 3 vocabulary), Wi-Fi off, no real
+`POST /reviews` or `PUT /start`. New dev hooks used: `L` radical-only lesson,
+`A <code>` fake lesson start, `B` bad pack CRC, `E` zero due, `H` drop batch +
+lesson bucket, `O` force battery, `Z <seconds>` sleep, `G <n>` key queue,
+`T` token without probe. `tools/session.py` keeps one serial session open.
+
+| Check | Result |
+|---|---|
+| Boot heap / pack | 219,344 B free, 180,212 B largest; pack `7269 glyphs, 498 radicals, 64/32/20 px` |
+| Heap after synthetic cache / review | 195,236 B free, 163,828 B largest, min 188,716 B; loop stack high-water 21,740 B |
+| AP setup | `KaniKey-AAC8`; two boots produced different random passwords; 15-minute close not run |
+| Radical-only lesson | list `RAD L1 ground`, card and quiz draw the radical bitmap; synthetic, no low-level account |
+| Lesson start states | fake 200/422 advance; 500 shows `Could not start lesson / HTTP 500`; 0 shows `No connection`; 401 arms auth; no real request |
+| Deep sleep in quiz | sleep 30 s + forced battery + quiz open 40 s -> no `[power] idle sleep` |
+| Corrupt LittleFS | prompt `Storage unreadable`; Esc kept `KKOB`/`KKCA` in a full partition dump; Enter formatted and loaded 0 outbox items |
+| Zero due | `No reviews now`, next review time, `Enter: sync  Esc: home`; no request |
+| Failed fetches | reviews and lessons show their error and `Enter: retry  Esc: home` |
+| Key queue storm | 12 events, then the lost-events marker as the newest event |
+| Bad pack CRC | `pack: crc bad, 0 ms` / `pack: bad crc`; good pack restored |
+| USB upload | after the 2 KB block fix, a 64 KB `up` completed; with the setup portal active it timed out at 0 bytes |
+
+The release image after the pass is 1,476,485 B (80.5%) flash and 95,528 B RAM;
+163 native tests pass. The device was restored to its Meshtastic image from a
+full 8 MB backup afterwards. Captures from the pass are in
+`tools/screenshots/out/` and are not committed.
+

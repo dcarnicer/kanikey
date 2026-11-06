@@ -14,8 +14,8 @@ Every item below was found and reproduced in the 2026-11-01 review of the firmwa
 | FIX-08 | Review batches are capped at 20 and always the same items | P1 | M | none | 0a+0b | done |
 | FIX-09 | After a wrong first part, the failed part is asked again immediately | P1 | S | none | 0a | done |
 | FIX-10 | A completed review is not in the outbox until the next Enter | P1 | S | none | 0b | done |
-| FIX-11 | Lesson start errors are silent | P1 | M | none | 0a+0b | review |
-| FIX-12 | Deep sleep during the lesson quiz | P2 | S | none | 0b | review |
+| FIX-11 | Lesson start errors are silent | P1 | M | none | 0a+0b | done (sim) |
+| FIX-12 | Deep sleep during the lesson quiz | P2 | S | none | 0b | done (sim battery) |
 | FIX-13 | A full outbox drops reviews silently | P2 | S | none | 0b | done |
 | FIX-14 | Fixed 32 KB body cap with no fallback | P2 | M | none | 0a | review |
 | FIX-15 | Typo tolerance uses the typed length | P2 | S | none | 0a | done |
@@ -24,9 +24,9 @@ Every item below was found and reproduced in the 2026-11-01 review of the firmwa
 | FIX-18 | `/level_progressions` parsed into a full DOM | P2 | M | none | 0a | done |
 | FIX-19 | Station setup page has no authentication | P2 | S | FIX-07 | 0a | done |
 | FIX-20 | OTA marked valid after only 10 s of loop | P2 | S | none | 0b | review |
-| FIX-21 | LittleFS formats on any mount failure | P3 | S | none | 0b | review |
+| FIX-21 | LittleFS formats on any mount failure | P3 | S | none | 0b | done |
 | FIX-22 | Outbox save rename order | P3 | S | none | 0a | done |
-| FIX-23 | Small UX bugs | P3 | S | none | 0b | review |
+| FIX-23 | Small UX bugs | P3 | S | none | 0b | done |
 | FIX-24 | Latent robustness | P3 | S | none | 0a+0b | review |
 | FIX-25 | Re-opening the visual pack from the setup page breaks every glyph | P1 | S | none | 0a+0b | done |
 | FIX-26 | Cache store: noisy error log and rename order | P3 | S | none | 0a | done |
@@ -897,3 +897,52 @@ flow evicts the batch first, so only the dev command is affected.
 **Acceptance.**
 - [x] A review drawn without the canvas does not freeze.
 - [x] The boot log has no `addApbChangeCallback(): duplicate` line.
+
+---
+
+## Wave 3 log (2026-11-06)
+
+Verification pass on the Cardputer ADV with the dev image of `spec/round-2`
+(1,495,169 B, 81.5% flash, 95,576 B RAM). The cache was synthetic (six items:
+one radical, two kanji and three vocabulary) and Wi-Fi was off; no real
+`POST /v2/reviews` or `PUT /assignments/{id}/start` was sent. The pass added
+dev-only hooks: `L` (radical-only lesson), `A <code>` (fake lesson start),
+`B` (open a bad-CRC pack), `E` (zero due), `H` (drop the cached batch and seed
+one lesson bucket), `O` (force battery), `Z <seconds>` (sleep timeout),
+`G <n>` (fill the real key queue) and `T` (save a token without probing it).
+`tools/session.py` keeps one serial session open: opening the USB port resets
+the board.
+
+| Task | Check | Result |
+|---|---|---|
+| FIX-07 | Two boot-time setup APs | **partial**: `KaniKey-AAC8` both times, two different random passwords; the 15-minute close and a beacon capture were not run |
+| FIX-11 | `L`, `e`, then `A 200`/`422`/`500`/`0`/`401` + `e` | **pass (simulated)**: 200/422 advance the card, 500 shows `Could not start lesson / HTTP 500`, 0 shows `No connection`, 401 arms the auth notice; no real request was sent |
+| FIX-12 | `Z 30`, `O`, `L`, `e`, `Q`, 40 s with the quiz open | **pass (simulated battery)**: no `[power] idle sleep`; the quiz stays awake |
+| FIX-21 | `J` (3 outbox items), 64 KB corrupted at `0x390000`, boot | **pass**: `Storage unreadable / Pending reviews cannot be read / Enter: format Esc: continue`; Esc kept `KKOB` and `KKCA` in the partition dump; Enter formatted and the outbox loaded 0 items |
+| FIX-23 | `E` + Enter; `H` + Enter; `H` + `K l` | **pass**: `No reviews now / Next review 15:43 / Enter: sync Esc: home`, `Could not load reviews / Batch: assignments HTTP 0 / Enter: retry Esc: home`, `No lessons available / assignments HTTP 0 / Enter: retry Esc: home`; the fetch log used the 6 due items, not the batch size; the 30 s Home refresh is code-inspected |
+| FIX-24 (a) | `G 20` on the real board queue | **pass**: 12 `[key] test event` lines followed by the `[key] test marker (all released)` line; the marker is the newest event |
+| FIX-24 (b) | `B` with a 56-byte valid-header pack with a flipped CRC | **pass**: `[pack] crc bad, 0 ms`, `pack: bad crc`, then the good pack restored (`7269 glyphs, 498 radicals`) |
+| FIX-24 (c) | USB short upload to a pack path | **partial**: a short `up` kept the previous file and removed the tmp; the Wi-Fi upload path was not run |
+| RAD-04 | `L` -> list -> `e` card -> `Q` quiz | **pass (synthetic)**: `RAD L1 ground` row, radical bitmap in the card and quiz; still not a real low-level account |
+
+Build/tests after the pass: **163 native tests pass**; release image
+**1,476,485 B / 1,835,008 B flash (80.5%)**, **95,528 B RAM**; dev image
+1,495,169 B (81.5%), 95,576 B RAM.
+
+Findings:
+
+- The USB `up` path waited for 8 KB while `tools/device.py` sends 2 KB chunks,
+  so every transfer over 2 KB timed out. The firmware now reads 2 KB per ack;
+  a 64 KB upload completes (`[up] done 65536/65536`).
+- With the setup portal AP active, `up` timed out with 0 bytes twice; the same
+  64 KB upload passed after the synthetic cache removed the portal from the
+  boot path. This is a tooling limitation, not one of the FIX tasks.
+- The first KaniKey boot after the Meshtastic image reported
+  `kbd: TCA8418 not found, keys off`; a later boot found it. No key-hardware
+  fault was reproduced afterwards.
+- Not run: FIX-06 slow server, FIX-14 forced body cap, FIX-20 bad OTA image and
+  two-strike rollback, FIX-24 (c) Wi-Fi upload, FIX-07 15-minute close and
+  beacon capture, FIX-23 (e) visual battery refresh. They need a station
+  network/token or a controlled OTA image.
+- The device was restored to its Meshtastic image from a full 8 MB flash backup
+  after the pass.

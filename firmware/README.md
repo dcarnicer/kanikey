@@ -230,6 +230,21 @@ release binary.
 | `I` | dev | Install the offered firmware |
 | `V` | dev | Open the Firmware screen |
 | `Y` | dev | Clear the remembered rollback version |
+| `T` | dev | Save a dev token in NVS without probing it (for `C`) |
+| `L` | dev | Seed and open a one-item radical-only lesson (no network) |
+| `E` | dev | Simulate zero due reviews (move the summary buckets forward) |
+| `H` | dev | Drop the cached review batch and seed one lesson bucket (failed-fetch tests) |
+| `A <code>` | dev | Fake the next lesson-start HTTP code; `A` alone restores the real `PUT` |
+| `B` | dev | Open `/kanikey/glyphs-bad.kgp` with CRC, then restore the good pack |
+| `O` | dev | Toggle forced battery for the idle-sleep test |
+| `Z <seconds>` | dev | Set the sleep timeout (`0` = never) |
+| `G <n>` | dev | Push `n` events into the real key queue (overflow-marker test) |
+
+The last group was added for the 2026-11-06 hardware pass. For a multi-command
+sequence use `tools/session.py`: opening the USB port resets the board, so
+separate `device.py cmd` calls cannot keep UI state. The USB `up` path reads
+2 KiB blocks with one ack per block, matching `tools/device.py`; larger chunks
+used to deadlock both sides.
 
 ## Setup portal
 
