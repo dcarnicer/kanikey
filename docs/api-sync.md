@@ -234,7 +234,9 @@ and subject pages are streamed into the domain records (TECH-01), so a page no
 longer builds a JSON DOM; components are kept in the same subject list and
 cached, so the detail card works offline. Vocabulary context sentences are
 stored (up to 4) and the English sentence is shown on the sixth detail page;
-`pronunciation_audios` remains phase 2 (EXT-06). The related IDs
+`pronunciation_audios` is parsed into transient URL/content-type/voice clips
+(AUD-01, 2026-11-06), but the cache still ignores it; playback waits for the
+decoder spike. The related IDs
 (`visually_similar_subject_ids`, `amalgamation_subject_ids`, up to 32 each) are
 stored and the detail card adds a related page with counts and any meanings
 already present in the batch. A subject page cut at the 32 KB cap is retried

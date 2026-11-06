@@ -6300,6 +6300,9 @@ void handleSerial() {
                 tgc::board::devPushKeyEvent(e);
             }
             Serial.printf("[key] pushed %d events\n", count);
+        } else if (gSerialLine == "n") {
+            const bool played = tgc::board::playTone(880, 150);
+            Serial.printf("[audio] test tone %s\n", played ? "played" : "unavailable");
         } else if (gSerialLine == "Y") {
             gOtaState.failedVersion.clear();
             kk::ota::saveFailedVersion("");
@@ -6331,9 +6334,9 @@ void handleSerial() {
 #endif
         } else if (!gSerialLine.isEmpty()) {
 #ifdef KANIKEY_DEV
-            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear J=attention-outbox Y=clear-rollback C=dev-cache X=clear-cache K <keys>=type R<id>=radical U <url>=manifest F=firmware-check I=firmware-install V=firmware-screen k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload T=dev-token L=radical-lesson E=zero-due H=drop-batch A<code>=fake-start B=bad-pack-crc O=force-battery Z<s>=sleep G<n>=key-storm\n");
+            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear J=attention-outbox Y=clear-rollback C=dev-cache X=clear-cache K <keys>=type R<id>=radical U <url>=manifest F=firmware-check I=firmware-install V=firmware-screen k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload T=dev-token L=radical-lesson E=zero-due H=drop-batch A<code>=fake-start B=bad-pack-crc O=force-battery Z<s>=sleep G<n>=key-storm n=test-tone\n");
 #else
-            Serial.printf("[kk] commands: h=heap i=pack S=asset-server p=picture r=restart up <bytes> <path>=sd-upload\n");
+            Serial.printf("[kk] commands: h=heap i=pack S=asset-server p=picture r=restart n=test-tone up <bytes> <path>=sd-upload\n");
 #endif
         }
         gSerialLine = "";

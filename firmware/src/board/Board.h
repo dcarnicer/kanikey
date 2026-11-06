@@ -114,6 +114,9 @@ int batteryPercent();
 bool isCharging();
 
 void setBrightness(uint8_t level);  // 0..255
+// Plays a short test tone through the ES8311. Returns false when the speaker is
+// not available in this build.
+bool playTone(uint16_t frequency, uint16_t durationMs, uint8_t volume = 128);
 
 // --- Power -----------------------------------------------------------------
 // True when this boot is a wake-up from deepSleep() rather than a power-on or

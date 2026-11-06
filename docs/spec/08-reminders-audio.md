@@ -1,5 +1,14 @@
 # Reminders and audio
 
+**Implementation (2026-11-06).** AUD-01 is partially done: `Subject` now keeps
+up to four transient `pronunciation_audios` clips (URL, content type, voice)
+and both parsers populate them, but the KKCS cache still ignores them. The
+Cardputer board enables `M5.Speaker`/ES8311 (`internal_spk = true`) and serial
+`n` plays a 150 ms 880 Hz test tone. The decoder, SD audio cache and playback
+(`AUD-02`/`AUD-03`) are not shipped: choosing a decoder without the hardware
+measurements in AUD-01 would violate the memory budget. The clip size, decoder
+flash/RAM and I2S route still need a real-device run.
+
 Decision D4 brings Kakehashi's reminders and vocabulary audio into this round. Reminders are device-local only: no push, no server; the device wakes itself from deep sleep, reads the cached summary and goes back to sleep. Audio is the `pronunciation_audios` path through the ES8311, cached on the user's own card. Both blocks start with a spike (wave 4) because they touch deep-sleep power, flash and the tight no-PSRAM heap. Together they replace ROADMAP EXT-09 and EXT-06.
 
 | ID | Title | Priority | Size | Depends on | Wave | Status |
@@ -7,7 +16,7 @@ Decision D4 brings Kakehashi's reminders and vocabulary audio into this round. R
 | REM-01 | Spike: timer wake and sound | P2 | M | none | 4 | todo |
 | REM-02 | Reminder wake | P2 | M | REM-01, SPEED-02, CFG (M1–M3) | 4 | todo |
 | REM-03 | Sounds | P3 | S | REM-01, REM-02, CFG (M4, M5) | 4 | todo |
-| AUD-01 | Spike: vocabulary audio | P2 | M | none | 4 | todo |
+| AUD-01 | Spike: vocabulary audio | P2 | M | none | 4 | partial (2026-11-06: parser + speaker) |
 | AUD-02 | Audio cache on SD | P3 | M | AUD-01, SPEED-04, CFG (M7) | 4 | todo |
 | AUD-03 | Playback | P3 | M | AUD-01, AUD-02, CFG (M6, M7) | 4 | todo |
 

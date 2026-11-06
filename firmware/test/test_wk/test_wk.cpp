@@ -1796,6 +1796,32 @@ static const char* kSubjectStreamFixture = R"json({
         {"id":40,"object":"kana_vocabulary","data":null}
     ]})json";
 
+static void test_subject_audio_parse() {
+    const char* text = R"json({"data":[{"id":30,"object":"vocabulary","data":{
+        "level":1,"characters":"日本",
+        "pronunciation_audios":[
+          {"url":"https://example.test/female.mp3","content_type":"audio/mpeg",
+           "metadata":{"gender":"female","voice_actor_name":"Kyoko"}},
+          {"url":"https://example.test/male.ogg","content_type":"audio/ogg",
+           "metadata":{"gender":"male"}}]
+    }}]})json";
+    JsonParser p;
+    JsonValue v;
+    TEST_ASSERT_TRUE(p.parse(text, &v));
+    const std::vector<Subject> dom = parseSubjects(v, true);
+    std::vector<Subject> stream;
+    TEST_ASSERT_TRUE(parseSubjectsStream(text, &stream, true));
+    TEST_ASSERT_EQUAL(1, dom.size());
+    TEST_ASSERT_EQUAL(1, stream.size());
+    TEST_ASSERT_EQUAL(2, dom[0].audios.size());
+    TEST_ASSERT_EQUAL(2, stream[0].audios.size());
+    TEST_ASSERT_EQUAL_STRING("https://example.test/female.mp3",
+                             stream[0].audios[0].url.c_str());
+    TEST_ASSERT_EQUAL_STRING("audio/mpeg", stream[0].audios[0].contentType.c_str());
+    TEST_ASSERT_EQUAL(0, stream[0].audios[0].voice);
+    TEST_ASSERT_EQUAL(1, stream[0].audios[1].voice);
+}
+
 static void test_subject_stream_matches_dom() {
     JsonParser p;
     JsonValue v;
@@ -2753,6 +2779,7 @@ int main(int, char**) {
     RUN_TEST(test_srs_total_count_and_groups);
     RUN_TEST(test_assignment_parse);
     RUN_TEST(test_subject_parse);
+    RUN_TEST(test_subject_audio_parse);
     RUN_TEST(test_assignment_stream_matches_dom);
     RUN_TEST(test_assignment_stream_edges);
     RUN_TEST(test_subject_stream_matches_dom);

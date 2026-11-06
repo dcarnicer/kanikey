@@ -157,10 +157,10 @@ void begin() {
     rtc_gpio_deinit(kSelectPin);
     rtc_gpio_deinit(kKbdIntPin);
     auto cfg = M5.config();
-    // Nothing here uses the IMU, the speaker or the microphone: the BMI270
-    // stays in its power-on suspend mode and the ES8311 off.
+    // The IMU and microphone stay off; the speaker is enabled for the audio
+    // spike and answer tones through the ES8311.
     cfg.internal_imu = false;
-    cfg.internal_spk = false;
+    cfg.internal_spk = true;
     cfg.internal_mic = false;
     M5.begin(cfg);
     if (M5.getBoard() != m5::board_t::board_M5CardputerADV)
@@ -251,6 +251,12 @@ int batteryPercent() {
 
 // No charger status reaches the ESP32 here (M5Unified reports it unknown).
 bool isCharging() { return M5.Power.isCharging() == m5::Power_Class::is_charging; }
+
+bool playTone(uint16_t frequency, uint16_t durationMs, uint8_t volume) {
+    M5.Speaker.setVolume(volume);
+    M5.Speaker.tone(frequency, durationMs);
+    return true;
+}
 
 void setBrightness(uint8_t level) {
     gBrightness = level;

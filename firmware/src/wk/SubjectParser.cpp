@@ -96,8 +96,15 @@ public:
                     auxHasMeaning_ = false;
                     auxHasType_ = false;
                     break;
+                case ArrayKind::PronunciationAudios:
+                    kind = ObjKind::Audio;
+                    currentAudio_ = AudioClip{};
+                    break;
                 default: break;
             }
+        } else if (depth_ == 6 && objectKind_[6] == ObjKind::Audio &&
+                   pending_ == Key::AudioMetadata) {
+            kind = ObjKind::AudioMeta;
         }
 
         if (kind == ObjKind::Item) {
@@ -133,6 +140,9 @@ public:
                 else if (auxType_ == "blacklist")
                     current_.blacklist.push_back(std::move(auxMeaning_));
             }
+        } else if (kind == ObjKind::Audio) {
+            if (details_ && !currentAudio_.url.empty() && current_.audios.size() < 4)
+                current_.audios.push_back(std::move(currentAudio_));
         } else if (kind == ObjKind::Item) {
             if (active_ && hasSubjectData_ && current_.id) out_->push_back(std::move(current_));
             active_ = false;
@@ -157,6 +167,7 @@ public:
                 case Key::PartsOfSpeech: kind = ArrayKind::PartsOfSpeech; break;
                 case Key::ContextSentences: kind = ArrayKind::ContextSentences; break;
                 case Key::AuxiliaryMeanings: kind = ArrayKind::AuxiliaryMeanings; break;
+                case Key::PronunciationAudios: kind = ArrayKind::PronunciationAudios; break;
                 default: break;
             }
         }
@@ -217,8 +228,18 @@ public:
                     else if (key == "type")
                         pending_ = Key::ReadingType;
                     break;
+                case ObjKind::Audio:
+                    if (key == "url")
+                        pending_ = Key::AudioUrl;
+                    else if (key == "content_type")
+                        pending_ = Key::AudioContentType;
+                    else if (key == "metadata")
+                        pending_ = Key::AudioMetadata;
+                    break;
                 default: break;
             }
+        } else if (depth_ == 7 && objectKind_[7] == ObjKind::AudioMeta) {
+            if (key == "gender") pending_ = Key::AudioGender;
         }
         return true;
     }
@@ -228,6 +249,13 @@ public:
             current_.type = subjectTypeFromString(value);
         } else if (depth_ == 4 && objectKind_[4] == ObjKind::SubjectData) {
             applySubjectString(value);
+        } else if (depth_ == 6 && objectKind_[6] == ObjKind::Audio) {
+            if (pending_ == Key::AudioUrl)
+                currentAudio_.url = std::string(value);
+            else if (pending_ == Key::AudioContentType)
+                currentAudio_.contentType = std::string(value);
+        } else if (depth_ == 7 && objectKind_[7] == ObjKind::AudioMeta) {
+            if (pending_ == Key::AudioGender && value == "male") currentAudio_.voice = 1;
         } else if (depth_ == 5 && arrayKind_[5] == ArrayKind::PartsOfSpeech) {
             if (details_ && !value.empty() && current_.partsOfSpeech.size() < 8)
                 current_.partsOfSpeech.emplace_back(value);
@@ -331,6 +359,11 @@ private:
         ObjectType,
         Level,
         LessonPosition,
+        PronunciationAudios,
+        AudioUrl,
+        AudioContentType,
+        AudioMetadata,
+        AudioGender,
         Characters,
         Meanings,
         Readings,
@@ -375,6 +408,7 @@ private:
         PartsOfSpeech,
         ContextSentences,
         AuxiliaryMeanings,
+        PronunciationAudios,
     };
 
     enum class ObjKind : uint8_t {
@@ -385,6 +419,8 @@ private:
         Reading,
         Context,
         Auxiliary,
+        Audio,
+        AudioMeta,
     };
 
     static Key subjectKey(std::string_view key) {
@@ -403,6 +439,7 @@ private:
         if (key == "parts_of_speech") return Key::PartsOfSpeech;
         if (key == "context_sentences") return Key::ContextSentences;
         if (key == "auxiliary_meanings") return Key::AuxiliaryMeanings;
+        if (key == "pronunciation_audios") return Key::PronunciationAudios;
         if (key == "meaning_note") return Key::MeaningNote;
         if (key == "reading_note") return Key::ReadingNote;
         if (key == "meaning_correct") return Key::MeaningCorrect;
@@ -506,6 +543,7 @@ private:
     std::string auxType_;
     bool auxHasMeaning_ = false;
     bool auxHasType_ = false;
+    AudioClip currentAudio_;
     Key pending_ = Key::None;
     int depth_ = 0;
     ObjKind objectKind_[kStackDepth] = {};
@@ -562,6 +600,27 @@ std::vector<Subject> parseSubjects(const JsonValue& root, bool details) {
                 if (const JsonValue* t = r.find("type"); t && t->isString())
                     reading.type = readingTypeFromString(t->string);
                 if (!reading.text.empty()) s.readings.push_back(std::move(reading));
+            }
+        }
+        if (details) {
+            if (const JsonValue* audios = d->find("pronunciation_audios");
+                audios && audios->isArray()) {
+                for (const JsonValue& a : audios->array) {
+                    if (s.audios.size() >= 4) break;
+                    AudioClip clip;
+                    if (const JsonValue* url = a.find("url"); url && url->isString())
+                        clip.url = url->string;
+                    if (const JsonValue* type = a.find("content_type");
+                        type && type->isString())
+                        clip.contentType = type->string;
+                    if (const JsonValue* meta = a.find("metadata");
+                        meta && meta->isObject()) {
+                        if (const JsonValue* gender = meta->find("gender");
+                            gender && gender->isString() && gender->string == "male")
+                            clip.voice = 1;
+                    }
+                    if (!clip.url.empty()) s.audios.push_back(std::move(clip));
+                }
             }
         }
         if (const JsonValue* comps = d->find("component_subject_ids"); comps && comps->isArray()) {

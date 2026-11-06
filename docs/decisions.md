@@ -790,6 +790,13 @@ the review queue stable-partitions due critical subjects to the front before
 applying the batch limit. STUDY-03/04/05 can read the same list for practice
 and the visible critical-items screen.
 
+Vocabulary audio is split into a spike and playback. The parser keeps
+`pronunciation_audios` as transient URL/content-type/voice clips, but they are
+not written to KKCS and no decoder is linked yet. The ES8311 is enabled so the
+hardware run can measure the speaker path and play the serial `n` test tone;
+AUD-02/03 stay blocked until clip sizes and a decoder's flash/RAM fit are
+measured on the S3.
+
 Extra study is local practice, never a WaniKani session: it reuses the review
 queue and UI, has no outbox item, never calls `POST /reviews` or `PUT /start`,
 does not change due counts, SRS or review statistics, and journals every

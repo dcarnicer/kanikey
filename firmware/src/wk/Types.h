@@ -29,6 +29,12 @@ struct ContextSentence {
     std::string en;
 };
 
+struct AudioClip {
+    std::string url;
+    std::string contentType;  // audio/mpeg or audio/ogg
+    uint8_t voice = 0;        // 0 female, 1 male
+};
+
 struct Subject {
     uint32_t id = 0;
     SubjectType type = SubjectType::Kanji;
@@ -51,6 +57,7 @@ struct Subject {
     std::string readingNote;
     std::vector<std::string> partsOfSpeech;       // vocabulary details
     std::vector<ContextSentence> contextSentences;  // vocabulary details
+    std::vector<AudioClip> audios;                  // pronunciation_audios, transient
 
     // Review statistics (GET /review_statistics); hasReviewStats is false for
     // lessons and for subjects without a statistics resource.
