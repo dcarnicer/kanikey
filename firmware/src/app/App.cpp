@@ -41,6 +41,7 @@
 #include "platform/CriticalStore.h"
 #include "platform/GlyphPack.h"
 #include "platform/JournalStore.h"
+#include "platform/PracticeStore.h"
 #include "platform/SetupPortal.h"
 #include "platform/SubjectCatalog.h"
 #include "platform/WkProbe.h"
@@ -184,6 +185,8 @@ bool gStatsHistoryLoaded = false;
 std::vector<kk::CriticalItem> gCritical;
 bool gCriticalLoaded = false;
 std::vector<kk::Subject> gPracticeSubjects;
+std::vector<kk::Assignment> gPracticePool;
+bool gPracticePoolLoaded = false;
 std::vector<kk::Subject> gCriticalSubjects;
 bool gPracticeActive = false;
 int gPracticeMode = 0;
@@ -411,6 +414,52 @@ void loadCritical() {
     gCriticalLoaded = true;
     gCritical.clear();
     if (gFsOk) kk::criticalLoad(currentAccountKey(), &gCritical);
+}
+
+void loadPracticePool() {
+    if (gPracticePoolLoaded) return;
+    gPracticePoolLoaded = true;
+    gPracticePool.clear();
+    if (gFsOk) kk::practicePoolLoad(currentAccountKey(), &gPracticePool);
+}
+
+void mergePracticePool(const std::vector<kk::Assignment>& assignments) {
+    for (const kk::Assignment& a : assignments) {
+        bool found = false;
+        for (kk::Assignment& existing : gPracticePool)
+            if (existing.subjectId == a.subjectId) {
+                const uint8_t keepLevel = existing.level;
+                existing = a;
+                if (existing.level == 0) existing.level = keepLevel;
+                found = true;
+                break;
+            }
+        if (!found && gPracticePool.size() < kk::kPracticePoolMax)
+            gPracticePool.push_back(a);
+    }
+}
+
+bool refreshPracticePool() {
+    if (!kk::DevToken::has() || !kk::DevWifi::connected()) return false;
+    loadPracticePool();
+    bool any = false;
+    // Current-level entries first so a full 256-entry pool never drops them.
+    if (gHaveUser) {
+        kk::AssignmentBatch level =
+            kk::fetchPracticeAssignments(kk::DevToken::load(), gUser.level, true);
+        if (level.ok && !level.assignments.empty()) {
+            for (kk::Assignment& a : level.assignments) a.level = gUser.level;
+            mergePracticePool(level.assignments);
+            any = true;
+        }
+    }
+    kk::AssignmentBatch all = kk::fetchPracticeAssignments(kk::DevToken::load(), 0, false);
+    if (all.ok && !all.assignments.empty()) {
+        mergePracticePool(all.assignments);
+        any = true;
+    }
+    if (any && gFsOk) kk::practicePoolSave(currentAccountKey(), gPracticePool);
+    return any;
 }
 
 void loadStatsHistory() {
@@ -963,6 +1012,7 @@ bool runCriticalItems() {
     gCritical = std::move(items);
     gCriticalLoaded = true;
     Serial.printf("[critical] %u items\n", static_cast<unsigned>(gCritical.size()));
+    refreshPracticePool();
     return true;
 }
 
@@ -2500,7 +2550,7 @@ void lessonKey(const KeyEvent& e) {
     }
 }
 
-constexpr int kSettingsRows = 14;
+constexpr int kSettingsRows = 17;
 
 void setSettingsNote(const char* text, uint16_t color = kFaint) {
     snprintf(gSettingsNote, sizeof gSettingsNote, "%s", text ? text : "");
@@ -2618,7 +2668,31 @@ void settingsAction() {
             setSettingsNote(value ? "Critical items first" : "Normal review order", kOk);
             break;
         }
-        case 8:
+        case 8: {
+            static const int kWindows[] = {86400, 259200, 604800};
+            const int value =
+                nextPreset(kWindows, 3, kk::settingsPracticeMistakesWindow());
+            kk::settingsSetPracticeMistakesWindow(value);
+            setSettingsNote(value == 86400 ? "Mistakes: 24 h"
+                                           : value == 259200 ? "Mistakes: 3 days"
+                                                             : "Mistakes: 7 days",
+                            kOk);
+            break;
+        }
+        case 9: {
+            const int value = (kk::settingsPracticeLessonsMode() + 1) % 4;
+            kk::settingsSetPracticeLessonsMode(value);
+            static const char* kLabels[] = {"Apprentice", "24 hours", "3 days", "7 days"};
+            setSettingsNote((String("Lessons: ") + kLabels[value]).c_str(), kOk);
+            break;
+        }
+        case 10: {
+            const int value = kk::settingsPracticeSize() == 10 ? 20 : 10;
+            kk::settingsSetPracticeSize(value);
+            setSettingsNote((String("Practice size ") + String(value)).c_str(), kOk);
+            break;
+        }
+        case 11:
             if (gReviewActive) {
                 setSettingsNote("End the review session first", kWarn);
                 break;
@@ -2627,7 +2701,7 @@ void settingsAction() {
             gShowHome = false;
             startSetupPortal();
             break;
-        case 9:
+        case 12:
             if (!gSdOk || !gPack.ready() || !kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
                 setSettingsNote("Configure Wi-Fi, token and pack", kWarn);
                 break;
@@ -2636,20 +2710,20 @@ void settingsAction() {
             gShowHome = false;
             startSync();
             break;
-        case 10:
+        case 13:
             openFirmware();
             break;
-        case 11:
+        case 14:
             gAboutActive = true;
             gSettingsNote[0] = 0;
             break;
-        case 12:
+        case 15:
             if (gFsOk) kk::cacheClearSnapshot();
             if (gSdOk) kk::cacheClearSubjects(SD);
             gCacheSavedAt = 0;
             setSettingsNote("Cache cleared; next boot is cold", kOk);
             break;
-        case 13:
+        case 16:
             gSignOutConfirm = true;
             gSettingsNote[0] = 0;
             break;
@@ -2676,6 +2750,9 @@ void settingsKey(const KeyEvent& e) {
             saveOutbox();
             kk::journalClear();
             kk::criticalClear();
+            kk::practicePoolClear();
+            gPracticePool.clear();
+            gPracticePoolLoaded = false;
             gCritical.clear();
             gCriticalLoaded = false;
             gStatsHistoryLoaded = false;
@@ -3756,9 +3833,10 @@ std::vector<uint32_t> recentMistakeIds(size_t limit, size_t* total) {
     if (total) *total = 0;
     if (!gFsOk || !kk::journalOpen(currentAccountKey(), false)) return ids;
     const uint32_t now = effectiveNow();
-    if (now < 86400u) return ids;
+    const uint32_t window = static_cast<uint32_t>(kk::settingsPracticeMistakesWindow());
+    if (now < window) return ids;
     MistakeCollector collector;
-    collector.cutoff = now - 86400u;  // S4 default: last 24 h
+    collector.cutoff = now - window;
     kk::journalForEach(collectMistake, &collector);
     std::sort(collector.entries.begin(), collector.entries.end(),
               [](const MistakeEntry& a, const MistakeEntry& b) { return a.at > b.at; });
@@ -3940,30 +4018,46 @@ void startPractice(int mode) {
     gPracticeSkipped = 0;
     gPracticeSubjects.clear();
     gPracticeActive = false;
+    const size_t limit = static_cast<size_t>(kk::settingsPracticeSize());
     std::vector<kk::Assignment> fetched;
     std::vector<uint32_t> ids;
     if (mode == 0) {
         size_t total = 0;
-        ids = recentMistakeIds(10, &total);
+        ids = recentMistakeIds(limit, &total);
     } else if (mode == 2) {
         loadCritical();
         for (const kk::CriticalItem& item : gCritical) {
             ids.push_back(item.subjectId);
-            if (ids.size() >= 10) break;
+            if (ids.size() >= limit) break;
         }
     } else {
-        drawLoading("Preparing practice...", kLoading[mode]);
-        gFreeCanvasForRequest = true;
-        kk::AssignmentBatch batch = kk::fetchPracticeAssignments(
-            kk::DevToken::load(), mode == 3 ? (gHaveUser ? gUser.level : 0) : 0, mode == 3);
-        gFreeCanvasForRequest = false;
-        if (!batch.ok) {
-            snprintf(gStudyNote, sizeof gStudyNote, "Needs Wi-Fi for this mode");
-            gDirty = true;
-            return;
+        loadPracticePool();
+        if (mode == 1)
+            fetched = kk::selectRecentLessons(gPracticePool, kk::settingsPracticeLessonsMode(),
+                                              effectiveNow(), limit);
+        else
+            fetched = kk::selectCurrentLevel(gPracticePool, gHaveUser ? gUser.level : 0, limit);
+        if (fetched.empty() && kk::DevToken::has() && kk::DevWifi::connected()) {
+            drawLoading("Preparing practice...", kLoading[mode]);
+            gFreeCanvasForRequest = true;
+            kk::AssignmentBatch batch = kk::fetchPracticeAssignments(
+                kk::DevToken::load(), mode == 3 ? (gHaveUser ? gUser.level : 0) : 0, mode == 3);
+            gFreeCanvasForRequest = false;
+            if (batch.ok && !batch.assignments.empty()) {
+                if (mode == 3 && gHaveUser)
+                    for (kk::Assignment& a : batch.assignments) a.level = gUser.level;
+                mergePracticePool(batch.assignments);
+                if (gFsOk) kk::practicePoolSave(currentAccountKey(), gPracticePool);
+                if (mode == 1)
+                    fetched = kk::selectRecentLessons(gPracticePool,
+                                                      kk::settingsPracticeLessonsMode(),
+                                                      effectiveNow(), limit);
+                else
+                    fetched = kk::selectCurrentLevel(gPracticePool, gHaveUser ? gUser.level : 0,
+                                                     limit);
+            }
         }
-        fetched = std::move(batch.assignments);
-        if (fetched.size() > 10) fetched.resize(10);
+        if (fetched.size() > limit) fetched.resize(limit);
         for (const kk::Assignment& a : fetched) ids.push_back(a.subjectId);
     }
     if (ids.empty()) {
@@ -3976,6 +4070,11 @@ void startPractice(int mode) {
     gFreeCanvasForRequest = true;
     resolvePracticeSubjects(ids, &gPracticeSubjects, &missing);
     gFreeCanvasForRequest = false;
+    if (mode == 3 && gHaveUser)
+        gPracticeSubjects.erase(
+            std::remove_if(gPracticeSubjects.begin(), gPracticeSubjects.end(),
+                           [](const kk::Subject& s) { return s.level != gUser.level; }),
+            gPracticeSubjects.end());
     gPracticeSkipped = static_cast<uint32_t>(missing.size());
     if (gPracticeSubjects.empty()) {
         snprintf(gStudyNote, sizeof gStudyNote, "Nothing cached for this mode");
@@ -3998,7 +4097,7 @@ void startPractice(int mode) {
         a.hidden = false;
         a.pendingReview = false;
         practice.push_back(a);
-        if (practice.size() >= 10) break;
+        if (practice.size() >= limit) break;
     }
     if (practice.empty()) {
         for (const kk::Subject& subject : gPracticeSubjects) {
@@ -4009,13 +4108,13 @@ void startPractice(int mode) {
             a.srsStage = 1;
             a.availableAt = now;
             practice.push_back(a);
-            if (practice.size() >= 10) break;
+            if (practice.size() >= limit) break;
         }
     }
     gQueue = kk::ReviewQueue{};
     gQueue.setMeaningFirst(kk::settingsMeaningFirst());
     gQueue.setLowerLevelsFirst(false);
-    gQueue.build(practice, gPracticeSubjects, now, 10, esp_random());
+    gQueue.build(practice, gPracticeSubjects, now, limit, esp_random());
     if (gQueue.empty()) {
         snprintf(gStudyNote, sizeof gStudyNote, "%s", kNames[mode]);
         gDirty = true;
@@ -4067,6 +4166,7 @@ void drawSettings() {
 
     static const char* kLabels[] = {"Brightness", "Dim after", "Blank after", "Sleep after",
                                     "Review batch", "Order", "Lesson batch", "Critical first",
+                                    "Practice mistakes", "Practice lessons", "Practice size",
                                     "Setup portal", "Sync now", "Firmware", "About", "Clear cache",
                                     "Sign out"};
     String values[kSettingsRows];
@@ -4078,13 +4178,18 @@ void drawSettings() {
     values[5] = kk::settingsMeaningFirst() ? "Meaning" : "Reading";
     values[6] = String(kk::settingsLessonBatchSize());
     values[7] = kk::settingsCriticalFirst() ? "On" : "Off";
-    values[8] = "open";
-    values[9] = "run";
-    values[10] = gOtaState.badgeVersion.empty() ? kk::kFirmwareVersion
+    const int mistakes = kk::settingsPracticeMistakesWindow();
+    values[8] = mistakes == 86400 ? "24h" : mistakes == 259200 ? "3d" : "7d";
+    static const char* kLessonLabels[] = {"Apprentice", "24h", "3d", "7d"};
+    values[9] = kLessonLabels[kk::settingsPracticeLessonsMode()];
+    values[10] = String(kk::settingsPracticeSize());
+    values[11] = "open";
+    values[12] = "run";
+    values[13] = gOtaState.badgeVersion.empty() ? kk::kFirmwareVersion
                                                 : gOtaState.badgeVersion.c_str();
-    values[11] = "info";
-    values[12] = "clear";
-    values[13] = "out";
+    values[14] = "info";
+    values[15] = "clear";
+    values[16] = "out";
 
     SettingsView view;
     view.selectedIndex = gSettingsIndex;
@@ -4743,7 +4848,7 @@ void firmwareKey(const KeyEvent& e) {
         } else {
             gFirmwareActive = false;
             gSettingsActive = true;
-            gSettingsIndex = 10;
+            gSettingsIndex = 13;
         }
         gDirty = true;
         return;
@@ -5896,6 +6001,9 @@ void handleSerial() {
             kk::wkClearAuthBlock();
             kk::journalClear();
             kk::criticalClear();
+            kk::practicePoolClear();
+            gPracticePool.clear();
+            gPracticePoolLoaded = false;
             gCritical.clear();
             gCriticalLoaded = false;
             gStatsHistoryLoaded = false;
@@ -6002,7 +6110,7 @@ void handleSerial() {
             if (gFirmwareActive) {
                 gFirmwareActive = false;
                 gSettingsActive = true;
-                gSettingsIndex = 10;
+                gSettingsIndex = 13;
                 gFirmwareConfirm = false;
                 gDirty = true;
             } else if (gSettingsActive) {

@@ -127,8 +127,8 @@ Working on hardware:
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Current build: **1,517,021 B / 1,835,008 B flash (82.7%)**, **95,864 B /
-327,680 B static RAM (29.3%)**. The dev image is 1,535,905 B. Removing
+Current build: **1,523,445 B / 1,835,008 B flash (83.0%)**, **95,896 B /
+327,680 B static RAM (29.3%)**. The dev image is 1,541,997 B. Removing
 `efontJA_16` freed ~468 KB and leaves ~358 KB of flash headroom. The loop task
 uses a 24 KiB stack; the lazy review batch raised the lesson-fetch minimum free
 heap to ~56 KB.
@@ -146,7 +146,7 @@ heap to ~56 KB.
 | 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen, item detail, level progress and the Stats screen are live | Partial | UI-08 |
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal, OTA, storage and sleep done; widgets pending | TNG-03 |
 | 9 | Technical debt, CI and release | Maintainability and shipping | Done (TECH-01…06, TECH-08); TECH-07 only if needed | TECH-07 |
-| 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | Partially started (EXT-01/02 done) | EXT-03, EXT-04 |
+| 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | EXT-01…05 done; audio, reminders and stroke order remain | EXT-06, EXT-07, EXT-09 |
 
 ## Execution order
 
@@ -664,13 +664,13 @@ progress features, not a second SRS.
   `Critical first` puts due critical items at the front of the review queue.
   Extra study › `Critical items` shows the worst-first list, opens the detail
   card and can start a local practice session.
-- **EXT-04 — Extra study modes.** **Partial (2026-11-06):** `P` opens Extra
+- **EXT-04 — Extra study modes.** **Done (2026-11-06):** `P` opens Extra
   study with Recent mistakes, Recent lessons, Critical items and Current level.
   Practice is local: no outbox, no POST/PUT, no SRS or due-count changes; each
   answer is journaled with `practice=true` and the summary says
-  `Nothing was sent to WaniKani`. Recent lessons and Current level fetch
-  apprentice assignments online for now; S3/S4/S5 settings and fully offline
-  assignment storage remain.
+  `Nothing was sent to WaniKani`. A persistent apprentice pool
+  (`/state/practice.bin`) is refreshed on sync for offline lessons/current
+  level; S3/S4/S5 windows and size are in Settings.
 - **EXT-05 — Advanced stats.** **Done except the heatmap (2026-11-06):**
   forecast, SRS distribution, level progress, seven-day history, today's item
   accuracy and current/best streak are live in the Stats screen; a full

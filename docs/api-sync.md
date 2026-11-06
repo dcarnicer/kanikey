@@ -173,6 +173,13 @@ available_at, resurrected_at, hidden, data_updated_at
 - For lessons: `srs_stage == 0`, `started_at == null`, `hidden=false`,
   `unlocked_at != null`.
 
+**Practice pool (2026-11-06).** A full sync refreshes
+`/state/practice.bin` with apprentice assignments (stages 1-4) and the current
+level's kanji, up to 256. Practice filters this pool by `started_at` for the
+Recent-lessons window and by level for Current level, so those modes start
+offline. `started_at` is parsed into `Assignment` but is not part of the KKCA
+snapshot format.
+
 **Implementation (2026-11-06).** The lesson list no longer sorts only the first
 ten summary ids. It fetches assignments for up to 60 candidates in pages of 30
 (shrinking the page on truncation), reads only `id`, `data.level` and

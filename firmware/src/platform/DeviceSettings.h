@@ -38,6 +38,12 @@ bool settingsMeaningFirst();
 bool settingsSetMeaningFirst(bool meaningFirst);
 bool settingsCriticalFirst();
 bool settingsSetCriticalFirst(bool criticalFirst);
+int settingsPracticeMistakesWindow();  // seconds
+bool settingsSetPracticeMistakesWindow(int seconds);
+int settingsPracticeLessonsMode();  // 0 Apprentice, 1 24h, 2 3d, 3 7d
+bool settingsSetPracticeLessonsMode(int mode);
+int settingsPracticeSize();
+bool settingsSetPracticeSize(int size);
 
 // "<+01>-1" / "<-0330>3:30": a fixed offset east of UTC, used when the browser
 // cannot provide a DST-aware rule.

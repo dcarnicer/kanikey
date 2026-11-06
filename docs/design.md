@@ -432,6 +432,7 @@ discipline as Tangocho.
 | Session statistics | RAM only | Current session |
 | Review journal | LittleFS | Device-local history and streak; 16 B records in CRC blocks |
 | Critical items | LittleFS | Account-scoped leech list; 8 B entries, CRC header |
+| Practice pool | LittleFS | Apprentice assignments for offline extra study; 256 max |
 | Cache snapshot (summary/user/batch) | LittleFS | Small; avoids a cold boot |
 
 If the card is removed during a session, KaniKey pauses and asks for it to be

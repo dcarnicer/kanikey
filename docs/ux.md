@@ -358,7 +358,7 @@ Home ──L──► Lessons ──Enter──► Lesson card
     `Next review HH:MM` and `Enter: sync  Esc: home`, without a network call.
   - **Fetch errors:** a failed review fetch shows `Could not load reviews` with
     the error line and `Enter: retry  Esc: home`; a failed lesson fetch shows
-    `No lessons available` with the same keys (§5.15).
+    `No lessons available` with the same keys (§5.16).
   - **Vacation:** `Vacation mode` in amber in the status line when no more
     urgent sync/outbox/offline/level-up message is shown.
   - **Level:** `L8 42% since 03 Feb` (or `L8 42%`) in faint text in the status
@@ -605,13 +605,16 @@ meaning/reading notes are appended to the paged card after the mnemonic.
 
 - Open with `Esc` from Home, or `Esc` in a review → Pause → Settings.
 - Implemented rows: `Brightness`, `Dim after`, `Blank after`, `Sleep after`,
-  `Review batch`, `Order`, `Lesson batch`, `Critical first`, `Setup portal`,
+  `Review batch`, `Order`, `Lesson batch`, `Critical first`,
+  `Practice mistakes`, `Practice lessons`, `Practice size`, `Setup portal`,
   `Sync now`, `Firmware`, `About`, `Clear cache`, `Sign out`.
 - `Brightness` cycles 64/128/192/255; the timings cycle presets and `off`.
   Review batch cycles 10/20/30, lesson batch 3/5/10, `Critical first` toggles
-  On/Off and order toggles meaning-first / reading-first. All are stored in NVS
-  and applied without a reboot. WaniKani's `reviews_presentation_order` is
-  applied automatically and is not a device setting.
+  On/Off and order toggles meaning-first / reading-first. Practice mistakes
+  cycles 24 h/3 d/7 d, Practice lessons Apprentice/24 h/3 d/7 d and Practice
+  size 10/20. All are stored in NVS and applied without a reboot. WaniKani's
+  `reviews_presentation_order` is applied automatically and is not a device
+  setting.
 - The list scrolls when there are more rows than fit (7 visible, scroll bar).
 - `Setup portal` reopens the Wi-Fi/token/time page; it is disabled during a
   review so the session is not lost. `Sync now` starts a manual sync.
@@ -691,9 +694,11 @@ meaning/reading notes are appended to the paged card after the mnemonic.
 - `P` on Home opens `EXTRA STUDY`: `Recent mistakes`, `Recent lessons`,
   `Critical items`, `Current level`. `↑↓` moves, `Enter` opens/starts,
   `Esc` returns Home.
-- Recent mistakes uses the last 24 h of journaled wrong reviews (practice
-  records are ignored). Recent lessons uses apprentice assignments and Current
-  level uses apprentice kanji of the current level; both currently need Wi-Fi.
+- Recent mistakes uses the configured journal window (default 24 h) and ignores
+  practice records. Recent lessons uses the persisted apprentice pool with the
+  configured window; Current level uses apprentice kanji of the current level.
+  The pool is refreshed on sync, so both modes work offline; if it is empty and
+  Wi-Fi is available they fetch once and save it.
 - `Critical items` opens `CRITICAL ITEMS`, worst first, with prompt, main
   meaning and percentage. Up/Down scrolls, `Enter` opens the detail card,
   `P` starts practice, `Esc` returns to the menu.

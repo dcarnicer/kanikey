@@ -793,7 +793,9 @@ Extra study is local practice, never a WaniKani session: it reuses the review
 queue and UI, has no outbox item, never calls `POST /reviews` or `PUT /start`,
 does not change due counts, SRS or review statistics, and journals every
 completion with `practice=true`. Recent mistakes uses the journal, Critical
-items uses `/state/critical.bin`, and Recent lessons/Current level fetch
-apprentice assignments online until the catalog stores assignments. Subjects
-come from the SD catalog; missing ones are fetched online and stored there,
-otherwise they are skipped and counted in `N items skipped`.
+items uses `/state/critical.bin`, and Recent lessons/Current level use
+`/state/practice.bin`, a 256-assignment apprentice pool refreshed on sync.
+Subjects come from the SD catalog; missing ones are fetched online and stored
+there, otherwise they are skipped and counted in `N items skipped`. Settings
+S3/S4/S5 control the two windows and the session size (Apprentice/24 h, 24 h,
+10 by default).

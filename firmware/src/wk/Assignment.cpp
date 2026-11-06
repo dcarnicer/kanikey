@@ -73,6 +73,8 @@ public:
                 pending_ = Key::LessonPosition;
             else if (key == "available_at")
                 pending_ = Key::AvailableAt;
+            else if (key == "started_at")
+                pending_ = Key::StartedAt;
             else if (key == "hidden")
                 pending_ = Key::Hidden;
         }
@@ -84,6 +86,8 @@ public:
             current_.type = subjectTypeFromString(value);
         else if (pending_ == Key::AvailableAt && depth_ == 4 && inAssignmentData_)
             parseIso8601(value, &current_.availableAt);
+        else if (pending_ == Key::StartedAt && depth_ == 4 && inAssignmentData_)
+            parseIso8601(value, &current_.startedAt);
         else if (pending_ == Key::DataUpdatedAt && depth_ == 3 && active_)
             parseIso8601(value, &current_.dataUpdatedAt);
         pending_ = Key::None;
@@ -124,6 +128,7 @@ private:
         SrsStage,
         LessonPosition,
         AvailableAt,
+        StartedAt,
         Hidden,
         DataUpdatedAt,
     };
@@ -167,6 +172,8 @@ std::vector<Assignment> parseAssignments(const JsonValue& root) {
             a.lessonPosition = static_cast<uint16_t>(pos->number);
         if (const JsonValue* at = d->find("available_at"); at && at->isString())
             parseIso8601(at->string, &a.availableAt);
+        if (const JsonValue* started = d->find("started_at"); started && started->isString())
+            parseIso8601(started->string, &a.startedAt);
         if (const JsonValue* h = d->find("hidden"); h && h->type == JsonType::Bool)
             a.hidden = h->boolean;
         if (const JsonValue* upd = item.find("data_updated_at"); upd && upd->isString())

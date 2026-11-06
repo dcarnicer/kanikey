@@ -80,10 +80,12 @@ struct Assignment {
     uint32_t id = 0;
     uint32_t subjectId = 0;
     SubjectType type = SubjectType::Kanji;
+    uint8_t level = 0;  // practice-pool copy only; not part of the cache format
     uint8_t srsStage = 0;
     uint16_t lessonPosition = 0;  // WaniKani lesson ordering
-    uint32_t availableAt = 0;   // Unix seconds; 0 = null
-    uint32_t dataUpdatedAt = 0; // Unix seconds; the server's last change
+    uint32_t availableAt = 0;     // Unix seconds; 0 = null
+    uint32_t startedAt = 0;       // Unix seconds; 0 = not started
+    uint32_t dataUpdatedAt = 0;   // Unix seconds; the server's last change
     bool hidden = false;
     bool pendingReview = false;  // completed locally, waiting for the outbox
 };

@@ -14,6 +14,7 @@
 #include "wk/Crc32.h"
 #include "wk/HttpRetry.h"
 #include "wk/Outbox.h"
+#include "wk/Practice.h"
 #include "wk/Journal.h"
 #include "wk/Json.h"
 #include "wk/JsonStream.h"
@@ -1423,6 +1424,75 @@ static void test_critical_list_round_trip() {
     TEST_ASSERT_FALSE(decodeCriticalList(bytes.data(), bytes.size(), 124, &out));
 }
 
+static Assignment practiceAssignment(uint32_t subjectId, uint8_t stage, uint32_t startedAt,
+                                     SubjectType type = SubjectType::Kanji,
+                                     uint16_t position = 1) {
+    Assignment a;
+    a.id = 1000 + subjectId;
+    a.subjectId = subjectId;
+    a.srsStage = stage;
+    a.startedAt = startedAt;
+    a.type = type;
+    a.lessonPosition = position;
+    a.level = 5;
+    return a;
+}
+
+static void test_practice_recent_lessons_stage_or_window() {
+    const uint32_t now = 1000000;
+    const std::vector<Assignment> assignments = {
+        practiceAssignment(1, 1, now - 60), practiceAssignment(2, 5, now - 60),
+        practiceAssignment(3, 1, now - 10 * 86400)};
+    const std::vector<Assignment> apprentice =
+        selectRecentLessons(assignments, 0, now, 10);
+    TEST_ASSERT_EQUAL(2, apprentice.size());
+    TEST_ASSERT_EQUAL_UINT32(1, apprentice[0].subjectId);
+    TEST_ASSERT_EQUAL_UINT32(3, apprentice[1].subjectId);
+    const std::vector<Assignment> day = selectRecentLessons(assignments, 1, now, 10);
+    TEST_ASSERT_EQUAL(1, day.size());
+    TEST_ASSERT_EQUAL_UINT32(1, day[0].subjectId);
+}
+
+static void test_practice_current_level_kanji_below_guru() {
+    const std::vector<Assignment> assignments = {
+        practiceAssignment(1, 1, 0, SubjectType::Kanji, 2),
+        practiceAssignment(2, 1, 0, SubjectType::Vocabulary, 1),
+        practiceAssignment(3, 5, 0, SubjectType::Kanji, 1),
+        practiceAssignment(4, 1, 0, SubjectType::Kanji, 1)};
+    const std::vector<Assignment> items = selectCurrentLevel(assignments, 5, 10);
+    TEST_ASSERT_EQUAL(2, items.size());
+    TEST_ASSERT_EQUAL_UINT32(4, items[0].subjectId);
+    TEST_ASSERT_EQUAL_UINT32(1, items[1].subjectId);
+}
+
+static void test_practice_limit_and_empty() {
+    const std::vector<Assignment> assignments = {practiceAssignment(1, 1, 0),
+                                                  practiceAssignment(2, 1, 0)};
+    TEST_ASSERT_EQUAL(1, selectRecentLessons(assignments, 0, 100, 1).size());
+    TEST_ASSERT_TRUE(selectRecentLessons({}, 0, 100, 10).empty());
+    TEST_ASSERT_EQUAL(1, selectCurrentLevel(assignments, 5, 1).size());
+}
+
+static void test_practice_pool_round_trip() {
+    Assignment a = practiceAssignment(10, 3, 12345, SubjectType::Vocabulary, 7);
+    a.availableAt = 999;
+    a.hidden = true;
+    a.level = 9;
+    std::vector<Assignment> items = {a};
+    std::vector<uint8_t> bytes;
+    TEST_ASSERT_TRUE(encodePracticePool(items, 55, 66, &bytes));
+    std::vector<Assignment> out;
+    TEST_ASSERT_TRUE(decodePracticePool(bytes.data(), bytes.size(), 55, &out));
+    TEST_ASSERT_EQUAL(1, out.size());
+    TEST_ASSERT_EQUAL_UINT32(10, out[0].subjectId);
+    TEST_ASSERT_EQUAL(3, out[0].srsStage);
+    TEST_ASSERT_EQUAL_UINT32(12345, out[0].startedAt);
+    TEST_ASSERT_EQUAL(7, out[0].lessonPosition);
+    TEST_ASSERT_EQUAL(9, out[0].level);
+    TEST_ASSERT_TRUE(out[0].hidden);
+    TEST_ASSERT_FALSE(decodePracticePool(bytes.data(), bytes.size(), 56, &out));
+}
+
 
 // ---------------------------------------------------------------- API records
 static void test_srs_total_count_and_groups() {
@@ -2660,6 +2730,10 @@ int main(int, char**) {
     RUN_TEST(test_critical_missing_assignment_skipped);
     RUN_TEST(test_critical_sorted_worst_first);
     RUN_TEST(test_critical_list_round_trip);
+    RUN_TEST(test_practice_recent_lessons_stage_or_window);
+    RUN_TEST(test_practice_current_level_kanji_below_guru);
+    RUN_TEST(test_practice_limit_and_empty);
+    RUN_TEST(test_practice_pool_round_trip);
     RUN_TEST(test_summary_text_parser);
     RUN_TEST(test_summary_text_parser_empty);
     RUN_TEST(test_review_response_parse);

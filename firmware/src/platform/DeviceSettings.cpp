@@ -20,6 +20,9 @@ constexpr const char* kKeyReviewSize = "revsize";
 constexpr const char* kKeyLessonSize = "lessonsz";
 constexpr const char* kKeyMeaningFirst = "order";
 constexpr const char* kKeyCriticalFirst = "rv.critical";
+constexpr const char* kKeyPracticeMistakes = "st.mistakes";
+constexpr const char* kKeyPracticeLessons = "st.recent";
+constexpr const char* kKeyPracticeSize = "st.practice";
 
 struct DisplaySettings {
     int brightness = 128;
@@ -30,6 +33,9 @@ struct DisplaySettings {
     int lessonSize = 5;
     bool meaningFirst = true;
     bool criticalFirst = false;
+    int practiceMistakes = 24 * 3600;
+    int practiceLessons = 0;
+    int practiceSize = 10;
 };
 
 DisplaySettings& displaySettings() {
@@ -47,7 +53,14 @@ DisplaySettings& displaySettings() {
     values.lessonSize = p.getInt(kKeyLessonSize, values.lessonSize);
     values.meaningFirst = p.getInt(kKeyMeaningFirst, values.meaningFirst ? 1 : 0) != 0;
     values.criticalFirst = p.getInt(kKeyCriticalFirst, values.criticalFirst ? 1 : 0) != 0;
+    values.practiceMistakes = p.getInt(kKeyPracticeMistakes, values.practiceMistakes);
+    values.practiceLessons = p.getInt(kKeyPracticeLessons, values.practiceLessons);
+    values.practiceSize = p.getInt(kKeyPracticeSize, values.practiceSize);
     p.end();
+    if (values.practiceMistakes < 86400 || values.practiceMistakes > 7 * 86400)
+        values.practiceMistakes = 86400;
+    if (values.practiceLessons < 0 || values.practiceLessons > 3) values.practiceLessons = 0;
+    if (values.practiceSize < 10 || values.practiceSize > 20) values.practiceSize = 10;
     if (values.brightness < 8 || values.brightness > 255) values.brightness = 128;
     for (int* v : {&values.dim, &values.blank, &values.sleep})
         if (*v < 0 || *v > 3600) *v = 0;
@@ -180,6 +193,31 @@ bool settingsSetCriticalFirst(bool criticalFirst) {
     DisplaySettings& v = displaySettings();
     v.criticalFirst = criticalFirst;
     return saveInt(kKeyCriticalFirst, criticalFirst ? 1 : 0);
+}
+
+int settingsPracticeMistakesWindow() { return displaySettings().practiceMistakes; }
+bool settingsSetPracticeMistakesWindow(int seconds) {
+    if (seconds != 86400 && seconds != 3 * 86400 && seconds != 7 * 86400) seconds = 86400;
+    DisplaySettings& v = displaySettings();
+    v.practiceMistakes = seconds;
+    return saveInt(kKeyPracticeMistakes, seconds);
+}
+
+int settingsPracticeLessonsMode() { return displaySettings().practiceLessons; }
+bool settingsSetPracticeLessonsMode(int mode) {
+    if (mode < 0) mode = 0;
+    if (mode > 3) mode = 3;
+    DisplaySettings& v = displaySettings();
+    v.practiceLessons = mode;
+    return saveInt(kKeyPracticeLessons, mode);
+}
+
+int settingsPracticeSize() { return displaySettings().practiceSize; }
+bool settingsSetPracticeSize(int size) {
+    if (size != 10 && size != 20) size = 10;
+    DisplaySettings& v = displaySettings();
+    v.practiceSize = size;
+    return saveInt(kKeyPracticeSize, size);
 }
 
 String formatFixedTimeZone(int offsetMinutes) {
