@@ -1394,6 +1394,16 @@ static void test_critical_excludes_hidden_and_burned() {
     TEST_ASSERT_TRUE(selectCriticalItems(stats, assignments, 75, 5).empty());
 }
 
+static void test_critical_custom_thresholds() {
+    const std::vector<ReviewStatistic> stats = {criticalStat(1, 10, 79, 3),
+                                                criticalStat(2, 11, 80, 3)};
+    const std::vector<Assignment> assignments = {criticalAssignment(10, 2),
+                                                  criticalAssignment(11, 2)};
+    const std::vector<CriticalItem> items = selectCriticalItems(stats, assignments, 80, 3);
+    TEST_ASSERT_EQUAL(1, items.size());
+    TEST_ASSERT_EQUAL_UINT32(10, items[0].subjectId);
+}
+
 static void test_critical_missing_assignment_skipped() {
     const std::vector<ReviewStatistic> stats = {criticalStat(1, 10, 50, 10)};
     TEST_ASSERT_TRUE(selectCriticalItems(stats, {}, 75, 5).empty());
@@ -2726,6 +2736,7 @@ int main(int, char**) {
     RUN_TEST(test_review_statistics_parses_id_and_total_answers);
     RUN_TEST(test_critical_strictly_below_threshold);
     RUN_TEST(test_critical_minimum_answers);
+    RUN_TEST(test_critical_custom_thresholds);
     RUN_TEST(test_critical_excludes_hidden_and_burned);
     RUN_TEST(test_critical_missing_assignment_skipped);
     RUN_TEST(test_critical_sorted_worst_first);

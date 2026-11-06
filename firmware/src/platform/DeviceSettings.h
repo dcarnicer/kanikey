@@ -38,6 +38,10 @@ bool settingsMeaningFirst();
 bool settingsSetMeaningFirst(bool meaningFirst);
 bool settingsCriticalFirst();
 bool settingsSetCriticalFirst(bool criticalFirst);
+int settingsCriticalPercent();  // 60/70/75/80/90
+bool settingsSetCriticalPercent(int percent);
+int settingsCriticalMinAnswers();  // 3/5/10
+bool settingsSetCriticalMinAnswers(int answers);
 int settingsPracticeMistakesWindow();  // seconds
 bool settingsSetPracticeMistakesWindow(int seconds);
 int settingsPracticeLessonsMode();  // 0 Apprentice, 1 24h, 2 3d, 3 7d

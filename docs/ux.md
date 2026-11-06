@@ -605,12 +605,13 @@ meaning/reading notes are appended to the paged card after the mnemonic.
 
 - Open with `Esc` from Home, or `Esc` in a review → Pause → Settings.
 - Implemented rows: `Brightness`, `Dim after`, `Blank after`, `Sleep after`,
-  `Review batch`, `Order`, `Lesson batch`, `Critical first`,
-  `Practice mistakes`, `Practice lessons`, `Practice size`, `Setup portal`,
-  `Sync now`, `Firmware`, `About`, `Clear cache`, `Sign out`.
+  `Review batch`, `Order`, `Lesson batch`, `Critical first`, `Critical below`,
+  `Critical min`, `Practice mistakes`, `Practice lessons`, `Practice size`,
+  `Setup portal`, `Sync now`, `Firmware`, `About`, `Clear cache`, `Sign out`.
 - `Brightness` cycles 64/128/192/255; the timings cycle presets and `off`.
   Review batch cycles 10/20/30, lesson batch 3/5/10, `Critical first` toggles
-  On/Off and order toggles meaning-first / reading-first. Practice mistakes
+  On/Off, `Critical below` cycles 60/70/75/80/90% and `Critical min` 3/5/10.
+  Order toggles meaning-first / reading-first. Practice mistakes
   cycles 24 h/3 d/7 d, Practice lessons Apprentice/24 h/3 d/7 d and Practice
   size 10/20. All are stored in NVS and applied without a reboot. WaniKani's
   `reviews_presentation_order` is applied automatically and is not a device

@@ -20,6 +20,8 @@ constexpr const char* kKeyReviewSize = "revsize";
 constexpr const char* kKeyLessonSize = "lessonsz";
 constexpr const char* kKeyMeaningFirst = "order";
 constexpr const char* kKeyCriticalFirst = "rv.critical";
+constexpr const char* kKeyCriticalPercent = "st.critpct";
+constexpr const char* kKeyCriticalMin = "st.critmin";
 constexpr const char* kKeyPracticeMistakes = "st.mistakes";
 constexpr const char* kKeyPracticeLessons = "st.recent";
 constexpr const char* kKeyPracticeSize = "st.practice";
@@ -33,6 +35,8 @@ struct DisplaySettings {
     int lessonSize = 5;
     bool meaningFirst = true;
     bool criticalFirst = false;
+    int criticalPercent = 75;
+    int criticalMin = 5;
     int practiceMistakes = 24 * 3600;
     int practiceLessons = 0;
     int practiceSize = 10;
@@ -53,10 +57,18 @@ DisplaySettings& displaySettings() {
     values.lessonSize = p.getInt(kKeyLessonSize, values.lessonSize);
     values.meaningFirst = p.getInt(kKeyMeaningFirst, values.meaningFirst ? 1 : 0) != 0;
     values.criticalFirst = p.getInt(kKeyCriticalFirst, values.criticalFirst ? 1 : 0) != 0;
+    values.criticalPercent = p.getInt(kKeyCriticalPercent, values.criticalPercent);
+    values.criticalMin = p.getInt(kKeyCriticalMin, values.criticalMin);
     values.practiceMistakes = p.getInt(kKeyPracticeMistakes, values.practiceMistakes);
     values.practiceLessons = p.getInt(kKeyPracticeLessons, values.practiceLessons);
     values.practiceSize = p.getInt(kKeyPracticeSize, values.practiceSize);
     p.end();
+    if (values.criticalPercent != 60 && values.criticalPercent != 70 &&
+        values.criticalPercent != 75 && values.criticalPercent != 80 &&
+        values.criticalPercent != 90)
+        values.criticalPercent = 75;
+    if (values.criticalMin != 3 && values.criticalMin != 5 && values.criticalMin != 10)
+        values.criticalMin = 5;
     if (values.practiceMistakes < 86400 || values.practiceMistakes > 7 * 86400)
         values.practiceMistakes = 86400;
     if (values.practiceLessons < 0 || values.practiceLessons > 3) values.practiceLessons = 0;
@@ -193,6 +205,23 @@ bool settingsSetCriticalFirst(bool criticalFirst) {
     DisplaySettings& v = displaySettings();
     v.criticalFirst = criticalFirst;
     return saveInt(kKeyCriticalFirst, criticalFirst ? 1 : 0);
+}
+
+int settingsCriticalPercent() { return displaySettings().criticalPercent; }
+bool settingsSetCriticalPercent(int percent) {
+    if (percent != 60 && percent != 70 && percent != 75 && percent != 80 && percent != 90)
+        percent = 75;
+    DisplaySettings& v = displaySettings();
+    v.criticalPercent = percent;
+    return saveInt(kKeyCriticalPercent, percent);
+}
+
+int settingsCriticalMinAnswers() { return displaySettings().criticalMin; }
+bool settingsSetCriticalMinAnswers(int answers) {
+    if (answers != 3 && answers != 5 && answers != 10) answers = 5;
+    DisplaySettings& v = displaySettings();
+    v.criticalMin = answers;
+    return saveInt(kKeyCriticalMin, answers);
 }
 
 int settingsPracticeMistakesWindow() { return displaySettings().practiceMistakes; }

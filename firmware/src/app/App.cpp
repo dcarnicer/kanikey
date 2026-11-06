@@ -980,8 +980,8 @@ bool runSrsCounts() {
 }
 
 bool runCriticalItems() {
-    constexpr uint8_t kMaxPercent = 75;
-    constexpr uint16_t kMinAnswers = 5;
+    const uint8_t kMaxPercent = static_cast<uint8_t>(kk::settingsCriticalPercent());
+    const uint16_t kMinAnswers = static_cast<uint16_t>(kk::settingsCriticalMinAnswers());
     const String token = kk::DevToken::load();
     kk::CriticalStatistics stats = kk::fetchCriticalStatistics(token, kMaxPercent);
     if (!stats.ok) {
@@ -2550,7 +2550,7 @@ void lessonKey(const KeyEvent& e) {
     }
 }
 
-constexpr int kSettingsRows = 17;
+constexpr int kSettingsRows = 19;
 
 void setSettingsNote(const char* text, uint16_t color = kFaint) {
     snprintf(gSettingsNote, sizeof gSettingsNote, "%s", text ? text : "");
@@ -2669,6 +2669,20 @@ void settingsAction() {
             break;
         }
         case 8: {
+            static const int kPercents[] = {60, 70, 75, 80, 90};
+            const int value = nextPreset(kPercents, 5, kk::settingsCriticalPercent());
+            kk::settingsSetCriticalPercent(value);
+            setSettingsNote((String("Critical below ") + String(value) + "%").c_str(), kOk);
+            break;
+        }
+        case 9: {
+            static const int kAnswers[] = {3, 5, 10};
+            const int value = nextPreset(kAnswers, 3, kk::settingsCriticalMinAnswers());
+            kk::settingsSetCriticalMinAnswers(value);
+            setSettingsNote((String("Critical min ") + String(value)).c_str(), kOk);
+            break;
+        }
+        case 10: {
             static const int kWindows[] = {86400, 259200, 604800};
             const int value =
                 nextPreset(kWindows, 3, kk::settingsPracticeMistakesWindow());
@@ -2679,20 +2693,20 @@ void settingsAction() {
                             kOk);
             break;
         }
-        case 9: {
+        case 11: {
             const int value = (kk::settingsPracticeLessonsMode() + 1) % 4;
             kk::settingsSetPracticeLessonsMode(value);
             static const char* kLabels[] = {"Apprentice", "24 hours", "3 days", "7 days"};
             setSettingsNote((String("Lessons: ") + kLabels[value]).c_str(), kOk);
             break;
         }
-        case 10: {
+        case 12: {
             const int value = kk::settingsPracticeSize() == 10 ? 20 : 10;
             kk::settingsSetPracticeSize(value);
             setSettingsNote((String("Practice size ") + String(value)).c_str(), kOk);
             break;
         }
-        case 11:
+        case 13:
             if (gReviewActive) {
                 setSettingsNote("End the review session first", kWarn);
                 break;
@@ -2701,7 +2715,7 @@ void settingsAction() {
             gShowHome = false;
             startSetupPortal();
             break;
-        case 12:
+        case 14:
             if (!gSdOk || !gPack.ready() || !kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
                 setSettingsNote("Configure Wi-Fi, token and pack", kWarn);
                 break;
@@ -2710,20 +2724,20 @@ void settingsAction() {
             gShowHome = false;
             startSync();
             break;
-        case 13:
+        case 15:
             openFirmware();
             break;
-        case 14:
+        case 16:
             gAboutActive = true;
             gSettingsNote[0] = 0;
             break;
-        case 15:
+        case 17:
             if (gFsOk) kk::cacheClearSnapshot();
             if (gSdOk) kk::cacheClearSubjects(SD);
             gCacheSavedAt = 0;
             setSettingsNote("Cache cleared; next boot is cold", kOk);
             break;
-        case 16:
+        case 18:
             gSignOutConfirm = true;
             gSettingsNote[0] = 0;
             break;
@@ -4173,9 +4187,9 @@ void drawSettings() {
 
     static const char* kLabels[] = {"Brightness", "Dim after", "Blank after", "Sleep after",
                                     "Review batch", "Order", "Lesson batch", "Critical first",
-                                    "Practice mistakes", "Practice lessons", "Practice size",
-                                    "Setup portal", "Sync now", "Firmware", "About", "Clear cache",
-                                    "Sign out"};
+                                    "Critical below", "Critical min", "Practice mistakes",
+                                    "Practice lessons", "Practice size", "Setup portal", "Sync now",
+                                    "Firmware", "About", "Clear cache", "Sign out"};
     String values[kSettingsRows];
     values[0] = String(kk::settingsBrightness());
     values[1] = secondsLabel(kk::settingsDimSeconds());
@@ -4185,18 +4199,20 @@ void drawSettings() {
     values[5] = kk::settingsMeaningFirst() ? "Meaning" : "Reading";
     values[6] = String(kk::settingsLessonBatchSize());
     values[7] = kk::settingsCriticalFirst() ? "On" : "Off";
+    values[8] = String(kk::settingsCriticalPercent()) + "%";
+    values[9] = String(kk::settingsCriticalMinAnswers());
     const int mistakes = kk::settingsPracticeMistakesWindow();
-    values[8] = mistakes == 86400 ? "24h" : mistakes == 259200 ? "3d" : "7d";
+    values[10] = mistakes == 86400 ? "24h" : mistakes == 259200 ? "3d" : "7d";
     static const char* kLessonLabels[] = {"Apprentice", "24h", "3d", "7d"};
-    values[9] = kLessonLabels[kk::settingsPracticeLessonsMode()];
-    values[10] = String(kk::settingsPracticeSize());
-    values[11] = "open";
-    values[12] = "run";
-    values[13] = gOtaState.badgeVersion.empty() ? kk::kFirmwareVersion
+    values[11] = kLessonLabels[kk::settingsPracticeLessonsMode()];
+    values[12] = String(kk::settingsPracticeSize());
+    values[13] = "open";
+    values[14] = "run";
+    values[15] = gOtaState.badgeVersion.empty() ? kk::kFirmwareVersion
                                                 : gOtaState.badgeVersion.c_str();
-    values[14] = "info";
-    values[15] = "clear";
-    values[16] = "out";
+    values[16] = "info";
+    values[17] = "clear";
+    values[18] = "out";
 
     SettingsView view;
     view.selectedIndex = gSettingsIndex;
@@ -4855,7 +4871,7 @@ void firmwareKey(const KeyEvent& e) {
         } else {
             gFirmwareActive = false;
             gSettingsActive = true;
-            gSettingsIndex = 13;
+            gSettingsIndex = 15;
         }
         gDirty = true;
         return;
@@ -6117,7 +6133,7 @@ void handleSerial() {
             if (gFirmwareActive) {
                 gFirmwareActive = false;
                 gSettingsActive = true;
-                gSettingsIndex = 13;
+                gSettingsIndex = 15;
                 gFirmwareConfirm = false;
                 gDirty = true;
             } else if (gSettingsActive) {

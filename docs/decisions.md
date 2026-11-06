@@ -782,8 +782,9 @@ catalog file and a directory scan can coexist.
 
 Critical (leech) items use WaniKani's own `percentage_correct`, never a local
 recalculation: the full sync asks `/review_statistics` for percentages strictly
-below 75% and at least 5 total answers, joins the active assignments, drops
-hidden and burned items, and stores the worst-first list in
+below the `Critical below` setting (default 75%) and at least `Critical min`
+answers (default 5), joins the active assignments, drops hidden and burned
+items, and stores the worst-first list in
 `/state/critical.bin`. `Settings › Critical first` is Off by default; when on,
 the review queue stable-partitions due critical subjects to the front before
 applying the batch limit. STUDY-03/04/05 can read the same list for practice
