@@ -154,6 +154,7 @@ the field is active.
 | `L` | Lessons (home) |
 | `O` | Outbox of rejected/stuck reviews (home; ignored when none need attention) |
 | `T` | Stats (home) |
+| `P` | Extra study (home) |
 | `S` | Sync (home) |
 | `Q` | Optional local quiz on a lesson card |
 | `D` | Discard the selected rejected/stuck review (Outbox) |
@@ -339,10 +340,11 @@ Home ──L──► Lessons ──Enter──► Lesson card
   level (0 when the total is unknown); passed means Guru or later (SRS stages
   5-9). When the counts could not be fetched, the existing `L8 since 03 Feb`
   line is kept.
-- Hint: `Enter: reviews  L: lessons  T: stats  S: sync` (8 px), falling back
-  to `Enter  L  T  S` when it would not fit. With rejected or stuck items the
-  hint becomes `O: outbox  Enter: reviews  T: stats  S: sync`, dropping entries
-  from the middle when it would not fit; `O: outbox` is kept. `Esc` still opens
+- Hint: `Enter: reviews  L: lessons  T: stats  P: practice  S: sync` (8 px),
+  falling back to `Enter  L  T  P  S` when it would not fit. With rejected or
+  stuck items the hint becomes
+  `O: outbox  Enter: reviews  P: practice  S: sync`, dropping entries from the
+  middle when it would not fit; `O: outbox` is kept. `Esc` still opens
   Settings; the hint bar only shows the three primary actions. The M0 debug
   screen and the `Tab: debug` shortcut only exist in the `cardputer-adv-dev`
   build; the shortcut is no longer advertised on Home.
@@ -684,7 +686,27 @@ meaning/reading notes are appended to the paged card after the mnemonic.
   data comes from `/state/journal.bin`; `/reviews` is deprecated and never
   called.
 
-### 5.15 Errors and empty states
+### 5.15 Extra study
+
+- `P` on Home opens `EXTRA STUDY`: `Recent mistakes`, `Recent lessons`,
+  `Critical items`, `Current level`. `↑↓` moves, `Enter` opens/starts,
+  `Esc` returns Home.
+- Recent mistakes uses the last 24 h of journaled wrong reviews (practice
+  records are ignored). Recent lessons uses apprentice assignments and Current
+  level uses apprentice kanji of the current level; both currently need Wi-Fi.
+- `Critical items` opens `CRITICAL ITEMS`, worst first, with prompt, main
+  meaning and percentage. Up/Down scrolls, `Enter` opens the detail card,
+  `P` starts practice, `Esc` returns to the menu.
+- Practice reuses the review UI. It never writes the outbox, never calls
+  `POST /reviews` or `PUT /start`, and never changes due counts or SRS. Each
+  completion is journaled with `practice=true`.
+- The summary header is `PRACTICE`, with `Nothing was sent to WaniKani` and
+  `N items skipped` when subjects were unavailable. `Enter` returns Home.
+- Empty modes stay in the menu: `No recent mistakes`, `No recent lessons`,
+  `No critical items`, `Current level complete`, or
+  `Nothing cached for this mode`.
+
+### 5.16 Errors and empty states
 
 - **Not configured:** Boot `Token needed` or `Wi-Fi needed` + `Enter: setup`.
 - **No SD:** `No SD card` + `Insert a FAT32 card with /kanikey/glyphs.kgp` +

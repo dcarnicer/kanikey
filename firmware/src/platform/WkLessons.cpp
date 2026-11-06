@@ -102,6 +102,29 @@ AssignmentBatch fetchAssignmentsForSubjects(const String& token,
     return result;
 }
 
+AssignmentBatch fetchPracticeAssignments(const String& token, int level, bool kanjiOnly) {
+    AssignmentBatch result;
+    String path = "/v2/assignments?hidden=false&srs_stages=1,2,3,4";
+    if (level > 0) {
+        path += "&levels=";
+        path += String(level);
+    }
+    if (kanjiOnly) path += "&subject_types=kanji";
+    WkAssignmentsResult ar = wkGetAssignmentsRetry(path, token, 32768, 64);
+    if (ar.http.httpCode != 200) {
+        result.httpCode = ar.http.httpCode;
+        result.error = "assignments HTTP " + String(ar.http.httpCode);
+        return result;
+    }
+    if (!ar.parsed) {
+        result.error = "assignments JSON";
+        return result;
+    }
+    result.assignments = std::move(ar.assignments);
+    result.ok = true;
+    return result;
+}
+
 SubjectLevels fetchSubjectLevels(const String& token,
                                  const std::vector<uint32_t>& subjectIds) {
     SubjectLevels result;

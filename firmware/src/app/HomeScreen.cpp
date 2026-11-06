@@ -121,13 +121,13 @@ void drawHomeScreen(lgfx::LovyanGFX& d, const HomeView& view) {
         d.drawString(view.levelLine, 8, 117);
     }
     d.setTextColor(ui::kFaint, ui::kBg);
-    const char* hint = "Enter: reviews  L: lessons  T: stats  S: sync";
+    const char* hint = "Enter: reviews  L: lessons  T: stats  P: practice  S: sync";
     if (view.outboxAttention) {
-        hint = "O: outbox  Enter: reviews  T: stats  S: sync";
-        if (d.textWidth(hint) > 224) hint = "O: outbox  Enter  T  S";
-        if (d.textWidth(hint) > 224) hint = "O: outbox  T  S";
+        hint = "O: outbox  Enter: reviews  P: practice  S: sync";
+        if (d.textWidth(hint) > 224) hint = "O: outbox  Enter  T  P  S";
+        if (d.textWidth(hint) > 224) hint = "O: outbox  P  S";
     } else if (d.textWidth(hint) > 224) {
-        hint = "Enter  L  T  S";
+        hint = "Enter  L  T  P  S";
     }
     d.drawString(hint, 8, 125);
 }

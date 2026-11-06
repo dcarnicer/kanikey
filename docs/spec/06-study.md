@@ -10,15 +10,27 @@ Hidden statistics, assignments and burned items are dropped; the defaults are
 normal order inside each group. STUDY-03/04/05, including the Extra study menu
 and the visible critical list, remain open.
 
+**Implementation (2026-11-06).** `P` on Home opens `EXTRA STUDY` with
+`Recent mistakes`, `Recent lessons`, `Critical items` and `Current level`.
+Practice reuses the review UI, never writes the outbox or calls
+`POST /reviews`/`PUT /start`, journals each completion with `practice=true`, and
+shows a `PRACTICE` summary with `Nothing was sent to WaniKani`.
+`Critical items` opens the visible worst-first list; `Enter` opens the existing
+detail card and `P` starts practice. Recent mistakes uses the last 24 h of
+journal mistakes. Recent lessons/Current level currently fetch apprentice
+assignments from the network; cached subjects come from the SD catalog, missing
+ones are fetched online and stored there. S3/S4/S5 defaults are 24 h / 24 h / 10
+and the assignment-backed modes need Wi-Fi until assignments are catalogued.
+
 STUDY covers decision D4: account-wide critical (leech) detection, critical-first review order and local extra-study modes. Practice sessions are local: they never call `POST /reviews` or `PUT /start`, never write the outbox and never change WaniKani SRS state. Today `/review_statistics` is fetched only for the review batch (`firmware/src/platform/WkReviewStatistics.cpp:24-70`) and merged into cached subjects; there is no account-wide store or practice path yet. All tasks are Wave 3 and assume ARCH-01's controller split, ARCH-02's settings registry and ARCH-03's SD catalog/journal; line numbers below are from the current tree.
 
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
 | STUDY-01 | Detect critical items | P2 | M | ARCH-02, ARCH-03 | 3 | partial (2026-11-06: defaults 75/5) |
 | STUDY-02 | Prioritize critical items | P2 | S | STUDY-01 | 3 | done (2026-11-06) |
-| STUDY-03 | Extra study menu | P2 | L | ARCH-01, ARCH-02, ARCH-03, STUDY-01 | 3 | todo |
-| STUDY-04 | Subjects for practice offline | P2 | M | ARCH-03, STUDY-03 | 3 | todo |
-| STUDY-05 | Critical items list | P3 | S | STUDY-01, STUDY-03 | 3 | todo |
+| STUDY-03 | Extra study menu | P2 | L | ARCH-01, ARCH-02, ARCH-03, STUDY-01 | 3 | done (2026-11-06) |
+| STUDY-04 | Subjects for practice offline | P2 | M | ARCH-03, STUDY-03 | 3 | partial (2026-11-06) |
+| STUDY-05 | Critical items list | P3 | S | STUDY-01, STUDY-03 | 3 | done (2026-11-06) |
 
 ### STUDY-01 — Detect critical items
 

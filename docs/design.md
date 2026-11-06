@@ -319,6 +319,7 @@ Details are in [ux.md](ux.md). Map:
 | Lesson card | Teaching before starting | Space, ←→, Q, Enter, Esc | Implemented; hardware check partial |
 | Settings | Account, study, sync, device | ↑↓, Enter, Esc | MVP |
 | Stats | Forecast, distribution, level, history | ←→, Esc | Implemented |
+| Extra study | Practice modes, critical list | ↑↓, Enter, P, Esc | Implemented; lessons/level need Wi-Fi |
 | Error / empty | What happened and what to do | Enter, Esc | MVP |
 
 ![Home](screens/home.png)

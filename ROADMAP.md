@@ -127,8 +127,8 @@ Working on hardware:
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Current build: **1,499,085 B / 1,835,008 B flash (81.7%)**, **95,704 B /
-327,680 B static RAM (29.2%)**. The dev image is 1,517,657 B. Removing
+Current build: **1,517,021 B / 1,835,008 B flash (82.7%)**, **95,864 B /
+327,680 B static RAM (29.3%)**. The dev image is 1,535,905 B. Removing
 `efontJA_16` freed ~468 KB and leaves ~358 KB of flash headroom. The loop task
 uses a 24 KiB stack; the lazy review batch raised the lesson-fetch minimum free
 heap to ~56 KB.
@@ -658,13 +658,19 @@ progress features, not a second SRS.
 - **EXT-02 — Question order.** Meaning-first / reading-first and custom
   ordering. **Done for the pair:** Settings › `Order` toggles meaning-first /
   reading-first; custom ordering is still open.
-- **EXT-03 — Critical items / leeches.** **Partial (2026-11-06):** a full sync
+- **EXT-03 — Critical items / leeches.** **Done (2026-11-06):** a full sync
   detects account-wide statistics below 75% with at least 5 answers, filters
   hidden/burned assignments and stores the list for offline use. Settings ›
   `Critical first` puts due critical items at the front of the review queue.
-  The visible critical-items list remains STUDY-05.
-- **EXT-04 — Extra study modes.** Recent lessons, random tests, vocabulary
-  reading practice and custom reviews; no local SRS writes.
+  Extra study › `Critical items` shows the worst-first list, opens the detail
+  card and can start a local practice session.
+- **EXT-04 — Extra study modes.** **Partial (2026-11-06):** `P` opens Extra
+  study with Recent mistakes, Recent lessons, Critical items and Current level.
+  Practice is local: no outbox, no POST/PUT, no SRS or due-count changes; each
+  answer is journaled with `practice=true` and the summary says
+  `Nothing was sent to WaniKani`. Recent lessons and Current level fetch
+  apprentice assignments online for now; S3/S4/S5 settings and fully offline
+  assignment storage remain.
 - **EXT-05 — Advanced stats.** **Done except the heatmap (2026-11-06):**
   forecast, SRS distribution, level progress, seven-day history, today's item
   accuracy and current/best streak are live in the Stats screen; a full

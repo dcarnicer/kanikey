@@ -788,3 +788,12 @@ hidden and burned items, and stores the worst-first list in
 the review queue stable-partitions due critical subjects to the front before
 applying the batch limit. STUDY-03/04/05 can read the same list for practice
 and the visible critical-items screen.
+
+Extra study is local practice, never a WaniKani session: it reuses the review
+queue and UI, has no outbox item, never calls `POST /reviews` or `PUT /start`,
+does not change due counts, SRS or review statistics, and journals every
+completion with `practice=true`. Recent mistakes uses the journal, Critical
+items uses `/state/critical.bin`, and Recent lessons/Current level fetch
+apprentice assignments online until the catalog stores assignments. Subjects
+come from the SD catalog; missing ones are fetched online and stored there,
+otherwise they are skipped and counted in `N items skipped`.

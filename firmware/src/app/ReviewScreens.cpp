@@ -425,7 +425,7 @@ void drawReviewSummaryScreen(lgfx::LovyanGFX& d, const ReviewSummaryView& view) 
     d.setTextFont(1);
     d.setTextSize(1);
     d.setTextColor(ui::kDim, ui::kBg);
-    d.drawString("SESSION", 6, 3);
+    d.drawString(view.practice ? "PRACTICE" : "SESSION", 6, 3);
 
     char reviews[16];
     snprintf(reviews, sizeof reviews, "%u", view.reviews);
@@ -455,6 +455,22 @@ void drawReviewSummaryScreen(lgfx::LovyanGFX& d, const ReviewSummaryView& view) 
     d.drawFastHLine(8, 77, 224, ui::kLine);
 
     char line[48];
+    if (view.practice) {
+        d.setTextColor(ui::kFaint, ui::kBg);
+        d.drawString("Nothing was sent to WaniKani", 8, 84);
+        snprintf(line, sizeof line, "%u mistake%s", view.mistakes,
+                 view.mistakes == 1 ? "" : "s");
+        d.drawString(line, 8, 98);
+        if (view.skipped) {
+            snprintf(line, sizeof line, "%u item%s skipped", view.skipped,
+                     view.skipped == 1 ? "" : "s");
+            d.setTextColor(ui::kWarn, ui::kBg);
+            d.drawString(line, 8, 112);
+        }
+        d.setTextColor(ui::kFaint, ui::kBg);
+        d.drawString("Enter: home", 8, 125);
+        return;
+    }
     if (view.stageUps) {
         snprintf(line, sizeof line, "%u item%s moved up", view.stageUps,
                  view.stageUps == 1 ? "" : "s");

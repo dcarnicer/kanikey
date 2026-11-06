@@ -30,6 +30,7 @@
 #include "app/SettingsScreen.h"
 #include "app/SetupScreen.h"
 #include "app/StatsScreen.h"
+#include "app/StudyScreens.h"
 #include "app/SyncScreen.h"
 #include "board/Board.h"
 #include "Version.h"
@@ -182,6 +183,20 @@ kk::app::StatsHistoryView gStatsHistory;
 bool gStatsHistoryLoaded = false;
 std::vector<kk::CriticalItem> gCritical;
 bool gCriticalLoaded = false;
+std::vector<kk::Subject> gPracticeSubjects;
+std::vector<kk::Subject> gCriticalSubjects;
+bool gPracticeActive = false;
+int gPracticeMode = 0;
+uint32_t gPracticeSkipped = 0;
+bool gStudyMenuActive = false;
+int gStudyIndex = 0;
+char gStudyNote[48] = "";
+char gStudyCounts[4][12] = {};
+bool gCriticalListActive = false;
+int gCriticalIndex = 0;
+std::vector<kk::app::CriticalRowView> gCriticalRows;
+uint32_t gDetailSubjectId = 0;
+bool gDetailFromCritical = false;
 uint32_t gPendingJournalHandle = 0;
 size_t gLessonIndex = 0;
 size_t gLessonPage = 0;
@@ -301,6 +316,13 @@ void drawPause();
 void drawStats();
 void statsKey(const KeyEvent& e);
 void openStats();
+void openStudyMenu();
+void drawStudyMenu();
+void studyMenuKey(const KeyEvent& e);
+void openCriticalList();
+void drawCriticalList();
+void criticalListKey(const KeyEvent& e);
+void startPractice(int mode);
 void drawSettings();
 void drawAbout();
 void drawSignOutConfirm();
@@ -1021,6 +1043,10 @@ bool runBatch() {
 const kk::Subject* subjectById(uint32_t id) {
     for (const kk::Subject& s : gBatch.subjects)
         if (s.id == id) return &s;
+    for (const kk::Subject& s : gPracticeSubjects)
+        if (s.id == id) return &s;
+    for (const kk::Subject& s : gCriticalSubjects)
+        if (s.id == id) return &s;
     return nullptr;
 }
 
@@ -1114,7 +1140,7 @@ int detailPageKind(int index, const kk::Subject& s) {
 
 void showReviewDetail() {
     if (!gDisp) return;
-    uint32_t subjectId = gFeedbackSubjectId;
+    uint32_t subjectId = gDetailSubjectId ? gDetailSubjectId : gFeedbackSubjectId;
     if (!subjectId && gQueue.current()) subjectId = gQueue.current()->subjectId;
     const kk::Subject* s = subjectById(subjectId);
     if (!s) return;
@@ -1139,6 +1165,11 @@ void reviewDetailKey(const KeyEvent& e) {
     if (!e.down) return;
     if (e.key == Key::Esc || e.key == Key::Tab) {
         gReviewDetail = false;
+        if (gDetailFromCritical) {
+            gDetailFromCritical = false;
+            gDetailSubjectId = 0;
+            gCriticalListActive = true;
+        }
         gDirty = true;
         return;
     }
@@ -1170,6 +1201,8 @@ void showReviewSummary() {
     view.stageFrom = gStageChange.from;
     view.stageTo = gStageChange.to;
     view.lastHasStats = lastSubject && lastSubject->hasReviewStats;
+    view.practice = gPracticeActive;
+    view.skipped = static_cast<unsigned>(gPracticeSkipped);
     if (lastSubject) {
         view.lastReviewCount = static_cast<unsigned>(lastSubject->reviewCount());
         view.lastPercentage = lastSubject->percentageCorrect;
@@ -1561,6 +1594,23 @@ void discardSelectedOutboxItem() {
     gDirty = true;
 }
 
+void journalPractice(const kk::SessionItem& item) {
+    if (!gFsOk || !kk::journalOpen(currentAccountKey())) return;
+    kk::JournalRecord record;
+    uint32_t created = static_cast<uint32_t>(time(nullptr));
+    record.completedAt = created >= 1700000000u ? created : 0;
+    record.subjectId = item.subjectId;
+    record.assignmentId = item.assignmentId;
+    record.srsBefore = item.srsStage;
+    record.practice = true;
+    record.offline = !kk::DevWifi::connected();
+    record.incorrectMeaning =
+        static_cast<uint8_t>(std::min<uint16_t>(item.incorrectMeaning, 255));
+    record.incorrectReading =
+        static_cast<uint8_t>(std::min<uint16_t>(item.incorrectReading, 255));
+    kk::journalAppend(record);
+}
+
 void checkCurrent() {
     const kk::SessionItem* item = gQueue.current();
     if (!item) return;
@@ -1580,23 +1630,29 @@ void checkCurrent() {
         const kk::AnswerOutcome o = gQueue.answer(gCheck.status);
         if (o.completed) {
             gCompletedItem = gQueue.completed().back();
-            // Queue and persist before the feedback is drawn: a crash, power
-            // loss or an OTA install on the feedback screen keeps the review.
-            gNeedsSubmit = queueReviewLocal(gCompletedItem);
             gFeedbackCompleted = true;
-            if (gDueReviews > 0) --gDueReviews;
-            markCacheCompleted(gCompletedItem.subjectId, gCompletedItem.assignmentId);
-            if (!gNeedsSubmit) {
-                // Unreachable when startReview() checked the free slots; show
-                // the failure instead of silently losing the review.
-                gFeedback = false;
-                gReviewActive = false;
-                gReviewSummary = false;
-                gShowHome = false;
-                snprintf(gNoticeLine, sizeof gNoticeLine, "Review not saved; outbox full.");
-                gNoticeLine2[0] = 0;
-                gNoticeAction = NoticeAction::OutboxFull;
-                gNoticeActive = true;
+            if (gPracticeActive) {
+                gNeedsSubmit = false;
+                journalPractice(gCompletedItem);
+            } else {
+                // Queue and persist before the feedback is drawn: a crash,
+                // power loss or an OTA install on the feedback screen keeps
+                // the review.
+                gNeedsSubmit = queueReviewLocal(gCompletedItem);
+                if (gDueReviews > 0) --gDueReviews;
+                markCacheCompleted(gCompletedItem.subjectId, gCompletedItem.assignmentId);
+                if (!gNeedsSubmit) {
+                    // Unreachable when startReview() checked the free slots;
+                    // show the failure instead of silently losing the review.
+                    gFeedback = false;
+                    gReviewActive = false;
+                    gReviewSummary = false;
+                    gShowHome = false;
+                    snprintf(gNoticeLine, sizeof gNoticeLine, "Review not saved; outbox full.");
+                    gNoticeLine2[0] = 0;
+                    gNoticeAction = NoticeAction::OutboxFull;
+                    gNoticeActive = true;
+                }
             }
         }
     }
@@ -1650,6 +1706,14 @@ void endReview() {
     gFeedback = false;
     gFeedbackCompleted = false;
     gQueue = kk::ReviewQueue{};
+    gPracticeActive = false;
+    gPracticeMode = 0;
+    gPracticeSubjects.clear();
+    gPracticeSkipped = 0;
+    gStudyMenuActive = false;
+    gCriticalListActive = false;
+    gDetailFromCritical = false;
+    gDetailSubjectId = 0;
     // Home does not need the batch's subjects; the assignments stay on disk for
     // the next session.
     evictCachedBatch(true);
@@ -1672,6 +1736,11 @@ void startReview() {
     if (gFsFormatPrompt) return;  // wait for the storage choice
     if (!gHaveSummary) return;
     gLessonQuizActive = false;
+    gPracticeActive = false;
+    gPracticeSubjects.clear();
+    gPracticeSkipped = 0;
+    gDetailFromCritical = false;
+    gDetailSubjectId = 0;
     gReviewDetail = false;
     gReviewDetailPage = 0;
     gStageChange = StageChange{};
@@ -1803,6 +1872,8 @@ bool reviewKey(const KeyEvent& e) {
         else if (e.key == Key::Tab && gCheck.status != kk::AnswerStatus::Warning) {
             const kk::Subject* detail = subjectById(gFeedbackSubjectId);
             gReviewDetailPages = detail ? detailPageCount(*detail) : 5;
+            gDetailSubjectId = 0;
+            gDetailFromCritical = false;
             gReviewDetail = true;
             gReviewDetailPage = 0;
             gDirty = true;
@@ -2820,6 +2891,18 @@ void onKey(const KeyEvent& e) {
         statsKey(e);
         return;
     }
+    if (gReviewDetail) {
+        reviewDetailKey(e);
+        return;
+    }
+    if (gStudyMenuActive) {
+        studyMenuKey(e);
+        return;
+    }
+    if (gCriticalListActive) {
+        criticalListKey(e);
+        return;
+    }
     if (gFirmwareActive) {
         firmwareKey(e);
         return;
@@ -2916,6 +2999,12 @@ void onKey(const KeyEvent& e) {
         (tgc::cardputerCharAt(e.x, e.y, gShift) == 't' ||
          tgc::cardputerCharAt(e.x, e.y, gShift) == 'T')) {
         openStats();
+        return;
+    }
+    if (e.down && gShowHome && e.key == Key::Other &&
+        (tgc::cardputerCharAt(e.x, e.y, gShift) == 'p' ||
+         tgc::cardputerCharAt(e.x, e.y, gShift) == 'P')) {
+        openStudyMenu();
         return;
     }
     if (e.down && gShowHome && !gSyncing && e.key == Key::Other &&
@@ -3643,6 +3732,317 @@ void drawStats() {
     kk::app::drawStatsScreen(d, view);
     d.endWrite();
     present();
+}
+
+struct MistakeEntry {
+    uint32_t subjectId = 0;
+    uint32_t at = 0;
+};
+struct MistakeCollector {
+    uint32_t cutoff = 0;
+    std::vector<MistakeEntry> entries;
+};
+
+bool collectMistake(const kk::JournalRecord& record, void* user) {
+    MistakeCollector* collector = static_cast<MistakeCollector*>(user);
+    if (!collector || record.practice || record.completedAt < collector->cutoff) return true;
+    if (record.incorrectMeaning + record.incorrectReading == 0) return true;
+    collector->entries.push_back({record.subjectId, record.completedAt});
+    return true;
+}
+
+std::vector<uint32_t> recentMistakeIds(size_t limit, size_t* total) {
+    std::vector<uint32_t> ids;
+    if (total) *total = 0;
+    if (!gFsOk || !kk::journalOpen(currentAccountKey(), false)) return ids;
+    const uint32_t now = effectiveNow();
+    if (now < 86400u) return ids;
+    MistakeCollector collector;
+    collector.cutoff = now - 86400u;  // S4 default: last 24 h
+    kk::journalForEach(collectMistake, &collector);
+    std::sort(collector.entries.begin(), collector.entries.end(),
+              [](const MistakeEntry& a, const MistakeEntry& b) { return a.at > b.at; });
+    for (const MistakeEntry& entry : collector.entries) {
+        if (std::find(ids.begin(), ids.end(), entry.subjectId) != ids.end()) continue;
+        ids.push_back(entry.subjectId);
+        if (total) ++*total;
+        if (limit && ids.size() >= limit) break;
+    }
+    return ids;
+}
+
+bool resolvePracticeSubjects(const std::vector<uint32_t>& ids, std::vector<kk::Subject>* out,
+                             std::vector<uint32_t>* missing) {
+    out->clear();
+    missing->clear();
+    const bool catalogOk = gSdOk && kk::catalogOpen(SD, currentAccountKey());
+    for (uint32_t id : ids) {
+        kk::Subject subject;
+        if (catalogOk && kk::catalogLoad(SD, id, &subject))
+            out->push_back(std::move(subject));
+        else
+            missing->push_back(id);
+    }
+    if (!missing->empty() && kk::DevWifi::connected() && kk::DevToken::has()) {
+        const std::vector<kk::Subject> fetched =
+            kk::fetchSubjectsByIds(kk::DevToken::load(), *missing, 5);
+        for (const kk::Subject& subject : fetched) {
+            out->push_back(subject);
+            if (catalogOk) kk::catalogStore(SD, subject.id, subject);
+        }
+        for (const kk::Subject& subject : fetched)
+            missing->erase(std::remove(missing->begin(), missing->end(), subject.id),
+                           missing->end());
+    }
+    return !out->empty();
+}
+
+void refreshStudyCounts() {
+    size_t mistakes = 0;
+    recentMistakeIds(999, &mistakes);
+    snprintf(gStudyCounts[0], sizeof gStudyCounts[0], "%u", static_cast<unsigned>(mistakes));
+    snprintf(gStudyCounts[1], sizeof gStudyCounts[1], "online");
+    loadCritical();
+    snprintf(gStudyCounts[2], sizeof gStudyCounts[2], "%u",
+             static_cast<unsigned>(gCritical.size()));
+    snprintf(gStudyCounts[3], sizeof gStudyCounts[3], "online");
+}
+
+void openStudyMenu() {
+    gStudyMenuActive = true;
+    gStudyIndex = 0;
+    gStudyNote[0] = 0;
+    gShowHome = false;
+    refreshStudyCounts();
+    gDirty = true;
+}
+
+void drawStudyMenu() {
+    if (!gDisp) return;
+    kk::app::StudyMenuView view;
+    view.selectedIndex = gStudyIndex;
+    for (int i = 0; i < kk::app::kStudyRows; ++i)
+        snprintf(view.counts[i], sizeof view.counts[i], "%s", gStudyCounts[i]);
+    snprintf(view.note, sizeof view.note, "%s", gStudyNote);
+    auto& d = target();
+    d.startWrite();
+    kk::app::drawStudyMenuScreen(d, view);
+    d.endWrite();
+    present();
+}
+
+void studyMenuKey(const KeyEvent& e) {
+    if (!e.down) return;
+    if (e.key == Key::Esc) {
+        gStudyMenuActive = false;
+        gShowHome = true;
+        gDirty = true;
+        return;
+    }
+    if (e.key == Key::Up)
+        gStudyIndex = (gStudyIndex + kk::app::kStudyRows - 1) % kk::app::kStudyRows;
+    else if (e.key == Key::Down)
+        gStudyIndex = (gStudyIndex + 1) % kk::app::kStudyRows;
+    else if (e.key == Key::Enter) {
+        if (gStudyIndex == 2)
+            openCriticalList();
+        else
+            startPractice(gStudyIndex);
+    }
+    gDirty = true;
+}
+
+void openCriticalList() {
+    loadCritical();
+    gCriticalSubjects.clear();
+    gCriticalRows.clear();
+    std::vector<uint32_t> ids;
+    ids.reserve(gCritical.size());
+    for (const kk::CriticalItem& item : gCritical) ids.push_back(item.subjectId);
+    std::vector<uint32_t> missing;
+    if (!ids.empty()) {
+        drawLoading("Preparing critical items...", "");
+        gFreeCanvasForRequest = true;
+        resolvePracticeSubjects(ids, &gCriticalSubjects, &missing);
+        gFreeCanvasForRequest = false;
+    }
+    for (const kk::CriticalItem& item : gCritical) {
+        const kk::Subject* subject = nullptr;
+        for (const kk::Subject& candidate : gCriticalSubjects)
+            if (candidate.id == item.subjectId) {
+                subject = &candidate;
+                break;
+            }
+        if (!subject) continue;
+        kk::app::CriticalRowView row;
+        row.subject = subject;
+        row.meaning = subjectMainMeaning(*subject);
+        row.percentage = item.percentageCorrect;
+        gCriticalRows.push_back(std::move(row));
+    }
+    gCriticalIndex = 0;
+    gCriticalListActive = true;
+    gStudyMenuActive = false;
+    gShowHome = false;
+    gDirty = true;
+}
+
+void drawCriticalList() {
+    if (!gDisp) return;
+    kk::app::CriticalListView view;
+    view.rows = gCriticalRows;
+    view.selectedIndex = gCriticalIndex;
+    auto& d = target();
+    d.startWrite();
+    kk::app::drawCriticalListScreen(d, gPack, view);
+    d.endWrite();
+    present();
+}
+
+void criticalListKey(const KeyEvent& e) {
+    if (!e.down) return;
+    const int total = static_cast<int>(gCriticalRows.size());
+    if (e.key == Key::Esc) {
+        gCriticalListActive = false;
+        gStudyMenuActive = true;
+        gDirty = true;
+        return;
+    }
+    if (total > 0) {
+        if (e.key == Key::Up)
+            gCriticalIndex = (gCriticalIndex + total - 1) % total;
+        else if (e.key == Key::Down)
+            gCriticalIndex = (gCriticalIndex + 1) % total;
+        else if (e.key == Key::Enter) {
+            const kk::Subject* s = gCriticalRows[static_cast<size_t>(gCriticalIndex)].subject;
+            if (s) {
+                gDetailSubjectId = s->id;
+                gDetailFromCritical = true;
+                gReviewDetailPage = 0;
+                gReviewDetailPages = detailPageCount(*s);
+                gReviewDetail = true;
+                gCriticalListActive = false;
+                gDirty = true;
+            }
+        } else if (e.key == Key::Other) {
+            const char c = tgc::cardputerCharAt(e.x, e.y, gShift);
+            if (c == 'p' || c == 'P') startPractice(2);
+        }
+    }
+}
+
+void startPractice(int mode) {
+    static const char* kNames[4] = {"No recent mistakes", "No recent lessons",
+                                    "No critical items", "Current level complete"};
+    static const char* kLoading[4] = {"recent mistakes", "recent lessons", "critical items",
+                                      "current level"};
+    gStudyNote[0] = 0;
+    gPracticeSkipped = 0;
+    gPracticeSubjects.clear();
+    gPracticeActive = false;
+    std::vector<kk::Assignment> fetched;
+    std::vector<uint32_t> ids;
+    if (mode == 0) {
+        size_t total = 0;
+        ids = recentMistakeIds(10, &total);
+    } else if (mode == 2) {
+        loadCritical();
+        for (const kk::CriticalItem& item : gCritical) {
+            ids.push_back(item.subjectId);
+            if (ids.size() >= 10) break;
+        }
+    } else {
+        drawLoading("Preparing practice...", kLoading[mode]);
+        gFreeCanvasForRequest = true;
+        kk::AssignmentBatch batch = kk::fetchPracticeAssignments(
+            kk::DevToken::load(), mode == 3 ? (gHaveUser ? gUser.level : 0) : 0, mode == 3);
+        gFreeCanvasForRequest = false;
+        if (!batch.ok) {
+            snprintf(gStudyNote, sizeof gStudyNote, "Needs Wi-Fi for this mode");
+            gDirty = true;
+            return;
+        }
+        fetched = std::move(batch.assignments);
+        if (fetched.size() > 10) fetched.resize(10);
+        for (const kk::Assignment& a : fetched) ids.push_back(a.subjectId);
+    }
+    if (ids.empty()) {
+        snprintf(gStudyNote, sizeof gStudyNote, "%s", kNames[mode]);
+        gDirty = true;
+        return;
+    }
+    drawLoading("Preparing practice...", kLoading[mode]);
+    std::vector<uint32_t> missing;
+    gFreeCanvasForRequest = true;
+    resolvePracticeSubjects(ids, &gPracticeSubjects, &missing);
+    gFreeCanvasForRequest = false;
+    gPracticeSkipped = static_cast<uint32_t>(missing.size());
+    if (gPracticeSubjects.empty()) {
+        snprintf(gStudyNote, sizeof gStudyNote, "Nothing cached for this mode");
+        gDirty = true;
+        return;
+    }
+
+    const uint32_t now = effectiveNow();
+    std::vector<kk::Assignment> practice;
+    for (const kk::Assignment& source : fetched) {
+        bool have = false;
+        for (const kk::Subject& subject : gPracticeSubjects)
+            if (subject.id == source.subjectId) {
+                have = true;
+                break;
+            }
+        if (!have) continue;
+        kk::Assignment a = source;
+        a.availableAt = now;
+        a.hidden = false;
+        a.pendingReview = false;
+        practice.push_back(a);
+        if (practice.size() >= 10) break;
+    }
+    if (practice.empty()) {
+        for (const kk::Subject& subject : gPracticeSubjects) {
+            kk::Assignment a;
+            a.id = 0;
+            a.subjectId = subject.id;
+            a.type = subject.type;
+            a.srsStage = 1;
+            a.availableAt = now;
+            practice.push_back(a);
+            if (practice.size() >= 10) break;
+        }
+    }
+    gQueue = kk::ReviewQueue{};
+    gQueue.setMeaningFirst(kk::settingsMeaningFirst());
+    gQueue.setLowerLevelsFirst(false);
+    gQueue.build(practice, gPracticeSubjects, now, 10, esp_random());
+    if (gQueue.empty()) {
+        snprintf(gStudyNote, sizeof gStudyNote, "%s", kNames[mode]);
+        gDirty = true;
+        return;
+    }
+    gPracticeActive = true;
+    gPracticeMode = mode;
+    gStudyMenuActive = false;
+    gCriticalListActive = false;
+    gDetailFromCritical = false;
+    gDetailSubjectId = 0;
+    gShowHome = false;
+    gReviewActive = true;
+    gReviewSummary = false;
+    gFeedback = false;
+    gFeedbackCompleted = false;
+    gReviewDetail = false;
+    gReviewElapsedMs = 0;
+    gReviewStartMs = millis();
+    gStageChange = StageChange{};
+    gStageUps = 0;
+    gNeedsSubmit = false;
+    gPendingSeq = 0;
+    Serial.printf("[practice] mode %d, %u items, %u skipped\n", mode,
+                  static_cast<unsigned>(gQueue.remaining()),
+                  static_cast<unsigned>(gPracticeSkipped));
+    gDirty = true;
 }
 
 void drawPause() {
@@ -4937,6 +5337,14 @@ void draw() {
         drawStats();
         return;
     }
+    if (gStudyMenuActive) {
+        drawStudyMenu();
+        return;
+    }
+    if (gCriticalListActive) {
+        drawCriticalList();
+        return;
+    }
     if (gFirmwareActive) {
         drawFirmware();
         return;
@@ -5004,7 +5412,8 @@ void drawStatus() {
     if (!gDisp || gPortalActive || gLowBatteryPrompt || gSignOutConfirm || gAboutActive ||
         gFirmwareActive || gSettingsActive || gPauseActive || gSyncScreen || gShowHome ||
         gReviewActive || gReviewSummary || gLessonListActive || gLessonEmptyActive ||
-        gLessonActive || gOutboxScreen || gStatsActive)
+        gLessonActive || gOutboxScreen || gStatsActive || gStudyMenuActive ||
+        gCriticalListActive)
         return;
 #ifdef KANIKEY_DEV
     if (gShowDebug) showDebug();
@@ -6019,7 +6428,8 @@ void loop() {
     if (!gPortalActive && !gNoticeActive && !gReviewActive && !gReviewSummary && !gFeedback &&
         !gLessonActive && !gLessonListActive && !gLessonEmptyActive && !gLessonQuizActive &&
         !gPauseActive && !gSettingsActive && !gAboutActive && !gOutboxScreen &&
-        !gStatsActive && !gFirmwareActive && gFirmwareStep == FirmwareStep::Idle &&
+        !gStatsActive && !gStudyMenuActive && !gCriticalListActive && !gFirmwareActive &&
+        gFirmwareStep == FirmwareStep::Idle &&
         // A deep-sleep wake is a reset, so sleeping while the new image is
         // pending would roll it back; the 10-minute window bounds the wait.
         !gOtaPending && !gLowBatteryPrompt && !gAssetServerActive && sleepMs &&

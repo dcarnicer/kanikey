@@ -44,6 +44,9 @@ AssignmentBatch fetchAssignmentsForSubjects(const String& token,
                                             const std::vector<uint32_t>& subjectIds,
                                             size_t batch = 30);
 
+// Apprentice assignments (stages 1-4) for practice; level 0 means any level.
+AssignmentBatch fetchPracticeAssignments(const String& token, int level, bool kanjiOnly);
+
 struct SubjectLevel {
     uint32_t subjectId = 0;
     uint8_t level = 0;

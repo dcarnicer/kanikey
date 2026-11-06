@@ -60,6 +60,8 @@ struct ReviewSummaryView {
     bool lastHasStats = false;
     unsigned lastReviewCount = 0;
     unsigned lastPercentage = 0;
+    bool practice = false;
+    unsigned skipped = 0;
 };
 
 // Draws the session summary into d.
