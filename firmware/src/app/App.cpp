@@ -3879,11 +3879,18 @@ void refreshStudyCounts() {
     size_t mistakes = 0;
     recentMistakeIds(999, &mistakes);
     snprintf(gStudyCounts[0], sizeof gStudyCounts[0], "%u", static_cast<unsigned>(mistakes));
-    snprintf(gStudyCounts[1], sizeof gStudyCounts[1], "online");
+    loadPracticePool();
+    const size_t lessons =
+        kk::selectRecentLessons(gPracticePool, kk::settingsPracticeLessonsMode(),
+                                effectiveNow(), 999)
+            .size();
+    const size_t level =
+        kk::selectCurrentLevel(gPracticePool, gHaveUser ? gUser.level : 0, 999).size();
+    snprintf(gStudyCounts[1], sizeof gStudyCounts[1], "%u", static_cast<unsigned>(lessons));
     loadCritical();
     snprintf(gStudyCounts[2], sizeof gStudyCounts[2], "%u",
              static_cast<unsigned>(gCritical.size()));
-    snprintf(gStudyCounts[3], sizeof gStudyCounts[3], "online");
+    snprintf(gStudyCounts[3], sizeof gStudyCounts[3], "%u", static_cast<unsigned>(level));
 }
 
 void openStudyMenu() {
