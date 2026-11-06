@@ -30,9 +30,11 @@
 > the 24-hour forecast, the SRS distribution, level progress and a seven-day
 > local history/streak; Home's `Next review` line includes the next bucket
 > count. Completed reviews also append to `/state/journal.bin` (16 B records,
-> CRC blocks, account-scoped), because `/reviews` is deprecated. Sync runs on a six-row
-> screen (Wi-Fi, Outbox, Account, Summary, Level, SRS) with a progress bar and
-> `Esc` cancel; failures
+> CRC blocks, account-scoped), because `/reviews` is deprecated. A full sync
+> detects account-wide critical/leech items below 75% and stores them for
+> offline use; Settings › `Critical first` moves due critical items to the front
+> of a review session. Sync runs on a seven-row screen (Wi-Fi, Outbox, Account,
+> Summary, Level, SRS, Critical) with a progress bar and `Esc` cancel; failures
 > stay on screen with retry or setup. `Tab` on review feedback opens the item
 > detail card with meanings, readings, mnemonics, notes, components, related
 > subjects and, for vocabulary, parts of speech and context sentences.

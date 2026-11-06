@@ -60,7 +60,7 @@ void drawSyncScreen(lgfx::LovyanGFX& d, const SyncView& view) {
 
     for (int i = 0; i < kSyncRowCount; ++i) {
         const SyncRowView& row = view.rows[i];
-        const int y = 46 + i * 11;
+        const int y = 42 + i * 10;
         d.setTextFont(0);
         d.setTextSize(1);
         d.setTextColor(ui::kDim, ui::kBg);

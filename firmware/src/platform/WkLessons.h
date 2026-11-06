@@ -33,6 +33,17 @@ LessonAssignments fetchLessonAssignments(const String& token,
                                          const std::vector<uint32_t>& lessonSubjectIds,
                                          size_t maxCandidates = 60);
 
+struct AssignmentBatch {
+    bool ok = false;
+    int httpCode = 0;
+    String error;
+    std::vector<Assignment> assignments;
+};
+// Assignments for arbitrary subject ids, including started/hidden/burned ones.
+AssignmentBatch fetchAssignmentsForSubjects(const String& token,
+                                            const std::vector<uint32_t>& subjectIds,
+                                            size_t batch = 30);
+
 struct SubjectLevel {
     uint32_t subjectId = 0;
     uint8_t level = 0;

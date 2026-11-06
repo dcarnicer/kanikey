@@ -37,11 +37,13 @@
 #include "platform/DeviceSettings.h"
 #include "platform/DevToken.h"
 #include "platform/DevWifi.h"
+#include "platform/CriticalStore.h"
 #include "platform/GlyphPack.h"
 #include "platform/JournalStore.h"
 #include "platform/SetupPortal.h"
 #include "platform/SubjectCatalog.h"
 #include "platform/WkProbe.h"
+#include "platform/WkReviewStatistics.h"
 #include "platform/OutboxStore.h"
 #include "platform/Ota.h"
 #include "platform/WkClient.h"
@@ -178,6 +180,8 @@ bool gStatsActive = false;
 int gStatsPage = 0;
 kk::app::StatsHistoryView gStatsHistory;
 bool gStatsHistoryLoaded = false;
+std::vector<kk::CriticalItem> gCritical;
+bool gCriticalLoaded = false;
 uint32_t gPendingJournalHandle = 0;
 size_t gLessonIndex = 0;
 size_t gLessonPage = 0;
@@ -202,6 +206,7 @@ enum SyncRowIndex : uint8_t {
     SyncSummary,
     SyncLevel,
     SyncSrs,
+    SyncCritical,
 };
 struct SyncRow {
     const char* label = "";
@@ -377,6 +382,13 @@ bool collectJournalRecord(const kk::JournalRecord& record, void* user) {
         ++day->incorrect;
     }
     return true;
+}
+
+void loadCritical() {
+    if (gCriticalLoaded) return;
+    gCriticalLoaded = true;
+    gCritical.clear();
+    if (gFsOk) kk::criticalLoad(currentAccountKey(), &gCritical);
 }
 
 void loadStatsHistory() {
@@ -893,6 +905,42 @@ bool runSrsCounts() {
     }
     gSrs = counts;
     saveCacheSnapshot();
+    return true;
+}
+
+bool runCriticalItems() {
+    constexpr uint8_t kMaxPercent = 75;
+    constexpr uint16_t kMinAnswers = 5;
+    const String token = kk::DevToken::load();
+    kk::CriticalStatistics stats = kk::fetchCriticalStatistics(token, kMaxPercent);
+    if (!stats.ok) {
+        Serial.printf("[critical] statistics unavailable: %s\n", stats.error.c_str());
+        return false;
+    }
+    std::vector<uint32_t> ids;
+    ids.reserve(stats.statistics.size());
+    for (const kk::ReviewStatistic& stat : stats.statistics)
+        if (stat.totalAnswers() >= kMinAnswers && !stat.hidden)
+            ids.push_back(stat.subjectId);
+
+    std::vector<kk::Assignment> assignments;
+    if (!ids.empty()) {
+        kk::AssignmentBatch batch = kk::fetchAssignmentsForSubjects(token, ids, 30);
+        if (!batch.ok) {
+            Serial.printf("[critical] assignments unavailable: %s\n", batch.error.c_str());
+            return false;
+        }
+        assignments = std::move(batch.assignments);
+    }
+    std::vector<kk::CriticalItem> items = kk::selectCriticalItems(
+        stats.statistics, assignments, kMaxPercent, kMinAnswers);
+    if (!kk::criticalSave(currentAccountKey(), items)) {
+        Serial.println("[critical] could not save the list");
+        return false;
+    }
+    gCritical = std::move(items);
+    gCriticalLoaded = true;
+    Serial.printf("[critical] %u items\n", static_cast<unsigned>(gCritical.size()));
     return true;
 }
 
@@ -1696,6 +1744,13 @@ void startReview() {
     gQueue.setMeaningFirst(kk::settingsMeaningFirst());
     gQueue.setLowerLevelsFirst(gHaveUser &&
                                gUser.reviewsOrder == kk::ReviewOrder::LowerLevelsFirst);
+    if (kk::settingsCriticalFirst()) {
+        loadCritical();
+        std::vector<uint32_t> ids;
+        ids.reserve(gCritical.size());
+        for (const kk::CriticalItem& item : gCritical) ids.push_back(item.subjectId);
+        gQueue.setCriticalSubjectIds(ids);
+    }
     gQueue.build(due, gBatch.subjects, now, reviewLimit);
     Serial.printf("[review] order %s, first levels",
                   gQueue.lowerLevelsFirst() ? "lower_levels_first" : "shuffled");
@@ -2374,7 +2429,7 @@ void lessonKey(const KeyEvent& e) {
     }
 }
 
-constexpr int kSettingsRows = 13;
+constexpr int kSettingsRows = 14;
 
 void setSettingsNote(const char* text, uint16_t color = kFaint) {
     snprintf(gSettingsNote, sizeof gSettingsNote, "%s", text ? text : "");
@@ -2486,7 +2541,13 @@ void settingsAction() {
             setSettingsNote((String("Lesson batch ") + String(value)).c_str(), kOk);
             break;
         }
-        case 7:
+        case 7: {
+            const bool value = !kk::settingsCriticalFirst();
+            kk::settingsSetCriticalFirst(value);
+            setSettingsNote(value ? "Critical items first" : "Normal review order", kOk);
+            break;
+        }
+        case 8:
             if (gReviewActive) {
                 setSettingsNote("End the review session first", kWarn);
                 break;
@@ -2495,7 +2556,7 @@ void settingsAction() {
             gShowHome = false;
             startSetupPortal();
             break;
-        case 8:
+        case 9:
             if (!gSdOk || !gPack.ready() || !kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
                 setSettingsNote("Configure Wi-Fi, token and pack", kWarn);
                 break;
@@ -2504,20 +2565,20 @@ void settingsAction() {
             gShowHome = false;
             startSync();
             break;
-        case 9:
+        case 10:
             openFirmware();
             break;
-        case 10:
+        case 11:
             gAboutActive = true;
             gSettingsNote[0] = 0;
             break;
-        case 11:
+        case 12:
             if (gFsOk) kk::cacheClearSnapshot();
             if (gSdOk) kk::cacheClearSubjects(SD);
             gCacheSavedAt = 0;
             setSettingsNote("Cache cleared; next boot is cold", kOk);
             break;
-        case 12:
+        case 13:
             gSignOutConfirm = true;
             gSettingsNote[0] = 0;
             break;
@@ -2543,6 +2604,9 @@ void settingsKey(const KeyEvent& e) {
             gOutbox.clear();
             saveOutbox();
             kk::journalClear();
+            kk::criticalClear();
+            gCritical.clear();
+            gCriticalLoaded = false;
             gStatsHistoryLoaded = false;
             gPendingJournalHandle = 0;
             gUser = kk::User{};
@@ -2957,8 +3021,8 @@ void drawLoading(const char* title, const char* subtitle) {
 }
 
 void resetSyncScreen() {
-    static const char* kLabels[kSyncRowCount] = {"Wi-Fi", "Outbox", "Account",
-                                                 "Summary", "Level", "SRS"};
+    static const char* kLabels[kSyncRowCount] = {"Wi-Fi", "Outbox", "Account", "Summary",
+                                                 "Level", "SRS",    "Critical"};
     for (int i = 0; i < kSyncRowCount; ++i) {
         gSyncRows[i].label = kLabels[i];
         gSyncRows[i].value[0] = '\0';
@@ -3185,6 +3249,30 @@ void startSync() {
         syncRowDone(SyncSrs, srs);
     } else {
         syncRowWarn(SyncSrs, "unavailable");
+    }
+    if (syncStopRequested()) {
+        finishSyncCancelled();
+        return;
+    }
+
+    syncRowBegin(SyncCritical, "fetching");
+    const bool criticalOk = runCriticalItems();
+    if (kk::wkAuthBlocked()) {
+        setSyncIssue(401, true, 0, "Critical");
+        syncRowWarn(SyncCritical, "token rejected");
+    } else if (kk::wkRateLimitWaitSeconds() > 0) {
+        setSyncIssue(429, true, 0, "Critical");
+        syncRowWarn(SyncCritical, "rate limited");
+    } else if (criticalOk) {
+        char critical[40];
+        if (gCritical.empty())
+            snprintf(critical, sizeof critical, "none");
+        else
+            snprintf(critical, sizeof critical, "%u critical items",
+                     static_cast<unsigned>(gCritical.size()));
+        syncRowDone(SyncCritical, critical);
+    } else {
+        syncRowWarn(SyncCritical, "unavailable");
     }
     if (syncStopRequested()) {
         finishSyncCancelled();
@@ -3578,8 +3666,9 @@ void drawSettings() {
     auto& d = target();
 
     static const char* kLabels[] = {"Brightness", "Dim after", "Blank after", "Sleep after",
-                                    "Review batch", "Order", "Lesson batch", "Setup portal",
-                                    "Sync now", "Firmware", "About", "Clear cache", "Sign out"};
+                                    "Review batch", "Order", "Lesson batch", "Critical first",
+                                    "Setup portal", "Sync now", "Firmware", "About", "Clear cache",
+                                    "Sign out"};
     String values[kSettingsRows];
     values[0] = String(kk::settingsBrightness());
     values[1] = secondsLabel(kk::settingsDimSeconds());
@@ -3588,13 +3677,14 @@ void drawSettings() {
     values[4] = String(kk::settingsReviewBatchSize());
     values[5] = kk::settingsMeaningFirst() ? "Meaning" : "Reading";
     values[6] = String(kk::settingsLessonBatchSize());
-    values[7] = "open";
-    values[8] = "run";
-    values[9] = gOtaState.badgeVersion.empty() ? kk::kFirmwareVersion
-                                               : gOtaState.badgeVersion.c_str();
-    values[10] = "info";
-    values[11] = "clear";
-    values[12] = "out";
+    values[7] = kk::settingsCriticalFirst() ? "On" : "Off";
+    values[8] = "open";
+    values[9] = "run";
+    values[10] = gOtaState.badgeVersion.empty() ? kk::kFirmwareVersion
+                                                : gOtaState.badgeVersion.c_str();
+    values[11] = "info";
+    values[12] = "clear";
+    values[13] = "out";
 
     SettingsView view;
     view.selectedIndex = gSettingsIndex;
@@ -4253,7 +4343,7 @@ void firmwareKey(const KeyEvent& e) {
         } else {
             gFirmwareActive = false;
             gSettingsActive = true;
-            gSettingsIndex = 9;
+            gSettingsIndex = 10;
         }
         gDirty = true;
         return;
@@ -5396,6 +5486,9 @@ void handleSerial() {
             kk::DevToken::clear();
             kk::wkClearAuthBlock();
             kk::journalClear();
+            kk::criticalClear();
+            gCritical.clear();
+            gCriticalLoaded = false;
             gStatsHistoryLoaded = false;
             gPendingJournalHandle = 0;
             gDeferredAuthIssue = SyncIssue::None;
@@ -5500,7 +5593,7 @@ void handleSerial() {
             if (gFirmwareActive) {
                 gFirmwareActive = false;
                 gSettingsActive = true;
-                gSettingsIndex = 9;
+                gSettingsIndex = 10;
                 gFirmwareConfirm = false;
                 gDirty = true;
             } else if (gSettingsActive) {

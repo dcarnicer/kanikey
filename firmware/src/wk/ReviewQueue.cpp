@@ -51,7 +51,14 @@ void ReviewQueue::build(const std::vector<Assignment>& assignments,
                              return a.level < b.level;
                          });
     }
+    if (!criticalSubjectIds_.empty()) {
+        std::stable_partition(items.begin(), items.end(), [this](const SessionItem& item) {
+            return std::find(criticalSubjectIds_.begin(), criticalSubjectIds_.end(),
+                             item.subjectId) != criticalSubjectIds_.end();
+        });
+    }
     if (limit > 0 && items.size() > limit) items.resize(limit);
+    criticalSubjectIds_.clear();
 
     for (const SessionItem& it : items) queue_.push_back(it);
     if (!queue_.empty()) prepareItem(queue_.front());

@@ -323,6 +323,16 @@ lifetime accuracy and the session summary shows the last item's review count
 and accuracy. A token without the review-statistics permission still reviews,
 without the accuracy display.
 
+**Critical items (2026-11-06).** A full sync adds a non-blocking `Critical`
+step: `GET /v2/review_statistics?percentages_less_than=75&hidden=false`,
+paginated with `page_after_id` (up to ten 500-record pages). The client keeps
+the resource `id` for the cursor and `total_answers = meaning + reading correct
+and incorrect`, then fetches the matching assignments by `subject_ids` and
+drops hidden, burned (`srs_stage == 9`) and fewer-than-five-answer statistics.
+The result is sorted worst-first, stored in `/state/critical.bin` and used by
+the optional `Critical first` review order. A 403, 429, network or parse error
+shows `unavailable` and keeps the previous list; it never fails the sync.
+
 ### 3.9 `/level_progressions`
 
 Fields used: `level`, `unlocked_at`, `started_at`, `passed_at`, `completed_at`,

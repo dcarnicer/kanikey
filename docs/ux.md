@@ -380,6 +380,9 @@ Home ──L──► Lessons ──Enter──► Lesson card
 ![Reading review](screens/review-reading.png)
 
 - Header `REVIEWS`, `SRS 3 86%`, `12/48`, battery; 2 px progress bar.
+- With Settings › `Critical first` on, due critical subjects are moved ahead
+  of the rest; the normal shuffle/lower-levels order is preserved inside both
+  groups and the batch limit is applied after the partition.
 - Left panel 88×88:
   - 64 px kanji/radical, centered.
   - Pill `KANJI · L5` or `RADICAL · L3` below.
@@ -569,13 +572,15 @@ meaning/reading notes are appended to the paged card after the mnemonic.
 ![Sync](screens/sync.png)
 
 - A dedicated screen replaces Home while a sync runs.
-- Six rows: `Wi-Fi`, `Outbox`, `Account`, `Summary`, `Level`, `SRS`.
+- Seven rows: `Wi-Fi`, `Outbox`, `Account`, `Summary`, `Level`, `SRS`,
+  `Critical`. The Critical row is non-blocking: a missing permission or network
+  error shows `unavailable` and keeps the previous list.
 - The `Outbox` row shows pending and attention separately (`2 attention, 4
   pending`), or `N need attention` / `N pending`; `none` before a flush and
   `sent` when both are zero afterwards.
 - Each row shows a name, a value and a status: `ok` in green, `..` while
   active, `!` for a warning, `X` for a failure and `--` while pending.
-- Progress bar `0/6` … `6/6`; the title reads `Syncing…`, `Synced` or
+- Progress bar `0/7` … `7/7`; the title reads `Syncing…`, `Synced` or
   `Sync failed`.
 - `Esc` cancels at the next step boundary. Completed requests are kept, and
   the device returns to Home (or to boot with `Sync cancelled` if there is no
@@ -583,9 +588,9 @@ meaning/reading notes are appended to the paged card after the mnemonic.
 - A failed Account or Summary request stops the later steps and leaves the
   screen on `Sync failed` with the error line. `Enter` retries; for a token or
   permission error `Enter` opens setup. `Esc` goes back.
-- A failed Level or SRS request is not a blocker: the sync completes and keeps
-  the previous cached data. It shows `!` when the step reports a warning; a
-  still-valid cached Level value can remain `ok`.
+- A failed Level, SRS or Critical request is not a blocker: the sync completes
+  and keeps the previous cached data. It shows `!` when the step reports a
+  warning; a still-valid cached Level value can remain `ok`.
 - The rows are drawn between the blocking TLS requests, so a cancel pressed
   during a request takes effect when it finishes.
 - SNTP starts with the stored POSIX rule (`configTzTime`), so Home `Synced
@@ -598,13 +603,13 @@ meaning/reading notes are appended to the paged card after the mnemonic.
 
 - Open with `Esc` from Home, or `Esc` in a review → Pause → Settings.
 - Implemented rows: `Brightness`, `Dim after`, `Blank after`, `Sleep after`,
-  `Review batch`, `Order`, `Lesson batch`, `Setup portal`, `Sync now`,
-  `Firmware`, `About`, `Clear cache`, `Sign out`.
+  `Review batch`, `Order`, `Lesson batch`, `Critical first`, `Setup portal`,
+  `Sync now`, `Firmware`, `About`, `Clear cache`, `Sign out`.
 - `Brightness` cycles 64/128/192/255; the timings cycle presets and `off`.
-  Review batch cycles 10/20/30, lesson batch 3/5/10, and order toggles
-  meaning-first / reading-first. All are stored in NVS and applied without a
-  reboot. WaniKani's `reviews_presentation_order` is applied automatically and
-  is not a device setting.
+  Review batch cycles 10/20/30, lesson batch 3/5/10, `Critical first` toggles
+  On/Off and order toggles meaning-first / reading-first. All are stored in NVS
+  and applied without a reboot. WaniKani's `reviews_presentation_order` is
+  applied automatically and is not a device setting.
 - The list scrolls when there are more rows than fit (7 visible, scroll bar).
 - `Setup portal` reopens the Wi-Fi/token/time page; it is disabled during a
   review so the session is not lost. `Sync now` starts a manual sync.

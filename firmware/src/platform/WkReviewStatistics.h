@@ -12,9 +12,19 @@
 
 namespace kk {
 
+struct CriticalStatistics {
+    bool ok = false;
+    int httpCode = 0;
+    String error;
+    std::vector<ReviewStatistic> statistics;
+};
+
 std::vector<ReviewStatistic> fetchReviewStatistics(const String& token,
                                                    const std::vector<uint32_t>& subjectIds,
                                                    size_t batch = 10);
+
+// Paginated GET /review_statistics?percentages_less_than=N&hidden=false.
+CriticalStatistics fetchCriticalStatistics(const String& token, uint8_t maxPercent);
 
 size_t attachReviewStatistics(const String& token, std::vector<Subject>* subjects);
 

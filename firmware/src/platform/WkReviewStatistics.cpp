@@ -57,6 +57,41 @@ std::vector<ReviewStatistic> fetchReviewStatistics(const String& token,
     return out;
 }
 
+CriticalStatistics fetchCriticalStatistics(const String& token, uint8_t maxPercent) {
+    CriticalStatistics result;
+    uint32_t cursor = 0;
+    for (int page = 0; page < 10; ++page) {
+        String path = "/v2/review_statistics?percentages_less_than=";
+        path += String(static_cast<unsigned>(maxPercent));
+        path += "&hidden=false";
+        if (cursor) {
+            path += "&page_after_id=";
+            path += String(static_cast<unsigned long>(cursor));
+        }
+        WkJsonResult r = wkGetJsonRetry(path, token, 32768, 12000);
+        if (r.http.httpCode != 200) {
+            result.httpCode = r.http.httpCode;
+            result.error = "review_statistics HTTP " + String(r.http.httpCode);
+            return result;
+        }
+        if (!r.parsed) {
+            result.error = "review_statistics JSON";
+            return result;
+        }
+        std::vector<ReviewStatistic> part = parseReviewStatistics(r.json);
+        r.json = JsonValue{};
+        if (part.empty()) break;
+        cursor = part.back().id;
+        for (ReviewStatistic& stat : part) result.statistics.push_back(std::move(stat));
+        Serial.printf("[critical] page %d: %u statistics, cursor %lu\n", page + 1,
+                      static_cast<unsigned>(part.size()),
+                      static_cast<unsigned long>(cursor));
+        if (part.size() < 500 || cursor == 0) break;
+    }
+    result.ok = true;
+    return result;
+}
+
 size_t attachReviewStatistics(const String& token, std::vector<Subject>* subjects) {
     if (!subjects || subjects->empty()) return 0;
     std::vector<uint32_t> ids;

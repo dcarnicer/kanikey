@@ -26,6 +26,8 @@ std::vector<ReviewStatistic> parseReviewStatistics(const JsonValue& root) {
         const JsonValue* d = item.find("data");
         if (!d || !d->isObject()) continue;
         ReviewStatistic stat;
+        if (const JsonValue* id = item.find("id"); id && id->isNumber() && id->number >= 0)
+            stat.id = static_cast<uint32_t>(id->number);
         stat.subjectId = u32Field(*d, "subject_id");
         stat.meaningCorrect = u32Field(*d, "meaning_correct");
         stat.meaningIncorrect = u32Field(*d, "meaning_incorrect");

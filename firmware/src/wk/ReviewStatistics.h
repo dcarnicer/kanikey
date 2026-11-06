@@ -11,6 +11,7 @@
 namespace kk {
 
 struct ReviewStatistic {
+    uint32_t id = 0;  // review_statistics resource id, for page_after_id
     uint32_t subjectId = 0;
     uint32_t meaningCorrect = 0;
     uint32_t meaningIncorrect = 0;
@@ -22,6 +23,12 @@ struct ReviewStatistic {
     uint16_t readingCurrentStreak = 0;
     uint8_t percentageCorrect = 0;
     bool hidden = false;
+
+    uint32_t totalAnswers() const {
+        const uint64_t total = static_cast<uint64_t>(meaningCorrect) + meaningIncorrect +
+                               readingCorrect + readingIncorrect;
+        return total > 0xFFFFFFFFu ? 0xFFFFFFFFu : static_cast<uint32_t>(total);
+    }
 };
 
 std::vector<ReviewStatistic> parseReviewStatistics(const JsonValue& root);

@@ -8,7 +8,7 @@
 
 namespace kk::app {
 
-constexpr int kSyncRowCount = 6;
+constexpr int kSyncRowCount = 7;
 
 enum class SyncRowState : uint8_t { Pending, Active, Done, Warn, Failed };
 

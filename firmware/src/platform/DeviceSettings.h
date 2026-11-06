@@ -36,6 +36,8 @@ int settingsLessonBatchSize();
 bool settingsSetLessonBatchSize(int count);
 bool settingsMeaningFirst();
 bool settingsSetMeaningFirst(bool meaningFirst);
+bool settingsCriticalFirst();
+bool settingsSetCriticalFirst(bool criticalFirst);
 
 // "<+01>-1" / "<-0330>3:30": a fixed offset east of UTC, used when the browser
 // cannot provide a DST-aware rule.

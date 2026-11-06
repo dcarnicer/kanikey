@@ -1,11 +1,21 @@
 # Critical items and extra study
 
+**Implementation (2026-11-06).** STUDY-01's detection and STUDY-02's
+critical-first order are live. A full sync adds a non-critical `Critical` row,
+fetches paginated `/review_statistics?percentages_less_than=75&hidden=false`,
+joins the active assignments and stores the list in `/state/critical.bin`.
+Hidden statistics, assignments and burned items are dropped; the defaults are
+75% and 5 answers until the S1/S2 rows land. Settings › `Critical first`
+(`rv.critical`, default Off) puts due critical items first without changing the
+normal order inside each group. STUDY-03/04/05, including the Extra study menu
+and the visible critical list, remain open.
+
 STUDY covers decision D4: account-wide critical (leech) detection, critical-first review order and local extra-study modes. Practice sessions are local: they never call `POST /reviews` or `PUT /start`, never write the outbox and never change WaniKani SRS state. Today `/review_statistics` is fetched only for the review batch (`firmware/src/platform/WkReviewStatistics.cpp:24-70`) and merged into cached subjects; there is no account-wide store or practice path yet. All tasks are Wave 3 and assume ARCH-01's controller split, ARCH-02's settings registry and ARCH-03's SD catalog/journal; line numbers below are from the current tree.
 
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
-| STUDY-01 | Detect critical items | P2 | M | ARCH-02, ARCH-03 | 3 | todo |
-| STUDY-02 | Prioritize critical items | P2 | S | STUDY-01 | 3 | todo |
+| STUDY-01 | Detect critical items | P2 | M | ARCH-02, ARCH-03 | 3 | partial (2026-11-06: defaults 75/5) |
+| STUDY-02 | Prioritize critical items | P2 | S | STUDY-01 | 3 | done (2026-11-06) |
 | STUDY-03 | Extra study menu | P2 | L | ARCH-01, ARCH-02, ARCH-03, STUDY-01 | 3 | todo |
 | STUDY-04 | Subjects for practice offline | P2 | M | ARCH-03, STUDY-03 | 3 | todo |
 | STUDY-05 | Critical items list | P3 | S | STUDY-01, STUDY-03 | 3 | todo |

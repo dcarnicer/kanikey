@@ -10,6 +10,7 @@
 #include "wk/Assignment.h"
 #include "wk/Cache.h"
 #include "wk/Catalog.h"
+#include "wk/CriticalItems.h"
 #include "wk/Crc32.h"
 #include "wk/HttpRetry.h"
 #include "wk/Outbox.h"
@@ -451,6 +452,85 @@ static void test_session_filters_and_limit() {
     TEST_ASSERT_EQUAL(2, q.remaining());
     q.build(as, {s}, 1000, 1);
     TEST_ASSERT_EQUAL(1, q.remaining());
+}
+
+static void queueIds(const ReviewQueue& q, std::vector<uint32_t>* out) {
+    out->clear();
+    for (const SessionItem& item : q.queue()) out->push_back(item.subjectId);
+}
+
+static void test_queue_critical_items_first() {
+    Subject a = kanji();
+    a.id = 1;
+    Subject b = vocabulary();
+    b.id = 2;
+    Subject c = kanji();
+    c.id = 3;
+    ReviewQueue q;
+    q.setCriticalSubjectIds({2});
+    q.build({assignment(1, 1, 3, 100), assignment(2, 2, 3, 100), assignment(3, 3, 3, 100)},
+            {a, b, c}, 1000, 3, 7);
+    TEST_ASSERT_EQUAL(3, q.remaining());
+    TEST_ASSERT_EQUAL_UINT32(2, q.queue()[0].subjectId);
+}
+
+static void test_queue_critical_limit_keeps_only_critical() {
+    Subject a = kanji();
+    a.id = 1;
+    Subject b = vocabulary();
+    b.id = 2;
+    Subject c = kanji();
+    c.id = 3;
+    ReviewQueue q;
+    q.setCriticalSubjectIds({3});
+    q.build({assignment(1, 1, 3, 100), assignment(2, 2, 3, 100), assignment(3, 3, 3, 100)},
+            {a, b, c}, 1000, 1, 7);
+    TEST_ASSERT_EQUAL(1, q.remaining());
+    TEST_ASSERT_EQUAL_UINT32(3, q.queue()[0].subjectId);
+}
+
+static void test_queue_critical_preserves_normal_order() {
+    Subject a = kanji();
+    a.id = 1;
+    Subject b = vocabulary();
+    b.id = 2;
+    Subject c = kanji();
+    c.id = 3;
+    std::vector<Assignment> as = {assignment(1, 1, 3, 100), assignment(2, 2, 3, 100),
+                                  assignment(3, 3, 3, 100)};
+    ReviewQueue base;
+    base.build(as, {a, b, c}, 1000, 3, 7);
+    std::vector<uint32_t> baseIds;
+    queueIds(base, &baseIds);
+    ReviewQueue critical;
+    critical.setCriticalSubjectIds({2});
+    critical.build(as, {a, b, c}, 1000, 3, 7);
+    std::vector<uint32_t> criticalIds;
+    queueIds(critical, &criticalIds);
+    TEST_ASSERT_EQUAL_UINT32(2, criticalIds[0]);
+    std::vector<uint32_t> expected;
+    for (uint32_t id : baseIds)
+        if (id != 2) expected.push_back(id);
+    TEST_ASSERT_EQUAL(static_cast<int>(expected.size()), static_cast<int>(criticalIds.size() - 1));
+    for (size_t i = 0; i < expected.size(); ++i)
+        TEST_ASSERT_EQUAL_UINT32(expected[i], criticalIds[i + 1]);
+}
+
+static void test_queue_without_critical_matches_previous_order() {
+    Subject a = kanji();
+    a.id = 1;
+    Subject b = vocabulary();
+    b.id = 2;
+    std::vector<Assignment> as = {assignment(1, 1, 3, 100), assignment(2, 2, 3, 100)};
+    ReviewQueue one;
+    one.build(as, {a, b}, 1000, 2, 11);
+    ReviewQueue two;
+    two.build(as, {a, b}, 1000, 2, 11);
+    std::vector<uint32_t> oneIds;
+    std::vector<uint32_t> twoIds;
+    queueIds(one, &oneIds);
+    queueIds(two, &twoIds);
+    TEST_ASSERT_TRUE(oneIds == twoIds);
 }
 
 static void test_session_skip() {
@@ -1245,6 +1325,102 @@ static void test_catalog_cap_math() {
     TEST_ASSERT_TRUE(catalogNeedsEvict(2000, 0, 0));
     TEST_ASSERT_TRUE(catalogNeedsEvict(1, kCatalogMaxBytes, 1));
     TEST_ASSERT_FALSE(catalogNeedsEvict(1, 0, 1024));
+}
+
+// ---------------------------------------------------------------- critical items
+static ReviewStatistic criticalStat(uint32_t id, uint32_t subjectId, uint8_t percent,
+                                    uint32_t answers, bool hidden = false) {
+    ReviewStatistic stat;
+    stat.id = id;
+    stat.subjectId = subjectId;
+    stat.percentageCorrect = percent;
+    stat.meaningCorrect = answers;
+    stat.hidden = hidden;
+    return stat;
+}
+
+static Assignment criticalAssignment(uint32_t subjectId, uint8_t stage, bool hidden = false) {
+    Assignment a;
+    a.id = 1000 + subjectId;
+    a.subjectId = subjectId;
+    a.srsStage = stage;
+    a.hidden = hidden;
+    return a;
+}
+
+static void test_review_statistics_parses_id_and_total_answers() {
+    JsonParser p;
+    JsonValue v;
+    const char* text =
+        "{\"data\":[{\"id\":77,\"data\":{\"subject_id\":10,\"meaning_correct\":3,"
+        "\"meaning_incorrect\":1,\"reading_correct\":2,\"reading_incorrect\":4,"
+        "\"percentage_correct\":60,\"hidden\":false}}]}";
+    TEST_ASSERT_TRUE(p.parse(text, &v));
+    const std::vector<ReviewStatistic> stats = parseReviewStatistics(v);
+    TEST_ASSERT_EQUAL(1, stats.size());
+    TEST_ASSERT_EQUAL_UINT32(77, stats[0].id);
+    TEST_ASSERT_EQUAL_UINT32(10, stats[0].totalAnswers());
+}
+
+static void test_critical_strictly_below_threshold() {
+    const std::vector<ReviewStatistic> stats = {
+        criticalStat(1, 10, 74, 10), criticalStat(2, 11, 75, 10),
+        criticalStat(3, 12, 60, 10)};
+    const std::vector<Assignment> assignments = {
+        criticalAssignment(10, 2), criticalAssignment(11, 2), criticalAssignment(12, 2)};
+    const std::vector<CriticalItem> items = selectCriticalItems(stats, assignments, 75, 5);
+    TEST_ASSERT_EQUAL(2, items.size());
+    TEST_ASSERT_EQUAL_UINT32(12, items[0].subjectId);
+    TEST_ASSERT_EQUAL_UINT32(10, items[1].subjectId);
+}
+
+static void test_critical_minimum_answers() {
+    const std::vector<ReviewStatistic> stats = {criticalStat(1, 10, 50, 4),
+                                                criticalStat(2, 11, 50, 5)};
+    const std::vector<Assignment> assignments = {criticalAssignment(10, 2),
+                                                  criticalAssignment(11, 2)};
+    const std::vector<CriticalItem> items = selectCriticalItems(stats, assignments, 75, 5);
+    TEST_ASSERT_EQUAL(1, items.size());
+    TEST_ASSERT_EQUAL_UINT32(11, items[0].subjectId);
+}
+
+static void test_critical_excludes_hidden_and_burned() {
+    const std::vector<ReviewStatistic> stats = {
+        criticalStat(1, 10, 50, 10, true), criticalStat(2, 11, 50, 10),
+        criticalStat(3, 12, 50, 10)};
+    const std::vector<Assignment> assignments = {criticalAssignment(11, 2, true),
+                                                  criticalAssignment(12, 9)};
+    TEST_ASSERT_TRUE(selectCriticalItems(stats, assignments, 75, 5).empty());
+}
+
+static void test_critical_missing_assignment_skipped() {
+    const std::vector<ReviewStatistic> stats = {criticalStat(1, 10, 50, 10)};
+    TEST_ASSERT_TRUE(selectCriticalItems(stats, {}, 75, 5).empty());
+}
+
+static void test_critical_sorted_worst_first() {
+    const std::vector<ReviewStatistic> stats = {
+        criticalStat(1, 10, 60, 10), criticalStat(2, 11, 20, 10),
+        criticalStat(3, 12, 40, 10)};
+    const std::vector<Assignment> assignments = {
+        criticalAssignment(10, 2), criticalAssignment(11, 2), criticalAssignment(12, 2)};
+    const std::vector<CriticalItem> items = selectCriticalItems(stats, assignments, 75, 5);
+    TEST_ASSERT_EQUAL(3, items.size());
+    TEST_ASSERT_EQUAL_UINT32(11, items[0].subjectId);
+    TEST_ASSERT_EQUAL_UINT32(12, items[1].subjectId);
+    TEST_ASSERT_EQUAL_UINT32(10, items[2].subjectId);
+}
+
+static void test_critical_list_round_trip() {
+    const std::vector<CriticalItem> items = {{10, 42}, {11, 17}};
+    std::vector<uint8_t> bytes;
+    TEST_ASSERT_TRUE(encodeCriticalList(items, 123, 456, &bytes));
+    std::vector<CriticalItem> out;
+    TEST_ASSERT_TRUE(decodeCriticalList(bytes.data(), bytes.size(), 123, &out));
+    TEST_ASSERT_EQUAL(2, out.size());
+    TEST_ASSERT_EQUAL_UINT32(10, out[0].subjectId);
+    TEST_ASSERT_EQUAL(42, out[0].percentageCorrect);
+    TEST_ASSERT_FALSE(decodeCriticalList(bytes.data(), bytes.size(), 124, &out));
 }
 
 
@@ -2422,6 +2598,10 @@ int main(int, char**) {
     RUN_TEST(test_session_warning_does_not_advance);
     RUN_TEST(test_session_radical_only_meaning);
     RUN_TEST(test_session_filters_and_limit);
+    RUN_TEST(test_queue_critical_items_first);
+    RUN_TEST(test_queue_critical_limit_keeps_only_critical);
+    RUN_TEST(test_queue_critical_preserves_normal_order);
+    RUN_TEST(test_queue_without_critical_matches_previous_order);
     RUN_TEST(test_session_skip);
     RUN_TEST(test_session_lower_levels_first);
     RUN_TEST(test_session_stats_accuracy);
@@ -2473,6 +2653,13 @@ int main(int, char**) {
     RUN_TEST(test_catalog_meta_account_mismatch);
     RUN_TEST(test_catalog_lru_victim);
     RUN_TEST(test_catalog_cap_math);
+    RUN_TEST(test_review_statistics_parses_id_and_total_answers);
+    RUN_TEST(test_critical_strictly_below_threshold);
+    RUN_TEST(test_critical_minimum_answers);
+    RUN_TEST(test_critical_excludes_hidden_and_burned);
+    RUN_TEST(test_critical_missing_assignment_skipped);
+    RUN_TEST(test_critical_sorted_worst_first);
+    RUN_TEST(test_critical_list_round_trip);
     RUN_TEST(test_summary_text_parser);
     RUN_TEST(test_summary_text_parser_empty);
     RUN_TEST(test_review_response_parse);

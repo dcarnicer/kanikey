@@ -19,6 +19,7 @@ constexpr const char* kKeySleep = "sleep";
 constexpr const char* kKeyReviewSize = "revsize";
 constexpr const char* kKeyLessonSize = "lessonsz";
 constexpr const char* kKeyMeaningFirst = "order";
+constexpr const char* kKeyCriticalFirst = "rv.critical";
 
 struct DisplaySettings {
     int brightness = 128;
@@ -28,6 +29,7 @@ struct DisplaySettings {
     int reviewSize = 20;
     int lessonSize = 5;
     bool meaningFirst = true;
+    bool criticalFirst = false;
 };
 
 DisplaySettings& displaySettings() {
@@ -44,6 +46,7 @@ DisplaySettings& displaySettings() {
     values.reviewSize = p.getInt(kKeyReviewSize, values.reviewSize);
     values.lessonSize = p.getInt(kKeyLessonSize, values.lessonSize);
     values.meaningFirst = p.getInt(kKeyMeaningFirst, values.meaningFirst ? 1 : 0) != 0;
+    values.criticalFirst = p.getInt(kKeyCriticalFirst, values.criticalFirst ? 1 : 0) != 0;
     p.end();
     if (values.brightness < 8 || values.brightness > 255) values.brightness = 128;
     for (int* v : {&values.dim, &values.blank, &values.sleep})
@@ -170,6 +173,13 @@ bool settingsSetMeaningFirst(bool meaningFirst) {
     DisplaySettings& v = displaySettings();
     v.meaningFirst = meaningFirst;
     return saveInt(kKeyMeaningFirst, meaningFirst ? 1 : 0);
+}
+
+bool settingsCriticalFirst() { return displaySettings().criticalFirst; }
+bool settingsSetCriticalFirst(bool criticalFirst) {
+    DisplaySettings& v = displaySettings();
+    v.criticalFirst = criticalFirst;
+    return saveInt(kKeyCriticalFirst, criticalFirst ? 1 : 0);
 }
 
 String formatFixedTimeZone(int offsetMinutes) {

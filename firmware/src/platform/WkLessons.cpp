@@ -72,6 +72,36 @@ LessonAssignments fetchLessonAssignments(const String& token,
     return result;
 }
 
+AssignmentBatch fetchAssignmentsForSubjects(const String& token,
+                                            const std::vector<uint32_t>& subjectIds,
+                                            size_t batch) {
+    AssignmentBatch result;
+    if (subjectIds.empty() || batch == 0) {
+        result.error = "no subjects";
+        return result;
+    }
+    result.assignments.reserve(subjectIds.size());
+    for (size_t begin = 0; begin < subjectIds.size(); begin += batch) {
+        const size_t end = std::min(subjectIds.size(), begin + batch);
+        const String path = "/v2/assignments?subject_ids=" + idList(subjectIds, begin, end);
+        WkAssignmentsResult ar = wkGetAssignmentsRetry(path, token, 32768, end - begin);
+        if (ar.http.httpCode != 200) {
+            result.httpCode = ar.http.httpCode;
+            result.error = "assignments HTTP " + String(ar.http.httpCode);
+            return result;
+        }
+        if (!ar.parsed) {
+            result.error = "assignments JSON";
+            return result;
+        }
+        for (const Assignment& a : ar.assignments) result.assignments.push_back(a);
+        Serial.printf("[assignments] %u/%u\n", static_cast<unsigned>(end),
+                      static_cast<unsigned>(subjectIds.size()));
+    }
+    result.ok = true;
+    return result;
+}
+
 SubjectLevels fetchSubjectLevels(const String& token,
                                  const std::vector<uint32_t>& subjectIds) {
     SubjectLevels result;

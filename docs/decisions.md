@@ -779,3 +779,12 @@ caps at 2,000 subjects or 8 MB, and evicts by smallest `lastUsed` (ties by
 subject id). Sign-out clears it; Clear cache does not need to because it is not
 the Home cache. The SD mount now allows four file handles so the pack, a
 catalog file and a directory scan can coexist.
+
+Critical (leech) items use WaniKani's own `percentage_correct`, never a local
+recalculation: the full sync asks `/review_statistics` for percentages strictly
+below 75% and at least 5 total answers, joins the active assignments, drops
+hidden and burned items, and stores the worst-first list in
+`/state/critical.bin`. `Settings › Critical first` is Off by default; when on,
+the review queue stable-partitions due critical subjects to the front before
+applying the batch limit. STUDY-03/04/05 can read the same list for practice
+and the visible critical-items screen.

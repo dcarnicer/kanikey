@@ -62,6 +62,12 @@ public:
     void setLowerLevelsFirst(bool lowerLevelsFirst) { lowerLevelsFirst_ = lowerLevelsFirst; }
     bool lowerLevelsFirst() const { return lowerLevelsFirst_; }
 
+    // Critical subjects move before the rest, preserving the normal order
+    // inside both groups. Call before build(); the list is cleared by build.
+    void setCriticalSubjectIds(const std::vector<uint32_t>& ids) {
+        criticalSubjectIds_ = ids;
+    }
+
     // Applies one answer to the current part. Warning leaves the item and the
     // part untouched (the UI retries the same answer). Incorrect increments the
     // counter and either switches to the other part or requeues the item. A
@@ -85,6 +91,7 @@ private:
     ReviewPart part_ = ReviewPart::None;
     bool meaningFirst_ = true;
     bool lowerLevelsFirst_ = false;
+    std::vector<uint32_t> criticalSubjectIds_;
 };
 
 }  // namespace kk
