@@ -127,8 +127,8 @@ Working on hardware:
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Current build: **1,489,617 B / 1,835,008 B flash (81.2%)**, **95,600 B /
-327,680 B static RAM (29.2%)**. The dev image is 1,508,353 B. Removing
+Current build: **1,491,577 B / 1,835,008 B flash (81.3%)**, **95,624 B /
+327,680 B static RAM (29.2%)**. The dev image is 1,510,309 B. Removing
 `efontJA_16` freed ~468 KB and leaves ~358 KB of flash headroom. The loop task
 uses a 24 KiB stack; the lazy review batch raised the lesson-fetch minimum free
 heap to ~56 KB.

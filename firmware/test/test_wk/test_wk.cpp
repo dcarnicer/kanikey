@@ -9,6 +9,7 @@
 #include "wk/AnswerChecker.h"
 #include "wk/Assignment.h"
 #include "wk/Cache.h"
+#include "wk/Catalog.h"
 #include "wk/Crc32.h"
 #include "wk/HttpRetry.h"
 #include "wk/Outbox.h"
@@ -33,6 +34,7 @@
 #include "wk/SessionStats.h"
 #include "wk/SrsCounts.h"
 #include "wk/Stats.h"
+#include "wk/SubjectCodec.h"
 #include "wk/Text.h"
 
 using namespace kk;
@@ -1143,6 +1145,106 @@ static void test_journal_empty() {
     TEST_ASSERT_FALSE(stats.any);
     TEST_ASSERT_EQUAL(0, stats.currentStreak);
     TEST_ASSERT_EQUAL(0, stats.bestStreak);
+}
+
+// ---------------------------------------------------------------- subject catalog
+static Subject catalogSubject() {
+    Subject s = kanji();
+    s.lessonPosition = 12;
+    s.meaningMnemonic = "A person eats.";
+    s.readingMnemonic = "shoku";
+    s.meaningHint = "food";
+    s.readingHint = "long o";
+    s.meaningNote = "note";
+    s.readingNote = "reading note";
+    s.componentSubjectIds = {1, 2, 3};
+    s.visuallySimilarSubjectIds = {7, 8};
+    s.amalgamationSubjectIds = {9, 10};
+    s.partsOfSpeech = {"noun", "proper noun"};
+    s.contextSentences = {{"これは日本です。", "This is Japan."}};
+    s.meaningCorrect = 8;
+    s.meaningIncorrect = 2;
+    s.readingCorrect = 7;
+    s.readingIncorrect = 1;
+    s.meaningMaxStreak = 5;
+    s.meaningCurrentStreak = 3;
+    s.readingMaxStreak = 4;
+    s.readingCurrentStreak = 2;
+    s.percentageCorrect = 86;
+    s.hasReviewStats = true;
+    return s;
+}
+
+static void test_subject_codec_roundtrip() {
+    const Subject in = catalogSubject();
+    std::vector<uint8_t> payload;
+    TEST_ASSERT_TRUE(subjectEncodePayload(in, &payload));
+    Subject out;
+    TEST_ASSERT_TRUE(subjectDecodePayload(payload.data(), payload.size(), &out));
+    TEST_ASSERT_EQUAL_UINT32(in.id, out.id);
+    TEST_ASSERT_EQUAL(static_cast<int>(in.type), static_cast<int>(out.type));
+    TEST_ASSERT_EQUAL(in.level, out.level);
+    // KKCS and the catalog payload do not persist lesson_position; it stays a
+    // parse-time field used by the lesson ordering.
+    TEST_ASSERT_EQUAL_STRING(in.characters.c_str(), out.characters.c_str());
+    TEST_ASSERT_EQUAL_STRING(in.meaningMnemonic.c_str(), out.meaningMnemonic.c_str());
+    TEST_ASSERT_EQUAL_STRING(in.readingMnemonic.c_str(), out.readingMnemonic.c_str());
+    TEST_ASSERT_EQUAL_STRING(in.meaningNote.c_str(), out.meaningNote.c_str());
+    TEST_ASSERT_EQUAL_STRING(in.readingNote.c_str(), out.readingNote.c_str());
+    TEST_ASSERT_EQUAL(static_cast<int>(in.componentSubjectIds.size()),
+                      static_cast<int>(out.componentSubjectIds.size()));
+    TEST_ASSERT_EQUAL(static_cast<int>(in.partsOfSpeech.size()),
+                      static_cast<int>(out.partsOfSpeech.size()));
+    TEST_ASSERT_EQUAL(static_cast<int>(in.contextSentences.size()),
+                      static_cast<int>(out.contextSentences.size()));
+    TEST_ASSERT_EQUAL_UINT32(in.meaningCorrect, out.meaningCorrect);
+    TEST_ASSERT_EQUAL(in.percentageCorrect, out.percentageCorrect);
+    TEST_ASSERT_TRUE(out.hasReviewStats);
+}
+
+static void test_subject_codec_matches_cache_subject() {
+    SubjectCache cache;
+    cache.meta = {0, 0};
+    cache.subjects.push_back(catalogSubject());
+    std::vector<uint8_t> cacheBytes;
+    TEST_ASSERT_TRUE(encodeSubjectCache(cache, &cacheBytes));
+    std::vector<uint8_t> payload;
+    TEST_ASSERT_TRUE(subjectEncodePayload(cache.subjects[0], &payload));
+    TEST_ASSERT_TRUE(cacheBytes.size() == kCacheHeaderBytes + 2 + payload.size());
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(payload.data(), cacheBytes.data() + kCacheHeaderBytes + 2,
+                                 payload.size());
+}
+
+static void test_catalog_meta_account_mismatch() {
+    CatalogMeta meta;
+    meta.accountKey = 123;
+    meta.savedAt = 456;
+    meta.count = 7;
+    meta.bytes = 890;
+    uint8_t bytes[kCatalogMetaBytes];
+    catalogMetaEncode(meta, bytes);
+    CatalogMeta out;
+    TEST_ASSERT_TRUE(catalogMetaDecode(bytes, &out));
+    TEST_ASSERT_EQUAL_UINT32(123, out.accountKey);
+    TEST_ASSERT_TRUE(catalogMetaAccountMatches(out, 123));
+    TEST_ASSERT_FALSE(catalogMetaAccountMatches(out, 124));
+    bytes[10] ^= 1;
+    TEST_ASSERT_FALSE(catalogMetaDecode(bytes, &out));
+}
+
+static void test_catalog_lru_victim() {
+    const CatalogEntry entries[3] = {{1, 50}, {2, 10}, {3, 10}};
+    TEST_ASSERT_EQUAL(1, catalogEvictIndex(entries, 3));
+    TEST_ASSERT_EQUAL(0, catalogEvictIndex(nullptr, 0));
+    const CatalogEntry single[1] = {{9, 0}};
+    TEST_ASSERT_EQUAL(0, catalogEvictIndex(single, 1));
+}
+
+static void test_catalog_cap_math() {
+    TEST_ASSERT_FALSE(catalogNeedsEvict(1999, 0, 100));
+    TEST_ASSERT_TRUE(catalogNeedsEvict(2000, 0, 0));
+    TEST_ASSERT_TRUE(catalogNeedsEvict(1, kCatalogMaxBytes, 1));
+    TEST_ASSERT_FALSE(catalogNeedsEvict(1, 0, 1024));
 }
 
 
@@ -2366,6 +2468,11 @@ int main(int, char**) {
     RUN_TEST(test_journal_best_streak_with_gaps);
     RUN_TEST(test_journal_day_key_time_zone_boundaries);
     RUN_TEST(test_journal_empty);
+    RUN_TEST(test_subject_codec_roundtrip);
+    RUN_TEST(test_subject_codec_matches_cache_subject);
+    RUN_TEST(test_catalog_meta_account_mismatch);
+    RUN_TEST(test_catalog_lru_victim);
+    RUN_TEST(test_catalog_cap_math);
     RUN_TEST(test_summary_text_parser);
     RUN_TEST(test_summary_text_parser_empty);
     RUN_TEST(test_review_response_parse);

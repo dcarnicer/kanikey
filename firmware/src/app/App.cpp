@@ -40,6 +40,7 @@
 #include "platform/GlyphPack.h"
 #include "platform/JournalStore.h"
 #include "platform/SetupPortal.h"
+#include "platform/SubjectCatalog.h"
 #include "platform/WkProbe.h"
 #include "platform/OutboxStore.h"
 #include "platform/Ota.h"
@@ -2535,7 +2536,10 @@ void settingsKey(const KeyEvent& e) {
             kk::wkClearAuthBlock();
             gDeferredAuthIssue = SyncIssue::None;
             if (gFsOk) kk::cacheClearSnapshot();
-            if (gSdOk) kk::cacheClearSubjects(SD);
+            if (gSdOk) {
+                kk::cacheClearSubjects(SD);
+                kk::catalogClear(SD);
+            }
             gOutbox.clear();
             saveOutbox();
             kk::journalClear();
@@ -2896,7 +2900,10 @@ bool mountSd() {
     spi.begin(pins.sck, pins.miso, pins.mosi, pins.cs);
     const size_t heapBefore = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
     const uint32_t t0 = millis();
-    if (!SD.begin(pins.cs, spi, 20000000, "/sd", 2)) {
+    // Four handles: the glyph pack, one catalog/subject file, a directory and
+    // one spare for the catalog scan. The old limit of two held only the pack
+    // plus one file.
+    if (!SD.begin(pins.cs, spi, 20000000, "/sd", 4)) {
         snprintf(gSdLine, sizeof gSdLine, "SD: no card / not FAT32");
         Serial.printf("[sd] mount failed in %u ms, heap %u -> %u\n",
                       static_cast<unsigned>(millis() - t0),

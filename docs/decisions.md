@@ -770,5 +770,12 @@ store: it only holds unsent reviews and is deleted on sign-out.
 
 **Implications:** a review with an untrusted clock (`completedAt == 0`) is kept
 but cannot be placed on a day. The journal serves STATS now and is the shared
-input for STUDY (critical items/recent mistakes) and REM later; those still
-need the subject catalog from ARCH-03.
+input for STUDY (critical items/recent mistakes) and REM later.
+
+The subject catalog is `/kanikey/cache/catalog/` on the SD card: one `KKSB`
+file per subject (payload byte-identical to the KKCS subject payload), plus a
+`KKCT` meta file with the account key, count and bytes. It is account-scoped,
+caps at 2,000 subjects or 8 MB, and evicts by smallest `lastUsed` (ties by
+subject id). Sign-out clears it; Clear cache does not need to because it is not
+the Home cache. The SD mount now allows four file handles so the pack, a
+catalog file and a directory scan can coexist.

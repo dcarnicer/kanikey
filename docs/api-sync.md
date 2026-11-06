@@ -85,7 +85,10 @@ below for completeness only.
 the WaniKani API reference, 2026-11-01), so KaniKey does not call it. Review
 history and streak come from `/state/journal.bin` on LittleFS: 16-byte records
 in 520-byte CRC-checked blocks, scoped to the account key, with a 4,000-record
-ring. The forecast uses the cached `/summary` buckets and needs no new request.
+ring. Subjects fetched outside the current batch can be kept in the microSD
+catalog (`/kanikey/cache/catalog/<id>.kkc`, `KKSB` payload plus a `KKCT` meta
+file), capped at 2,000 subjects / 8 MB with LRU eviction. The forecast uses the
+cached `/summary` buckets and needs no new request.
 
 ### 3.1 `/user`
 

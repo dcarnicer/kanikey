@@ -6,7 +6,7 @@ These four tasks are wave 1 of round 2: they do not add features, they make the 
 |---|---|---|---|---|---|---|
 | ARCH-01 | Split `app/App.cpp` into controllers | P1 | L | none | 1 (first) | todo |
 | ARCH-02 | Settings registry | P1 | M | ARCH-01 | 1 (after ARCH-01; ∥ ARCH-03, ARCH-04) | todo |
-| ARCH-03 | Local stores shared by STATS, STUDY and REM | P1 | M | ARCH-01 | 1 (after ARCH-01; ∥ ARCH-02, ARCH-04) | partial (journal 2026-11-06; catalog pending) |
+| ARCH-03 | Local stores shared by STATS, STUDY and REM | P1 | M | ARCH-01 | 1 (after ARCH-01; ∥ ARCH-02, ARCH-04) | done (2026-11-06) |
 | ARCH-04 | Screen state machine | P2 | M | ARCH-01 | 1 (after ARCH-01; before wave 2 starts) | todo |
 
 ### ARCH-01 — Split `app/App.cpp` into controllers
@@ -103,13 +103,16 @@ IDs and section names are the ones CFG-02 uses, so CFG-02 only adds rows. The ro
 
 ### ARCH-03 — Local stores shared by STATS, STUDY and REM
 
-**Implementation (2026-11-06).** The journal half is live:
-`wk/Journal.{h,cpp}` and `platform/JournalStore.{h,cpp}` implement the 16 B
-record, 520 B CRC block, 4,000-record ring, account key and SRS-after patch.
-`queueReviewLocal()` appends, the successful POST patches the stage, and
-sign-out/token clear delete it. The Stats History page consumes it. The subject
-catalog (`/kanikey/cache/catalog/`) is not implemented yet; STUDY and REM still
-need it.
+**Implementation (2026-11-06).** Both stores are live. The journal
+(`wk/Journal.{h,cpp}`, `platform/JournalStore.{h,cpp}`) implements the 16 B
+record, 520 B CRC block, 4,000-record ring, account key and SRS-after patch;
+`queueReviewLocal()` appends and the Stats History page consumes it. The
+subject catalog (`wk/SubjectCodec`, `wk/Catalog`, `platform/SubjectCatalog`)
+stores one `KKSB` file per subject under `/kanikey/cache/catalog/`, account
+scoped, with a `KKCT` meta file, a 2,000-subject / 8 MB cap and LRU eviction.
+No screen reads the catalog yet; STUDY and REM can call it. The SD mount now
+keeps four file handles so the glyph pack, a catalog file and a directory scan
+can coexist.
 
 - **Priority:** P1
 - **Size:** M
