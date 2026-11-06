@@ -33,7 +33,8 @@ struct Subject {
     uint32_t id = 0;
     SubjectType type = SubjectType::Kanji;
     uint8_t level = 0;
-    std::string characters;  // empty for a radical with no Unicode character
+    uint16_t lessonPosition = 0;  // WaniKani subject lesson order within a level
+    std::string characters;       // empty for a radical with no Unicode character
     std::vector<Meaning> meanings;
     std::vector<Reading> readings;
     std::vector<std::string> meaningSynonyms;  // study material synonyms

@@ -22,40 +22,113 @@ String idList(const std::vector<uint32_t>& ids, size_t begin, size_t end) {
 
 }  // namespace
 
-LessonBatch fetchLessonBatch(const String& token, const std::vector<uint32_t>& lessonSubjectIds,
-                             size_t limit) {
-    LessonBatch batch;
+LessonAssignments fetchLessonAssignments(const String& token,
+                                         const std::vector<uint32_t>& lessonSubjectIds,
+                                         size_t maxCandidates) {
+    LessonAssignments result;
     if (lessonSubjectIds.empty()) {
+        result.error = "no lessons";
+        return result;
+    }
+    const size_t total = std::min(maxCandidates, lessonSubjectIds.size());
+    result.assignments.reserve(total);
+    size_t pageSize = 30;
+    for (size_t begin = 0; begin < total;) {
+        const size_t count = std::min(pageSize, total - begin);
+        const size_t end = begin + count;
+        const String path = "/v2/assignments?subject_ids=" +
+                            idList(lessonSubjectIds, begin, end);
+        Serial.printf("[lesson] assignment page %u-%u\n", static_cast<unsigned>(begin),
+                      static_cast<unsigned>(end));
+        WkAssignmentsResult ar = wkGetAssignmentsRetry(path, token, 32768, count);
+        if (ar.http.httpCode != 200) {
+            result.httpCode = ar.http.httpCode;
+            result.error = "assignments HTTP " + String(ar.http.httpCode);
+            return result;
+        }
+        if (!ar.parsed) {
+            if (ar.http.truncated && count > 1) {
+                const size_t smaller = count > 10 ? 10 : (count > 2 ? 2 : 1);
+                Serial.printf("[lesson] assignment page %u-%u truncated, retrying with %u\n",
+                              static_cast<unsigned>(begin), static_cast<unsigned>(end),
+                              static_cast<unsigned>(smaller));
+                pageSize = smaller;
+                continue;
+            }
+            result.error = "assignments JSON";
+            return result;
+        }
+        for (const Assignment& a : ar.assignments) {
+            if (a.hidden || a.srsStage != 0) continue;
+            result.assignments.push_back(a);
+        }
+        begin = end;
+    }
+    if (result.assignments.empty()) {
+        result.error = "no due lessons";
+        return result;
+    }
+    result.ok = true;
+    return result;
+}
+
+SubjectLevels fetchSubjectLevels(const String& token,
+                                 const std::vector<uint32_t>& subjectIds) {
+    SubjectLevels result;
+    if (subjectIds.empty()) {
+        result.ok = true;
+        return result;
+    }
+    result.levels.reserve(subjectIds.size());
+    size_t pageSize = 10;
+    for (size_t begin = 0; begin < subjectIds.size();) {
+        const size_t count = std::min(pageSize, subjectIds.size() - begin);
+        const size_t end = begin + count;
+        const String path = "/v2/subjects?ids=" + idList(subjectIds, begin, end);
+        WkSubjectsResult sr = wkGetSubjectsRetry(path, token, 32768, false);
+        Serial.printf("[lesson] level page %u-%u: %u bytes%s\n", static_cast<unsigned>(begin),
+                      static_cast<unsigned>(end), static_cast<unsigned>(sr.http.bytes),
+                      sr.http.truncated ? " (truncated)" : "");
+        if (sr.http.httpCode != 200) {
+            result.httpCode = sr.http.httpCode;
+            result.error = "subjects HTTP " + String(sr.http.httpCode);
+            return result;
+        }
+        if (!sr.parsed) {
+            if (sr.http.truncated && count > 1) {
+                const size_t smaller = count > 5 ? 5 : (count > 2 ? 2 : 1);
+                Serial.printf("[lesson] level page %u-%u truncated, retrying with %u\n",
+                              static_cast<unsigned>(begin), static_cast<unsigned>(end),
+                              static_cast<unsigned>(smaller));
+                pageSize = smaller;
+                continue;
+            }
+            result.error = "subjects JSON";
+            return result;
+        }
+        for (const Subject& s : sr.subjects)
+            result.levels.push_back({s.id, s.level, s.lessonPosition});
+        begin = end;
+    }
+    if (result.levels.empty()) {
+        result.error = "no subject levels";
+        return result;
+    }
+    result.ok = true;
+    return result;
+}
+
+LessonBatch fetchLessonDetails(const String& token, std::vector<Assignment> assignments) {
+    LessonBatch batch;
+    batch.assignments = std::move(assignments);
+    if (batch.assignments.empty()) {
         batch.error = "no lessons";
         return batch;
     }
-    const size_t want = std::min(limit, lessonSubjectIds.size());
-    batch.assignments.reserve(want);
-    batch.subjects.reserve(want);
-    String path = "/v2/assignments?subject_ids=" + idList(lessonSubjectIds, 0, want);
-    Serial.printf("[lesson] assignments for %u subjects\n", static_cast<unsigned>(want));
-    WkAssignmentsResult ar = wkGetAssignmentsRetry(path, token, 32768, want);
-    if (ar.http.httpCode != 200) {
-        batch.httpCode = ar.http.httpCode;
-        batch.error = "assignments HTTP " + String(ar.http.httpCode);
-        return batch;
-    }
-    if (!ar.parsed) {
-        batch.error = "assignments JSON";
-        return batch;
-    }
-    const std::vector<Assignment> parsed = std::move(ar.assignments);
-    for (const Assignment& a : parsed) {
-        if (a.hidden || a.srsStage != 0) continue;
-        batch.assignments.push_back(a);
-        if (batch.assignments.size() >= want) break;
-    }
-    if (batch.assignments.empty()) {
-        batch.error = "no due lessons";
-        return batch;
-    }
+    batch.subjects.reserve(batch.assignments.size());
 
     std::vector<uint32_t> ids;
+    ids.reserve(batch.assignments.size());
     for (const Assignment& a : batch.assignments)
         if (std::find(ids.begin(), ids.end(), a.subjectId) == ids.end())
             ids.push_back(a.subjectId);

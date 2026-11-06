@@ -127,8 +127,8 @@ Working on hardware:
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Current build: **1,476,485 B / 1,835,008 B flash (80.5%)**, **95,528 B /
-327,680 B static RAM (29.2%)**. The dev image is 1,495,169 B. Removing
+Current build: **1,479,237 B / 1,835,008 B flash (80.6%)**, **95,528 B /
+327,680 B static RAM (29.2%)**. The dev image is 1,497,869 B. Removing
 `efontJA_16` freed ~468 KB and leaves ~358 KB of flash headroom. The loop task
 uses a 24 KiB stack; the lazy review batch raised the lesson-fetch minimum free
 heap to ~56 KB.
@@ -139,7 +139,7 @@ heap to ~56 KB.
 |---:|---|---|---|---|
 | 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Done except a real low-level radical-only lesson; the synthetic radical lesson UI passed | RAD-04 |
 | 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Core and real-account E2E done; deliberate offline boot pending | CACHE-07 |
-| 3 | Complete lesson flow | List/picker, card, components, quiz, empty state and start exist; ordering and a real low-level run remain | Partial; radical-only UI verified synthetically | LESSON-08, RAD-04 |
+| 3 | Complete lesson flow | List/picker, card, components, quiz, empty state, start and ordering exist; a real low-level run remains | Code complete; radical-only UI verified synthetically | RAD-04 |
 | 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; review history and audio remain | Partial | WK-11, EXT-06 |
 | 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Code and docs done; hardware check pending for the final OUTBOX screen (API-01) and API-02…05 | — |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
@@ -151,17 +151,17 @@ heap to ~56 KB.
 ## Execution order
 
 Radicals and the offline cache are code-complete except for the real low-level
-lesson and the deliberate offline boot. The lesson flow is implemented except
-LESSON-08 (only the first 10 summary candidates are sorted) and the real
-low-level checks. OTA, the license and the release tooling are done. The next
-work is LESSON-08, the remaining network/OTA checks (FIX-06, 14, 20 and the
-Wi-Fi upload part of FIX-24), and the API-01…05 hardware pass.
+lesson and the deliberate offline boot. The lesson flow is code-complete except
+for the real low-level checks; LESSON-08 now sorts a 60-item candidate pool by
+level and `lesson_position`. OTA, the license and the release tooling are done.
+The next work is the remaining network/OTA checks (FIX-06, 14, 20 and the Wi-Fi
+upload part of FIX-24) and the API-01…05 hardware pass.
 
 | Order | Phase | Tasks | Outcome |
 |---:|---|---|---|
 | 0 | Close radicals (parallel) | RAD-04 (RAD-02 done) | Real radical prompts and a radical-only lesson |
 | 1 | Offline cache | CACHE-05 → CACHE-07, TNG-04, TNG-05 | Review and Home work after reboot without network (offline boot still untested) |
-| 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | List, understand, quiz and start lessons (ordering partial) |
+| 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | List, understand, quiz and start lessons (code complete) |
 | 3 | Setup and device UX | TNG-02 (done) | OTA release path (setup/settings complete) |
 | 4 | WaniKani data and detail | WK-11 (WK-01/03/04/05/06/07/08/09/10 done) | Review history and progress |
 | 5 | API robustness | API-07 (API-01/02/03/04/05/06 done) | Done; hardware verification of API-01's final OUTBOX screen and API-02…05 still pending |
@@ -245,8 +245,8 @@ reboot with Wi-Fi unavailable.
 ## 3. Complete lesson flow (M4)
 
 The list, card and `PUT /start` work. The local quiz is optional practice
-before `PUT /start`, as decided; the flow is closed except a radical-only lesson
-and the last ordering check.
+before `PUT /start`, as decided; the flow is code-complete except for a real
+radical-only lesson on a low-level account.
 
 - **LESSON-01 — Lesson list.** Available lessons with character, type, level
   and main meaning; sorted by level and `lesson_position`. **Done
@@ -274,8 +274,11 @@ and the last ordering check.
   hardware with RAD-01/RAD-02. **Pending:** the configured level-8 account has
   no radical-only lesson in its current batch; a low-level account is needed.
 - **LESSON-08 — Ordering.** Respect level and `lesson_position`; do not rely
-  on the summary order. **Partial:** candidates are sorted before trimming; the
-  summary still supplies the first 10 candidates.
+  on the summary order. **Done (2026-11-06):** the list is built from up to 60
+  summary candidates; assignments and subject levels are fetched in bounded
+  pages, then `kk::sortLessonCandidates()` orders the whole pool by level,
+  `lesson_position` and id before trimming to the configured batch size.
+  Hardware check on a fresh level is still pending with RAD-04.
 
 ## 4. WaniKani data and preferences
 

@@ -47,10 +47,12 @@
 > Outbox (`O` on Home) with their HTTP code or `gave up`, attempts and age, and
 > can be dismissed after a confirmation. A shared 429 gate shows a countdown
 > and a shared 401 gate stops API calls until the token changes; a 403 stays
-> endpoint-specific. The remaining v1 gaps are lesson ordering (LESSON-08), the
-> last lesson hardware checks (radical-only lessons, notes/`lower_levels_first`),
-> a deliberate offline boot, and hardware verification of the 429/auth/parse-retry
-> paths and the final OUTBOX screen (currently native/host-inspected). Firmware
+> endpoint-specific. Lesson ordering now sorts up to 60 summary candidates by
+> level and `lesson_position` before trimming to the batch. The remaining v1
+> gaps are the last lesson hardware checks (radical-only lessons,
+> notes/`lower_levels_first`), a deliberate offline boot, and hardware
+> verification of the 429/auth/parse-retry paths and the final OUTBOX screen
+> (currently native/host-inspected). Firmware
 > updates arrive over HTTPS from GitHub releases with a size/SHA-256 manifest,
 > install into the spare 1.75 MiB slot and roll back on a failed first boot.
 > The source is MIT-licensed.

@@ -170,6 +170,16 @@ available_at, resurrected_at, hidden, data_updated_at
 - For lessons: `srs_stage == 0`, `started_at == null`, `hidden=false`,
   `unlocked_at != null`.
 
+**Implementation (2026-11-06).** The lesson list no longer sorts only the first
+ten summary ids. It fetches assignments for up to 60 candidates in pages of 30
+(shrinking the page on truncation), reads only `id`, `data.level` and
+`data.lesson_position` from `/subjects?ids=...` in pages of 10, and sorts the
+whole pool by level, `lesson_position` and assignment id. Only then does it
+fetch the full subjects
+for the chosen batch. The base subject pages are parsed with `details=false`
+and dropped between requests, so no 60-subject vector stays alive across a TLS
+handshake.
+
 ### 3.4 `/subjects`
 
 Filters: `ids=...` is used by the current batches; `levels=...`, `types=...`,

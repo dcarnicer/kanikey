@@ -510,12 +510,13 @@ history/accuracy side of the item line.
   `/summary`; the next unlock is not known to v1.
 - The list is sorted by level and `lesson_position`.
 
-**Implementation note (2026-10-28).** The list and picker are live: a scrolling
-list of up to the configured batch, sorted by level and `lesson_position`
-within the first 10 summary candidates. Opening a card and paging does not call
-`PUT /start`; only `Enter` on the card starts the lesson. Component meanings,
-hints and the user's meaning/reading notes are appended to the paged card after
-the mnemonic.
+**Implementation note (2026-11-06).** The list and picker are live: a scrolling
+list of up to the configured batch, sorted by level and `lesson_position`.
+The device reads up to 60 summary candidates, fetches their assignments and
+base subject levels in bounded pages, sorts the whole pool and only then trims
+to the batch size. Opening a card and paging does not call `PUT /start`; only
+`Enter` on the card starts the lesson. Component meanings, hints and the user's
+meaning/reading notes are appended to the paged card after the mnemonic.
 
 ### 5.9 Lesson card
 

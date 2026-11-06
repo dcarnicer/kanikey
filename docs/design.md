@@ -3,9 +3,10 @@
 > **Status:** design approved, 2026-10-25; implementation status 2026-10-29.
 > The firmware has Home, cached offline sessions, the outbox, lessons, the item
 > detail card, the sync screen, the 429/auth/parse-retry handling and OTA with
-> rollback. Review and lesson writes use the real API; the remaining v1 work is
-> lesson ordering (LESSON-08), the last hardware verification and the deliberate
-> offline boot. The source is MIT-licensed.
+> rollback. Review and lesson writes use the real API; lesson ordering now
+> covers the full 60-item candidate pool. The remaining v1 work is the last
+> hardware verification and the deliberate offline boot. The source is
+> MIT-licensed.
 > Measurements:
 > [hardware.md](hardware.md).
 >
@@ -134,7 +135,7 @@ doing something else.
 **C. Lessons**
 
 1. `L` → list of available lessons, sorted by level and `lesson_position`;
-   the candidate pool is the first 10 summary subjects (LESSON-08).
+   the candidate pool is the first 60 summary subjects.
 2. Lesson card: character, meanings, readings, mnemonic, and components.
 3. `Enter` → `PUT /assignments/{id}/start`; the assignment moves to the review
    queue.
@@ -186,8 +187,7 @@ Still open:
 - OTA with an HTTPS manifest and SHA-256 (reusing Tangocho).
 - Hardware verification of the 429/auth/parse-retry paths, which are currently
   code/native/host-inspected only.
-- A deliberate offline boot, a radical-only lesson and the last lesson-ordering
-  check.
+- A deliberate offline boot and a radical-only lesson on a low-level account.
 - Reconciliation remains heuristic; a duplicate is still possible when the
   assignment cannot prove delivery.
 
@@ -315,7 +315,7 @@ Details are in [ux.md](ux.md). Map:
 | Feedback | Correct/incorrect, correct answer, hint | Enter, Tab, Esc | MVP |
 | Item detail | Mnemonic, components, notes | ←→, Space, Tab/Esc | MVP |
 | Session summary | Result and next step | Enter | MVP |
-| Lessons | List of available lessons | ↑↓, Enter, Esc | Implemented; ordering partial |
+| Lessons | List of available lessons | ↑↓, Enter, Esc | Implemented |
 | Lesson card | Teaching before starting | Space, ←→, Q, Enter, Esc | Implemented; hardware check partial |
 | Settings | Account, study, sync, device | ↑↓, Enter, Esc | MVP |
 | Stats | Level, distribution, accuracy | Esc | Phase 2 |
@@ -814,15 +814,15 @@ account; Enter fetches the batch.
 - Lesson list, components and the optional local quiz (`Q`, no `/start`) are
   implemented. The list/card/quiz run on hardware used GETs only; a live
   `PUT /start` returned 200 in an earlier run.
-- The last ordering work, a radical-only lesson on a low-level account and
-  note/`lower_levels_first` display remain.
+- A radical-only lesson on a low-level account and note/`lower_levels_first`
+  display remain.
 
 **Output:** complete lessons on the device (card + start already usable).
 
 ### M5 — Polish (mostly done)
 
 - Statistics, full settings, About and OTA (manifest, two slots, rollback,
-  release workflow) are implemented; lesson ordering remains.
+  release workflow) are implemented.
 - Accessibility, contrast and error texts are mostly in place; hardware
   verification of the latest screens is partial.
 - Screenshots and user documentation exist.

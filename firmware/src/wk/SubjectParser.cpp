@@ -330,6 +330,7 @@ private:
         Id,
         ObjectType,
         Level,
+        LessonPosition,
         Characters,
         Meanings,
         Readings,
@@ -388,6 +389,7 @@ private:
 
     static Key subjectKey(std::string_view key) {
         if (key == "level") return Key::Level;
+        if (key == "lesson_position") return Key::LessonPosition;
         if (key == "characters") return Key::Characters;
         if (key == "meanings") return Key::Meanings;
         if (key == "readings") return Key::Readings;
@@ -451,6 +453,7 @@ private:
     void applySubjectNumber(double value) {
         switch (pending_) {
             case Key::Level: current_.level = static_cast<uint8_t>(value); break;
+            case Key::LessonPosition: current_.lessonPosition = streamU16(value); break;
             case Key::MeaningCorrect:
                 current_.meaningCorrect = streamU32(value);
                 current_.hasReviewStats = true;
@@ -528,6 +531,8 @@ std::vector<Subject> parseSubjects(const JsonValue& root, bool details) {
             s.type = subjectTypeFromString(o->string);
         if (const JsonValue* level = d->find("level"); level && level->isNumber())
             s.level = static_cast<uint8_t>(level->number);
+        if (const JsonValue* pos = d->find("lesson_position"); pos && pos->isNumber())
+            s.lessonPosition = static_cast<uint16_t>(pos->number);
         if (const JsonValue* chars = d->find("characters"); chars && chars->isString())
             s.characters = chars->string;
 

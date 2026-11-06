@@ -14,6 +14,7 @@
 #include "wk/Outbox.h"
 #include "wk/Json.h"
 #include "wk/JsonStream.h"
+#include "wk/LessonOrder.h"
 #include "wk/LessonQuiz.h"
 #include "wk/LevelProgress.h"
 #include "wk/RateLimit.h"
@@ -277,6 +278,67 @@ static void test_lesson_quiz_radical_only() {
     q.submit("ground");
     q.advance();
     TEST_ASSERT_TRUE(q.complete());
+}
+
+// ---------------------------------------------------------------- lesson order
+static LessonCandidate lessonCandidate(uint32_t assignmentId, uint32_t subjectId, uint8_t level,
+                                       uint16_t position,
+                                       SubjectType type = SubjectType::Kanji) {
+    LessonCandidate c;
+    c.assignmentId = assignmentId;
+    c.subjectId = subjectId;
+    c.level = level;
+    c.lessonPosition = position;
+    c.type = type;
+    return c;
+}
+
+static void test_lesson_order_wanikani_level_then_position() {
+    std::vector<LessonCandidate> candidates = {
+        lessonCandidate(101, 11, 2, 1),
+        lessonCandidate(102, 12, 1, 5),
+        lessonCandidate(103, 13, 1, 2),
+        lessonCandidate(104, 14, 3, 0),
+    };
+    sortLessonCandidates(&candidates);
+    TEST_ASSERT_EQUAL_UINT32(103, candidates[0].assignmentId);
+    TEST_ASSERT_EQUAL_UINT32(102, candidates[1].assignmentId);
+    TEST_ASSERT_EQUAL_UINT32(101, candidates[2].assignmentId);
+    TEST_ASSERT_EQUAL_UINT32(104, candidates[3].assignmentId);
+}
+
+static void test_lesson_order_ties_break_by_assignment_id() {
+    std::vector<LessonCandidate> candidates = {
+        lessonCandidate(300, 30, 1, 4),
+        lessonCandidate(200, 20, 1, 4),
+        lessonCandidate(100, 10, 1, 4),
+    };
+    sortLessonCandidates(&candidates);
+    TEST_ASSERT_EQUAL_UINT32(100, candidates[0].assignmentId);
+    TEST_ASSERT_EQUAL_UINT32(200, candidates[1].assignmentId);
+    TEST_ASSERT_EQUAL_UINT32(300, candidates[2].assignmentId);
+}
+
+static void test_lesson_order_keeps_unknown_level_last() {
+    std::vector<LessonCandidate> candidates = {
+        lessonCandidate(100, 10, 0, 0),
+        lessonCandidate(200, 20, 5, 9),
+    };
+    sortLessonCandidates(&candidates);
+    TEST_ASSERT_EQUAL_UINT32(200, candidates[0].assignmentId);
+    TEST_ASSERT_EQUAL_UINT32(100, candidates[1].assignmentId);
+}
+
+static void test_lesson_order_sorts_the_whole_candidate_pool() {
+    std::vector<LessonCandidate> candidates;
+    for (uint32_t i = 0; i < 60; ++i)
+        candidates.push_back(
+            lessonCandidate(500 + i, 1000 + i, 2, static_cast<uint16_t>(i + 1),
+                            SubjectType::Vocabulary));
+    candidates.push_back(lessonCandidate(999, 2000, 1, 99, SubjectType::Radical));
+    sortLessonCandidates(&candidates);
+    TEST_ASSERT_EQUAL_UINT32(999, candidates[0].assignmentId);
+    TEST_ASSERT_EQUAL_UINT32(500, candidates[1].assignmentId);
 }
 
 // ---------------------------------------------------------------- session queue
@@ -964,6 +1026,7 @@ static void assertSubjectFieldsEqual(const Subject& want, const Subject& got) {
     TEST_ASSERT_EQUAL_UINT32(want.id, got.id);
     TEST_ASSERT_EQUAL(static_cast<int>(want.type), static_cast<int>(got.type));
     TEST_ASSERT_EQUAL(want.level, got.level);
+    TEST_ASSERT_EQUAL(want.lessonPosition, got.lessonPosition);
     TEST_ASSERT_EQUAL_STRING(want.characters.c_str(), got.characters.c_str());
 
     TEST_ASSERT_EQUAL(static_cast<int>(want.meanings.size()),
@@ -1076,7 +1139,7 @@ static const char* kSubjectStreamFixture = R"json({
     "object":"collection",
     "data":[
         {"id":10,"object":"kanji","data":{
-            "level":5,"characters":"\u98df",
+            "level":5,"lesson_position":12,"characters":"\u98df",
             "meanings":[
                 {"meaning":"eat","primary":true,"accepted_answer":true},
                 {"meaning":"food","primary":false,"accepted_answer":false},
@@ -1107,12 +1170,12 @@ static const char* kSubjectStreamFixture = R"json({
             "unknown_object":{"meanings":[{"meaning":"ignored"}],"level":99}
         }},
         {"id":11,"object":"radical","data":{
-            "level":1,"characters":null,
+            "level":1,"lesson_position":3,"characters":null,
             "meanings":[{"meaning":"ground","primary":true,"accepted_answer":true}],
             "component_subject_ids":[]
         }},
         {"id":30,"object":"vocabulary","data":{
-            "level":7,"characters":"日本",
+            "level":7,"lesson_position":44,"characters":"日本",
             "meanings":[{"meaning":"Japan","primary":true,"accepted_answer":true}],
             "readings":[{"reading":"にほん","primary":true,"accepted_answer":true,
                          "type":"kunyomi"}],
@@ -1145,6 +1208,9 @@ static void test_subject_stream_matches_dom() {
     for (size_t i = 0; i < domDetails.size(); ++i)
         assertSubjectFieldsEqual(domDetails[i], streamDetails[i]);
 
+    TEST_ASSERT_EQUAL(12, streamDetails[0].lessonPosition);
+    TEST_ASSERT_EQUAL(3, streamDetails[1].lessonPosition);
+    TEST_ASSERT_EQUAL(44, streamDetails[2].lessonPosition);
     TEST_ASSERT_EQUAL_STRING("A person eats.", streamDetails[0].meaningMnemonic.c_str());
     TEST_ASSERT_EQUAL_STRING("keep this", streamDetails[0].meaningNote.c_str());
     TEST_ASSERT_EQUAL_STRING("read me", streamDetails[0].readingNote.c_str());
@@ -2000,6 +2066,10 @@ int main(int, char**) {
     RUN_TEST(test_lesson_quiz_meaning_then_reading);
     RUN_TEST(test_lesson_quiz_retries_wrong_and_warning);
     RUN_TEST(test_lesson_quiz_radical_only);
+    RUN_TEST(test_lesson_order_wanikani_level_then_position);
+    RUN_TEST(test_lesson_order_ties_break_by_assignment_id);
+    RUN_TEST(test_lesson_order_keeps_unknown_level_last);
+    RUN_TEST(test_lesson_order_sorts_the_whole_candidate_pool);
     RUN_TEST(test_session_meaning_then_reading);
     RUN_TEST(test_session_reading_first);
     RUN_TEST(test_session_wrong_parts_requeue_and_count);

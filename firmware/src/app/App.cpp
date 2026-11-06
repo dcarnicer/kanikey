@@ -48,6 +48,7 @@
 #include "platform/WkSrsCounts.h"
 #include "wk/AnswerChecker.h"
 #include "wk/IdSample.h"
+#include "wk/LessonOrder.h"
 #include "wk/LessonQuiz.h"
 #include "wk/Outbox.h"
 #include "wk/ReviewQueue.h"
@@ -1985,6 +1986,33 @@ void releaseLessonData() {
     gLessonPage = 0;
 }
 
+void showLessonFetchError(int httpCode, const String& error) {
+    Serial.printf("[lesson] failed: %s\n", error.c_str());
+    if (error == "no due lessons" || error == "no lessons") {
+        gLessonEmptyActive = true;
+        gLessonListActive = false;
+        gLessonActive = false;
+        gShowHome = false;
+        gDirty = true;
+        return;
+    }
+    const char* lessonError = error.c_str();
+    if (httpCode == 401 || httpCode == 403) {
+        setSyncIssue(httpCode, true, 0, "Lessons");
+        lessonError = gNetLine;
+    } else if (kk::wkAuthBlocked()) {
+        setSyncIssue(401, true, 0, "Lessons");
+        lessonError = gNetLine;
+    }
+    drawLoading("No lessons available", lessonError);
+    gShowHome = false;
+    snprintf(gNoticeLine, sizeof gNoticeLine, "%s", lessonError);
+    gNoticeLine2[0] = 0;
+    gNoticeAction = NoticeAction::LessonError;
+    gNoticeActive = true;
+    gDirty = true;
+}
+
 void startLessons() {
     if (!gHaveSummary) return;
     gLessonQuizActive = false;
@@ -2011,55 +2039,79 @@ void startLessons() {
     if (gHaveUser && gUser.lessonsBatchSize > 0)
         lessonLimit = std::min(lessonLimit, static_cast<size_t>(gUser.lessonsBatchSize));
     if (lessonLimit == 0) lessonLimit = 1;
-    const size_t candidateLimit = std::max<size_t>(lessonLimit, 10);
+    // Sort a much larger candidate pool than a single batch: WaniKani orders
+    // lessons by level and lesson_position, while the summary order is not
+    // authoritative. Fetching the first ten only could hide a radical behind
+    // ten vocabulary items and offer the wrong lesson first.
+    const size_t candidateLimit = std::max<size_t>(lessonLimit, 60);
+    const std::vector<uint32_t> candidateIds = gSummary.lessonSubjectIds(candidateLimit);
     char subtitle[48];
     snprintf(subtitle, sizeof subtitle, "up to %u, please wait",
-             static_cast<unsigned>(candidateLimit));
+             static_cast<unsigned>(candidateIds.size()));
     drawLoading("Fetching lessons...", subtitle);
+    const String token = kk::DevToken::load();
     gFreeCanvasForRequest = true;
-    gLessonBatch = kk::fetchLessonBatch(kk::DevToken::load(),
-                                        gSummary.lessonSubjectIds(candidateLimit), candidateLimit);
-    gFreeCanvasForRequest = false;
-    if (!gLessonBatch.ok) {
-        Serial.printf("[lesson] failed: %s\n", gLessonBatch.error.c_str());
-        if (gLessonBatch.error == "no due lessons" || gLessonBatch.error == "no lessons") {
-            gLessonEmptyActive = true;
-            gShowHome = false;
-            gDirty = true;
+    std::vector<kk::Assignment> chosen;
+    {
+        const kk::LessonAssignments assignments =
+            kk::fetchLessonAssignments(token, candidateIds, candidateLimit);
+        if (!assignments.ok) {
+            gFreeCanvasForRequest = false;
+            showLessonFetchError(assignments.httpCode, assignments.error);
             return;
         }
-        const char* lessonError = gLessonBatch.error.c_str();
-        if (gLessonBatch.httpCode == 401 || gLessonBatch.httpCode == 403) {
-            setSyncIssue(gLessonBatch.httpCode, true, 0, "Lessons");
-            lessonError = gNetLine;
-        } else if (kk::wkAuthBlocked()) {
-            setSyncIssue(401, true, 0, "Lessons");
-            lessonError = gNetLine;
+
+        std::vector<uint32_t> subjectIds;
+        subjectIds.reserve(assignments.assignments.size());
+        for (const kk::Assignment& a : assignments.assignments)
+            if (std::find(subjectIds.begin(), subjectIds.end(), a.subjectId) == subjectIds.end())
+                subjectIds.push_back(a.subjectId);
+        const kk::SubjectLevels levels = kk::fetchSubjectLevels(token, subjectIds);
+        if (!levels.ok) {
+            gFreeCanvasForRequest = false;
+            showLessonFetchError(levels.httpCode, levels.error);
+            return;
         }
-        drawLoading("No lessons available", lessonError);
-        gShowHome = false;
-        snprintf(gNoticeLine, sizeof gNoticeLine, "%s", lessonError);
-        gNoticeLine2[0] = 0;
-        gNoticeAction = NoticeAction::LessonError;
-        gNoticeActive = true;
-        gDirty = true;
+
+        std::vector<kk::LessonCandidate> ordered;
+        ordered.reserve(assignments.assignments.size());
+        for (const kk::Assignment& a : assignments.assignments) {
+            kk::LessonCandidate c;
+            c.assignmentId = a.id;
+            c.subjectId = a.subjectId;
+            c.lessonPosition = a.lessonPosition;
+            c.type = a.type;
+            for (const kk::SubjectLevel& level : levels.levels)
+                if (level.subjectId == a.subjectId) {
+                    c.level = level.level;
+                    // lesson_position belongs to the subject, not the
+                    // assignment; prefer it over any assignment copy.
+                    c.lessonPosition = level.lessonPosition;
+                    break;
+                }
+            ordered.push_back(c);
+        }
+        kk::sortLessonCandidates(&ordered);
+        if (ordered.size() > lessonLimit) ordered.resize(lessonLimit);
+        Serial.printf("[lesson] candidates %u, chosen %u\n",
+                      static_cast<unsigned>(assignments.assignments.size()),
+                      static_cast<unsigned>(ordered.size()));
+
+        chosen.reserve(ordered.size());
+        for (const kk::LessonCandidate& c : ordered) {
+            for (const kk::Assignment& a : assignments.assignments)
+                if (a.id == c.assignmentId) {
+                    chosen.push_back(a);
+                    break;
+                }
+        }
+    }
+    gLessonBatch = kk::fetchLessonDetails(token, std::move(chosen));
+    gFreeCanvasForRequest = false;
+    if (!gLessonBatch.ok) {
+        showLessonFetchError(gLessonBatch.httpCode, gLessonBatch.error);
         return;
     }
-    // The summary order is not the lesson order. Sort the candidates by level
-    // and lesson_position, then keep the user's batch size.
-    std::sort(gLessonBatch.assignments.begin(), gLessonBatch.assignments.end(),
-              [](const kk::Assignment& a, const kk::Assignment& b) {
-                  const kk::Subject* sa = lessonSubjectById(a.subjectId);
-                  const kk::Subject* sb = lessonSubjectById(b.subjectId);
-                  const int la = sa ? sa->level : 99;
-                  const int lb = sb ? sb->level : 99;
-                  if (la != lb) return la < lb;
-                  if (a.lessonPosition != b.lessonPosition)
-                      return a.lessonPosition < b.lessonPosition;
-                  return a.id < b.id;
-              });
-    if (gLessonBatch.assignments.size() > lessonLimit)
-        gLessonBatch.assignments.resize(lessonLimit);
     gLessonComponents.clear();
     std::vector<uint32_t> componentIds;
     for (const kk::Assignment& a : gLessonBatch.assignments) {
