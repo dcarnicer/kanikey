@@ -73,6 +73,67 @@ void drawSrs(lgfx::LovyanGFX& d, const StatsView& view) {
     }
 }
 
+void drawHistory(lgfx::LovyanGFX& d, const StatsView& view) {
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextColor(ui::kFaint, ui::kBg);
+    d.drawString("On this device", 8, 27);
+
+    if (!view.history.any) {
+        d.setTextFont(0);
+        d.setTextColor(ui::kDim, ui::kBg);
+        d.drawString("No reviews on this device yet", 8, 52);
+        d.setTextColor(ui::kFaint, ui::kBg);
+        d.drawString("Streak 0  Best 0", 8, 76);
+        return;
+    }
+
+    constexpr int kLeft = 8;
+    constexpr int kBarWidth = 24;
+    constexpr int kStep = 32;
+    constexpr int kBaseY = 92;
+    constexpr int kMaxHeight = 56;
+    d.drawFastHLine(4, kBaseY, 232, ui::kLine);
+    uint16_t max = 0;
+    for (size_t i = 0; i < kk::kHistoryDays; ++i)
+        max = std::max(max, view.history.counts[i]);
+    for (size_t i = 0; i < kk::kHistoryDays; ++i) {
+        const uint16_t count = view.history.counts[i];
+        if (count && max) {
+            int height = (static_cast<int>(count) * kMaxHeight + max - 1) / max;
+            if (height < 1) height = 1;
+            d.fillRect(kLeft + static_cast<int>(i) * kStep, kBaseY - height, kBarWidth, height,
+                       i == kk::kHistoryDays - 1 ? ui::kBrand : ui::kAccentHi);
+        }
+    }
+    d.setTextDatum(lgfx::middle_center);
+    char label[12];
+    for (size_t i = 0; i < kk::kHistoryDays; ++i) {
+        const int center = kLeft + static_cast<int>(i) * kStep + kBarWidth / 2;
+        d.setTextFont(0);
+        d.setTextColor(ui::kFaint, ui::kBg);
+        d.drawString(view.history.labels[i], center, kBaseY + 6);
+        d.setTextFont(0);
+        d.setTextColor(ui::kDim, ui::kBg);
+        snprintf(label, sizeof label, "%u", static_cast<unsigned>(view.history.counts[i]));
+        d.drawString(label, center, kBaseY + 14);
+    }
+    d.setTextDatum(lgfx::top_left);
+    d.setTextFont(0);
+    d.setTextColor(ui::kFaint, ui::kBg);
+    char summary[48];
+    if (view.history.hasToday)
+        snprintf(summary, sizeof summary, "Today %u%%  Streak %u  Best %u",
+                 static_cast<unsigned>(view.history.todayAccuracy),
+                 static_cast<unsigned>(view.history.currentStreak),
+                 static_cast<unsigned>(view.history.bestStreak));
+    else
+        snprintf(summary, sizeof summary, "Today -  Streak %u  Best %u",
+                 static_cast<unsigned>(view.history.currentStreak),
+                 static_cast<unsigned>(view.history.bestStreak));
+    d.drawString(summary, 8, 113);
+}
+
 void drawLevel(lgfx::LovyanGFX& d, const StatsView& view) {
     d.setTextFont(1);
     d.setTextSize(1);
@@ -146,8 +207,10 @@ void drawStatsScreen(lgfx::LovyanGFX& d, const StatsView& view) {
         drawForecast(d, view);
     else if (view.page == 1)
         drawSrs(d, view);
-    else
+    else if (view.page == 2)
         drawLevel(d, view);
+    else
+        drawHistory(d, view);
 
     d.setTextFont(0);
     d.setTextSize(1);

@@ -38,6 +38,7 @@
 #include "platform/DevToken.h"
 #include "platform/DevWifi.h"
 #include "platform/GlyphPack.h"
+#include "platform/JournalStore.h"
 #include "platform/SetupPortal.h"
 #include "platform/WkProbe.h"
 #include "platform/OutboxStore.h"
@@ -174,6 +175,9 @@ bool gLessonEmptyActive = false;
 bool gLessonQuizActive = false;
 bool gStatsActive = false;
 int gStatsPage = 0;
+kk::app::StatsHistoryView gStatsHistory;
+bool gStatsHistoryLoaded = false;
+uint32_t gPendingJournalHandle = 0;
 size_t gLessonIndex = 0;
 size_t gLessonPage = 0;
 bool gSyncing = false;
@@ -331,6 +335,77 @@ uint32_t effectiveNow() {
     if (gCacheSavedAt) return gCacheSavedAt;
     if (gBatch.fetchedAt) return gBatch.fetchedAt;
     return now;
+}
+
+uint32_t localDayKeyForEpoch(uint32_t epoch) {
+    if (epoch < 1700000000u) return 0;
+    const time_t t = static_cast<time_t>(epoch);
+    struct tm local {};
+    if (!localtime_r(&t, &local)) return 0;
+    return kk::civilDayKey(local.tm_year + 1900, static_cast<unsigned>(local.tm_mon + 1),
+                           static_cast<unsigned>(local.tm_mday));
+}
+
+struct HistoryCollector {
+    std::vector<kk::DayStats> days;
+    uint32_t todayKey = 0;
+    uint32_t oldestKey = 0;
+};
+
+bool collectJournalRecord(const kk::JournalRecord& record, void* user) {
+    HistoryCollector* collector = static_cast<HistoryCollector*>(user);
+    if (!collector || record.completedAt == 0) return true;
+    const uint32_t key = localDayKeyForEpoch(record.completedAt);
+    if (!key || key > collector->todayKey || key < collector->oldestKey) return true;
+    kk::DayStats* day = nullptr;
+    for (kk::DayStats& candidate : collector->days)
+        if (candidate.dayKey == key) {
+            day = &candidate;
+            break;
+        }
+    if (!day) {
+        collector->days.push_back({key, 0, 0, 0});
+        day = &collector->days.back();
+    }
+    if (day->reviews < 0xFFFF) ++day->reviews;
+    const uint16_t wrong =
+        static_cast<uint16_t>(record.incorrectMeaning) + record.incorrectReading;
+    if (wrong == 0) {
+        if (day->correct < 0xFFFF) ++day->correct;
+    } else if (day->incorrect < 0xFFFF) {
+        ++day->incorrect;
+    }
+    return true;
+}
+
+void loadStatsHistory() {
+    gStatsHistory = kk::app::StatsHistoryView{};
+    gStatsHistoryLoaded = true;
+    const uint32_t todayKey = localDayKeyForEpoch(effectiveNow());
+    if (!todayKey) return;
+    if (!kk::journalOpen(currentAccountKey(), false)) return;
+    HistoryCollector collector;
+    collector.todayKey = todayKey;
+    collector.oldestKey = todayKey > 400 ? todayKey - 400 : 0;
+    collector.days.reserve(64);
+    kk::journalForEach(collectJournalRecord, &collector);
+
+    kk::HistoryStats stats;
+    kk::buildHistory(collector.days.data(), collector.days.size(), todayKey, &stats);
+    gStatsHistory.any = stats.any;
+    gStatsHistory.hasToday = stats.hasToday;
+    gStatsHistory.todayAccuracy = stats.todayAccuracy;
+    gStatsHistory.currentStreak = stats.currentStreak;
+    gStatsHistory.bestStreak = stats.bestStreak;
+    for (size_t i = 0; i < kk::kHistoryDays; ++i) {
+        gStatsHistory.counts[i] = stats.counts[i];
+        const uint32_t key = todayKey >= kk::kHistoryDays - 1
+                                 ? todayKey - (kk::kHistoryDays - 1) + i
+                                 : i;
+        static const char* names[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+        snprintf(gStatsHistory.labels[i], sizeof gStatsHistory.labels[i], "%s",
+                 names[(key + 4) % 7]);
+    }
 }
 
 void applySummary(uint32_t now) {
@@ -1156,6 +1231,7 @@ bool sendOutboxItem(uint32_t seq) {
     if (r.httpCode >= 200 && r.httpCode < 300) {
         const uint32_t assignmentId = item->assignmentId;
         const uint32_t subjectId = item->subjectId;
+        const bool ownJournal = gPendingJournalHandle && item->seq == gPendingSeq;
         kk::JsonParser rp;
         kk::JsonValue rv;
         if (rp.parse(r.body, &rv)) {
@@ -1168,12 +1244,15 @@ bool sendOutboxItem(uint32_t seq) {
                 if (gStageChange.from && gStageChange.to > gStageChange.from) ++gStageUps;
                 if (gSrs.valid && gStageChange.from && gStageChange.to)
                     gSrs.moveStage(gStageChange.from, gStageChange.to);
+                if (ownJournal)
+                    kk::journalPatchSrsAfter(gPendingJournalHandle, update.srsStage);
                 Serial.printf("[review] assignment %u SRS %u -> %u\n",
                               static_cast<unsigned>(assignmentId),
                               static_cast<unsigned>(gStageChange.from),
                               static_cast<unsigned>(gStageChange.to));
             }
         }
+        if (ownJournal) gPendingJournalHandle = 0;
         kk::outboxRemove(gOutbox, seq);
         saveOutbox();
         markCacheCompleted(subjectId, assignmentId);
@@ -1224,6 +1303,20 @@ bool queueReviewLocal(const kk::SessionItem& item) {
         return false;
     }
     gPendingSeq = seq;
+    gPendingJournalHandle = 0;
+    if (gFsOk && kk::journalOpen(currentAccountKey())) {
+        kk::JournalRecord record;
+        record.completedAt = created;
+        record.subjectId = item.subjectId;
+        record.assignmentId = item.assignmentId;
+        record.srsBefore = item.srsStage;
+        record.offline = !kk::DevWifi::connected();
+        record.incorrectMeaning =
+            static_cast<uint8_t>(std::min<uint16_t>(item.incorrectMeaning, 255));
+        record.incorrectReading =
+            static_cast<uint8_t>(std::min<uint16_t>(item.incorrectReading, 255));
+        gPendingJournalHandle = kk::journalAppend(record);
+    }
     saveOutbox();
     Serial.printf("[outbox] queued seq %u assignment %u\n", static_cast<unsigned>(seq),
                   static_cast<unsigned>(item.assignmentId));
@@ -1542,6 +1635,9 @@ void startReview() {
         return;
     }
     gLowBatteryConfirmed = false;
+    // Create/open the journal before the session so the first completion does
+    // not pay for a new 65 KB file between the answer and its feedback.
+    if (gFsOk) kk::journalOpen(currentAccountKey());
     const size_t reviewLimit = static_cast<size_t>(kk::settingsReviewBatchSize());
     if (outboxFreeSlots() < reviewLimit) {
         snprintf(gNoticeLine, sizeof gNoticeLine, "Sync to send pending reviews first.");
@@ -2442,6 +2538,9 @@ void settingsKey(const KeyEvent& e) {
             if (gSdOk) kk::cacheClearSubjects(SD);
             gOutbox.clear();
             saveOutbox();
+            kk::journalClear();
+            gStatsHistoryLoaded = false;
+            gPendingJournalHandle = 0;
             gUser = kk::User{};
             gSummary = kk::Summary{};
             gLevelProgress = kk::LevelProgress{};
@@ -3381,6 +3480,7 @@ void drawHome() {
 void openStats() {
     gStatsActive = true;
     gStatsPage = 0;
+    gStatsHistoryLoaded = false;
     gShowHome = false;
     gDirty = true;
 }
@@ -3396,7 +3496,7 @@ void statsKey(const KeyEvent& e) {
     if (e.key == Key::Left && gStatsPage > 0) {
         --gStatsPage;
         gDirty = true;
-    } else if (e.key == Key::Right && gStatsPage < 2) {
+    } else if (e.key == Key::Right && gStatsPage < 3) {
         ++gStatsPage;
         gDirty = true;
     }
@@ -3405,7 +3505,7 @@ void statsKey(const KeyEvent& e) {
 kk::app::StatsView buildStatsView() {
     kk::app::StatsView view;
     view.page = static_cast<uint8_t>(gStatsPage);
-    view.pages = 3;
+    view.pages = 4;
     const uint32_t now = effectiveNow();
     kk::buildForecast(gSummary, now, &view.forecast);
     for (int i = 0; i < 4; ++i)
@@ -3432,6 +3532,11 @@ kk::app::StatsView buildStatsView() {
     view.level.ninetyReached = gLevelProgress.kanjiTotal > 0 && view.level.needed == 0;
     view.level.apprentice = gSrs.apprentice;
     view.level.srsValid = gSrs.valid;
+
+    if (gStatsPage == 3) {
+        if (!gStatsHistoryLoaded) loadStatsHistory();
+        view.history = gStatsHistory;
+    }
     return view;
 }
 
@@ -5283,6 +5388,9 @@ void handleSerial() {
         } else if (gSerialLine == "c") {
             kk::DevToken::clear();
             kk::wkClearAuthBlock();
+            kk::journalClear();
+            gStatsHistoryLoaded = false;
+            gPendingJournalHandle = 0;
             gDeferredAuthIssue = SyncIssue::None;
             gOutboxAuthIssue = false;
             clearLevelUpNotice();

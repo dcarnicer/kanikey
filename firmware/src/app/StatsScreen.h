@@ -23,13 +23,24 @@ struct StatsLevelView {
     bool srsValid = false;
 };
 
+struct StatsHistoryView {
+    uint16_t counts[kk::kHistoryDays] = {};
+    char labels[kk::kHistoryDays][4] = {};
+    bool any = false;
+    bool hasToday = false;
+    uint8_t todayAccuracy = 0;
+    uint16_t currentStreak = 0;
+    uint16_t bestStreak = 0;
+};
+
 struct StatsView {
     uint8_t page = 0;
-    uint8_t pages = 3;
+    uint8_t pages = 4;
     kk::ForecastStats forecast;
     char labels[4][6] = {};
     kk::SrsCounts srs;
     StatsLevelView level;
+    StatsHistoryView history;
 };
 
 void drawStatsScreen(lgfx::LovyanGFX& d, const StatsView& view);

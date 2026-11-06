@@ -749,3 +749,26 @@ a free retry.
 the retry behaviour changes. The lesson quiz keeps its input for the same
 reason. `tests` cover the message text and that existing warning cases still
 return `Warning`.
+
+---
+
+## 2026-11-06 — Review history lives on the device
+
+**Decision:** KaniKey never calls `GET /v2/reviews` (deprecated; it returns an
+empty `data` array). Every completed review appends a 16-byte record to
+`/state/journal.bin` on LittleFS. Records sit in blocks of 32 with a `{seq,
+CRC32}` trailer; 125 blocks form a 4,000-record ring. The header stores the
+account key, next slot, count and its own CRC. A torn write costs at most the
+active block, and a different account key recreates the file. Sign-out and
+token clear delete it; Settings › Clear cache does not, because history is not
+cache. The Stats History page aggregates the last seven local days, today's
+item accuracy (reviews without a wrong part), current streak and best streak;
+the best-streak scan keeps at most 400 distinct days in RAM.
+
+**Why:** the API no longer provides history, and the outbox is not a history
+store: it only holds unsent reviews and is deleted on sign-out.
+
+**Implications:** a review with an untrusted clock (`completedAt == 0`) is kept
+but cannot be placed on a day. The journal serves STATS now and is the shared
+input for STUDY (critical items/recent mistakes) and REM later; those still
+need the subject catalog from ARCH-03.

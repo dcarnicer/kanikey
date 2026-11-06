@@ -27,8 +27,10 @@
 > notice after a sync. The Home SRS bar splits the cached assignment counts into
 > Apprentice/Guru/Master/Enlightened/Burned buckets, filled by five small
 > `/assignments` count requests. `T` on Home opens a cached Stats screen with
-> the 24-hour forecast, the SRS distribution and level progress; Home's
-> `Next review` line includes the next bucket count. Sync runs on a six-row
+> the 24-hour forecast, the SRS distribution, level progress and a seven-day
+> local history/streak; Home's `Next review` line includes the next bucket
+> count. Completed reviews also append to `/state/journal.bin` (16 B records,
+> CRC blocks, account-scoped), because `/reviews` is deprecated. Sync runs on a six-row
 > screen (Wi-Fi, Outbox, Account, Summary, Level, SRS) with a progress bar and
 > `Esc` cancel; failures
 > stay on screen with retry or setup. `Tab` on review feedback opens the item

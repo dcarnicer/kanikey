@@ -1,19 +1,20 @@
 # Statistics
 
-**Implementation (2026-11-06).** STATS-01, the Forecast/SRS/Level pages of
-STATS-02 and STATS-04 are live in the current monolithic `App.cpp`; the
-controller split was not required for these read-only pages. `T` opens the
-screen, `wk/Stats` has the forecast and 90% helpers, and Home's `Next review`
-line now includes the next bucket count. STATS-03 (journal-based history) and
-the fourth Stats page remain open.
+**Implementation (2026-11-06).** STATS-01…04 are live in the current monolithic
+`App.cpp`; the controller split was not required for these read-only pages. `T`
+opens the screen, `wk/Stats` has the forecast, history/streak and 90% helpers,
+and Home's `Next review` line includes the next bucket count. The local journal
+(`wk/Journal`, `platform/JournalStore`) stores 16-byte records in CRC-checked
+blocks, scoped to the account; a full calendar heatmap is not part of this
+round.
 
 Decision D4 puts statistics in scope; this file replaces ROADMAP `EXT-05` and `WK-11`. Today Home only says `Next review 18:00` even when 409 reviews are due, and there is no way to see the forecast, the SRS split or level progress without the web app. All four tasks work from data the device already caches (summary buckets, SRS counts, level progressions) plus the device-local journal from ARCH-03; none of them needs WaniKani content. `GET /v2/reviews` is deprecated and returns an empty array (verified in the API reference, 2026-11-01), so history must be local.
 
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
 | STATS-01 | Forecast on Home | P2 | S | ARCH-01 (controller split) | 3 | done (2026-11-06) |
-| STATS-02 | Stats screen | P2 | M | ARCH-01 | 3 | partial (3 of 4 pages) |
-| STATS-03 | History and streak | P2 | M | ARCH-01, ARCH-03, STATS-02 | 3 | todo |
+| STATS-02 | Stats screen | P2 | M | ARCH-01 | 3 | done (2026-11-06) |
+| STATS-03 | History and streak | P2 | M | ARCH-01, ARCH-03, STATS-02 | 3 | done (2026-11-06) |
 | STATS-04 | Level-up estimate | P3 | S | STATS-02, STATS-03 | 3 | done (2026-11-06) |
 
 ### STATS-01 — Forecast on Home

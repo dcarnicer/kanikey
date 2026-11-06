@@ -657,7 +657,7 @@ meaning/reading notes are appended to the paged card after the mnemonic.
 ### 5.14 Stats
 
 - `T` on Home opens a read-only `STATS` screen; `Esc` returns Home. `←`/`→`
-  move between the three pages, clamped at the ends. Header `STATS 1/3` and
+  move between the four pages, clamped at the ends. Header `STATS 1/4` and
   hint `Esc: back  Left/Right: page`.
 - Page 1 `Forecast`: 24 one-hour bars for the next 24 h, starting with the
   current hour, built from cached `/summary` buckets. Every six hours a local
@@ -670,9 +670,14 @@ meaning/reading notes are appended to the paged card after the mnemonic.
   counts are known, `Need 12 kanji for 90%` or `90% reached`, and
   `A 42 total` from the cached account-wide Apprentice count (`A -- total`
   when unavailable). Missing data omits the line instead of inventing a value.
-- Session accuracy, seven-day history and streak are not here yet: the API's
-  `/reviews` endpoint is deprecated, so they will come from the local journal
-  (STATS-03).
+- Page 4 `History`, subtitle `On this device`: seven bars for the last seven
+  local days (today last), weekday labels and counts, then
+  `Today 86%  Streak 6  Best 21`. `Today -` means no review was recorded today;
+  the current streak is counted from yesterday in that case. The best streak
+  scans the last 400 recorded days, which bounds screen RAM on the device. An
+  empty journal shows `No reviews on this device yet` with zero streaks. The
+  data comes from `/state/journal.bin`; `/reviews` is deprecated and never
+  called.
 
 ### 5.15 Errors and empty states
 

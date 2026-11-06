@@ -83,9 +83,9 @@ below for completeness only.
 
 `GET /v2/reviews` is deprecated and returns an empty `data` array (verified in
 the WaniKani API reference, 2026-11-01), so KaniKey does not call it. Review
-history, streak and heatmap will be built from the device-local journal
-(STATS-03); the forecast uses the cached `/summary` buckets and needs no new
-request.
+history and streak come from `/state/journal.bin` on LittleFS: 16-byte records
+in 520-byte CRC-checked blocks, scoped to the account key, with a 4,000-record
+ring. The forecast uses the cached `/summary` buckets and needs no new request.
 
 ### 3.1 `/user`
 

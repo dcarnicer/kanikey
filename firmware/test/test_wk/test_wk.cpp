@@ -12,6 +12,7 @@
 #include "wk/Crc32.h"
 #include "wk/HttpRetry.h"
 #include "wk/Outbox.h"
+#include "wk/Journal.h"
 #include "wk/Json.h"
 #include "wk/JsonStream.h"
 #include "wk/LessonOrder.h"
@@ -1014,6 +1015,134 @@ static void test_kanji_needed_unknown_total() {
 static void test_kanji_needed_small_levels() {
     TEST_ASSERT_EQUAL(2, kanjiNeededForNinetyPercent(1, 3));
     TEST_ASSERT_EQUAL(1, kanjiNeededForNinetyPercent(2, 3));
+}
+
+// ---------------------------------------------------------------- journal
+static void test_journal_record_roundtrip() {
+    JournalRecord in;
+    in.completedAt = 1760000000;
+    in.subjectId = 42;
+    in.assignmentId = 4242;
+    in.srsBefore = 3;
+    in.srsAfter = 4;
+    in.srsAfterKnown = true;
+    in.offline = true;
+    in.wrongAnswerOverride = true;
+    in.incorrectMeaning = 2;
+    in.incorrectReading = 1;
+    uint8_t encoded[kJournalRecordBytes];
+    journalEncodeRecord(in, encoded);
+    JournalRecord out;
+    TEST_ASSERT_TRUE(journalDecodeRecord(encoded, &out));
+    TEST_ASSERT_EQUAL_UINT32(in.completedAt, out.completedAt);
+    TEST_ASSERT_EQUAL_UINT32(in.subjectId, out.subjectId);
+    TEST_ASSERT_EQUAL_UINT32(in.assignmentId, out.assignmentId);
+    TEST_ASSERT_EQUAL(in.srsBefore, out.srsBefore);
+    TEST_ASSERT_EQUAL(in.srsAfter, out.srsAfter);
+    TEST_ASSERT_TRUE(out.srsAfterKnown);
+    TEST_ASSERT_TRUE(out.offline);
+    TEST_ASSERT_TRUE(out.wrongAnswerOverride);
+    TEST_ASSERT_FALSE(out.practice);
+    TEST_ASSERT_EQUAL(in.incorrectMeaning, out.incorrectMeaning);
+    TEST_ASSERT_EQUAL(in.incorrectReading, out.incorrectReading);
+}
+
+static void test_journal_block_crc() {
+    JournalRecord records[kJournalRecordsPerBlock];
+    for (size_t i = 0; i < kJournalRecordsPerBlock; ++i) {
+        records[i].subjectId = static_cast<uint32_t>(i + 1);
+        records[i].assignmentId = static_cast<uint32_t>(100 + i);
+        records[i].srsBefore = static_cast<uint8_t>(i % 9);
+    }
+    uint8_t block[kJournalBlockBytes];
+    journalEncodeBlock(records, 7, block);
+    JournalRecord decoded[kJournalRecordsPerBlock];
+    uint32_t seq = 0;
+    TEST_ASSERT_TRUE(journalDecodeBlock(block, decoded, &seq));
+    TEST_ASSERT_EQUAL_UINT32(7, seq);
+    TEST_ASSERT_EQUAL_UINT32(9, decoded[8].subjectId);
+    block[5] ^= 0x01;
+    TEST_ASSERT_FALSE(journalDecodeBlock(block, decoded, &seq));
+}
+
+static void test_journal_ring_wraps() {
+    TEST_ASSERT_EQUAL_UINT32(0, journalNextIndex(kJournalMaxRecords - 1));
+    TEST_ASSERT_EQUAL_UINT32(5, journalNextIndex(4));
+    TEST_ASSERT_EQUAL_UINT32(0, journalSlot(0));
+    TEST_ASSERT_EQUAL_UINT32(1, journalSlot(33));
+}
+
+static void test_journal_patch_srs_after() {
+    JournalRecord record;
+    journalPatchSrsAfter(&record, 7);
+    TEST_ASSERT_TRUE(record.srsAfterKnown);
+    TEST_ASSERT_EQUAL(7, record.srsAfter);
+    uint8_t encoded[kJournalRecordBytes];
+    journalEncodeRecord(record, encoded);
+    JournalRecord decoded;
+    TEST_ASSERT_TRUE(journalDecodeRecord(encoded, &decoded));
+    TEST_ASSERT_TRUE(decoded.srsAfterKnown);
+    TEST_ASSERT_EQUAL(7, decoded.srsAfter);
+}
+
+static void test_journal_block_rejects_zero_crc() {
+    uint8_t block[kJournalBlockBytes] = {};
+    JournalRecord decoded[kJournalRecordsPerBlock];
+    uint32_t seq = 0;
+    TEST_ASSERT_FALSE(journalDecodeBlock(block, decoded, &seq));
+}
+
+static void test_journal_seven_day_counts() {
+    const DayStats days[3] = {{100, 3, 2, 1}, {99, 2, 2, 0}, {94, 1, 1, 0}};
+    HistoryStats stats;
+    buildHistory(days, 3, 100, &stats);
+    TEST_ASSERT_TRUE(stats.any);
+    TEST_ASSERT_EQUAL(3, stats.counts[6]);
+    TEST_ASSERT_EQUAL(2, stats.counts[5]);
+    TEST_ASSERT_EQUAL(1, stats.counts[0]);
+}
+
+static void test_journal_today_accuracy() {
+    const DayStats days[1] = {{100, 3, 2, 1}};
+    HistoryStats stats;
+    buildHistory(days, 1, 100, &stats);
+    TEST_ASSERT_TRUE(stats.hasToday);
+    TEST_ASSERT_EQUAL(67, stats.todayAccuracy);
+}
+
+static void test_journal_current_streak_today_empty() {
+    const DayStats days[2] = {{99, 2, 2, 0}, {98, 1, 1, 0}};
+    HistoryStats stats;
+    buildHistory(days, 2, 100, &stats);
+    TEST_ASSERT_FALSE(stats.hasToday);
+    TEST_ASSERT_EQUAL(2, stats.currentStreak);
+}
+
+static void test_journal_best_streak_with_gaps() {
+    const DayStats days[5] = {{90, 1, 1, 0},
+                              {91, 1, 1, 0},
+                              {92, 1, 1, 0},
+                              {94, 1, 1, 0},
+                              {95, 1, 1, 0}};
+    HistoryStats stats;
+    buildHistory(days, 5, 96, &stats);
+    TEST_ASSERT_EQUAL(3, stats.bestStreak);
+    TEST_ASSERT_EQUAL(2, stats.currentStreak);
+}
+
+static void test_journal_day_key_time_zone_boundaries() {
+    uint32_t epoch = 0;
+    TEST_ASSERT_TRUE(parseIso8601("2026-01-01T00:30:00Z", &epoch));
+    TEST_ASSERT_EQUAL_UINT32(civilDayKey(2026, 1, 1), localDayKeyAtOffset(epoch, 2 * 3600));
+    TEST_ASSERT_EQUAL_UINT32(civilDayKey(2025, 12, 31), localDayKeyAtOffset(epoch, -5 * 3600));
+}
+
+static void test_journal_empty() {
+    HistoryStats stats;
+    buildHistory(nullptr, 0, 100, &stats);
+    TEST_ASSERT_FALSE(stats.any);
+    TEST_ASSERT_EQUAL(0, stats.currentStreak);
+    TEST_ASSERT_EQUAL(0, stats.bestStreak);
 }
 
 
@@ -2226,6 +2355,17 @@ int main(int, char**) {
     RUN_TEST(test_kanji_needed_zero_when_reached);
     RUN_TEST(test_kanji_needed_unknown_total);
     RUN_TEST(test_kanji_needed_small_levels);
+    RUN_TEST(test_journal_record_roundtrip);
+    RUN_TEST(test_journal_block_crc);
+    RUN_TEST(test_journal_ring_wraps);
+    RUN_TEST(test_journal_patch_srs_after);
+    RUN_TEST(test_journal_block_rejects_zero_crc);
+    RUN_TEST(test_journal_seven_day_counts);
+    RUN_TEST(test_journal_today_accuracy);
+    RUN_TEST(test_journal_current_streak_today_empty);
+    RUN_TEST(test_journal_best_streak_with_gaps);
+    RUN_TEST(test_journal_day_key_time_zone_boundaries);
+    RUN_TEST(test_journal_empty);
     RUN_TEST(test_summary_text_parser);
     RUN_TEST(test_summary_text_parser_empty);
     RUN_TEST(test_review_response_parse);
