@@ -8,6 +8,7 @@
 #include "ota/Manifest.h"
 #include "wk/AnswerChecker.h"
 #include "wk/Assignment.h"
+#include "wk/AudioIndex.h"
 #include "wk/Cache.h"
 #include "wk/Catalog.h"
 #include "wk/CriticalItems.h"
@@ -1227,6 +1228,44 @@ static void test_journal_empty() {
     TEST_ASSERT_EQUAL(0, stats.currentStreak);
     TEST_ASSERT_EQUAL(0, stats.bestStreak);
 }
+
+// ---------------------------------------------------------------- audio
+static void test_audio_index_round_trip() {
+    const std::vector<AudioEntry> entries = {{10, 1200, 5, 0, AudioFormat::Mp3},
+                                             {11, 800, 7, 1, AudioFormat::Ogg}};
+    std::vector<uint8_t> bytes;
+    TEST_ASSERT_TRUE(encodeAudioIndex(entries, 42, 99, &bytes));
+    std::vector<AudioEntry> out;
+    TEST_ASSERT_TRUE(decodeAudioIndex(bytes.data(), bytes.size(), 42, &out));
+    TEST_ASSERT_EQUAL(2, out.size());
+    TEST_ASSERT_EQUAL_UINT32(10, out[0].subjectId);
+    TEST_ASSERT_EQUAL(800, out[1].bytes);
+    TEST_ASSERT_EQUAL(static_cast<int>(AudioFormat::Ogg), static_cast<int>(out[1].format));
+    TEST_ASSERT_FALSE(decodeAudioIndex(bytes.data(), bytes.size(), 43, &out));
+}
+
+static void test_audio_choose_voice_fallback() {
+    const std::vector<AudioEntry> entries = {{10, 100, 0, 0, AudioFormat::Mp3}};
+    AudioEntry out;
+    TEST_ASSERT_TRUE(audioChooseEntry(entries, 10, 1, &out));
+    TEST_ASSERT_EQUAL(0, out.voice);
+    TEST_ASSERT_FALSE(audioChooseEntry(entries, 11, 0, &out));
+}
+
+static void test_audio_file_name_and_evict() {
+    AudioEntry entry{10, 100, 0, 1, AudioFormat::Ogg};
+    char name[32];
+    TEST_ASSERT_TRUE(audioFileName(entry, name, sizeof name));
+    TEST_ASSERT_EQUAL_STRING("10-1.ogg", name);
+    const std::vector<AudioEntry> entries = {{1, 60, 100, 0, AudioFormat::Mp3},
+                                             {2, 60, 50, 0, AudioFormat::Mp3},
+                                             {3, 60, 75, 0, AudioFormat::Mp3}};
+    const std::vector<AudioEntry> victims =
+        audioEvict(entries, kAudioCacheMaxBytes - 100, 150);
+    TEST_ASSERT_EQUAL(1, victims.size());
+    TEST_ASSERT_EQUAL_UINT32(2, victims[0].subjectId);
+}
+
 
 // ---------------------------------------------------------------- subject catalog
 static Subject catalogSubject() {
@@ -2780,6 +2819,9 @@ int main(int, char**) {
     RUN_TEST(test_assignment_parse);
     RUN_TEST(test_subject_parse);
     RUN_TEST(test_subject_audio_parse);
+    RUN_TEST(test_audio_index_round_trip);
+    RUN_TEST(test_audio_choose_voice_fallback);
+    RUN_TEST(test_audio_file_name_and_evict);
     RUN_TEST(test_assignment_stream_matches_dom);
     RUN_TEST(test_assignment_stream_edges);
     RUN_TEST(test_subject_stream_matches_dom);

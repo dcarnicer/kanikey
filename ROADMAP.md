@@ -127,8 +127,8 @@ Working on hardware:
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Current build: **1,526,405 B / 1,835,008 B flash (83.2%)**, **95,912 B /
-327,680 B static RAM (29.3%)**. The dev image is 1,569,845 B. Removing
+Current build: **1,527,557 B / 1,835,008 B flash (83.2%)**, **95,952 B /
+327,680 B static RAM (29.3%)**. The dev image is 1,593,441 B. Removing
 `efontJA_16` freed ~468 KB and leaves ~358 KB of flash headroom. The loop task
 uses a 24 KiB stack; the lazy review batch raised the lesson-fetch minimum free
 heap to ~56 KB.
@@ -678,9 +678,11 @@ progress features, not a second SRS.
   accuracy and current/best streak are live in the Stats screen; a full
   calendar heatmap is the remaining optional view.
 - **EXT-06 — Audio.** **Partial (2026-11-06):** `Subject` parses up to four
-  `pronunciation_audios` clips (URL/content type/voice) and the ES8311 is
-  enabled; serial `n` plays a test tone. Cache, decoder and playback wait for
-  the AUD-01 hardware measurements and a decoder decision.
+  `pronunciation_audios` clips (URL/content type/voice), the ES8311 is enabled
+  and serial `n` plays a test tone. `AudioCache` downloads clips to
+  `/kanikey/audio/` with a 50 MB LRU index; serial `a` caches the current batch.
+  Decoder, playback and automatic prefetch wait for the AUD-01 hardware
+  measurements and a decoder decision.
 - **EXT-07 — Stroke order.** KanjiVG rendering and attribution (CC BY-SA).
 - **EXT-08 — JLPT / Joyo / frequency / constellation.** Data-heavy views for
   progress and component relationships; only if the core is stable.

@@ -36,10 +36,11 @@
 > of a review session. `P` opens Extra study (recent mistakes, recent lessons,
 > critical items, current level); practice never writes WaniKani, shows a
 > `PRACTICE` summary and uses a persisted apprentice pool offline. Vocabulary
-> pronunciation metadata is parsed and the ES8311 is enabled (serial `n` plays a
-> test tone); playback/cache wait for the audio spike measurements. Sync runs
-> on a seven-row screen (Wi-Fi, Outbox, Account, Summary, Level, SRS, Critical)
-> with a progress bar and `Esc` cancel; failures
+> pronunciation metadata is parsed, the ES8311 is enabled (serial `n` plays a
+> test tone) and serial `a` caches clips on the SD card with a 50 MB LRU index;
+> playback waits for the audio spike measurements. Sync runs on a seven-row
+> screen (Wi-Fi, Outbox, Account, Summary, Level, SRS, Critical) with a
+> progress bar and `Esc` cancel; failures
 > stay on screen with retry or setup. `Tab` on review feedback opens the item
 > detail card with meanings, readings, mnemonics, notes, components, related
 > subjects and, for vocabulary, parts of speech and context sentences.

@@ -560,11 +560,12 @@ full 8 MB backup afterwards. Captures from the pass are in
 
 ### 2026-11-06 — AUD-01 audio spike (pending hardware)
 
-The parser and speaker path are merged; the measurements are not. `Subject`
-keeps up to four `pronunciation_audios` clips (URL, content type, voice), and
-the Cardputer build enables `internal_spk`; serial `n` plays 880 Hz for 150 ms.
-Still to measure on the device: clip sizes for `audio/mpeg`/`audio/ogg`, the
-decoder flash/RAM/decode time, and whether `M5.Speaker.playRaw()` covers the
-I2S/ES8311 path. Until then AUD-02 (SD cache) and AUD-03 (playback) are a
-deliberate no-go, not a silent omission.
+The parser, speaker path and SD cache are merged; the measurements and playback
+are not. `Subject` keeps up to four `pronunciation_audios` clips (URL, content
+type, voice), the Cardputer build enables `internal_spk`, serial `n` plays
+880 Hz for 150 ms, and serial `a` caches up to four clips from the current
+review/lesson batch. Still to measure on the device: clip sizes for
+`audio/mpeg`/`audio/ogg`, the decoder flash/RAM/decode time, and whether
+`M5.Speaker.playRaw()` covers the I2S/ES8311 path. Until then AUD-03 (playback)
+is a deliberate no-go, not a silent omission.
 

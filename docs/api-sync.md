@@ -235,8 +235,9 @@ longer builds a JSON DOM; components are kept in the same subject list and
 cached, so the detail card works offline. Vocabulary context sentences are
 stored (up to 4) and the English sentence is shown on the sixth detail page;
 `pronunciation_audios` is parsed into transient URL/content-type/voice clips
-(AUD-01, 2026-11-06), but the cache still ignores it; playback waits for the
-decoder spike. The related IDs
+(AUD-01, 2026-11-06). The optional SD cache stores them as
+`/kanikey/audio/<subject>-<voice>.<mp3|ogg>` with a `KKAU` index and a 50 MB LRU
+cap; playback waits for the decoder spike. The related IDs
 (`visually_similar_subject_ids`, `amalgamation_subject_ids`, up to 32 each) are
 stored and the detail card adds a related page with counts and any meanings
 already present in the batch. A subject page cut at the 32 KB cap is retried
