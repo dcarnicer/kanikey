@@ -1,6 +1,7 @@
 #include "wk/Summary.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <utility>
 
 #include "wk/Time.h"
@@ -57,6 +58,18 @@ uint32_t Summary::nextReviewAt(uint32_t now) const {
     return best;
 }
 
+uint16_t Summary::nextReviewCount(uint32_t now) const {
+    const uint32_t next = nextReviewAt(now);
+    if (!next) return 0;
+    uint32_t count = 0;
+    for (const SummaryBucket& b : reviews) {
+        if (b.count == 0 || b.availableAt != next) continue;
+        count += b.count;
+        if (count >= 0xFFFFu) return 0xFFFFu;
+    }
+    return static_cast<uint16_t>(count);
+}
+
 std::vector<uint32_t> Summary::dueSubjectIds(uint32_t now, size_t limit) const {
     std::vector<uint32_t> out;
     for (const SummaryBucket& b : reviews) {
@@ -90,6 +103,25 @@ bool Summary::removeLessonSubject(uint32_t id) {
         changed = true;
     }
     return changed;
+}
+
+void formatNextReview(const Summary& summary, uint32_t now, const char* hhmm, char* out,
+                      size_t n) {
+    if (!out || n == 0) return;
+    const uint32_t due = summary.dueReviews(now);
+    const uint32_t nextAt = summary.nextReviewAt(now);
+    const uint16_t count = summary.nextReviewCount(now);
+    const char* time = hhmm && hhmm[0] ? hhmm : "--:--";
+    if (nextAt && count) {
+        if (due)
+            snprintf(out, n, "+%u at %s", static_cast<unsigned>(count), time);
+        else
+            snprintf(out, n, "%s (+%u)", time, static_cast<unsigned>(count));
+    } else if (due) {
+        snprintf(out, n, "now");
+    } else {
+        snprintf(out, n, "all clear");
+    }
 }
 
 bool parseSummary(const JsonValue& root, Summary* out) {

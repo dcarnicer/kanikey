@@ -149,10 +149,11 @@ the field is active.
 | `Esc` | Back / cancel / pause session |
 | `Tab` | Item detail on review feedback |
 | `↑` `↓` | Move focus; in text, `Fn` + arrows |
-| `←` `→` | Previous/next page in lessons and item detail |
+| `←` `→` | Previous/next page in lessons, item detail and Stats |
 | `Space` | Next page in lessons and item detail; space in text |
 | `L` | Lessons (home) |
 | `O` | Outbox of rejected/stuck reviews (home; ignored when none need attention) |
+| `T` | Stats (home) |
 | `S` | Sync (home) |
 | `Q` | Optional local quiz on a lesson card |
 | `D` | Discard the selected rejected/stuck review (Outbox) |
@@ -313,7 +314,9 @@ Home ──L──► Lessons ──Enter──► Lesson card
 - `LEVEL 12` in gold and the username next to it (12 px).
 - Due reviews (`28`) at 32 px and the `REVIEWS DUE` label at 8 px.
 - Lessons (`5`) at 32 px and `LESSONS` at 8 px.
-- `Next review 18:00` at 8 px, with a right-aligned value.
+- `Next review` at 8 px, with a right-aligned value. With reviews due and a
+  later bucket it reads `+12 at 18:00`; with nothing due, `18:00 (+12)`; with
+  due items and no later bucket, `now`; with nothing scheduled, `all clear`.
 - SRS distribution: five segments at y=100 (3 px high, 224 px wide) in
   apprentice/guru/master/enlightened/burned colors, with `A 42`, `G 18`,
   `M 9`, `E 4`, `B 2` and 4 px swatches below. The counts come from the last
@@ -336,8 +339,9 @@ Home ──L──► Lessons ──Enter──► Lesson card
   level (0 when the total is unknown); passed means Guru or later (SRS stages
   5-9). When the counts could not be fetched, the existing `L8 since 03 Feb`
   line is kept.
-- Hint: `Enter: reviews  L: lessons  S: sync` (8 px). With rejected or stuck
-  items the hint becomes `O: outbox  Enter: reviews  S: sync`, dropping entries
+- Hint: `Enter: reviews  L: lessons  T: stats  S: sync` (8 px), falling back
+  to `Enter  L  T  S` when it would not fit. With rejected or stuck items the
+  hint becomes `O: outbox  Enter: reviews  T: stats  S: sync`, dropping entries
   from the middle when it would not fit; `O: outbox` is kept. `Esc` still opens
   Settings; the hint bar only shows the three primary actions. The M0 debug
   screen and the `Tab: debug` shortcut only exist in the `cardputer-adv-dev`
@@ -650,13 +654,25 @@ meaning/reading notes are appended to the paged card after the mnemonic.
   `Enter: sync  Esc: home` instead of starting. Home appends `(nearly full)`
   above 75% (§5.3).
 
-### 5.14 Stats (phase 2)
+### 5.14 Stats
 
-- Current level and level progress.
-- SRS distribution detail with bars and counts (Home already shows the bar).
-- Session and global accuracy (if cached).
-- Streak and reviews from the last 7 days.
-- `Esc` goes back.
+- `T` on Home opens a read-only `STATS` screen; `Esc` returns Home. `←`/`→`
+  move between the three pages, clamped at the ends. Header `STATS 1/3` and
+  hint `Esc: back  Left/Right: page`.
+- Page 1 `Forecast`: 24 one-hour bars for the next 24 h, starting with the
+  current hour, built from cached `/summary` buckets. Every six hours a local
+  time label (`00`, `06`, `12`, `18` style) sits under the axis. With no future
+  bucket the page reads `No reviews in the next 24 h`. It makes no request.
+- Page 2 `SRS`: Apprentice/Guru/Master/Enlightened/Burned counts and
+  proportional bars using the Home colours. Without cached counts it reads
+  `Sync for counts`.
+- Page 3 `Level`: `Level N`, days on the level, `kanji 12/34 (35%)` when the
+  counts are known, `Need 12 kanji for 90%` or `90% reached`, and
+  `A 42 total` from the cached account-wide Apprentice count (`A -- total`
+  when unavailable). Missing data omits the line instead of inventing a value.
+- Session accuracy, seven-day history and streak are not here yet: the API's
+  `/reviews` endpoint is deprecated, so they will come from the local journal
+  (STATS-03).
 
 ### 5.15 Errors and empty states
 

@@ -31,6 +31,7 @@
 #include "wk/RomajiIme.h"
 #include "wk/SessionStats.h"
 #include "wk/SrsCounts.h"
+#include "wk/Stats.h"
 #include "wk/Text.h"
 
 using namespace kk;
@@ -899,6 +900,120 @@ static void test_summary_parse_and_counts() {
     uint32_t next = 0;
     TEST_ASSERT_TRUE(parseIso8601("2026-10-25T13:00:00Z", &next));
     TEST_ASSERT_EQUAL_UINT32(next, s.nextReviewAt(now));
+}
+
+static void addReviewBucket(Summary* s, uint32_t at, uint16_t count) {
+    SummaryBucket b;
+    b.availableAt = at;
+    b.count = count;
+    s->reviews.push_back(b);
+}
+
+static void test_forecast_line_due_with_next() {
+    Summary s;
+    addReviewBucket(&s, 100, 5);
+    addReviewBucket(&s, 3600, 12);
+    char out[20];
+    formatNextReview(s, 200, "18:00", out, sizeof out);
+    TEST_ASSERT_EQUAL_STRING("+12 at 18:00", out);
+}
+
+static void test_forecast_line_idle_with_next() {
+    Summary s;
+    addReviewBucket(&s, 3600, 12);
+    char out[20];
+    formatNextReview(s, 200, "18:00", out, sizeof out);
+    TEST_ASSERT_EQUAL_STRING("18:00 (+12)", out);
+}
+
+static void test_forecast_line_due_without_next() {
+    Summary s;
+    addReviewBucket(&s, 100, 5);
+    char out[20];
+    formatNextReview(s, 200, "18:00", out, sizeof out);
+    TEST_ASSERT_EQUAL_STRING("now", out);
+}
+
+static void test_forecast_line_idle_without_next() {
+    Summary s;
+    char out[20];
+    formatNextReview(s, 200, "18:00", out, sizeof out);
+    TEST_ASSERT_EQUAL_STRING("all clear", out);
+}
+
+static void test_forecast_count_single_and_zero() {
+    Summary s;
+    addReviewBucket(&s, 3600, 1);
+    TEST_ASSERT_EQUAL(1, s.nextReviewCount(200));
+    TEST_ASSERT_EQUAL(0, s.nextReviewCount(4000));
+    addReviewBucket(&s, 3600, 3);
+    TEST_ASSERT_EQUAL(4, s.nextReviewCount(200));
+}
+
+static void test_forecast_24_slots_fill_gaps() {
+    const uint32_t now = 10000;
+    const uint32_t start = (now / 3600u) * 3600u;
+    Summary s;
+    addReviewBucket(&s, start, 2);
+    addReviewBucket(&s, start + 2 * 3600, 5);
+    addReviewBucket(&s, start + 23 * 3600, 1);
+    addReviewBucket(&s, start + 24 * 3600, 9);
+    ForecastStats forecast;
+    buildForecast(s, now, &forecast);
+    TEST_ASSERT_EQUAL_UINT32(start, forecast.startHour);
+    TEST_ASSERT_EQUAL(2, forecast.counts[0]);
+    TEST_ASSERT_EQUAL(0, forecast.counts[1]);
+    TEST_ASSERT_EQUAL(5, forecast.counts[2]);
+    TEST_ASSERT_EQUAL(1, forecast.counts[23]);
+    TEST_ASSERT_EQUAL(5, forecast.max);
+    TEST_ASSERT_FALSE(forecast.empty());
+}
+
+static void test_forecast_includes_current_hour() {
+    const uint32_t now = 10000;
+    const uint32_t start = (now / 3600u) * 3600u;
+    Summary s;
+    addReviewBucket(&s, start + 1800, 4);
+    ForecastStats forecast;
+    buildForecast(s, now, &forecast);
+    TEST_ASSERT_EQUAL(4, forecast.counts[0]);
+}
+
+static void test_forecast_ignores_past_buckets() {
+    const uint32_t now = 10000;
+    const uint32_t start = (now / 3600u) * 3600u;
+    Summary s;
+    addReviewBucket(&s, start - 3600, 7);
+    ForecastStats forecast;
+    buildForecast(s, now, &forecast);
+    TEST_ASSERT_TRUE(forecast.empty());
+    TEST_ASSERT_EQUAL(0, forecast.max);
+}
+
+static void test_forecast_max_and_empty() {
+    Summary s;
+    ForecastStats forecast;
+    buildForecast(s, 10000, &forecast);
+    TEST_ASSERT_TRUE(forecast.empty());
+    TEST_ASSERT_EQUAL(0, forecast.max);
+}
+
+static void test_kanji_needed_rounds_up() {
+    TEST_ASSERT_EQUAL(19, kanjiNeededForNinetyPercent(17, 40));
+}
+
+static void test_kanji_needed_zero_when_reached() {
+    TEST_ASSERT_EQUAL(0, kanjiNeededForNinetyPercent(36, 40));
+    TEST_ASSERT_EQUAL(0, kanjiNeededForNinetyPercent(40, 40));
+}
+
+static void test_kanji_needed_unknown_total() {
+    TEST_ASSERT_EQUAL(0, kanjiNeededForNinetyPercent(0, 0));
+}
+
+static void test_kanji_needed_small_levels() {
+    TEST_ASSERT_EQUAL(2, kanjiNeededForNinetyPercent(1, 3));
+    TEST_ASSERT_EQUAL(1, kanjiNeededForNinetyPercent(2, 3));
 }
 
 
@@ -2098,6 +2213,19 @@ int main(int, char**) {
     RUN_TEST(test_rate_limit_exactly_now_falls_back);
     RUN_TEST(test_user_parse);
     RUN_TEST(test_summary_parse_and_counts);
+    RUN_TEST(test_forecast_line_due_with_next);
+    RUN_TEST(test_forecast_line_idle_with_next);
+    RUN_TEST(test_forecast_line_due_without_next);
+    RUN_TEST(test_forecast_line_idle_without_next);
+    RUN_TEST(test_forecast_count_single_and_zero);
+    RUN_TEST(test_forecast_24_slots_fill_gaps);
+    RUN_TEST(test_forecast_includes_current_hour);
+    RUN_TEST(test_forecast_ignores_past_buckets);
+    RUN_TEST(test_forecast_max_and_empty);
+    RUN_TEST(test_kanji_needed_rounds_up);
+    RUN_TEST(test_kanji_needed_zero_when_reached);
+    RUN_TEST(test_kanji_needed_unknown_total);
+    RUN_TEST(test_kanji_needed_small_levels);
     RUN_TEST(test_summary_text_parser);
     RUN_TEST(test_summary_text_parser_empty);
     RUN_TEST(test_review_response_parse);

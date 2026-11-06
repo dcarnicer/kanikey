@@ -318,7 +318,7 @@ Details are in [ux.md](ux.md). Map:
 | Lessons | List of available lessons | ↑↓, Enter, Esc | Implemented |
 | Lesson card | Teaching before starting | Space, ←→, Q, Enter, Esc | Implemented; hardware check partial |
 | Settings | Account, study, sync, device | ↑↓, Enter, Esc | MVP |
-| Stats | Level, distribution, accuracy | Esc | Phase 2 |
+| Stats | Forecast, distribution, level | ←→, Esc | Implemented (history pending) |
 | Error / empty | What happened and what to do | Enter, Esc | MVP |
 
 ![Home](screens/home.png)

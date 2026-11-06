@@ -127,8 +127,8 @@ Working on hardware:
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Current build: **1,479,237 B / 1,835,008 B flash (80.6%)**, **95,528 B /
-327,680 B static RAM (29.2%)**. The dev image is 1,497,869 B. Removing
+Current build: **1,481,909 B / 1,835,008 B flash (80.8%)**, **95,528 B /
+327,680 B static RAM (29.2%)**. The dev image is 1,500,717 B. Removing
 `efontJA_16` freed ~468 KB and leaves ~358 KB of flash headroom. The loop task
 uses a 24 KiB stack; the lazy review batch raised the lesson-fetch minimum free
 heap to ~56 KB.
@@ -140,10 +140,10 @@ heap to ~56 KB.
 | 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Done except a real low-level radical-only lesson; the synthetic radical lesson UI passed | RAD-04 |
 | 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Core and real-account E2E done; deliberate offline boot pending | CACHE-07 |
 | 3 | Complete lesson flow | List/picker, card, components, quiz, empty state, start and ordering exist; a real low-level run remains | Code complete; radical-only UI verified synthetically | RAD-04 |
-| 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; review history and audio remain | Partial | WK-11, EXT-06 |
+| 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; forecast/SRS/level stats are live; review history and audio remain | Partial | STATS-03, EXT-06 |
 | 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Code and docs done; hardware check pending for the final OUTBOX screen (API-01) and API-02…05 | — |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
-| 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen, item detail and level progress are live | Partial | UI-07 |
+| 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen, item detail, level progress and the Stats screen are live | Partial | UI-08 |
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal, OTA, storage and sleep done; widgets pending | TNG-03 |
 | 9 | Technical debt, CI and release | Maintainability and shipping | Done (TECH-01…06, TECH-08); TECH-07 only if needed | TECH-07 |
 | 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | Partially started (EXT-01/02 done) | EXT-03, EXT-04 |
@@ -163,7 +163,7 @@ upload part of FIX-24) and the API-01…05 hardware pass.
 | 1 | Offline cache | CACHE-05 → CACHE-07, TNG-04, TNG-05 | Review and Home work after reboot without network (offline boot still untested) |
 | 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | List, understand, quiz and start lessons (code complete) |
 | 3 | Setup and device UX | TNG-02 (done) | OTA release path (setup/settings complete) |
-| 4 | WaniKani data and detail | WK-11 (WK-01/03/04/05/06/07/08/09/10 done) | Review history and progress |
+| 4 | WaniKani data and detail | WK-11 (WK-01/03/04/05/06/07/08/09/10 done) | Forecast, SRS and level stats done; local history pending |
 | 5 | API robustness | API-07 (API-01/02/03/04/05/06 done) | Done; hardware verification of API-01's final OUTBOX screen and API-02…05 still pending |
 | 6 | UI, stats and sync | UI-07 → UI-08 (UI-01/02/03/04/05/06 done) | Polish |
 | 7 | Technical debt and release | TECH-03 → TECH-08 (done; TECH-07 optional) | Version, OTA, license and hardening |
@@ -341,8 +341,13 @@ live; review history, audio and the remaining preferences still need work.
   components and a future constellation view. **Done (2026-10-28):** the IDs are
   parsed/cached and the detail card adds a related page with counts and cached
   meanings. The component graph is already used by lesson components.
-- **WK-11 — Review history.** `GET /reviews` for heatmap, streak and forecast;
-  this is a later stats input, not a v1 blocker.
+- **WK-11 — Review history and stats.** The API's `/reviews` endpoint is
+  deprecated and empty, so history must come from the local journal. **Partial
+  (2026-11-06):** `T` on Home opens a three-page Stats screen with the next-24 h
+  forecast from cached summary buckets, the SRS distribution and level progress
+  plus the kanji still needed for 90%. Home's `Next review` line now shows the
+  next bucket count (`+12 at 18:00` / `18:00 (+12)`). Heatmap, seven-day history,
+  streak and today's accuracy remain pending on ARCH-03 (STATS-03).
 
 ## 5. Outbox and API robustness (code and docs done)
 
@@ -656,8 +661,9 @@ progress features, not a second SRS.
   mistakes and show a small “critical items” list.
 - **EXT-04 — Extra study modes.** Recent lessons, random tests, vocabulary
   reading practice and custom reviews; no local SRS writes.
-- **EXT-05 — Advanced stats.** Review forecast, heatmap, streak and 7-day
-  history (needs WK-11).
+- **EXT-05 — Advanced stats.** **Partial (2026-11-06):** forecast, SRS
+  distribution and level progress are live in the Stats screen; heatmap,
+  streak and 7-day history wait for the local journal (STATS-03).
 - **EXT-06 — Audio.** Vocabulary pronunciation through the ES8311 and
   `pronunciation_audios`.
 - **EXT-07 — Stroke order.** KanjiVG rendering and attribution (CC BY-SA).

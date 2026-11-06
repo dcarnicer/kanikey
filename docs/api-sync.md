@@ -81,11 +81,11 @@ kanji total and `/assignments` for the kanji that passed (Guru or later).
 There is no ETag/conditional-request path in the current client; `304` is listed
 below for completeness only.
 
-Optional for phase 2:
-
-| Method | Endpoint | What for |
-|---|---|---|
-| GET | `/reviews` | History, streak, heatmap |
+`GET /v2/reviews` is deprecated and returns an empty `data` array (verified in
+the WaniKani API reference, 2026-11-01), so KaniKey does not call it. Review
+history, streak and heatmap will be built from the device-local journal
+(STATS-03); the forecast uses the cached `/summary` buckets and needs no new
+request.
 
 ### 3.1 `/user`
 

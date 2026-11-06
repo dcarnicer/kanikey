@@ -12,10 +12,9 @@
 > the user and the review batch are now cached too: the snapshot restores them
 > at boot, shows `Offline` and can run a cached session (a deliberate
 > offline-boot hardware run is still pending). Lessons show a list/picker
-> sorted by level and `lesson_position` within the summary's first 10
-> candidates (ordering is partial), then a card with meaning/reading and
-> mnemonic pages; only the card's Enter calls `PUT /assignments/{id}/start`
-> (200). Study materials
+> sorted by level and `lesson_position` across up to 60 summary candidates,
+> then a card with meaning/reading and mnemonic pages; only the card's Enter
+> calls `PUT /assignments/{id}/start` (200). Study materials
 > add the user's meaning synonyms and meaning/reading notes: synonyms are
 > accepted answers and the notes appear on the lesson card and review feedback.
 > `Q` on a lesson card opens an optional local meaning/reading quiz with
@@ -27,8 +26,11 @@
 > level unlocked, the percentage of the level's kanji passed and a level-up
 > notice after a sync. The Home SRS bar splits the cached assignment counts into
 > Apprentice/Guru/Master/Enlightened/Burned buckets, filled by five small
-> `/assignments` count requests. Sync runs on a six-row screen (Wi-Fi, Outbox,
-> Account, Summary, Level, SRS) with a progress bar and `Esc` cancel; failures
+> `/assignments` count requests. `T` on Home opens a cached Stats screen with
+> the 24-hour forecast, the SRS distribution and level progress; Home's
+> `Next review` line includes the next bucket count. Sync runs on a six-row
+> screen (Wi-Fi, Outbox, Account, Summary, Level, SRS) with a progress bar and
+> `Esc` cancel; failures
 > stay on screen with retry or setup. `Tab` on review feedback opens the item
 > detail card with meanings, readings, mnemonics, notes, components, related
 > subjects and, for vocabulary, parts of speech and context sentences.

@@ -26,6 +26,8 @@ struct Summary {
     // The earliest review bucket strictly after `now` with at least one item;
     // 0 when there is none.
     uint32_t nextReviewAt(uint32_t now) const;
+    // Number of reviews in the earliest future bucket; 0 when there is none.
+    uint16_t nextReviewCount(uint32_t now) const;
     // Due subject IDs, oldest bucket first, at most `limit`.
     std::vector<uint32_t> dueSubjectIds(uint32_t now, size_t limit) const;
     std::vector<uint32_t> lessonSubjectIds(size_t limit) const;
@@ -35,5 +37,10 @@ struct Summary {
 };
 
 bool parseSummary(const JsonValue& root, Summary* out);
+
+// Formats the Home "Next review" value from the cached summary. `hhmm` is the
+// local time of the next bucket (ignored when there is no future bucket).
+void formatNextReview(const Summary& summary, uint32_t now, const char* hhmm, char* out,
+                      size_t n);
 
 }  // namespace kk

@@ -29,6 +29,7 @@
 #include "app/ReviewScreens.h"
 #include "app/SettingsScreen.h"
 #include "app/SetupScreen.h"
+#include "app/StatsScreen.h"
 #include "app/SyncScreen.h"
 #include "board/Board.h"
 #include "Version.h"
@@ -55,6 +56,7 @@
 #include "wk/ReviewResponse.h"
 #include "wk/RomajiIme.h"
 #include "wk/SessionStats.h"
+#include "wk/Stats.h"
 #include "wk/Time.h"
 #include "ui/Theme.h"
 
@@ -108,7 +110,7 @@ bool gShowHome = false;
 uint32_t gDueReviews = 0;
 uint32_t gLessons = 0;
 uint32_t gSyncedAt = 0;
-char gNextReview[12] = "--:--";
+char gNextReview[20] = "--:--";
 char gSyncClock[12] = "--:--";
 
 kk::ReviewBatch gBatch;
@@ -170,6 +172,8 @@ bool gLessonActive = false;
 bool gLessonListActive = false;
 bool gLessonEmptyActive = false;
 bool gLessonQuizActive = false;
+bool gStatsActive = false;
+int gStatsPage = 0;
 size_t gLessonIndex = 0;
 size_t gLessonPage = 0;
 bool gSyncing = false;
@@ -284,6 +288,9 @@ bool mountSd();
 void startSync();
 void syncScreenKey(const KeyEvent& e);
 void drawPause();
+void drawStats();
+void statsKey(const KeyEvent& e);
+void openStats();
 void drawSettings();
 void drawAbout();
 void drawSignOutConfirm();
@@ -329,13 +336,10 @@ uint32_t effectiveNow() {
 void applySummary(uint32_t now) {
     gDueReviews = gSummary.dueReviews(now);
     gLessons = gSummary.totalLessons();
+    char hhmm[8] = "--:--";
     const uint32_t nextAt = gSummary.nextReviewAt(now);
-    if (nextAt)
-        localHm(nextAt, gNextReview, sizeof gNextReview);
-    else if (gDueReviews > 0)
-        snprintf(gNextReview, sizeof gNextReview, "now");
-    else
-        snprintf(gNextReview, sizeof gNextReview, "all clear");
+    if (nextAt) localHm(nextAt, hhmm, sizeof hhmm);
+    kk::formatNextReview(gSummary, now, hhmm, gNextReview, sizeof gNextReview);
 }
 
 bool outboxHasAssignment(uint32_t assignmentId) {
@@ -2645,6 +2649,10 @@ void onKey(const KeyEvent& e) {
         outboxKey(e);
         return;
     }
+    if (gStatsActive) {
+        statsKey(e);
+        return;
+    }
     if (gFirmwareActive) {
         firmwareKey(e);
         return;
@@ -2735,6 +2743,12 @@ void onKey(const KeyEvent& e) {
         (tgc::cardputerCharAt(e.x, e.y, gShift) == 'l' ||
          tgc::cardputerCharAt(e.x, e.y, gShift) == 'L')) {
         startLessons();
+        return;
+    }
+    if (e.down && gShowHome && e.key == Key::Other &&
+        (tgc::cardputerCharAt(e.x, e.y, gShift) == 't' ||
+         tgc::cardputerCharAt(e.x, e.y, gShift) == 'T')) {
+        openStats();
         return;
     }
     if (e.down && gShowHome && !gSyncing && e.key == Key::Other &&
@@ -3360,6 +3374,73 @@ void drawHome() {
     auto& d = target();
     d.startWrite();
     kk::app::drawHomeScreen(d, view);
+    d.endWrite();
+    present();
+}
+
+void openStats() {
+    gStatsActive = true;
+    gStatsPage = 0;
+    gShowHome = false;
+    gDirty = true;
+}
+
+void statsKey(const KeyEvent& e) {
+    if (!e.down) return;
+    if (e.key == Key::Esc) {
+        gStatsActive = false;
+        gShowHome = true;
+        gDirty = true;
+        return;
+    }
+    if (e.key == Key::Left && gStatsPage > 0) {
+        --gStatsPage;
+        gDirty = true;
+    } else if (e.key == Key::Right && gStatsPage < 2) {
+        ++gStatsPage;
+        gDirty = true;
+    }
+}
+
+kk::app::StatsView buildStatsView() {
+    kk::app::StatsView view;
+    view.page = static_cast<uint8_t>(gStatsPage);
+    view.pages = 3;
+    const uint32_t now = effectiveNow();
+    kk::buildForecast(gSummary, now, &view.forecast);
+    for (int i = 0; i < 4; ++i)
+        localHm(view.forecast.startHour + static_cast<uint32_t>(i) * 6u * 3600u, view.labels[i],
+                sizeof view.labels[i]);
+    view.srs = gSrs;
+
+    view.level.valid = gLevelProgress.valid;
+    view.level.level =
+        gLevelProgress.valid ? gLevelProgress.level : (gHaveUser ? gUser.level : 0);
+    const uint32_t since =
+        gLevelProgress.unlockedAt ? gLevelProgress.unlockedAt : gLevelProgress.startedAt;
+    if (since && now > since) {
+        const uint32_t days = (now - since) / 86400u;
+        snprintf(view.level.days, sizeof view.level.days, "%u day%s", static_cast<unsigned>(days),
+                 days == 1 ? "" : "s");
+    }
+    view.level.kanjiPassed = gLevelProgress.kanjiPassed;
+    view.level.kanjiTotal = gLevelProgress.kanjiTotal;
+    view.level.kanjiPercent =
+        kk::levelKanjiPercent(gLevelProgress.kanjiPassed, gLevelProgress.kanjiTotal);
+    view.level.needed =
+        kk::kanjiNeededForNinetyPercent(gLevelProgress.kanjiPassed, gLevelProgress.kanjiTotal);
+    view.level.ninetyReached = gLevelProgress.kanjiTotal > 0 && view.level.needed == 0;
+    view.level.apprentice = gSrs.apprentice;
+    view.level.srsValid = gSrs.valid;
+    return view;
+}
+
+void drawStats() {
+    if (!gDisp) return;
+    const kk::app::StatsView view = buildStatsView();
+    auto& d = target();
+    d.startWrite();
+    kk::app::drawStatsScreen(d, view);
     d.endWrite();
     present();
 }
@@ -4650,6 +4731,10 @@ void draw() {
         drawOutbox();
         return;
     }
+    if (gStatsActive) {
+        drawStats();
+        return;
+    }
     if (gFirmwareActive) {
         drawFirmware();
         return;
@@ -4717,7 +4802,7 @@ void drawStatus() {
     if (!gDisp || gPortalActive || gLowBatteryPrompt || gSignOutConfirm || gAboutActive ||
         gFirmwareActive || gSettingsActive || gPauseActive || gSyncScreen || gShowHome ||
         gReviewActive || gReviewSummary || gLessonListActive || gLessonEmptyActive ||
-        gLessonActive || gOutboxScreen)
+        gLessonActive || gOutboxScreen || gStatsActive)
         return;
 #ifdef KANIKEY_DEV
     if (gShowDebug) showDebug();
@@ -5726,7 +5811,7 @@ void loop() {
     if (!gPortalActive && !gNoticeActive && !gReviewActive && !gReviewSummary && !gFeedback &&
         !gLessonActive && !gLessonListActive && !gLessonEmptyActive && !gLessonQuizActive &&
         !gPauseActive && !gSettingsActive && !gAboutActive && !gOutboxScreen &&
-        !gFirmwareActive && gFirmwareStep == FirmwareStep::Idle &&
+        !gStatsActive && !gFirmwareActive && gFirmwareStep == FirmwareStep::Idle &&
         // A deep-sleep wake is a reset, so sleeping while the new image is
         // pending would roll it back; the 10-minute window bounds the wait.
         !gOtaPending && !gLowBatteryPrompt && !gAssetServerActive && sleepMs &&
