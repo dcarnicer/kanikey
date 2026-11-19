@@ -874,3 +874,41 @@ makes the start deliberate.
 local-only” decision for the batch gate, not for the `Q` practice. The batch
 quiz and the start never write review/SRS state; only the confirmed start loop
 writes, one `PUT` per item with a `lessonStarted` journal record.
+
+---
+
+## 2026-11-19 — Sectioned settings and the registry of record (CFG-01/02/03)
+
+**Decision:** Settings is an eight-section menu backed by one 47-row registry
+(39 keyed settings and 8 actions) with the IDs, labels, choices, defaults, NVS
+keys and help text from `docs/spec/03-settings.md`. `Enter`/`Right` cycle
+forward, `Left` back, `Esc` pops one level; destructive rows are locked during
+a review; `System › Reset settings` removes only registry keys (the legacy
+`order` included) and keeps the token, Wi-Fi, time zone, cache and outbox.
+
+**Why:** the flat 19-row list could not hold the round-2 settings, and every
+row had its label/value duplicated in the controller and the screen. One
+registry makes the values testable natively and lets CFG-02 add settings
+without touching the UI.
+
+**Implications:** R4 migrates `order` to `rv.first`; the six STUDY keys, L3,
+Y1–Y3, P5/P6 and M1–M7 are registry-backed. CFG-04's `?` overlay is still
+open. A stored value outside a choice list falls back to the default.
+
+---
+
+## 2026-11-19 — Feedback lists every accepted answer and a useful hint (REV-01/03)
+
+**Decision:** review and lesson-quiz feedback show every accepted meaning and
+reading, with user synonyms faint and a two-line fit, instead of one answer.
+A wrong answer shows the first sentence of the part's hint, else the user note;
+Warning keeps the checker message; the generic `Incorrect meaning`/`Incorrect
+reading` line is gone.
+
+**Why:** telling a learner that 作文 means only `Composition` when `Writing`
+and `Essay` are also accepted is misleading, and the old wrong-answer line
+spent the only free line repeating the NOT QUITE pill.
+
+**Implications:** the answer token helpers are pure and native-tested; the
+lesson quiz uses the same layout. REV-02 (typo policy) and the remaining review
+options stay open.

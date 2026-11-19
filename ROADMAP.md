@@ -747,6 +747,9 @@ round 2.
 | EXT-09 | REM-01…REM-03 | Device-local reminders and sounds | todo |
 | Complete lesson flow | LES-01, LES-02, LES-03 | Browse → batch quiz → confirmed batch start | review (2026-11-19; hardware pending) |
 | LESSON-08 | LES-04 | Lesson ordering | partial: default order done; L2 choices open |
+| Settings menu | CFG-01, CFG-02, CFG-03 | Eight sections, 47-row registry, reset | review (2026-11-19; hardware partial) |
+| Review feedback | REV-01, REV-03 | All accepted answers, synonyms, hint line | review (2026-11-19; hardware pending) |
+| Home clock | SPEED-07 | 60 s Home refresh, offline uptime | review (2026-11-19; hardware pending) |
 
 The other spec groups are tracked in `docs/spec`: ARCH (controllers, settings
 registry, local stores, screen state), FIX (01-fixes), SPEED (submission/sync),

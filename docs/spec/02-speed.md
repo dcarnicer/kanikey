@@ -10,7 +10,7 @@ The README promise is "open it, the pending review appears, type, close". Today 
 | SPEED-04 | Prefetch the review batch | P2 | M | SPEED-02, SPEED-03 | 2 (after 02/03) | review (2026-11-19: merged; auto sync + on-demand Wi-Fi; smoke partial) |
 | SPEED-05 | TLS keep-alive (spike, then implement) | P2 | L | none | 2 | todo |
 | SPEED-06 | Light sleep before deep sleep (spike first) | P2 | M | SPEED-01 (for `endReview(send)`) | 2 | todo |
-| SPEED-07 | Home updates over time | P2 | S | none | 2 | todo |
+| SPEED-07 | Home updates over time | P2 | S | none | 2 | review (2026-11-19: merged; hardware check pending) |
 
 **Implementation (2026-11-19).** SPEED-02/03/04 are merged: pure
 `SyncPlan`/`SyncSteps`, a non-modal job with at most one request per loop pass,
@@ -26,6 +26,15 @@ cache skips the sync (expected), and the first on-demand lesson/review fetch
 joins Wi-Fi. Still to check on hardware: the untrusted-clock/SNTP path, a full
 auto sync with prefetch, the manual modal screen with Enter/Esc, a short blank
 timeout, and 429/auth. Y1–Y3 stay out of the Settings menu until CFG.
+
+**Implementation (2026-11-19, SPEED-07).** Home ticks once a minute while it
+owns the screen, recomputes the due count/Next review from the cached buckets
+and redraws so the battery refreshes. `effectiveNow()` advances an untrusted
+clock with uptime anchored at the cache load and re-anchors when a sync writes
+a newer savedAt. Two new Summary tests (285 on the merged main); release
+1,586,677 B (86.5%), dev 1,654,337 B (90.2%). The hardware check (leave Home
+across a due bucket with no network/keys and watch the offline-clock line)
+remains.
 
 ### SPEED-01 — Submission policy
 

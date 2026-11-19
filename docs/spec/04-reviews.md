@@ -4,9 +4,9 @@ These twelve tasks turn the review session into a configurable, WaniKani-faithfu
 
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
-| REV-01 | Show all accepted answers on feedback | P1 | S | ARCH-01, ARCH-02 | 2 | todo |
+| REV-01 | Show all accepted answers on feedback | P1 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-02 | Typo policy | P1 | S | FIX-03, ARCH-01, ARCH-02 | 2 | todo |
-| REV-03 | Useful wrong-answer line | P2 | S | ARCH-01 | 2 | todo |
+| REV-03 | Useful wrong-answer line | P2 | S | ARCH-01 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-04 | Wrong-answer actions | P2 | M | ARCH-01, ARCH-02, ARCH-03 | 2 | todo |
 | REV-05 | Wrap up | P2 | M | ARCH-01 | 2 | todo |
 | REV-06 | Auto-advance on correct | P2 | S | ARCH-01, ARCH-02 | 2 | todo |
@@ -16,6 +16,15 @@ These twelve tasks turn the review session into a configurable, WaniKani-faithfu
 | REV-10 | Input editing | P2 | M | ARCH-01 | 2 | todo |
 | REV-11 | Richer session summary | P2 | M | ARCH-01, SPEED-01 | 2 | todo |
 | REV-12 | Minimal header | P3 | S | ARCH-01, ARCH-02 | 2 | todo |
+
+**Implementation (2026-11-19).** REV-01/03 are merged: feedback lists every
+accepted meaning/reading (kanji readings grouped by type) with synonyms faint
+and a two-line `...` fit; the lesson quiz uses the same layout. A wrong answer
+shows the first hint sentence or the user note instead of the generic
+`Incorrect ...` line; Warning keeps the checker text. 13 new tests (273 at the
+merge; 285 with CFG/SPEED-07). Release at merge 1,584,233 B (86.3%), dev
+1,651,793 B (90.0%). Hardware feedback checks (multiple meanings, grouped
+readings, hint fallback, lesson quiz) remain.
 
 ### REV-01 — Show all accepted answers on feedback
 

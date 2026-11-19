@@ -623,8 +623,20 @@ the dev image: 1,622,625 B / 1,835,008 B flash (88.4%), 96,336 B RAM (29.4%);
 - **Lesson batch smoke (LES-01/02/03).** With the automatic sync skipped, `L`
   joined Wi-Fi on demand, fetched 5 lessons and showed the `1/5` list; Enter
   opened the `1/5 p1/4` card and the batch quiz showed `LESSON QUIZ 1/5`. No
-  `[lesson] start` was sent. The real start, full quiz with mistakes, offline
-  start and 422 remain.
+  `[lesson] start` was sent. A later real batch started 5 `PUT /start` (all
+  200) and Home dropped from 120 to 115 lessons. The full quiz with mistakes,
+  offline start and 422 remain.
+- **CFG menu smoke (CFG-01/02/03).** Home → Esc showed the eight sections with
+  their counts (`Reviews 12`, `Lessons 6`, `Study 5`, `Sync & data 6`,
+  `Display & power 6`, `Reminders & sound 7`, `Account token set`, `System`);
+  Reviews showed 12 rows; `Batch size` cycled 20 → 30 with Right and back to
+  20 with Left, with the help line. Review lock/reset/origin/scroll/upgrade
+  values remain.
+- **REV feedback (REV-01/03).** 13 native tests cover the accepted tokens,
+  synonyms, grouped readings and hint fallback; the hardware feedback look
+  (multiple meanings, kanji groups, lesson quiz) remains.
+- **SPEED-07 Home clock (2026-11-19).** Two native Summary tests; the 60 s
+  Home tick and the offline-clock line still need the hardware run.
 
 Remaining hardware checks: API-02 429 (native-tested; a real 429 was not
 provoked), API-03 403 (read-only token), FIX-06 slow server, FIX-07 15-minute

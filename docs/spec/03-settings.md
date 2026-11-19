@@ -4,10 +4,21 @@ Decision D3 turns Settings into a sectioned menu backed by the ARCH-02 registry,
 
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
-| CFG-01 | Sectioned settings menu | P1 | M | ARCH-01, ARCH-02 | 2 | todo |
-| CFG-02 | Settings registry of record | P1 | M | ARCH-02 | 2 | todo |
-| CFG-03 | Reset settings to defaults | P2 | S | CFG-02 | 2 | todo |
+| CFG-01 | Sectioned settings menu | P1 | M | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware smoke partial) |
+| CFG-02 | Settings registry of record | P1 | M | ARCH-02 | 2 | review (2026-11-19: 47 rows; hardware smoke partial) |
+| CFG-03 | Reset settings to defaults | P2 | S | CFG-02 | 2 | review (2026-11-19: reset implemented; hardware pending) |
 | CFG-04 | Key help overlay | P2 | S | CFG-01 | 2 | todo |
+
+**Implementation (2026-11-19).** 47 registry rows (39 keyed, 8 actions) with
+the eight sections, help line, two-way cycling, review lock and Reset
+settings. R4 migrates `order` to `rv.first`; the six STUDY keys, L3, Y1–Y3,
+P5/P6 and M1–M7 are registry-backed; the old keys/defaults are preserved. 10
+new native tests (285 on the merged main). Builds: release 1,586,677 B
+(86.5%), dev 1,654,337 B (90.2%). Hardware: Home → Settings showed the eight
+sections and their counts; Reviews showed 12 settings; `Batch size` cycled
+20 → 30 with Right and back to 20 with Left, with the help line. Review
+lock/reset/origin/scroll/clipping, the upgrade values and the actions remain;
+CFG-04 is not implemented.
 
 ### CFG-01 — Sectioned settings menu
 

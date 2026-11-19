@@ -503,6 +503,11 @@ kept inside each level.
   under the answer show the user's meaning or reading note when one exists.
   Wrong answers keep the mistake message. `Tab` opens the full detail card
   described in §5.6.
+- **Implementation (2026-11-19, REV-01/03).** The `Answer` line lists every
+  accepted meaning/reading (kanji readings grouped by type) and the synonyms
+  in faint, with a two-line fit; a wrong answer shows the first hint sentence
+  or the user note instead of `Incorrect meaning`/`Incorrect reading`, while
+  Warning keeps the checker text. The lesson quiz uses the same layout.
 
 ### 5.6 Item detail
 
@@ -665,7 +670,9 @@ meaning/reading notes are appended to the paged card after the mnemonic.
 ![Settings](screens/settings.png)
 
 - Open with `Esc` from Home, or `Esc` in a review → Pause → Settings.
-- Today Settings is one flat list of 19 rows (7 visible, scroll bar). It covers
+- Settings is the eight-section menu: `Reviews` (12), `Lessons` (6), `Study`
+  (5), `Sync & data` (6), `Display & power` (6), `Reminders & sound` (7),
+  `Account` and `System`; the 7-row window and scroll bar stay. It covers
   brightness, the dim/blank/sleep timings, review batch and order, lesson
   batch, the three critical-item values, the three practice values, the setup
   portal, `Sync now`, `Firmware`, `About`, `Clear cache` and `Sign out`.
@@ -691,16 +698,13 @@ meaning/reading notes are appended to the paged card after the mnemonic.
   confirms, then removes the token, cache and pending outbox and keeps Wi-Fi.
 - Licenses and attributions are in `LICENSE` and `THIRD_PARTY_NOTICES.md`; the
   About header marks the app as unofficial.
-- **Planned (CFG-01…CFG-04, D3).** Settings becomes a sectioned menu with the
-  eight top-level sections `Reviews`, `Lessons`, `Study`, `Sync & data`,
-  `Display & power`, `Reminders & sound`, `Account` and `System`, backed by
-  the registry. The authoritative IDs, labels, choices, defaults and NVS keys
-  are in [`03-settings.md`](spec/03-settings.md); this file does not duplicate
-  them. CFG-03 adds `System › Reset settings` and CFG-04 a `?` key-help
-  overlay. None of the sectioned menu or the new settings is implemented yet;
-  the flat list above is current. ARCH-02 now backs the seven existing
-  numeric/toggle rows with the pure registry and one NVS cache; the six
-  STUDY-era rows still use direct getters until CFG-02 adds them. Strict-answer
+- **Implementation (2026-11-19, CFG-01/02/03).** The sectioned menu above is
+  live, backed by the 47-row registry (39 keyed, 8 actions); the authoritative
+  IDs, labels, choices, defaults and NVS keys are in
+  [`03-settings.md`](spec/03-settings.md). `System › Reset settings` is live;
+  CFG-04's `?` key-help overlay is still planned. The destructive rows
+  (`Setup portal`, `Firmware › Install update`, `Sign out`, `Clear cache`,
+  `Reset settings`) are faint and inert during a review. Strict-answer
   options belong to REV-02 (planned).
 
 ### 5.13 Outbox
