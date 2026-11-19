@@ -32,7 +32,6 @@ LessonAssignments fetchLessonAssignments(const String& token,
     }
     const size_t total = std::min(maxCandidates, lessonSubjectIds.size());
     result.assignments.reserve(total);
-    WkSessionGuard session;
     size_t pageSize = 30;
     for (size_t begin = 0; begin < total;) {
         const size_t count = std::min(pageSize, total - begin);
@@ -82,7 +81,6 @@ AssignmentBatch fetchAssignmentsForSubjects(const String& token,
         return result;
     }
     result.assignments.reserve(subjectIds.size());
-    WkSessionGuard session;
     for (size_t begin = 0; begin < subjectIds.size(); begin += batch) {
         const size_t end = std::min(subjectIds.size(), begin + batch);
         const String path = "/v2/assignments?subject_ids=" + idList(subjectIds, begin, end);
@@ -106,7 +104,6 @@ AssignmentBatch fetchAssignmentsForSubjects(const String& token,
 
 AssignmentBatch fetchPracticeAssignments(const String& token, int level, bool kanjiOnly) {
     AssignmentBatch result;
-    WkSessionGuard session;
 
     // One stage group at a time: the full apprentice set (stages 1-4) can be
     // larger than the shared 32 KB body buffer on a real account, and a
@@ -160,7 +157,6 @@ SubjectLevels fetchSubjectLevels(const String& token,
         return result;
     }
     result.levels.reserve(subjectIds.size());
-    WkSessionGuard session;
     size_t pageSize = 10;
     for (size_t begin = 0; begin < subjectIds.size();) {
         const size_t count = std::min(pageSize, subjectIds.size() - begin);
@@ -207,7 +203,6 @@ LessonBatch fetchLessonDetails(const String& token, std::vector<Assignment> assi
         return batch;
     }
     batch.subjects.reserve(batch.assignments.size());
-    WkSessionGuard session;
 
     std::vector<uint32_t> ids;
     ids.reserve(batch.assignments.size());
@@ -270,7 +265,6 @@ std::vector<Subject> fetchSubjectsByIds(const String& token, const std::vector<u
     std::vector<Subject> out;
     if (ids.empty() || batch == 0) return out;
     out.reserve(ids.size());
-    WkSessionGuard session;
     for (size_t begin = 0; begin < ids.size(); begin += batch) {
         const size_t end = std::min(ids.size(), begin + batch);
         const String path = "/v2/subjects?ids=" + idList(ids, begin, end);

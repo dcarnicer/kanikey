@@ -29,25 +29,6 @@ struct WkResponse {
 using WkMemHook = void (*)();
 void wkSetRequestHooks(WkMemHook before, WkMemHook after);
 
-// A sequence of requests on one TLS connection. While a session is active,
-// request() reuses one WiFiClientSecure with HTTP/1.1 and Connection:
-// keep-alive; wkSessionEnd() stops it. Nested begin/end pairs are allowed and
-// only the outermost end closes the socket. The `before` hook (canvas release)
-// runs before each request in the session; `after` runs once at the outer end.
-bool wkSessionBegin();
-void wkSessionEnd();
-bool wkSessionActive();
-
-// RAII form of the pair above, for a function that issues several requests.
-// Destructors do not throw, so this is safe on every return path.
-class WkSessionGuard {
-public:
-    WkSessionGuard() { wkSessionBegin(); }
-    ~WkSessionGuard() { wkSessionEnd(); }
-    WkSessionGuard(const WkSessionGuard&) = delete;
-    WkSessionGuard& operator=(const WkSessionGuard&) = delete;
-};
-
 // `path` starts with /v2/. `maxBodyBytes` bounds the String body.
 WkResponse wkGet(const String& path, const String& token, size_t maxBodyBytes,
                  uint32_t timeoutMs = 20000);

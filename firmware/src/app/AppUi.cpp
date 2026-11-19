@@ -83,11 +83,6 @@ using tgc::Key;
 using tgc::KeyEvent;
 using namespace kk::ui;
 
-// Set only when requestBefore() actually dropped the canvas. A session keeps it
-// released across requests; the single requestAfter() at wkSessionEnd() then
-// brings it back even if the caller cleared gFreeCanvasForRequest meanwhile.
-bool gCanvasReleasedForRequest = false;
-
 }  // namespace
 
 lgfx::LovyanGFX& target() {
@@ -124,20 +119,11 @@ void releaseCanvas() {
 }
 
 void requestBefore() {
-    if (!state().ui.gFreeCanvasForRequest) return;
-    if (!state().display.gCanvas) return;  // already drawing directly
-    releaseCanvas();
-    gCanvasReleasedForRequest = true;
+    if (state().ui.gFreeCanvasForRequest) releaseCanvas();
 }
 
 void requestAfter() {
-    if (!gCanvasReleasedForRequest) return;
-    // While a keep-alive sequence is open its session restores the canvas
-    // once, at wkSessionEnd(), instead of after every request.
-    if (kk::wkSessionActive()) return;
-    // Keep the flag when allocation still fails, so the next request retries
-    // exactly like the old per-request hook did.
-    if (ensureCanvas()) gCanvasReleasedForRequest = false;
+    if (state().ui.gFreeCanvasForRequest) ensureCanvas();
 }
 
 const char* keyName(Key k) {
