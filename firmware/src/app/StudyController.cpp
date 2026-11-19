@@ -451,7 +451,8 @@ void drawCriticalList() {
     view.selectedIndex = state().study.gCriticalIndex;
     auto& d = target();
     d.startWrite();
-    kk::app::drawCriticalListScreen(d, state().storage.gPack, view);
+    kk::app::drawCriticalListScreen(d, state().storage.gFontPack, state().storage.gRadicalPack,
+                                    view);
     d.endWrite();
     present();
 }

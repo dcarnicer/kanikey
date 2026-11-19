@@ -32,8 +32,8 @@ struct RadicalTestView {
 };
 
 // Draws the radical bitmap test frame into d.
-void drawRadicalTestScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
-                           const RadicalTestView& view);
+void drawRadicalTestScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
+                           kk::GlyphPack& radicalPack, const RadicalTestView& view);
 
 }  // namespace kk::app
 #endif

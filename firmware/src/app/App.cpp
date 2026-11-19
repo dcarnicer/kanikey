@@ -260,7 +260,7 @@ void onKeyImpl(const KeyEvent& e) {
     // (SETUP-09): Enter opens the on-device scan list, P opens the portal.
     if (e.down && !state().session.gShowHome && e.key == Key::Other &&
         !state().sync.gSyncing && state().storage.gSdOk &&
-        state().storage.gPack.ready() && !kk::DevWifi::hasSaved()) {
+        state().storage.gFontPack.ready() && !kk::DevWifi::hasSaved()) {
         const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
         if (c == 'p' || c == 'P') {
             startSetupPortal();
@@ -420,7 +420,7 @@ enum class BootState : uint8_t {
 
 BootState bootState() {
     if (!state().storage.gSdOk) return BootState::NoSd;
-    if (!state().storage.gPack.ready()) return BootState::NoPack;
+    if (!state().storage.gFontPack.ready()) return BootState::NoPack;
     if (!kk::DevToken::has()) return BootState::NoToken;
     if (!kk::DevWifi::hasSaved()) return BootState::NoWifi;
     if (state().sync.gSyncing) return BootState::Syncing;
@@ -682,6 +682,44 @@ bool homeOwnsScreen() {
 
 }
 
+// ONB-01: the visual packs are two files. Open the font first: the radical
+// fallback checks whether glyphs.kgp is a legacy combined pack.
+bool openFontPack(bool checkCrc) {
+    if (!state().storage.gSdOk) return false;
+    const bool ok = state().storage.gFontPack.open(SD, "/kanikey/glyphs.kgp",
+                                                   kk::PackRole::Font, checkCrc);
+    Serial.printf("[pack] font: %s\n", state().storage.gFontPack.statusLine());
+    return ok;
+}
+
+bool openRadicalPack(bool checkCrc) {
+    if (!state().storage.gSdOk) return false;
+    const bool ok = state().storage.gRadicalPack.open(SD, "/kanikey/radicals.kgp",
+                                                      kk::PackRole::Radical, checkCrc);
+    if (ok) {
+        Serial.printf("[pack] radicals: %s\n", state().storage.gRadicalPack.statusLine());
+        return true;
+    }
+    // Before ONB-01 the only file was a combined v1 pack at glyphs.kgp. Keep
+    // that card working as both roles; a v2 font pack fails the radical role
+    // check and leaves the explicit "pack missing" state for radicals.kgp.
+    const kk::GlyphPack& font = state().storage.gFontPack;
+    if (font.ready() && font.version() == kk::kGlyphPackVersion1 && font.radicalCount() > 0) {
+        const bool legacy = state().storage.gRadicalPack.open(
+            SD, "/kanikey/glyphs.kgp", kk::PackRole::Radical, checkCrc);
+        Serial.printf("[pack] radicals (v1 combined): %s\n",
+                      state().storage.gRadicalPack.statusLine());
+        return legacy;
+    }
+    Serial.printf("[pack] radicals: %s\n", state().storage.gRadicalPack.statusLine());
+    return false;
+}
+
+void openGlyphPacks(bool checkCrc) {
+    openFontPack(checkCrc);
+    openRadicalPack(checkCrc);
+}
+
 void onKey(const KeyEvent& e) { onKeyImpl(e); }
 
 void setup() {
@@ -735,10 +773,7 @@ void setup() {
     }
 
     state().storage.gSdOk = mountSd();
-    if (state().storage.gSdOk) {
-        state().storage.gPack.open(SD, "/kanikey/glyphs.kgp");
-        Serial.printf("[pack] %s\n", state().storage.gPack.statusLine());
-    }
+    if (state().storage.gSdOk) openGlyphPacks();
     if (state().storage.gFsFormatPrompt) {
         state().ui.gLastInputAt = millis();
         state().display.gDirty = true;
@@ -780,10 +815,7 @@ void loop() {
         // the new handle cannot be invalidated by the client closing.
         state().storage.gPackRecheckPending = false;
         if (!state().storage.gSdOk) state().storage.gSdOk = mountSd();
-        if (state().storage.gSdOk) {
-            state().storage.gPack.open(SD, "/kanikey/glyphs.kgp", true);
-            Serial.printf("[pack] %s\n", state().storage.gPack.statusLine());
-        }
+        if (state().storage.gSdOk) openGlyphPacks(true);
         state().display.gDirty = true;
     }
 

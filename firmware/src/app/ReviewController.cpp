@@ -200,7 +200,7 @@ void showReview() {
 
     auto& d = target();
     d.startWrite();
-    drawReviewScreen(d, state().storage.gPack, view);
+    drawReviewScreen(d, state().storage.gFontPack, state().storage.gRadicalPack, view);
     d.endWrite();
     present();
 }
@@ -227,7 +227,8 @@ void showReviewDetail() {
 
     auto& d = target();
     d.startWrite();
-    drawReviewDetailScreen(d, state().storage.gPack, view);
+    drawReviewDetailScreen(d, state().storage.gFontPack, state().storage.gRadicalPack,
+                           view);
     d.endWrite();
     present();
 }

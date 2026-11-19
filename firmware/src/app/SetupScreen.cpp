@@ -70,9 +70,10 @@ void drawSetupScreen(lgfx::LovyanGFX& d, const SetupView& view) {
         else
             drawLine(d, "Token needed: enter it on the page", 106, ui::kWarn);
         drawLine(d, view.message.size() ? view.message
-                                        : "Pack: " + view.packStatus,
-                 116, ui::kFaint, 0);
-        drawLine(d, "Enter code on page  Esc: cancel", 126, ui::kFaint, 0);
+                                        : "Font: " + view.fontPackStatus,
+                 113, ui::kFaint, 0);
+        drawLine(d, "Rad: " + view.radicalPackStatus, 121, ui::kFaint, 0);
+        drawLine(d, "Enter code on page  Esc: cancel", 128, ui::kFaint, 0);
     }
 }
 

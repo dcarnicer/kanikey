@@ -28,7 +28,8 @@ struct LessonListView {
 };
 
 // Draws the lesson list into d.
-void drawLessonListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const LessonListView& view);
+void drawLessonListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
+                          kk::GlyphPack& radicalPack, const LessonListView& view);
 
 struct LessonEmptyView {
     const char* nextReview = "--:--";
@@ -56,7 +57,8 @@ struct LessonCardView {
 };
 
 // Draws the lesson card into d.
-void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const LessonCardView& view);
+void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
+                          kk::GlyphPack& radicalPack, const LessonCardView& view);
 
 struct LessonQuizView {
     const kk::Subject* subject = nullptr;
@@ -77,7 +79,7 @@ struct LessonQuizView {
 };
 
 // Draws the lesson practice quiz into d.
-void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
-                          const LessonQuizView& view);
+void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
+                          kk::GlyphPack& radicalPack, const LessonQuizView& view);
 
 }  // namespace kk::app

@@ -22,7 +22,8 @@ struct SetupView {
     int tokenLevel = 0;
     bool tokenConfigured = false;
     std::string message;
-    std::string packStatus;
+    std::string fontPackStatus;
+    std::string radicalPackStatus;
 };
 
 // Draws the setup portal frame into d. The caller owns startWrite()/endWrite()

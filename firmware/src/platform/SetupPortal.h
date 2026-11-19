@@ -26,10 +26,13 @@ struct SetupPortalHooks {
     // Checks GET /user with `token`; fills the user name/level or `error`.
     bool (*validateToken)(const String& token, String* username, int* level,
                           String* error) = nullptr;
-    // Re-opens the SD pack after the user inserts/changes the card.
+    // Re-opens the SD packs after the user inserts/changes the card. Returns
+    // true when the font pack is ready; the radical pack is optional.
     bool (*recheckPack)() = nullptr;
-    // gPack.statusLine(), for the page and the device screen.
-    String (*packStatus)() = nullptr;
+    // gFontPack.statusLine() / gRadicalPack.statusLine(), for the page and
+    // the device screen.
+    String (*fontPackStatus)() = nullptr;
+    String (*radicalPackStatus)() = nullptr;
     // The AP page saved the home Wi-Fi: stop the AP, join it, then beginStation.
     void (*onSwitchToStation)() = nullptr;
     // The station page finished setup: stop the portal and start the app.
@@ -65,6 +68,9 @@ public:
     const char* sessionCode() const { return sessionCode_; }
     // True once after the device-visible state changed (a new unlock code).
     bool takeRedrawRequest();
+    // Two lines for the page: the font pack and the personal radical pack.
+    String fontPackStatus() const;
+    String radicalPackStatus() const;
     String packStatus() const;
 
 private:
