@@ -7,7 +7,7 @@ These twelve tasks turn the review session into a configurable, WaniKani-faithfu
 | REV-01 | Show all accepted answers on feedback | P1 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-02 | Typo policy | P1 | S | FIX-03, ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-03 | Useful wrong-answer line | P2 | S | ARCH-01 | 2 | review (2026-11-19: merged; hardware pending) |
-| REV-04 | Wrong-answer actions | P2 | M | ARCH-01, ARCH-02, ARCH-03 | 2 | todo |
+| REV-04 | Wrong-answer actions | P2 | M | ARCH-01, ARCH-02, ARCH-03 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-05 | Wrap up | P2 | M | ARCH-01 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-06 | Auto-advance on correct | P2 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-07 | Details on wrong | P3 | S | ARCH-01, ARCH-02 | 2 | todo |
@@ -59,6 +59,19 @@ including the IME raw line. `RomajiIme::backspace()` removes one kana unit
 at 64 bytes, including the serial `y` path. 15 new native tests (355 on the
 merged main); release 1,614,753 B (88.0%), dev 1,682,265 B (91.7%). The hold,
 clear, kana-unit and 64-byte checks remain on hardware.
+
+**Implementation (2026-11-19, REV-04).** With R7 `rv.wrong` On, Incorrect
+feedback accepts `C` (undo the counted mistake, mark the part correct and
+advance) and `A` (undo the mistake, ask the part again later); the compact bar
+reads `C ok  A later  Tab info`. Both use one `applyCompletion()` helper, so
+the due count, cache completion, outbox and practice journal match a normal
+answer. `undoLastIncorrect()` finds the item by assignment (subject in
+practice), decrements the matching counter and restores the failed part; the
+local journal stores C/A without changing the POST. C/A are inert on Warning
+and with R7 Off, and the help hides the two rows in that case. Seven new
+native tests (368 on the merged main); release 1,631,237 B (88.9%), dev
+1,698,625 B (92.6%). The hardware C/A, warning, bar/help and practice checks
+remain.
 
 ### REV-01 — Show all accepted answers on feedback
 

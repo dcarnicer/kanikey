@@ -726,6 +726,10 @@ A150 G143 M81 E147 B586).
 - **REV-10.** 15 native tests cover the repeat timer, the kana-aware Backspace,
   the clear path and the 64-byte cap; the hardware hold/clear/kana/paste checks
   remain.
+- **REV-04.** Seven native tests cover undo after a requeue/other part, C
+  completing an item, A requeueing unanswered and the other-part flags; the
+  journal round-trip covers C/A. The hardware C/A, warning-inert, bar/help and
+  practice checks remain.
 
 ## Round 2 hardware checks
 

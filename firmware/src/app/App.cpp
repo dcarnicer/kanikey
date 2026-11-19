@@ -732,6 +732,25 @@ void drawHelpOverlay() {
     view.rows = table.rows;
     view.count = table.count;
 
+    // REV-04: C/A only exist while R7 Wrong answer actions is On. The static
+    // feedback table carries them for the bar's full labels, so hide them from
+    // the help when the setting is off.
+    if (state().ui.gHelpScreen == kk::HelpScreen::ReviewsFeedback) {
+        int wrong = 0;
+        if (!kk::settingsGetInt("rv.wrong", &wrong) || wrong == 0) {
+            static kk::HelpEntry filtered[7];
+            size_t count = 0;
+            for (size_t i = 0; i < table.count && count < 7; ++i) {
+                if (std::strcmp(table.rows[i].keys, "C") == 0 ||
+                    std::strcmp(table.rows[i].keys, "A") == 0)
+                    continue;
+                filtered[count++] = table.rows[i];
+            }
+            view.rows = filtered;
+            view.count = count;
+        }
+    }
+
     auto& d = target();
     d.startWrite();
     kk::app::drawHelpScreen(d, view);
