@@ -418,10 +418,26 @@ card and the local quiz) and, for `KANIKEY_DEV` builds, `DebugScreens`
 `ui/Text.h` holds the shared wrapped-text helper and `ui/Widgets.h` holds the
 shared drawing widgets (`drawPill`, `trimFrontToWidth`, `drawSubjectPrompt`,
 `drawMissingGlyph`, `drawJapaneseFit`); the three glyph helpers take an
-explicit `GlyphPack`. `app/App.cpp` holds the application and session state,
-the screen adapters, the key handlers, the cache/sync/outbox/portal services,
-the serial console and the asset server; `main.cpp` only forwards `setup()`
-and `loop()` to `kk::app`.
+explicit `GlyphPack`. `app/App.cpp` is the entry point: it keeps `setup()`,
+`loop()`, the `draw()`/`onKey()` routers and the Home/Boot adapters.
+`main.cpp` only forwards `setup()` and `loop()` to `kk::app`. The shared state
+and the controllers are:
+
+| Module | Responsibility |
+|---|---|
+| `AppState.{h,cpp}` | the one `AppState` instance behind `state()`: display, storage, session, cache, review, outbox, lesson, stats, study, sync, UI, OTA, setup and dev fields |
+| `AppUi.{h,cpp}` | canvas, frame target, key names, status log, loading/notice frames and local time helpers |
+| `CacheController` | snapshot, lazy review batch, subject cache, SD mount, summary and level-up updates |
+| `SyncController` | the blocking sync flow and its screen state |
+| `OutboxController` | queue, send, reconcile and attention screen |
+| `ReviewController` | review queue, feedback, detail card, summary and stage updates |
+| `LessonController` | lesson list, card, local quiz and `PUT /start` |
+| `StatsController` | forecast, SRS, level and history pages |
+| `StudyController` | extra study menu, critical-items list and practice sessions |
+| `SettingsController` | settings, pause, low battery, About and the firmware update UI |
+| `SetupController` | first-boot setup portal and the boot retry path |
+| `PowerController` | status frame, screen wake and the idle dim/blank/sleep tick |
+| `DevConsole` | serial console and the `KANIKEY_DEV` asset server |
 
 Rule: `wk/`, `store/`, and the logic in `ui/` compile and are tested in
 PlatformIO's `native` environment without Arduino headers. It's the same
