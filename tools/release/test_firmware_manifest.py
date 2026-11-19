@@ -42,6 +42,27 @@ class FirmwareManifestTest(unittest.TestCase):
         self.assertIn("app\tcardputer-adv\tfirmware.bin\t2048\t", text)
         self.assertIn(hashlib.sha256(data).hexdigest(), text)
 
+    def test_manifest_can_publish_a_font_pack(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "firmware.bin"
+            image.write_bytes(app_image(2048))
+            pack = Path(tmp) / "glyphs.kgp"
+            pack_data = b"KKGP" + bytes(64)
+            pack.write_bytes(pack_data)
+            text = build_manifest(
+                version="v0.1.0",
+                env="cardputer-adv",
+                image=image,
+                partition_table=PARTITIONS,
+                pack=pack,
+            )
+        self.assertIn(
+            f"pack\tfont\tglyphs.kgp\t{len(pack_data)}\t"
+            f"{hashlib.sha256(pack_data).hexdigest()}\n",
+            text,
+        )
+        self.assertNotIn("pack\tfont\tglyphs.kgp\t0\t", text)
+
     def test_version_must_match_header(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             image = Path(tmp) / "firmware.bin"

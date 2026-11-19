@@ -14,7 +14,8 @@ also refuses a tag that does not match `firmware/src/Version.h`.
         --version v0.1.0 \
         --image dist/kanikey-cardputer-adv.bin \
         --out dist/kanikey-firmware.txt \
-        --check-version firmware/src/Version.h
+        --check-version firmware/src/Version.h \
+        --pack dist/glyphs.kgp
 """
 from __future__ import annotations
 
@@ -79,6 +80,8 @@ def build_manifest(
     partition_table: Path,
     check_version: Path | None = None,
     asset_name: str | None = None,
+    pack: Path | None = None,
+    pack_name: str | None = None,
 ) -> str:
     if not ENV_RE.match(env):
         raise ManifestError("environment must match [a-z0-9-]{1,31}")
@@ -106,10 +109,27 @@ def build_manifest(
     name = asset_name or image.name
     if not name or "/" in name or "\\" in name or ".." in name:
         raise ManifestError("asset name must be a plain file name")
+
+    pack_line = ""
+    if pack is not None:
+        if not pack.is_file():
+            raise ManifestError(f"no pack: {pack}")
+        pack_data = pack.read_bytes()
+        if not pack_data:
+            raise ManifestError("pack is empty")
+        pack_file = pack_name or pack.name
+        if not pack_file or "/" in pack_file or "\\" in pack_file or ".." in pack_file:
+            raise ManifestError("pack name must be a plain file name")
+        pack_line = (
+            f"pack\tfont\t{pack_file}\t{len(pack_data)}\t"
+            f"{hashlib.sha256(pack_data).hexdigest()}\n"
+        )
+
     return (
         f"{HEADER}\t{FORMAT}\n"
         f"version\t{version}\n"
         f"app\t{env}\t{name}\t{size}\t{digest}\n"
+        f"{pack_line}"
     )
 
 
@@ -127,6 +147,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--check-version", type=Path)
     parser.add_argument("--asset-name")
+    parser.add_argument(
+        "--pack",
+        type=Path,
+        help="optional font pack to publish as the manifest `pack font` record",
+    )
+    parser.add_argument("--pack-name", help="published pack file name (default: --pack name)")
     args = parser.parse_args(argv)
 
     try:
@@ -137,6 +163,8 @@ def main(argv: list[str] | None = None) -> int:
             partition_table=args.partitions,
             check_version=args.check_version,
             asset_name=args.asset_name,
+            pack=args.pack,
+            pack_name=args.pack_name,
         )
     except (ManifestError, OSError) as exc:
         print(f"firmware_manifest: {exc}", file=sys.stderr)

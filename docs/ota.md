@@ -146,7 +146,9 @@ NVS under `fwfailver` / `fwfailcnt`.
    `cardputer-adv`, writes the manifest with
    `tools/release/firmware_manifest.py` (which checks the tag against
    `Version.h` and refuses an image larger than its slot) and publishes the
-   release.
+   release. Pass `--pack dist/glyphs.kgp` to publish the public font pack and
+   emit the `pack font` record used by **Download pack**; without it the
+   manifest has no pack record and the portal hides that button.
 
 The first OTA-capable image must be installed over USB. Every later release
 can arrive over the air. The partition table already has the two slots, so no
