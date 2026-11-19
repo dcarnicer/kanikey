@@ -375,7 +375,8 @@ bool reviewAutoAdvance(uint32_t now) {
     auto& r = state().review;
     if (!r.gReviewActive || !r.gFeedback || r.gReviewDetail || r.gFeedbackCorrectAt == 0)
         return false;
-    if (state().ui.gPauseActive || state().ui.gSettingsActive || state().ui.gScreenOff)
+    if (state().ui.gPauseActive || state().ui.gSettingsActive || state().ui.gHelpActive ||
+        state().ui.gScreenOff)
         return false;
     if (r.gCheck.status != kk::AnswerStatus::Correct) return false;
     const uint32_t delayMs = reviewAdvanceDelayMs();

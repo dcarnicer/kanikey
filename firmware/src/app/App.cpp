@@ -69,6 +69,7 @@
 #include "platform/WkReview.h"
 #include "platform/WkSrsCounts.h"
 #include "wk/AnswerChecker.h"
+#include "wk/HelpTable.h"
 #include "wk/IdSample.h"
 #include "wk/LessonOrder.h"
 #include "wk/LessonQuiz.h"
@@ -88,6 +89,46 @@ using tgc::Key;
 using tgc::KeyEvent;
 using namespace kk::ui;
 
+// CFG-04: which help table the current frame offers. The order follows draw()
+// so the overlay never outlives the screen it describes; the blocking frames
+// that own the keyboard (portal, Wi-Fi setup, low battery, sign-out) and the
+// screens without a table return None.
+kk::HelpScreen helpScreenForState() {
+    if (state().ui.gNoticeActive) return kk::HelpScreen::None;
+    if (state().setup.gPortalActive) return kk::HelpScreen::None;
+    if (state().wifi.gWifiActive) return kk::HelpScreen::None;
+    if (state().ui.gLowBatteryPrompt) return kk::HelpScreen::None;
+    if (state().ui.gSignOutConfirm) return kk::HelpScreen::None;
+    if (state().ui.gAboutActive) return kk::HelpScreen::None;
+    if (state().ui.gOutboxScreen) return kk::HelpScreen::Outbox;
+    if (state().stats.gStatsActive) return kk::HelpScreen::None;
+    if (state().study.gStudyMenuActive || state().study.gCriticalListActive)
+        return kk::HelpScreen::None;
+    if (state().ota.gFirmwareActive) return kk::HelpScreen::Firmware;
+    if (state().ui.gSettingsActive) return kk::HelpScreen::Settings;
+    if (state().ui.gPauseActive) return kk::HelpScreen::None;
+    if (state().sync.gSyncScreen) return kk::HelpScreen::None;
+#ifdef KANIKEY_DEV
+    if (state().dev.gShowRadicalTest) return kk::HelpScreen::None;
+#endif
+    if (state().review.gReviewDetail) return kk::HelpScreen::None;
+    if (state().review.gReviewActive)
+        return state().review.gFeedback ? kk::HelpScreen::ReviewsFeedback
+                                        : kk::HelpScreen::ReviewsQuestion;
+    if (state().review.gReviewSummary) return kk::HelpScreen::None;
+    if (state().lesson.gLessonEmptyActive || state().lesson.gLessonStartActive ||
+        state().lesson.gLessonListActive)
+        return kk::HelpScreen::None;
+    if (state().lesson.gLessonBatchQuizActive || state().lesson.gLessonQuizActive)
+        return kk::HelpScreen::LessonQuiz;
+    if (state().lesson.gLessonActive) return kk::HelpScreen::LessonCard;
+#ifdef KANIKEY_DEV
+    if (state().dev.gShowDebug) return kk::HelpScreen::None;
+#endif
+    if (state().session.gShowHome) return kk::HelpScreen::Home;
+    return kk::HelpScreen::None;
+}
+
 void onKeyImpl(const KeyEvent& e) {
 #ifdef KANIKEY_DEV
     if (state().lesson.gDevKeyTest) {
@@ -106,6 +147,32 @@ void onKeyImpl(const KeyEvent& e) {
             state().display.gDirty = true;
         }
         return;
+    }
+    // CFG-04: the help overlay owns the keyboard while it is open. Esc closes
+    // it; every other key (down or up) is swallowed, so nothing reaches the
+    // screen underneath.
+    if (state().ui.gHelpActive) {
+        if (e.down && e.key == Key::Esc) {
+            state().ui.gHelpActive = false;
+            state().ui.gHelpScreen = kk::HelpScreen::None;
+            state().display.gDirty = true;
+        }
+        return;
+    }
+    // Shift + / is the Cardputer grid position 12,3. It arrives as Key::Right
+    // with gShift set; plain / must keep acting as Right, so match the chord,
+    // not Key::Other.
+    if (e.down && state().ui.gShift && e.x == 12 && e.y == 3) {
+        const kk::HelpScreen screen = helpScreenForState();
+        if (screen != kk::HelpScreen::None) {
+            state().ui.gHelpActive = true;
+            state().ui.gHelpScreen = screen;
+            // Like any other key on correct feedback, opening help cancels the
+            // auto-advance timer; closing returns to the same feedback.
+            state().review.gFeedbackCorrectAt = 0;
+            state().display.gDirty = true;
+            return;
+        }
     }
     if (state().wifi.gWifiActive) {
         wifiSetupKey(e);
@@ -541,7 +608,7 @@ void drawBoot() {
     present();
 }
 
-void draw() {
+void drawScreen() {
     if (state().ui.gNoticeActive) {
         drawNotice();
         return;
@@ -651,6 +718,30 @@ void draw() {
         return;
     }
     drawBoot();
+}
+
+// CFG-04: draw the static help table over the frame drawScreen() just put on
+// the canvas. The caller owns the transfer window; the underlying frame stays
+// untouched and comes back when Esc closes the overlay.
+void drawHelpOverlay() {
+    if (!state().display.gDisp) return;
+    const kk::HelpTable table = kk::helpFor(state().ui.gHelpScreen);
+    if (!table.rows || !table.count) return;
+    kk::app::HelpView view;
+    view.title = kk::helpScreenTitle(state().ui.gHelpScreen);
+    view.rows = table.rows;
+    view.count = table.count;
+
+    auto& d = target();
+    d.startWrite();
+    kk::app::drawHelpScreen(d, view);
+    d.endWrite();
+    present();
+}
+
+void draw() {
+    drawScreen();
+    if (state().ui.gHelpActive) drawHelpOverlay();
 }
 
 // True only when draw() would actually show Home. The SPEED-07 minute tick
