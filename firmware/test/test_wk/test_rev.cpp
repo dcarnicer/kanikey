@@ -146,6 +146,196 @@ static void test_auto_advance_due() {
     TEST_ASSERT_TRUE(autoAdvanceDue(2000, 2000));
 }
 
+// ------------------------------------------------------------- REV-04
+
+Subject queueKanji(uint32_t id) {
+    Subject s;
+    s.id = id;
+    s.type = SubjectType::Kanji;
+    s.level = 4;
+    s.meanings = {{"eat", true, true}};
+    s.readings = {{"たべ", true, true, ReadingType::Kunyomi}};
+    return s;
+}
+
+Subject queueRadical(uint32_t id) {
+    Subject s;
+    s.id = id;
+    s.type = SubjectType::Radical;
+    s.level = 4;
+    s.meanings = {{"ground", true, true}};
+    return s;
+}
+
+Assignment queueAssignment(uint32_t id, const Subject& subject) {
+    Assignment a;
+    a.id = id;
+    a.subjectId = subject.id;
+    a.type = subject.type;
+    a.srsStage = 3;
+    a.availableAt = 100;
+    return a;
+}
+
+void buildFiveQueue(ReviewQueue* q, std::vector<Subject>* subjects,
+                    std::vector<Assignment>* assignments, bool radicals) {
+    for (uint32_t i = 1; i <= 5; ++i) {
+        subjects->push_back(radicals ? queueRadical(i) : queueKanji(i));
+        assignments->push_back(queueAssignment(10 + i, subjects->back()));
+    }
+    q->build(*assignments, *subjects, 1000, 0);
+}
+
+static void test_undo_after_other_part() {
+    const Subject s = queueKanji(1);
+    ReviewQueue q;
+    q.build({queueAssignment(10, s)}, {s}, 1000);
+
+    const uint32_t failed = q.current()->subjectId;
+    const AnswerOutcome o = q.answer(AnswerStatus::Incorrect);
+    TEST_ASSERT_TRUE(o.counted);
+    TEST_ASSERT_EQUAL(ReviewPart::Reading, q.part());
+    TEST_ASSERT_EQUAL(1, q.current()->incorrectMeaning);
+    TEST_ASSERT_TRUE(q.current()->meaningAttempted);
+
+    TEST_ASSERT_TRUE(q.undoLastIncorrect());
+    TEST_ASSERT_EQUAL(failed, q.current()->subjectId);
+    TEST_ASSERT_EQUAL(ReviewPart::Meaning, q.part());
+    TEST_ASSERT_EQUAL(0, q.current()->incorrectMeaning);
+    TEST_ASSERT_FALSE(q.current()->meaningAttempted);
+    TEST_ASSERT_EQUAL(1, q.remaining());
+    TEST_ASSERT_EQUAL(0, q.completedCount());
+}
+
+static void test_undo_after_requeue() {
+    std::vector<Subject> subjects;
+    std::vector<Assignment> assignments;
+    ReviewQueue q;
+    buildFiveQueue(&q, &subjects, &assignments, true);
+    const uint32_t failed = q.current()->subjectId;
+
+    const AnswerOutcome o = q.answer(AnswerStatus::Incorrect);
+    TEST_ASSERT_TRUE(o.requeued);
+    TEST_ASSERT_EQUAL(5, q.remaining());
+    TEST_ASSERT_NOT_EQUAL(failed, q.current()->subjectId);
+    TEST_ASSERT_EQUAL(failed, q.queue()[ReviewQueue::kRequeueGap].subjectId);
+
+    TEST_ASSERT_TRUE(q.undoLastIncorrect());
+    TEST_ASSERT_EQUAL(failed, q.current()->subjectId);
+    TEST_ASSERT_EQUAL(ReviewPart::Meaning, q.part());
+    TEST_ASSERT_EQUAL(0, q.current()->incorrectMeaning);
+    TEST_ASSERT_FALSE(q.current()->meaningAttempted);
+    TEST_ASSERT_EQUAL(5, q.remaining());
+}
+
+static void test_undo_without_incorrect_is_noop() {
+    const Subject s = queueKanji(1);
+    ReviewQueue q;
+    q.build({queueAssignment(10, s)}, {s}, 1000);
+
+    TEST_ASSERT_FALSE(q.undoLastIncorrect());
+    TEST_ASSERT_EQUAL(ReviewPart::Meaning, q.part());
+    TEST_ASSERT_EQUAL(1, q.remaining());
+
+    q.answer(AnswerStatus::Incorrect);
+    TEST_ASSERT_TRUE(q.undoLastIncorrect());
+    TEST_ASSERT_FALSE(q.undoLastIncorrect());
+    TEST_ASSERT_EQUAL(ReviewPart::Meaning, q.part());
+}
+
+static void test_accept_marks_part_correct() {
+    const Subject s = queueKanji(1);
+    ReviewQueue q;
+    q.build({queueAssignment(10, s)}, {s}, 1000);
+
+    q.answer(AnswerStatus::Incorrect);  // meaning, part moves to reading
+    TEST_ASSERT_TRUE(q.undoLastIncorrect());
+    q.setWrongAnswerOverride('C');
+    const AnswerOutcome o = q.answer(AnswerStatus::Correct);
+
+    TEST_ASSERT_FALSE(o.completed);
+    TEST_ASSERT_EQUAL(1, q.remaining());
+    TEST_ASSERT_EQUAL(0, q.completedCount());
+    TEST_ASSERT_EQUAL(ReviewPart::Reading, q.part());
+    TEST_ASSERT_TRUE(q.current()->meaningDone);
+    TEST_ASSERT_TRUE(q.current()->meaningAttempted);
+    TEST_ASSERT_EQUAL(0, q.current()->incorrectMeaning);
+    TEST_ASSERT_EQUAL_CHAR('C', q.current()->wrongAnswerOverride);
+}
+
+static void test_accept_completes_when_other_part_done() {
+    const Subject s = queueKanji(1);
+    ReviewQueue q;
+    q.setMeaningFirst(false);
+    q.build({queueAssignment(10, s)}, {s}, 1000);
+
+    AnswerOutcome o = q.answer(AnswerStatus::Correct);  // reading done
+    TEST_ASSERT_EQUAL(ReviewPart::Meaning, q.part());
+    o = q.answer(AnswerStatus::Incorrect);  // failed meaning requeues the item
+    TEST_ASSERT_TRUE(o.requeued);
+    TEST_ASSERT_EQUAL(1, q.remaining());
+    TEST_ASSERT_TRUE(q.current()->readingDone);
+    TEST_ASSERT_EQUAL(1, q.current()->incorrectMeaning);
+
+    TEST_ASSERT_TRUE(q.undoLastIncorrect());
+    q.setWrongAnswerOverride('C');
+    o = q.answer(AnswerStatus::Correct);
+
+    TEST_ASSERT_TRUE(o.completed);
+    TEST_ASSERT_TRUE(q.empty());
+    TEST_ASSERT_EQUAL(1, q.completedCount());
+    const SessionItem& done = q.completed().front();
+    TEST_ASSERT_TRUE(done.meaningDone);
+    TEST_ASSERT_TRUE(done.readingDone);
+    TEST_ASSERT_EQUAL(0, done.incorrectMeaning);
+    TEST_ASSERT_EQUAL_CHAR('C', done.wrongAnswerOverride);
+}
+
+static void test_ask_again_requeues_unanswered() {
+    std::vector<Subject> subjects;
+    std::vector<Assignment> assignments;
+    ReviewQueue q;
+    buildFiveQueue(&q, &subjects, &assignments, false);
+    const uint32_t failed = q.current()->subjectId;
+
+    q.answer(AnswerStatus::Incorrect);  // meaning, part moves to reading
+    TEST_ASSERT_TRUE(q.undoLastIncorrect());
+    q.setWrongAnswerOverride('A');
+    q.askAgain();
+
+    TEST_ASSERT_EQUAL(5, q.remaining());
+    TEST_ASSERT_NOT_EQUAL(failed, q.current()->subjectId);
+    TEST_ASSERT_EQUAL(failed, q.queue()[ReviewQueue::kRequeueGap].subjectId);
+    const SessionItem& later = q.queue()[ReviewQueue::kRequeueGap];
+    TEST_ASSERT_EQUAL(0, later.incorrectMeaning);
+    TEST_ASSERT_EQUAL(0, later.incorrectReading);
+    TEST_ASSERT_FALSE(later.meaningDone);
+    TEST_ASSERT_FALSE(later.readingDone);
+    TEST_ASSERT_FALSE(later.meaningAttempted);
+    TEST_ASSERT_FALSE(later.readingAttempted);
+    TEST_ASSERT_EQUAL_CHAR('A', later.wrongAnswerOverride);
+}
+
+static void test_ask_again_keeps_other_part_done() {
+    const Subject s = queueKanji(1);
+    ReviewQueue q;
+    q.build({queueAssignment(10, s)}, {s}, 1000);
+
+    q.answer(AnswerStatus::Correct);  // meaning done
+    q.answer(AnswerStatus::Incorrect);  // reading fails
+    TEST_ASSERT_TRUE(q.undoLastIncorrect());
+    q.setWrongAnswerOverride('A');
+    q.askAgain();
+
+    TEST_ASSERT_EQUAL(1, q.remaining());
+    TEST_ASSERT_EQUAL(ReviewPart::Reading, q.part());
+    TEST_ASSERT_TRUE(q.current()->meaningDone);
+    TEST_ASSERT_FALSE(q.current()->readingDone);
+    TEST_ASSERT_EQUAL(0, q.current()->incorrectReading);
+    TEST_ASSERT_FALSE(q.current()->readingAttempted);
+    TEST_ASSERT_EQUAL_CHAR('A', q.current()->wrongAnswerOverride);
+}
+
 }  // namespace
 
 void run_rev_tests() {
@@ -163,4 +353,11 @@ void run_rev_tests() {
     RUN_TEST(test_first_sentence_trims_leading_space);
     RUN_TEST(test_first_sentence_empty);
     RUN_TEST(test_auto_advance_due);
+    RUN_TEST(test_undo_after_other_part);
+    RUN_TEST(test_undo_after_requeue);
+    RUN_TEST(test_undo_without_incorrect_is_noop);
+    RUN_TEST(test_accept_marks_part_correct);
+    RUN_TEST(test_accept_completes_when_other_part_done);
+    RUN_TEST(test_ask_again_requeues_unanswered);
+    RUN_TEST(test_ask_again_keeps_other_part_done);
 }

@@ -248,7 +248,10 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     d.setTextSize(1);
     d.setTextColor(ui::kFaint, ui::kBg);
     if (view.feedback)
-        d.drawString(view.showDetailHint ? "Enter: next  Tab: details" : "Enter: next", 6, 125);
+        d.drawString(view.wrongShortcuts
+                         ? "C ok  A later  Tab info"
+                         : view.showDetailHint ? "Enter: next  Tab: details" : "Enter: next",
+                     6, 125);
     else
         d.drawString("Enter: check", 6, 125);
     d.setTextDatum(lgfx::top_right);
