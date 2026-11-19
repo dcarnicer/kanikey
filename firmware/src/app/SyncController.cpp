@@ -846,6 +846,64 @@ void formatLevelProgressLine(char* out, size_t n) {
     }
 }
 
+namespace {
+
+// Today's account preference: a fresh sample per session for Shuffled, else
+// the summary's oldest-first order (lower_levels_first is applied by build()).
+std::vector<uint32_t> accountOrderIds(const std::vector<uint32_t>& due, size_t limit) {
+    if (state().session.gHaveUser &&
+        state().session.gUser.reviewsOrder == kk::ReviewOrder::Shuffled)
+        return kk::sampleIds(due, limit, esp_random());
+    std::vector<uint32_t> ids;
+    ids.assign(due.begin(), due.begin() + std::min(due.size(), limit));
+    return ids;
+}
+
+// subject_id -> level from the ARCH-03 subject catalog (one 26-byte read per
+// subject, no SD write), with the in-memory review batch as a fallback.
+std::vector<kk::ReviewLevel> dueSubjectLevels(
+    const std::vector<kk::Assignment>& assignments) {
+    std::vector<kk::ReviewLevel> levels;
+    levels.reserve(assignments.size());
+    const bool catalogOk = state().storage.gSdOk && kk::catalogOpen(SD, currentAccountKey());
+    size_t known = 0;
+    for (const kk::Assignment& a : assignments) {
+        uint8_t level = 0;
+        if (catalogOk) kk::catalogLevel(SD, a.subjectId, &level);
+        if (!level) {
+            for (const kk::Subject& s : state().cache.gBatch.subjects) {
+                if (s.id == a.subjectId) {
+                    level = s.level;
+                    break;
+                }
+            }
+        }
+        if (level) ++known;
+        levels.push_back({a.subjectId, level});
+    }
+    Serial.printf("[review] levels known %u/%u\n", static_cast<unsigned>(known),
+                  static_cast<unsigned>(assignments.size()));
+    return levels;
+}
+
+// One keep-alive session across the due-metadata fetch and the batch fetch
+// (SPEED-05). Account passes false so its request shape stays unchanged.
+struct OrderFetchSession {
+    explicit OrderFetchSession(bool enabled) : enabled_(enabled) {
+        if (enabled_) kk::wkSessionBegin();
+    }
+    ~OrderFetchSession() {
+        if (enabled_) kk::wkSessionEnd();
+    }
+    OrderFetchSession(const OrderFetchSession&) = delete;
+    OrderFetchSession& operator=(const OrderFetchSession&) = delete;
+
+private:
+    bool enabled_;
+};
+
+}  // namespace
+
 bool runBatch() {
     if (!state().session.gHaveSummary) {
         Serial.println("[review] no summary yet");
@@ -862,20 +920,98 @@ bool runBatch() {
     const uint32_t now = effectiveNow();
     const std::vector<uint32_t> due = state().session.gSummary.dueSubjectIds(now, 1000);
     // The summary keeps up to 1000 ids per bucket, so the batch can be chosen
-    // from every due item. lower_levels_first keeps the summary order; the
-    // shuffled order takes a fresh sample per session.
+    // from every due item. Account keeps today's summary/sample order; every
+    // other R2 strategy fetches the due assignments' metadata first and orders
+    // the frozen due set before the limit is applied.
+    const kk::ReviewOrderStrategy strategy = reviewOrderStrategy();
+    const bool typeOrder = reviewTypeOrderEnabled();
+    const bool explicitOrder = strategy != kk::ReviewOrderStrategy::Account;
     std::vector<uint32_t> ids;
-    if (state().session.gHaveUser && state().session.gUser.reviewsOrder == kk::ReviewOrder::Shuffled) {
-        ids = kk::sampleIds(due, limit, esp_random());
-    } else {
-        ids.assign(due.begin(), due.begin() + std::min(due.size(), limit));
-    }
-    Serial.printf("[review] %u due, %u chosen\n", static_cast<unsigned>(due.size()),
-                  static_cast<unsigned>(ids.size()));
     const bool hadBatch = !state().cache.gBatch.assignments.empty();
-    state().ui.gFreeCanvasForRequest = true;
-    kk::ReviewBatch batch = kk::fetchReviewBatch(kk::DevToken::load(), ids, now, limit);
-    state().ui.gFreeCanvasForRequest = false;
+    kk::ReviewBatch batch;
+    {
+        OrderFetchSession orderSession(explicitOrder);
+        state().ui.gFreeCanvasForRequest = true;
+        if (!explicitOrder) {
+            ids = accountOrderIds(due, limit);
+            Serial.printf("[review] %u due, %u chosen (account %s)\n",
+                          static_cast<unsigned>(due.size()), static_cast<unsigned>(ids.size()),
+                          state().session.gHaveUser &&
+                                  state().session.gUser.reviewsOrder ==
+                                      kk::ReviewOrder::LowerLevelsFirst
+                              ? "lower_levels_first"
+                              : "shuffled");
+        } else {
+            const uint32_t heapBefore = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+            const uint32_t largestBefore = heap_caps_get_largest_free_block(
+                MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+            Serial.printf("[review] order %s: due fetch for %u ids, heap %u free/%u largest\n",
+                          kk::reviewOrderStrategyName(strategy),
+                          static_cast<unsigned>(due.size()), static_cast<unsigned>(heapBefore),
+                          static_cast<unsigned>(largestBefore));
+            bool ordered = false;
+            {
+                kk::DueAssignments found =
+                    kk::fetchDueAssignments(kk::DevToken::load(), due, now);
+                // A locally completed review is still in the outbox until the
+                // POST succeeds; never choose it again in this session.
+                if (found.ok) {
+                    found.assignments.erase(
+                        std::remove_if(found.assignments.begin(), found.assignments.end(),
+                                       [](const kk::Assignment& a) {
+                                           return outboxHasAssignment(a.id);
+                                       }),
+                        found.assignments.end());
+                }
+                Serial.printf(
+                    "[review] due fetch: %u requests (page %u), %u bytes, %u assignments\n",
+                    static_cast<unsigned>(found.requests), static_cast<unsigned>(found.pageSize),
+                    static_cast<unsigned>(found.bytes),
+                    static_cast<unsigned>(found.assignments.size()));
+                if (found.ok && !found.assignments.empty()) {
+                    std::vector<kk::ReviewLevel> levels;
+                    if (strategy == kk::ReviewOrderStrategy::LowestLevelFirst ||
+                        strategy == kk::ReviewOrderStrategy::CurrentLevelFirst)
+                        levels = dueSubjectLevels(found.assignments);
+                    ids = kk::selectDueSubjectIds(found.assignments, levels, strategy,
+                                                  currentReviewLevel(), typeOrder, now, limit,
+                                                  esp_random());
+                    ordered = !ids.empty();
+                } else {
+                    Serial.printf("[review] due fetch failed: %s\n",
+                                  found.error.length()
+                                      ? found.error.c_str()
+                                      : "no due assignments outside the outbox");
+                }
+                Serial.printf("[review] due fetch heap %u -> %u free, %u -> %u largest\n",
+                              static_cast<unsigned>(heapBefore),
+                              static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+                              static_cast<unsigned>(largestBefore),
+                              static_cast<unsigned>(heap_caps_get_largest_free_block(
+                                  MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
+            }
+            // The metadata vector is gone before the batch's TLS request; only
+            // the selected ids (at most the batch size) stay alive.
+            Serial.printf("[review] due metadata released, heap %u free/%u largest\n",
+                          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+                          static_cast<unsigned>(heap_caps_get_largest_free_block(
+                              MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
+            if (!ordered) {
+                // A failed or empty due fetch must not block the session: start
+                // with the account order instead.
+                ids = accountOrderIds(due, limit);
+                Serial.printf("[review] order fallback to account: %u chosen\n",
+                              static_cast<unsigned>(ids.size()));
+            } else {
+                Serial.printf("[review] %u due, %u chosen by %s\n",
+                              static_cast<unsigned>(due.size()),
+                              static_cast<unsigned>(ids.size()),
+                              kk::reviewOrderStrategyName(strategy));
+            }
+        }
+        batch = kk::fetchReviewBatch(kk::DevToken::load(), ids, now, limit);
+        state().ui.gFreeCanvasForRequest = false;
+    }
     if (!batch.ok) {
         Serial.printf("[review] batch failed: %s\n", batch.error.c_str());
         snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "Batch: %s", batch.error.c_str());

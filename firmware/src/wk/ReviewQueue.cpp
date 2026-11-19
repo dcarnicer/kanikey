@@ -1,6 +1,7 @@
 #include "wk/ReviewQueue.h"
 
 #include <algorithm>
+#include <numeric>
 #include <random>
 
 namespace kk {
@@ -18,7 +19,190 @@ bool due(const Assignment& a, uint32_t now) {
            a.availableAt != 0 && a.availableAt <= now;
 }
 
+// R3: radicals, then kanji, then vocabulary/kanji-vocabulary.
+uint8_t typeRank(SubjectType type) {
+    switch (type) {
+        case SubjectType::Radical:
+            return 0;
+        case SubjectType::Kanji:
+            return 1;
+        case SubjectType::Vocabulary:
+        case SubjectType::KanaVocabulary:
+            return 2;
+    }
+    return 2;
+}
+
+uint8_t findLevel(const std::vector<ReviewLevel>& levels, uint32_t subjectId) {
+    for (const ReviewLevel& entry : levels)
+        if (entry.subjectId == subjectId) return entry.level;
+    return 0;
+}
+
+// The fields the R2 comparators need, shared by selectDueSubjectIds() and
+// build() so the selection and the in-batch order cannot drift.
+struct OrderKey {
+    uint8_t level = 0;
+    uint8_t srsStage = 0;
+    uint32_t availableAt = 0;
+    SubjectType type = SubjectType::Kanji;
+    uint32_t assignmentId = 0;
+};
+
+int primaryCompare(const OrderKey& a, const OrderKey& b, ReviewOrderStrategy strategy,
+                   uint8_t currentLevel) {
+    switch (strategy) {
+        case ReviewOrderStrategy::LowestLevelFirst: {
+            // Unknown level (0) sorts after every real WaniKani level.
+            const uint8_t al = a.level ? a.level : 0xFF;
+            const uint8_t bl = b.level ? b.level : 0xFF;
+            if (al != bl) return al < bl ? -1 : 1;
+            return 0;
+        }
+        case ReviewOrderStrategy::CurrentLevelFirst: {
+            // 0 = the current level, 1 = other known levels, 2 = unknown.
+            const auto group = [currentLevel](uint8_t level) -> uint8_t {
+                if (level == 0) return 2;
+                if (currentLevel != 0 && level == currentLevel) return 0;
+                return 1;
+            };
+            const uint8_t ag = group(a.level);
+            const uint8_t bg = group(b.level);
+            if (ag != bg) return ag < bg ? -1 : 1;
+            if (a.level != b.level) return a.level < b.level ? -1 : 1;
+            return 0;
+        }
+        case ReviewOrderStrategy::SrsAscending:
+            if (a.srsStage != b.srsStage) return a.srsStage < b.srsStage ? -1 : 1;
+            return 0;
+        case ReviewOrderStrategy::SrsDescending:
+            if (a.srsStage != b.srsStage) return a.srsStage > b.srsStage ? -1 : 1;
+            return 0;
+        case ReviewOrderStrategy::OldestAvailableFirst:
+            if (a.availableAt != b.availableAt)
+                return a.availableAt < b.availableAt ? -1 : 1;
+            return 0;
+        case ReviewOrderStrategy::Account:
+        case ReviewOrderStrategy::Random:
+            return 0;
+    }
+    return 0;
+}
+
+// Primary order, then R3 type grouping, then the assignment id so a fetched
+// page in server order gets the same order as the selected id list.
+bool orderBefore(const OrderKey& a, const OrderKey& b, ReviewOrderStrategy strategy,
+                 uint8_t currentLevel, bool typeOrder) {
+    const int primary = primaryCompare(a, b, strategy, currentLevel);
+    if (primary != 0) return primary < 0;
+    if (typeOrder) {
+        const uint8_t ar = typeRank(a.type);
+        const uint8_t br = typeRank(b.type);
+        if (ar != br) return ar < br;
+    }
+    return a.assignmentId < b.assignmentId;
+}
+
+OrderKey keyOf(const SessionItem& item) {
+    OrderKey key;
+    key.level = item.level;
+    key.srsStage = item.srsStage;
+    key.availableAt = item.availableAt;
+    key.type = item.type;
+    key.assignmentId = item.assignmentId;
+    return key;
+}
+
 }  // namespace
+
+ReviewOrderStrategy reviewOrderStrategyFromValue(int value) {
+    if (value < 0 || value > static_cast<int>(ReviewOrderStrategy::OldestAvailableFirst))
+        return ReviewOrderStrategy::Account;
+    return static_cast<ReviewOrderStrategy>(value);
+}
+
+const char* reviewOrderStrategyName(ReviewOrderStrategy strategy) {
+    switch (strategy) {
+        case ReviewOrderStrategy::Account:
+            return "account";
+        case ReviewOrderStrategy::Random:
+            return "random";
+        case ReviewOrderStrategy::LowestLevelFirst:
+            return "lowest_level_first";
+        case ReviewOrderStrategy::CurrentLevelFirst:
+            return "current_level_first";
+        case ReviewOrderStrategy::SrsAscending:
+            return "srs_ascending";
+        case ReviewOrderStrategy::SrsDescending:
+            return "srs_descending";
+        case ReviewOrderStrategy::OldestAvailableFirst:
+            return "oldest_available_first";
+    }
+    return "account";
+}
+
+std::vector<uint32_t> selectDueSubjectIds(const std::vector<Assignment>& assignments,
+                                          const std::vector<ReviewLevel>& levels,
+                                          ReviewOrderStrategy strategy, uint8_t currentLevel,
+                                          bool typeOrder, uint32_t now, size_t limit,
+                                          uint32_t seed) {
+    const bool usesLevels = strategy == ReviewOrderStrategy::LowestLevelFirst ||
+                            strategy == ReviewOrderStrategy::CurrentLevelFirst;
+    // Indices into the caller's assignment vector: the due metadata stays where
+    // it is, so the extra copy is ~5 bytes per due item on the device.
+    std::vector<size_t> rows;
+    std::vector<uint8_t> rowLevels;
+    rows.reserve(assignments.size());
+    rowLevels.reserve(assignments.size());
+    for (size_t i = 0; i < assignments.size(); ++i) {
+        const Assignment& a = assignments[i];
+        if (!due(a, now)) continue;
+        rows.push_back(i);
+        rowLevels.push_back(usesLevels ? findLevel(levels, a.subjectId) : 0);
+    }
+
+    const auto key = [&assignments, &rows, &rowLevels](size_t row) {
+        const Assignment& a = assignments[rows[row]];
+        OrderKey out;
+        out.level = rowLevels[row];
+        out.srsStage = a.srsStage;
+        out.availableAt = a.availableAt;
+        out.type = a.type;
+        out.assignmentId = a.id;
+        return out;
+    };
+
+    std::vector<size_t> order(rows.size());
+    std::iota(order.begin(), order.end(), size_t{0});
+    if (strategy == ReviewOrderStrategy::Random) {
+        std::mt19937 rng(seed);
+        std::shuffle(order.begin(), order.end(), rng);
+        if (typeOrder) {
+            std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+                return typeRank(key(a).type) < typeRank(key(b).type);
+            });
+        }
+    } else if (strategy == ReviewOrderStrategy::Account) {
+        // The caller keeps the account's summary/sample order; only R3 is
+        // applied here (build() owns the Account shuffle).
+        if (typeOrder) {
+            std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+                return typeRank(key(a).type) < typeRank(key(b).type);
+            });
+        }
+    } else {
+        std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+            return orderBefore(key(a), key(b), strategy, currentLevel, typeOrder);
+        });
+    }
+
+    const size_t count = limit == 0 ? order.size() : std::min(limit, order.size());
+    std::vector<uint32_t> ids;
+    ids.reserve(count);
+    for (size_t i = 0; i < count; ++i)
+        ids.push_back(assignments[rows[order[i]]].subjectId);
+    return ids;
+}
 
 bool autoAdvanceDue(uint32_t delayMs, uint32_t elapsedMs) {
     return delayMs > 0 && elapsedMs >= delayMs;
@@ -45,17 +229,46 @@ void ReviewQueue::build(const std::vector<Assignment>& assignments,
         it.type = a.type;
         it.level = s->level;
         it.srsStage = a.srsStage;
+        it.availableAt = a.availableAt;
         it.needsMeaning = true;
         it.needsReading = s->needsReading();
         items.push_back(it);
     }
 
     rng_.seed(seed);
-    std::shuffle(items.begin(), items.end(), rng_);
-    if (lowerLevelsFirst_) {
+    if (orderStrategy_ == ReviewOrderStrategy::Account) {
+        // Today's account preference: shuffle, optionally lower levels first
+        // with the shuffle kept inside each level (R2/R3 default path).
+        std::shuffle(items.begin(), items.end(), rng_);
+        if (lowerLevelsFirst_) {
+            std::stable_sort(items.begin(), items.end(),
+                             [this](const SessionItem& a, const SessionItem& b) {
+                                 if (a.level != b.level) return a.level < b.level;
+                                 if (typeOrder_)
+                                     return typeRank(a.type) < typeRank(b.type);
+                                 return false;
+                             });
+        } else if (typeOrder_) {
+            std::stable_sort(items.begin(), items.end(),
+                             [](const SessionItem& a, const SessionItem& b) {
+                                 return typeRank(a.type) < typeRank(b.type);
+                             });
+        }
+    } else if (orderStrategy_ == ReviewOrderStrategy::Random) {
+        std::shuffle(items.begin(), items.end(), rng_);
+        if (typeOrder_) {
+            std::stable_sort(items.begin(), items.end(),
+                             [](const SessionItem& a, const SessionItem& b) {
+                                 return typeRank(a.type) < typeRank(b.type);
+                             });
+        }
+    } else {
+        // The selected ids may come back in server order: re-apply the same
+        // comparator instead of trusting the fetched order.
         std::stable_sort(items.begin(), items.end(),
-                         [](const SessionItem& a, const SessionItem& b) {
-                             return a.level < b.level;
+                         [this](const SessionItem& a, const SessionItem& b) {
+                             return orderBefore(keyOf(a), keyOf(b), orderStrategy_,
+                                                currentLevel_, typeOrder_);
                          });
     }
     if (!criticalSubjectIds_.empty()) {

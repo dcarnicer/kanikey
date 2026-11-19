@@ -14,6 +14,40 @@ namespace kk {
 
 enum class ReviewPart : uint8_t { None, Meaning, Reading };
 
+// R2 `rv.order` (03-settings.md). The values match the NVS choice values:
+// Account keeps the `/user` presentation order and makes no extra request;
+// every other strategy orders the frozen due set before the batch limit.
+enum class ReviewOrderStrategy : uint8_t {
+    Account = 0,
+    Random = 1,
+    LowestLevelFirst = 2,
+    CurrentLevelFirst = 3,
+    SrsAscending = 4,
+    SrsDescending = 5,
+    OldestAvailableFirst = 6,
+};
+
+// Clamps an NVS value to a known strategy; anything else is Account.
+ReviewOrderStrategy reviewOrderStrategyFromValue(int value);
+const char* reviewOrderStrategyName(ReviewOrderStrategy strategy);
+
+// subject_id -> level for the level strategies. Subjects missing from the
+// list (or with level 0) are unknown and sort last.
+struct ReviewLevel {
+    uint32_t subjectId = 0;
+    uint8_t level = 0;
+};
+
+// Pure selection over the frozen due set: filters due(), orders the items,
+// applies R3 type grouping and returns at most `limit` subject ids (0 = all).
+// `levels` is only read by the level strategies. Random uses `seed`; the other
+// strategies are deterministic and do not depend on `seed`.
+std::vector<uint32_t> selectDueSubjectIds(const std::vector<Assignment>& assignments,
+                                          const std::vector<ReviewLevel>& levels,
+                                          ReviewOrderStrategy strategy, uint8_t currentLevel,
+                                          bool typeOrder, uint32_t now, size_t limit,
+                                          uint32_t seed);
+
 // REV-06: true when an auto-advance delay is set and the feedback frame has
 // been visible for at least that long. A zero delay never advances.
 bool autoAdvanceDue(uint32_t delayMs, uint32_t elapsedMs);
@@ -24,6 +58,8 @@ struct SessionItem {
     SubjectType type = SubjectType::Kanji;
     uint8_t level = 0;
     uint8_t srsStage = 0;
+    // WaniKani `available_at` (Unix seconds); 0 = null. REV-08 orders by it.
+    uint32_t availableAt = 0;
     bool needsMeaning = true;
     bool needsReading = false;
     bool meaningDone = false;
@@ -80,8 +116,21 @@ public:
 
     // WaniKani `reviews_presentation_order`. Call before build(); shuffled is
     // the default. lower_levels_first keeps the shuffle inside each level.
+    // Only the Account strategy reads it.
     void setLowerLevelsFirst(bool lowerLevelsFirst) { lowerLevelsFirst_ = lowerLevelsFirst; }
     bool lowerLevelsFirst() const { return lowerLevelsFirst_; }
+
+    // REV-08: R2 selects the due-set order. Call before build(); Account is the
+    // default and reproduces the shuffle/lower-levels behaviour above.
+    void setOrderStrategy(ReviewOrderStrategy strategy) { orderStrategy_ = strategy; }
+    ReviewOrderStrategy orderStrategy() const { return orderStrategy_; }
+    // R2 "Current level first": the account's current level.
+    void setCurrentLevel(uint8_t level) { currentLevel_ = level; }
+    uint8_t currentLevel() const { return currentLevel_; }
+    // R3: radicals, then kanji, then vocabulary/kanji-vocabulary inside the
+    // chosen order.
+    void setTypeOrder(bool typeOrder) { typeOrder_ = typeOrder; }
+    bool typeOrder() const { return typeOrder_; }
 
     // Critical subjects move before the rest, preserving the normal order
     // inside both groups. Call before build(); the list is cleared by build.
@@ -138,6 +187,9 @@ private:
     ReviewPart lastIncorrectPart_ = ReviewPart::None;
     bool meaningFirst_ = true;
     bool lowerLevelsFirst_ = false;
+    ReviewOrderStrategy orderStrategy_ = ReviewOrderStrategy::Account;
+    uint8_t currentLevel_ = 0;
+    bool typeOrder_ = false;
     bool backToBack_ = true;
     std::mt19937 rng_{0x9E3779B9u};
     std::vector<uint32_t> criticalSubjectIds_;

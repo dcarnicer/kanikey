@@ -3,10 +3,17 @@
 #include <cstdint>
 
 #include "app/AppState.h"
+#include "wk/ReviewQueue.h"
 #include "wk/ReviewResponse.h"
 #include "wk/Types.h"
 
 namespace kk::app {
+
+// REV-08: R2/R3 as the current settings describe them, plus the account's
+// current level for "Current level first". Used by startReview()/runBatch().
+kk::ReviewOrderStrategy reviewOrderStrategy();
+bool reviewTypeOrderEnabled();
+uint8_t currentReviewLevel();
 
 const kk::Subject* subjectById(uint32_t id);
 int detailPageCount(const kk::Subject& s);
