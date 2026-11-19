@@ -64,11 +64,18 @@ void drawFirmwareScreen(lgfx::LovyanGFX& d, const FirmwareView& view) {
             d.fillRect(4, y - 2, 2, 12, ui::kAccent);
         }
         d.setTextFont(0);
-        d.setTextColor(focus ? ui::kText : ui::kDim, focus ? ui::kSurfaceHi : ui::kBg);
-        d.drawString(view.rows[i].label.c_str(), 10, y);
-        d.setTextDatum(lgfx::top_right);
-        d.setTextColor(focus ? ui::kAccentHi : ui::kFaint,
-                       focus ? ui::kSurfaceHi : ui::kBg);
+        if (view.rows[i].disabled) {
+            d.setTextColor(ui::kFaint, focus ? ui::kSurfaceHi : ui::kBg);
+            d.drawString(view.rows[i].label.c_str(), 10, y);
+            d.setTextDatum(lgfx::top_right);
+            d.setTextColor(ui::kFaint, focus ? ui::kSurfaceHi : ui::kBg);
+        } else {
+            d.setTextColor(focus ? ui::kText : ui::kDim, focus ? ui::kSurfaceHi : ui::kBg);
+            d.drawString(view.rows[i].label.c_str(), 10, y);
+            d.setTextDatum(lgfx::top_right);
+            d.setTextColor(focus ? ui::kAccentHi : ui::kFaint,
+                           focus ? ui::kSurfaceHi : ui::kBg);
+        }
         d.drawString(view.rows[i].value.c_str(), 228, y);
         d.setTextDatum(lgfx::top_left);
     }

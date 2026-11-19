@@ -59,7 +59,7 @@ void settingValueLabel(const SettingDef& def, int value, char* buf, size_t size)
     if (!buf || size == 0) return;
     if (def.kind == SettingKind::Action || def.kind == SettingKind::Submenu ||
         def.kind == SettingKind::Info) {
-        buf[0] = 0;
+        std::snprintf(buf, size, "%s", def.valueText ? def.valueText : "");
         return;
     }
     const SettingChoice* choice = findChoice(def, value);
@@ -78,6 +78,12 @@ size_t settingsInSection(const char* section, const SettingDef** out, size_t max
     for (size_t i = 0; i < count && written < max; ++i)
         if (std::strcmp(all[i].section, section) == 0) out[written++] = &all[i];
     return written;
+}
+
+int settingFirstQuestionValue(bool hasFirst, int first, bool hasOrder, int order) {
+    if (hasFirst) return first;
+    if (hasOrder) return order == 0 ? 0 : 1;
+    return 1;
 }
 
 void SettingsCache::load(Reader reader, void* context) {

@@ -14,6 +14,7 @@ namespace kk::app {
 struct FirmwareRowView {
     std::string label;
     std::string value;
+    bool disabled = false;
 };
 
 struct FirmwareView {

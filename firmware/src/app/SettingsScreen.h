@@ -14,11 +14,14 @@ namespace kk::app {
 struct SettingsRowView {
     std::string label;
     std::string value;
+    bool disabled = false;
 };
 
 struct SettingsView {
     std::vector<SettingsRowView> rows;
     int selectedIndex = 0;
+    std::string title;
+    std::string help;
     std::string note;
     uint16_t noteColor = ui::kFaint;
 };

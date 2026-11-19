@@ -16,7 +16,7 @@ void drawSettingsScreen(lgfx::LovyanGFX& d, const SettingsView& view) {
     d.drawString("KaniKey", 6, 2);
     d.setTextFont(1);
     d.setTextColor(ui::kDim, ui::kBg);
-    d.drawString("settings", 7, 22);
+    d.drawString(view.title.empty() ? "settings" : view.title.c_str(), 7, 22);
     d.setTextFont(0);
     d.setTextColor(ui::kFaint, ui::kBg);
     d.setTextDatum(lgfx::top_right);
@@ -43,11 +43,19 @@ void drawSettingsScreen(lgfx::LovyanGFX& d, const SettingsView& view) {
         }
         d.setTextFont(0);
         d.setTextSize(1);
-        d.setTextColor(focus ? ui::kText : ui::kDim, focus ? ui::kSurfaceHi : ui::kBg);
-        d.drawString(item.label.c_str(), 10, y);
-        d.setTextDatum(lgfx::top_right);
-        d.setTextColor(focus ? ui::kAccentHi : ui::kFaint,
-                       focus ? ui::kSurfaceHi : ui::kBg);
+        if (item.disabled) {
+            // Focusable but inert: keep the bar for the cursor, fade the text.
+            d.setTextColor(ui::kFaint, focus ? ui::kSurfaceHi : ui::kBg);
+            d.drawString(item.label.c_str(), 10, y);
+            d.setTextDatum(lgfx::top_right);
+            d.setTextColor(ui::kFaint, focus ? ui::kSurfaceHi : ui::kBg);
+        } else {
+            d.setTextColor(focus ? ui::kText : ui::kDim, focus ? ui::kSurfaceHi : ui::kBg);
+            d.drawString(item.label.c_str(), 10, y);
+            d.setTextDatum(lgfx::top_right);
+            d.setTextColor(focus ? ui::kAccentHi : ui::kFaint,
+                           focus ? ui::kSurfaceHi : ui::kBg);
+        }
         d.drawString(item.value.c_str(), 228, y);
         d.setTextDatum(lgfx::top_left);
     }
@@ -64,9 +72,15 @@ void drawSettingsScreen(lgfx::LovyanGFX& d, const SettingsView& view) {
     }
 
     d.setTextFont(0);
-    d.setTextColor(view.note.empty() ? ui::kFaint : view.noteColor, ui::kBg);
-    d.drawString(view.note.empty() ? "Enter: change  Esc: back" : view.note.c_str(),
-                 8, 123);
+    if (!view.note.empty()) {
+        d.setTextColor(view.noteColor, ui::kBg);
+        d.drawString(view.note.c_str(), 8, 123);
+    } else {
+        // The focused row's registry help; a note always wins until the
+        // selection moves.
+        d.setTextColor(ui::kFaint, ui::kBg);
+        d.drawString(view.help.empty() ? "Enter: change  Esc: back" : view.help.c_str(), 8, 123);
+    }
 }
 
 }  // namespace kk::app

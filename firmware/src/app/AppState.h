@@ -289,7 +289,10 @@ struct UiState {
     bool gPauseActive = false;
     int gPauseIndex = 0;
     bool gSettingsActive = false;
-    int gSettingsIndex = 0;
+    // -1 shows the section list; otherwise the index into settingsSectionName().
+    int gSettingsSection = -1;
+    int gSettingsRow = 0;
+    bool gSettingsResetConfirm = false;
     SettingsOrigin gSettingsOrigin = SettingsOrigin::Home;
     bool gAboutActive = false;
     bool gSignOutConfirm = false;
