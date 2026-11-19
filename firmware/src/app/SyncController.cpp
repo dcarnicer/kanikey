@@ -832,6 +832,13 @@ bool runBatch() {
         Serial.println("[review] no summary yet");
         return false;
     }
+    // An automatic sync may have skipped the Wi-Fi join with a recent cache;
+    // the first network action (Enter with no cached batch) joins on demand.
+    if (!kk::DevWifi::connected() && !kk::DevWifi::connect(30000)) {
+        snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "Batch: no Wi-Fi");
+        Serial.println("[review] no Wi-Fi");
+        return false;
+    }
     const size_t limit = static_cast<size_t>(kk::settingsReviewBatchSize());
     const uint32_t now = effectiveNow();
     const std::vector<uint32_t> due = state().session.gSummary.dueSubjectIds(now, 1000);

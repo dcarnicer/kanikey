@@ -852,6 +852,13 @@ void startLessons() {
         return;
     }
     state().ui.gLowBatteryConfirmed = false;
+    // SPEED-02 can skip the automatic sync (and its Wi-Fi join) when the cache
+    // is recent. Joining on the first network action keeps L usable without a
+    // manual Sync now.
+    if (!kk::DevWifi::connected()) {
+        drawLoading("Connecting Wi-Fi...", kk::DevWifi::savedSsid().c_str());
+        kk::DevWifi::connect(30000);
+    }
     // Home does not need the review batch while the user is in lessons; drop
     // its subjects before the lesson fetch so TLS keeps a healthy block.
     evictCachedBatch(true);
