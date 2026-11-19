@@ -755,6 +755,14 @@ A150 G143 M81 E147 B586).
   before the TLS handshake, and catching `bad_alloc` fixed it. R2 was returned
   to Account and the outbox was empty. The visible SRS/level/type order,
   fallback and cached-offline checks remain.
+- **ARCH-04.** Six native tests cover the modal stack, sleep predicate and
+  screen table. On hardware: Home, Settings, Pause (Continue/Wrap up/End
+  session/Settings), About (`Font: 7269`, `Rad: 498`), the empty Outbox, the
+  lesson list (`1/5`, five vocab rows) and the setup portal (`835570`) render
+  normally. The Pause→Settings→About return chain, sleep/dim, firmware install,
+  low battery and debug routes remain.
+- **TNG-03.** Fifteen native tests cover the list-window math and hint
+  fallbacks; no screen is migrated yet, so there is nothing to see on hardware.
 
 ## Round 2 hardware checks
 

@@ -7,7 +7,19 @@ These four tasks are wave 1 of round 2: they do not add features, they make the 
 | ARCH-01 | Split `app/App.cpp` into controllers | P1 | L | none | 1 (first) | review (2026-11-19: refactor done; hardware smoke partial; +7.5 KB flash) |
 | ARCH-02 | Settings registry | P1 | M | ARCH-01 | 1 (after ARCH-01; ∥ ARCH-03, ARCH-04) | review (2026-11-19: registry + 224 tests; menu/CFG-02 pending) |
 | ARCH-03 | Local stores shared by STATS, STUDY and REM | P1 | M | ARCH-01 | 1 (after ARCH-01; ∥ ARCH-02, ARCH-04) | done (2026-11-06) |
-| ARCH-04 | Screen state machine | P2 | M | ARCH-01 | 1 (after ARCH-01; before wave 2 starts) | todo |
+| ARCH-04 | Screen state machine | P2 | M | ARCH-01 | 1 (after ARCH-01; before wave 2 starts) | review (2026-11-19: merged; hardware partial) |
+
+**Implementation (2026-11-19, ARCH-04).** `wk/ScreenModel` now owns the
+`Screen`/`Modal` enums, the `ScreenDef` table and the 4-deep modal stack.
+`draw()` switches on `screenBase()` then the top modal; `onKey()` gives the top
+modal priority; `loop()` uses `screenCanSleep()`. Pause/Settings/About/
+SignOut/OutboxConfirm/LowBattery/FirmwareConfirm are modals; lesson start and
+batch quiz stay sub-states. Stats, study, critical, Wi-Fi setup and notices
+remain auxiliary sleep blockers. Six native tests (412 on the merged main);
+release 1,658,133 B (90.4%), dev 1,726,141 B (94.1%). Hardware so far: Home,
+Settings, Pause, About, the empty Outbox, the lesson list, and the setup portal
+render normally. The full Pause→Settings→About return chain, sleep/dim,
+firmware install, low-battery and debug routes remain.
 
 ### ARCH-01 — Split `app/App.cpp` into controllers
 

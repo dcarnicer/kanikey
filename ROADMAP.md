@@ -131,14 +131,14 @@ Working on hardware:
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 391 native tests and the `cardputer-adv` build run in GitHub Actions alongside
+- 412 native tests and the `cardputer-adv` build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests; the release workflow adds
   the manifest tests and a tag-driven GitHub release.
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Last recorded build (REV-08 + heap fix): **release 1,656,837 B / 1,835,008 B
-flash (90.3%)**, **dev 1,724,725 B (94.0%)**, static RAM 105,392/105,528 B
+Last recorded build (ARCH-04 + TNG-03): **release 1,658,133 B / 1,835,008 B
+flash (90.4%)**, **dev 1,726,141 B (94.1%)**, static RAM 105,384/105,520 B
 (32.2%).
 Removing `efontJA_16` freed ~468 KB; the dev image now has ~111 KB of headroom.
 The loop task uses a 24 KiB stack;
@@ -156,7 +156,7 @@ the 2026-11-19 logs.
 | 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Code and docs done; OUTBOX (API-01/05), 401 (API-03) and parse retry (API-04) verified 2026-11-19; 429 (API-02) and 403 still pending | — |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | v1 done; SETUP-09 on-device Wi-Fi is in review 2026-11-19 (scan/password mask smoked; join paths pending) | SETUP-09 |
 | 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen, item detail, level progress and the Stats screen are live | Partial | UI-08 |
-| 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal, OTA, storage and sleep done; widgets pending | TNG-03 |
+| 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal, OTA, storage and sleep done; ListView/HintBar added, screen migration/TextLayout/UiFont/Icons pending | TNG-03 |
 | 9 | Technical debt, CI and release | Maintainability and shipping | Done (TECH-01…06, TECH-08); TECH-07 only if needed | TECH-07 |
 | 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | EXT-01…05 done; audio, reminders and stroke order remain; round 2 specified in `docs/spec` | STUDY |
 | 11 | Bluetooth keyboard | Optional full-size input; BLE-only, shares the 2.4 GHz radio and the no-PSRAM heap | Post-v1; needs the BT-01 host-stack spike | BT-01 |
@@ -611,7 +611,10 @@ SRS and deck catalog remain intentionally dropped. See
   workflow; see `docs/ota.md`.
 - **TNG-03 — UI primitives.** Port/adapt `Widgets`, `ListView`, `HintBar`,
   `TextLayout`, `UiFont` and `Icons` before adding more screens; the current UI
-  is hand-drawn.
+  is hand-drawn. **Partial (2026-11-19):** `ui/ListView` (pure window math +
+  focus/scroll drawing) and `ui/HintBar` (geometry, fallback, left/right hints)
+  are added with 15 native tests; `TextLayout`, `UiFont`, `Icons` and migrating
+  the existing screens remain.
 - **TNG-04 — Storage layer.** Adapt LittleFS/SD paths and atomic writes for the
   assignment/subject cache (CACHE-01/CACHE-02). **Done:** `platform/CacheStore`
   with `.tmp`/`.bak` and CRC32.
@@ -778,8 +781,8 @@ REM/AUD, ONB (pack and setup) and DOC (this documentation pass). ARCH-01/02 are
 merged and CFG-01/02/03/04, REV-01/02/03/04/05/06/07/08/09/10/11/12,
 LES-01…LES-06, SETUP-09, ONB-01/02 and SPEED-01/02/03/04/05/07 are in review. The
 eight-section Settings menu replaces the flat list; the registry now has 48
-rows after the Account › Wi-Fi action. Main has 391 native tests and builds at
-1,656,837 B (90.3%) release / 1,724,725 B (94.0%) dev. No round-2 task is
+rows after the Account › Wi-Fi action. Main has 412 native tests and builds at
+1,658,133 B (90.4%) release / 1,726,141 B (94.1%) dev. No round-2 task is
 claimed as done
 here beyond the spec status above.
 

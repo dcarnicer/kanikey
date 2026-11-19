@@ -61,8 +61,8 @@ maintaining it now.
 | `render/Widgets` | Header, tiles, rows, pills, bars | **Adapted** | New tokens and some component (input, feedback) |
 | `render/Blend565`, `GlcdCp437` | Blending and CP437 map | **Stays** | No changes |
 | `ui/Theme.h` | Tangocho tokens | **Rewritten** | KaniKey palette and typography |
-| `ui/ListView.h` | Focus, window, scroll | **Stays** | No changes |
-| `ui/HintBar.h` | Hint bar and keycaps | **Stays** | New texts/keys |
+| `ui/ListView.h` | Focus, window, scroll | **Adapted (2026-11-19)** | Pure window math + focus/scroll drawing; screens migrate next |
+| `ui/HintBar.h` | Hint bar and keycaps | **Adapted (2026-11-19)** | Geometry, width fallback and left/right hints; screens migrate next |
 | `ui/KeyInput.h` | TCA8418 → actions map | **Extended** | Normal/Shift/Fn layers, characters, modifiers |
 | `ui/TextLayout.h` | Wrap and pagination | **Stays** | Reuse in mnemonics |
 | `ui/UiFace.h`, `UiFont.h` | Pre-rendered UI font | **Adapted** | Add 10/14/20 px and needed glyphs |
