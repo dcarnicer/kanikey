@@ -148,6 +148,7 @@ heap to ~56 KB.
 | 9 | Technical debt, CI and release | Maintainability and shipping | Done (TECH-01…06, TECH-08); TECH-07 only if needed | TECH-07 |
 | 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | EXT-01…05 done; audio, reminders and stroke order remain | EXT-06, EXT-07, EXT-09 |
 | 11 | Bluetooth keyboard | Optional full-size input; BLE-only, shares the 2.4 GHz radio and the no-PSRAM heap | Post-v1; needs the BT-01 host-stack spike | BT-01 |
+| 12 | M5Stack PaperDIY port | Desk e-paper companion; 960×540, no keyboard/touch, two buttons | Post-v1; read-only companion first, full reviews need BT | PD-01 |
 
 ## Execution order
 
@@ -170,6 +171,7 @@ upload part of FIX-24) and the API-01…05 hardware pass.
 | 7 | Technical debt and release | TECH-03 → TECH-08 (done; TECH-07 optional) | Version, OTA, license and hardening |
 | 8 | Kakehashi-inspired extras | EXT-01 → EXT-09 | Practice modes, critical items, audio and stats |
 | 9 | External input (post-v1) | BT-01 → BT-04 | Optional BLE keyboard with the built-in keyboard as fallback |
+| 10 | PaperDIY (post-v1) | PD-01 → PD-05 | Read-only e-paper companion; full reviews after BT |
 
 ## 1. Radicals and remove `efontJA_16` (v1 blocker)
 
@@ -748,6 +750,61 @@ BT-01 is a go/no-go spike before any library or stack is merged.
 Out of scope for the first pass: Classic Bluetooth, USB host, multiple
 simultaneous keyboards, macros/media keys, non-US layouts and typing while the
 device is in deep sleep.
+
+## 12. M5Stack PaperDIY port (after v1)
+
+This is a separate target, not a v1 promise: the Cardputer ADV stays the
+primary device. The PaperDIY shares the ESP32-S3 and the reusable `wk/` core
+(sync, cache, outbox, lessons, stats), but its 4.7" 960×540 16-gray e-paper,
+two user buttons and lack of keyboard/touch make it a different product. The
+first target is a read-only companion; full reviews wait for BT-01…BT-04.
+
+| ID | Title | Priority | Size | Depends on | Status |
+|---|---|---|---|---|---|
+| PD-01 | Board HAL and build target | P3 | M | none | todo |
+| PD-02 | E-paper rendering and refresh | P3 | L | PD-01 | todo |
+| PD-03 | Two-button UI and read-only scope | P3 | M | PD-02 | todo |
+| PD-04 | Power, sleep and sync cadence | P3 | M | PD-03 | todo |
+| PD-05 | Hardware pass and docs | P3 | M | PD-04 | todo |
+
+- **PD-01 — Board HAL and build target.** Add `TGC_BOARD_PAPERDIY`,
+  `board/BoardPaperDiy.cpp` and a PlatformIO `cardputer-adv`-style env. Cover
+  the M5PM1 power management (battery/USB/charging, e-paper power and boost),
+  the microSD slot, the two user buttons and deep sleep. Update M5Unified and
+  M5GFX to versions with PaperDIY support (≥ 0.2.26 / ≥ 0.2.33) and re-verify
+  the Cardputer build. The 8 MB octal PSRAM relaxes the canvas/framebuffer
+  budget, but the TLS contiguous-block rule still applies.
+- **PD-02 — E-paper rendering and refresh.** The panel is 960×540, exactly 4×
+  the 240×135 canvas: start with the existing screens rendered at 240×135 and
+  scaled 4× into a high-contrast grayscale theme (the panel has no backlight),
+  then move to a native 960×540 layout and larger pack glyphs. Use
+  `epd_text`/`epd_fastest` for updates and `epd_quality` on screen transitions;
+  batch redraws, avoid a full refresh per key, and schedule a full refresh
+  every N partial updates to clear ghosting. Measure refresh time and ghosting;
+  the 4× path is a bring-up layout, not the final one.
+- **PD-03 — Two-button UI and read-only scope.** With no keyboard or touch, the
+  two user buttons navigate (short/long press for Next/Prev, Confirm and
+  Back); the hint bar names buttons instead of keys. The first release is a
+  read-only companion: Home, lessons list/card, item detail, stats, sync and
+  cache/offline. Reviews and the lesson quiz need text entry and stay on the
+  Cardputer until a keyboard exists; full reviews depend on BT-01…BT-04 (BLE)
+  or a wired keyboard on the FPC expansion (I2S/SPI; no I2C is exposed,
+  verify). Today `hasKeyboard()` is only logged, so the app needs a real
+  no-keyboard UI path.
+- **PD-04 — Power, sleep and sync cadence.** The 140 mAh battery and M5PM1 put
+  this in the “desk companion that sleeps between updates” class, not an
+  always-on terminal: wake on timer or button, sync, refresh only when the
+  data changed, then sleep. Measure sleep current, sync energy and refresh
+  energy; keep Wi-Fi/BLE off in deep sleep. USB power is the default for long
+  sessions.
+- **PD-05 — Hardware pass and docs.** Boot, SD/pack, Wi-Fi/TLS, sync,
+  cache/offline, e-paper ghosting and partial refresh, button navigation,
+  battery/sleep and OTA. Update `docs/hardware.md` (new measured section),
+  `docs/ux.md`, `README.md` and `docs/decisions.md`.
+
+Out of scope for the first pass: touch, backlight, audio, multi-board
+auto-detect, the native 960×540 redesign and full reviews without an external
+keyboard.
 
 ## Definition of done for v1
 

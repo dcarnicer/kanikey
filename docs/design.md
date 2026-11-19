@@ -196,6 +196,8 @@ Still open:
 - Pronunciation audio (ES8311).
 - Optional Bluetooth LE keyboard input (the built-in keyboard remains primary
   and the only wake source).
+- M5Stack PaperDIY e-paper companion (read-only first; full reviews need an
+  external keyboard).
 - Stroke order with KanjiVG.
 - Extra practice with local FSRS (doesn't affect WaniKani).
 - Review forecast, heatmap, streak.
