@@ -1,0 +1,650 @@
+# Bluetooth keyboard and PaperDIY
+
+Status: **spike brief, 2026-11-19**. This prepares the post-v1 spikes BT-01
+(BLE HID host on the ESP32-S3) and PD-01/PD-02 (M5Stack PaperDIY board and
+e-paper rendering). It is a specification, not an implementation: no firmware,
+test, partition or library is changed here. No new number in this file is a
+KaniKey hardware measurement; existing build/heap figures are quoted from
+`ROADMAP.md` and `docs/hardware.md`, and vendor/third-party figures are
+labelled. Every measurement the spikes must take is defined here; results go
+to `docs/hardware.md` as a new dated section. Claims marked `verify` are
+unconfirmed and need a probe or a build.
+
+The Cardputer ADV stays the primary device. BT-01 is a go/no-go gate for an
+optional keyboard; PD-01/PD-02 is a separate target whose first release is a
+read-only companion. Full PaperDIY reviews depend on BT-01…BT-04.
+
+---
+
+## 1. BT-01 — BLE HID host on the ESP32-S3
+
+- **Priority:** P3 · **Size:** M · **Depends on:** none
+- **Touches (throwaway probes only, not merged):** `firmware/platformio.ini`
+  (probe envs), `firmware/src/board/BoardCardputerAdv.cpp` (queue/init),
+  `firmware/src/app/App.cpp` (input pump), `docs/hardware.md` (new dated
+  section).
+- **Settings:** none.
+
+### 1.1 What the current build gives us
+
+The Cardputer ADV is an ESP32-S3FN8: 8 MB flash, **no PSRAM**, BLE 5.0 only.
+The S3 has no Bluetooth Classic radio
+([ESP-IDF S3 BLE overview](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/ble/overview.html),
+[architecture table](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/bt-architecture/overview.html));
+Classic-only keyboards are out of scope.
+
+The build is `espressif32@6.12.0` = Arduino-ESP32 **2.0.17** on ESP-IDF
+**4.4.7** (`framework-arduinoespressif32@3.20017`; the installed
+`esp_idf_version.h` says 4.4.7). The framework already ships the ESP-IDF HID
+host:
+
+- `libesp_hid.a` exports `esp_hidh_init`, `esp_hidh_dev_open`,
+  `esp_hidh_dev_close` and the input-event API.
+- The S3 `sdkconfig` has `CONFIG_BLUEDROID_ENABLED=y`,
+  `CONFIG_GATTC_ENABLE=y`, `CONFIG_SW_COEXIST_ENABLE=y` and
+  `CONFIG_ESP32_WIFI_SW_COEXIST_ENABLE=y`; `CONFIG_BT_HID_HOST_ENABLED` is
+  **not** set (no Classic HID host, correct for the S3).
+- `esp_hid` compiles `ble_hidh.c` for a Bluedroid build and `nimble_hidh.c`
+  for a NimBLE build
+  ([CMakeLists](https://github.com/espressif/esp-idf/blob/v4.4.7/components/esp_hid/CMakeLists.txt)).
+  This Arduino core is Bluedroid, so `esp_hidh`'s BLE transport means
+  **Bluedroid's GATTC**, not NimBLE.
+
+No Bluetooth code exists in the app today. `platformio.ini` links only
+M5Unified (pinned 0.2.26, commit `e125e73`) and M5GFX (resolved 0.3.0).
+
+The input path BLE must join:
+
+- `board::nextKeyEvent()` is the only key source. On the Cardputer it drains a
+  16-entry ring in `BoardCardputerAdv.cpp`; a full ring drops the oldest event
+  and inserts `KeyEvent{Key::None, false}` as the newest.
+- `App::loop()` drains every event into `onKey(e)`;
+  `App::onKey()` and `syncStopRequested()` call
+  `updateModifier(e.x, e.y, e.down)`, which drives five globals
+  (`gShift`, `gFn`, `gCtrl`, `gOpt`, `gAlt`).
+- Text entry is per-screen: review, lesson, quiz, settings, study and
+  critical-list handlers call `cardputerCharAt(e.x, e.y, gShift)` directly.
+  `KeyEvent` has only `key`, `down`, `code`, `x`, `y`.
+- `KeyRepeat` repeats only the arrows, using `millis()`.
+
+Budget that decides the stack: the app slot is 1,835,008 B
+(`partitions/kanikey_8MB.csv`, app0/app1 at 0x1C0000); the release image is
+1,556,989 B (84.8%), leaving **278,019 B**. Static RAM is 96,248 B of
+327,680 B (29.4%). `README.md` §2 plans ~140 KB free internal heap; the log
+has ~225 KB after boot and ~148 KB before TLS, with the 32.4 KB canvas
+released around requests. Loop stack 24 KiB, HTTP body buffer 32 KiB. The
+250 KB round budget is a round-2 rule, not a BT budget; BT needs its own
+partition decision.
+
+### 1.2 Candidate host stacks
+
+| | **A. `esp_hidh` + Bluedroid BLE** | **B. NimBLE-Arduino + HOGP client** | **C. Bluedroid GATTC, raw** |
+|---|---|---|---|
+| What | ESP-IDF HID host; HOGP on Bluedroid GATTC | NimBLE host; we write HOGP | Bluedroid GATTC; we write HOGP |
+| Integration | Already in the SDK; add `btStart()`, `esp_bluedroid_init()/enable()`, the `esp_hidh_gattc_event_handler` callback, GAP security, scan, `esp_hidh_init()`, `esp_hidh_dev_open()` | New `lib_deps`; `NimBLEDevice::init()`, scan, connect, discover 0x1812, subscribe; own report-map parser and bonding | Same HOGP work as B on a heavier host |
+| HOGP | Complete in `ble_hidh.c`: 0x1812, report map 0x2A4B, report char 0x2A4D, report ref 0x2908, CCCD, boot protocol, battery 0x180F, device info 0x180A ([source](https://github.com/espressif/esp-idf/blob/v4.4.7/components/esp_hid/src/ble_hidh.c)) | GATT client and bonding only; HOGP is our code. The report-map parser can be ported from `esp_hid_common.c` (Apache-2.0) | Same as B |
+| Pairing | Bluedroid SMP; the host GAP handler logs `PASSKEY_NOTIF`/`NC_REQ`/`PASSKEY_REQ` and answers a security request. The shared IDF GAP file's device-side setup uses `ESP_IO_CAP_IO` + `ESP_LE_AUTH_REQ_SC_MITM_BOND` ([example](https://github.com/espressif/esp-idf/blob/v4.4.7/examples/bluetooth/esp_hid_host/main/esp_hid_gap.c)); the host probe sets its own IO cap | NimBLE SMP; we choose IO cap/bonding and store keys in NVS | Bluedroid SMP |
+| Flash | Bluedroid is the large one: a third-party S3 build measured ~409 KB for the BLE host, ~534 KB full stack, vs ~79 KB/~170 KB for NimBLE ([measurement](https://benign.host/blog/esp32-ble-flash-budget/); indicative, not ours) | NimBLE-Arduino claims ~50% less flash and ~100 KB less RAM than Bluedroid ([registry](https://registry.platformio.org/libraries/h2zero/NimBLE-Arduino)); plus our HOGP code | Same Bluedroid cost as A, plus code; no advantage |
+| RAM | BT controller + Bluedroid tasks + GATTC cache; measure at boot, init, connect, TLS | BT controller + NimBLE tasks + GATT client; measure the same | Same as A |
+| Effort | Lowest: HOGP, report parsing and CCCD exist; work is init, scan/connect policy, pairing UI, queue | Highest: HOGP + report-map parser + pairing + tests; lower stack cost | High, no benefit over A |
+| Risk | May not fit 1.75 MiB; Bluedroid RAM/coexistence | More code/failure modes; NimBLE-Arduino on core 2.0.17 `verify` | Same as A without the HOGP implementation |
+
+`esp_hidh` can be built on NimBLE in a pure ESP-IDF build, but the Arduino
+core is Bluedroid. Rebuilding the framework is out of scope; if A does not
+fit, **B** is the path, not a hybrid.
+
+API facts for the probe:
+
+- `esp_hidh_dev_open()` takes BDA, `ESP_HID_TRANSPORT_BLE` and address type;
+  it opens a **direct GATTC connection** and blocks on semaphores until
+  discovery completes
+  ([source](https://github.com/espressif/esp-idf/blob/v4.4.7/components/esp_hid/src/ble_hidh.c)).
+  Scanning is separate, so pairing/connection must not run on the UI loop.
+- `ESP_HIDH_INPUT_EVENT` carries `usage`, `report_id`, `length`, `data`,
+  `map_index`; the data pointer is only valid in the callback. Copy the report
+  into the app queue there.
+- `esp_hidh` parses the report map into report items but does **not** decode
+  the bitfields. Standard keyboards are usually the boot layout (modifier +
+  6 keys), but check each model; a nonstandard map may be a no-go.
+- `esp_ble_hidh_init()` creates `esp_ble_hidh_events` (stack 2048 if
+  `event_stack_size` is 0). Use 4096 and measure the high-water mark.
+
+### 1.3 Questions and exact measurements
+
+Every probe is a throwaway branch; nothing is merged. Use the release build
+(`pio run -e cardputer-adv`) and `CORE_DEBUG_LEVEL=1` for all size/heap
+numbers.
+
+#### Q1 — Which stack fits the Arduino build?
+
+Build the same minimal app for A/B (and C only if A's API blocks): start the
+stack, scan 10 s, connect one keyboard, log every report, disconnect after
+60 s. A: `btStart()`, `esp_bluedroid_init()`, `esp_bluedroid_enable()`,
+`esp_ble_gattc_register_callback(esp_hidh_gattc_event_handler)`, GAP security,
+`esp_hidh_init()`, scan, `esp_hidh_dev_open()`. B: `NimBLEDevice::init()`,
+scan, connect, discover 0x1812, subscribe; a stub parser is enough for the
+size comparison, but the final probe must parse a real report map.
+
+| Metric | Point | Method |
+|---|---|---|
+| Flash | release image | `pio run` size line + linker map; attribute `libbt.a`, `libesp_hid.a`/NimBLE objects |
+| Static RAM | release image | `.dram0`/`.bss` from the size line |
+| Internal free heap | boot; BT init; connect; Wi-Fi join; TLS `/summary`; disconnect | `heap_caps_get_free_size(MALLOC_CAP_INTERNAL)` |
+| Largest block | same points | `heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)` |
+| Task stacks | after connect | `uxTaskGetSystemState()` for BT/NimBLE/`esp_ble_hidh_events` |
+| Boot time | cold boot → first key | `millis()` at the first input event |
+
+The probe must state its partition. The current 1,835,008 B slot has
+278,019 B free; if it does not fit, use a throwaway `kanikey_bt.csv` with two
+~2.5 MB app slots and ~2 MB LittleFS. The final table is a separate decision.
+
+**Pass:** one stack fits a 2.5 MB slot with ≥ 10% OTA headroom, leaves
+≥ 60 KB internal heap / ≥ 40 KB largest block after BT + Wi-Fi + canvas, and
+`/summary` succeeds 20/20.
+
+#### Q2 — Do standard BLE HID keyboards pair and type?
+
+At least **three BLE keyboards** plus one Classic-only negative control.
+Confirm each transport before the run (`verify`):
+
+| # | Keyboard | Transport | Pairing | Why |
+|---:|---|---|---|---|
+| 1 | Logitech K380 / MX Keys Mini | BLE HOGP `verify` | Just Works/passkey | Common multi-host; host switching |
+| 2 | Apple Magic Keyboard | BLE HOGP `verify` | Just Works | Common; aggressive idle sleep |
+| 3 | Keychron K3 Pro / K7 | BLE HOGP `verify` | Just Works/passkey | Mechanical, larger report map likely |
+| 4 | Microsoft Designer Compact | BLE HOGP `verify` | Just Works | Different vendor/map |
+| 5 | Anker/Arteck class | **Classic only** `verify` | n/a | Negative control; expected no-go |
+
+For each BLE keyboard record: name/BDA/address type; whether 0x1812 is
+advertised (do not rely on it); appearance (keyboard 0x03C1); report-map
+length/layout; boot-protocol support; 6KRO/NKRO; modifier byte;
+arrow/Enter/Esc/Tab/Backspace; battery service; Caps Lock output report;
+first key after connect; disconnect reason.
+
+Pairing flows:
+
+- **Just Works:** `ESP_IO_CAP_NONE` + `ESP_LE_AUTH_BOND` (or
+  `ESP_LE_AUTH_REQ_SC_BOND`). No passkey UI.
+- **Host displays, keyboard enters:** `ESP_IO_CAP_OUT`; show the 6-digit code
+  on screen; the keyboard types it (`PASSKEY_NOTIF`).
+- **Numeric comparison:** `ESP_IO_CAP_IO`; show the code, confirm with Enter
+  (`NC_REQ`, reply `esp_ble_confirm_reply()`).
+- **Host enters, keyboard displays:** `ESP_IO_CAP_IN`; type the keyboard's
+  code on the built-in keyboard. This is impossible on PaperDIY without a
+  keyboard, so BT on PaperDIY needs Just Works or the host-displays flows.
+
+Bonding: pair, reboot, reconnect without re-pairing; check
+`esp_ble_get_bond_device_num()`; `Forget` calls `esp_ble_remove_bond_device()`.
+Bonds must survive deep sleep and OTA.
+
+**Pass:** three BLE keyboards pair and type all UI keys; Just Works and one
+passkey/numeric flow pass; unsupported report layouts are listed as no-go for
+that model, not silently mis-typed.
+
+#### Q3 — Reconnect after boot and deep sleep
+
+Deep sleep turns BLE off. The built-in keyboard remains the only wake source;
+BLE never wakes the device. Measure 20 trials per case:
+
+| Case | Record |
+|---|---|
+| Cold boot, keyboard awake | connect time, first-key time, success |
+| Deep-sleep wake, keyboard awake | same; bond reuse; re-pair needed? |
+| Keyboard power-cycled | automatic reconnect, or a new `esp_hidh_dev_open()`? |
+| Out of range 2 min, return | reconnect time, stuck/duplicate keys |
+| Host reset while keyboard asleep | does a keypress make it connectable? |
+
+Many keyboards advertise only for a window and then sleep. If a keypress is
+required, document it as a UX constraint; do not promise instant reconnect.
+
+**Pass:** p95 cold reconnect ≤ 5 s; p95 deep-sleep reconnect ≤ 3 s with the
+keyboard awake; 20/20; the product text says whether a keypress is needed.
+
+#### Q4 — Key latency and Wi-Fi coexistence
+
+Two numbers, not one:
+
+1. **Radio/host:** keyboard HID notification → event in KaniKey's queue. Use a
+   second ESP32-S3 as a HID keyboard emulator: toggle a GPIO before
+   `esp_hidd_dev_input_set()`; KaniKey toggles another in the HID callback.
+   Logic analyzer ≥ 1 MHz; 100 presses per condition, 200 ms apart, discard
+   the first 10.
+2. **App-visible:** queue → `onKey()` in `App::loop()`, timestamped with
+   `esp_timer_get_time()`. This is what the user feels.
+
+Conditions: BLE only (Wi-Fi off); Wi-Fi idle; during a blocking TLS
+`GET /summary`; during a 20-subject fetch; keyboard at 1 m with RSSI and a
+fixed AP channel (1/6/11).
+
+Record p50/p95/max, lost/stuck keys, queue overflows. Run 1,000 presses
+(Shift+letter, arrows, Enter, Esc, Tab, Backspace) and count missing down/up.
+The 16-entry queue can overflow in a 2 s blocking request; quantify the burst
+so BT-02 can size the queue (32/64 entries or a FreeRTOS queue are design
+outputs). Wi-Fi and BLE share one radio; the sdkconfig already enables
+coexistence. Measure 20 TLS `/summary` runs with BLE off/idle/typing; try the
+default vs `ESP_COEX_PREFER_BT` (present but deprecated in the installed
+`esp_coexist.h`) and one connection interval (7.5/15/30 ms if the keyboard
+allows).
+
+**Pass:** radio/host p95 ≤ 50 ms idle, ≤ 100 ms during TLS; app p95 ≤ 100 ms
+when no request blocks; zero lost/stuck keys in 1,000 presses; TLS p95
+regression ≤ 20% and 20/20 handshakes. A multi-second app block during TLS is
+a BT-04 finding, not a Q4 pass: a background sync must not lose keys even if
+the UI cannot act until the request returns.
+
+#### Q5 — Battery cost
+
+Use a PPK2 or INA219 in series with the battery; 60 s windows, 10 min for
+sleep. Measure: BLE off (Wi-Fi off, idle); BLE connected idle at 7.5/15/30 ms;
+BLE typing at 1 key/s; BLE + Wi-Fi idle; cold connect (mAh); a simulated
+20-minute review session. Report mA, mAh/h and % of 1500 mAh.
+
+M5Stack's Cardputer-Adv figures are a sanity check, not our measurement:
+operating 120.2 mA, Wi-Fi 132.3 mA, BLE 154.6 mA at 4.2 V
+([specs](https://docs.m5stack.com/en/core/Cardputer-Adv)). They are
+"operating" numbers, not connected-idle.
+
+**Pass (proposed):** connected idle adds ≤ 10 mA over BLE-off; a 20-minute
+session uses ≤ 20% more energy; a cold connect costs ≤ 0.1 mAh. Otherwise the
+fallback is "BLE on only during a session" or a no-go.
+
+### 1.4 Go/no-go for BT-01
+
+Hard gates; any failure is no-go for that stack. Record numbers and decision
+in `docs/hardware.md`.
+
+1. Fits a 2.5 MB OTA slot with ≥ 10% headroom, or a documented partition
+   change keeps LittleFS ≥ 2 MB.
+2. After BT + Wi-Fi + canvas: internal heap ≥ 60 KB, largest block ≥ 40 KB;
+   `/summary` 20/20.
+3. Three BLE keyboards pair and type; Just Works and one passkey/numeric flow
+   pass; Classic-only documented out of scope.
+4. 1,000 presses: zero lost/stuck; queue overflow known; p95 radio/host
+   ≤ 50 ms idle, ≤ 100 ms during TLS; app p95 ≤ 100 ms when not blocked.
+5. Reconnect p95 ≤ 5 s cold, ≤ 3 s after deep-sleep wake; 20/20.
+6. TLS p95 regression ≤ 20%; 20/20 handshakes; no new 4xx/5xx.
+7. Battery within Q5.
+
+Decision: **A** if it passes 1–7; **B** if A fails 1 or 2 and B passes 1–7;
+**C** only if A's API makes HOGP impossible. If both fail, BT-01 is a no-go
+with the measured reason. No library is merged; BT-02 starts only after a go.
+
+### 1.5 Source-neutral input abstraction (BT-02 requirement)
+
+Screens must not learn about Bluetooth. The board layer owns one ordered
+queue; matrix, BLE and (later) PaperDIY buttons push `KeyEvent`s into it.
+
+```cpp
+enum class KeySource : uint8_t { Matrix, Ble, Button };
+
+struct KeyEvent {
+    Key key = Key::None;
+    bool down = false;
+    uint8_t code = 0;      // matrix key number; 0 for BLE/button
+    uint8_t x = 0, y = 0;  // matrix grid; 0 for BLE/button
+    char ch = 0;           // US-layout base character; 0 when none
+    uint8_t mods = 0;      // Shift/Ctrl/Alt/Gui at event time
+    KeySource source = KeySource::Matrix;
+};
+```
+
+- **Char vs matrix.** `ch` is the unshifted US character (`a`, `1`, `;`,
+  space); `mods` carries Shift/Ctrl/Alt/Gui. `keyChar(e, shiftHeld)` applies
+  Shift for BLE/button events and falls back to `cardputerCharAt(e.x, e.y,
+  shiftHeld)` for matrix events. Every current `cardputerCharAt` call site
+  switches to it, so no screen sees `x/y` for a BLE event. The matrix path
+  keeps `code/x/y` and the modifier globals; BLE sets `mods` every event.
+- **HID reports are stateful.** Keep the previous modifier byte and 6-key
+  array; diff each report into releases, modifier changes and presses. Emit
+  modifier-down before key-down and key-up before modifier-up, so `gShift` is
+  right. A no-key report produces individual releases, not `Key::None`.
+  Reserve `Key::None` for matrix overflow and BLE disconnect.
+- **Boot vs report protocol.** `esp_hidh` gives raw report data, not decoded
+  fields. Support the boot layout (modifier + 6 keys) and the common report
+  layout; log the map and raw bytes per keyboard. A nonstandard map is parsed
+  explicitly or listed unsupported. NKRO bitmaps are out of scope.
+- **One thread-safe queue.** The BLE callback runs on the HID task;
+  `nextKeyEvent()` on the loop task. Use a critical section or FreeRTOS queue
+  around the same ring; size it from Q4. Keep "oldest dropped + `Key::None`"
+  only for matrix overflow; a BLE overflow must not silently cancel held keys.
+- **Order/priority.** Arrival order; no source priority. Built-in always
+  works. BLE pairing starts only from Settings, never during a review/lesson
+  (BT-03); BLE cannot open the setup portal by itself.
+- **Native tests (BT-02):** `hid_usage_to_key` for letters/digits/punctuation/
+  Space/Enter/Esc/Tab/Backspace/arrows; `hid_modifier_bits`;
+  `hid_report_diff` for press/release/rollover/Shift+letter/all-up;
+  `key_char_shift`; unsupported usage ignored; boot vs report layout; BLE
+  overflow does not emit a false `Key::None`.
+
+### 1.6 BT-01 risks and open questions
+
+- **Bluedroid flash.** 278 KB free probably is not enough; a partition change
+  is likely. NimBLE is smaller but needs HOGP code.
+- **Report protocol.** A nonstandard map may rule out a model.
+- **Reconnect UX.** Keyboards that advertise only after a keypress cannot be
+  always ready; deep sleep makes it worse.
+- **Blocking UI.** Keys can queue but the UI cannot act during a 2 s TLS
+  request; BT-04 must pump keys or accept the delay.
+- **Bonds.** Confirm Bluedroid/NimBLE bonds survive OTA and deep sleep.
+
+---
+
+## 2. PD-01/PD-02 — M5Stack PaperDIY board support
+
+- **Priority:** P3 · **Size:** M (PD-01), L (PD-02)
+- **Depends on:** none (PD-01); PD-01 (PD-02)
+- **Touches:** new `firmware/src/board/BoardPaperDiy.cpp`;
+  `firmware/src/board/Board.h`; `firmware/platformio.ini`;
+  new `firmware/partitions/kanikey_16MB.csv`; `firmware/src/app/App.cpp`
+  (`ensureCanvas()`, `present()`, rotation, loop cadence);
+  `firmware/src/ui/Theme.h` (grayscale variant); `docs/hardware.md`. No code
+  in this change.
+- **Settings:** none; PD-03 adds button hints, PD-04 the sync/sleep cadence.
+
+### 2.1 Verified hardware
+
+Sources: M5Stack PaperDIY Complete Kit/Assembly Kit pages, the PaperDIY
+display/button/M5PM1 guides, and the M5GFX/M5Unified source.
+
+| Item | Verified value | Source |
+|---|---|---|
+| Module | ESP32-S3-WROOM-1-N16R8 (ESP32-S3R8 die), LX7 dual-core, 240 MHz | [Complete Kit](https://docs.m5stack.com/en/core/PaperDIY_Complete_Kit) |
+| Flash / PSRAM | 16 MB / 8 MB **octal** | same |
+| Panel | ET047TC1, 4.7", 540×960 native, 960×540 used, 16-level grayscale | same |
+| Panel interface | 8-bit parallel (DB0–DB7) | same; [CNX](https://www.cnx-software.com/2026/10/18/m5stack-paperdiy-kits-pair-an-esp32-s3-mcu-with-a-4-7-inch-e-paper-display) |
+| Touch/backlight/keyboard | none / none / none | specs; `Panel_EPD`, no touch driver |
+| Buttons | A = G4, B = G3; power on M5PM1 `PY_BTN` | [pin map](https://docs.m5stack.com/en/core/PaperDIY_Complete_Kit) |
+| PMIC | M5PM1, SDA G41 / SCL G42, address 0x6E | [M5PM1 guide](https://docs.m5stack.com/en/arduino/paperdiy/m5pm1); [M5GFX](https://github.com/m5stack/M5GFX/blob/0.3.0/src/M5GFX.cpp) |
+| Battery | 140 mAh, SH1.0-2P; charge status PM1 GPIO3 | [Complete Kit](https://docs.m5stack.com/en/core/PaperDIY_Complete_Kit); [M5Unified](https://github.com/m5stack/M5Unified/blob/0.2.26/src/utility/Power_Class.inl) |
+| microSD | SCK G39, MOSI G38, MISO G40, CS G47, DET G48 | pin map |
+| Expansion | 2× FPC 0.5 mm 12P; FPC-I2S + FPC-SPI, no I²C `verify` | [M5PM1 guide](https://docs.m5stack.com/en/arduino/paperdiy/m5pm1) |
+| Power | 3.7 V battery, USB-C 5 V, 5 V pad; 40.95 mA operating, 161 mA peak | Complete Kit |
+| Size | 120 × 68.2 × 6.3 mm, 43.1 g (Complete Kit) | same |
+
+Pin map (M5Stack pin map + M5GFX PaperDIY autodetect):
+
+| Signal | GPIO | Notes |
+|---|---:|---|
+| EPD DB0…DB7 | G6, G14, G7, G12, G9, G11, G8, G10 | 8-bit data |
+| EPD XCL / XLE / XSTL | G16 / G15 / G13 | clock / latch / start pulse |
+| EPD CKV / SPV | G18 / G17 | gate clock / source power |
+| EPD BST_EN | G46 | boost enable; **strapping pin** `verify` |
+| EPD OE | G45 | M5GFX `pin_oe`; not in M5 pin table; **strapping pin** `verify` |
+| EPD power | PM1 GPIO2 | `EPD_PWR`, high in `M5.begin()` |
+| PM1 I²C | SDA G41 / SCL G42 | address 0x6E |
+| Button A / B | G4 / G3 | `M5.BtnA/B`; RTC-capable; G3 strapping/JTAG `verify` |
+| microSD | SCK G39, MOSI G38, MISO G40, CS G47 | DET G48 |
+| Power button | PM1 `PY_BTN` | not an ESP32 GPIO; deep-sleep wake `verify` |
+| FPC-I2S / FPC-SPI | PM1 GPIO0 + G5 / PM1 GPIO1+GPIO4 | full pinout `verify` |
+
+G45/G46 (EPD OE/BST_EN) and G3 (button B) are strapping pins. Boot 20 times
+with the panel connected and the boost off/on, and record the boot mode.
+
+### 2.2 Versions and the PlatformIO target
+
+The PaperDIY display guide requires **M5Unified ≥ 0.2.26** and **M5GFX
+≥ 0.2.33**, with M5Stack board package ≥ 3.3.10 in the Arduino IDE
+([guide](https://docs.m5stack.com/en/arduino/paperdiy/display)). The repo
+already meets the library minimums:
+
+- `platformio.ini` pins M5Unified to the 0.2.26 commit `e125e73`; its
+  `library.json` requires `M5GFX >= 0.2.31`.
+- `pio pkg list -e cardputer-adv` resolves **M5GFX 0.3.0** (latest satisfying
+  `>= 0.2.31`), which includes the PaperDIY autodetect and `Panel_EPD`.
+- The board package version is an Arduino IDE concept; PlatformIO uses
+  `board = esp32-s3-devkitc-1` and M5GFX autodetects `board_M5PaperDIY` by
+  probing the M5PM1 at 0x6E. `verify` that M5Unified 0.2.26 + M5GFX 0.3.0 +
+  Arduino core 2.0.17 initialises the panel; if not, a newer library pair or
+  core 3.x is a separate decision and must keep the Cardputer build green.
+
+Pin M5GFX explicitly to `0.3.0` for the PaperDIY env (and consider it for the
+Cardputer) so a future 0.4.x cannot silently change the driver. Do not bump
+M5Unified to 0.3.0 unless the probe needs it; 0.3.0 requires M5GFX ≥ 0.2.35
+and re-opens Cardputer display/audio verification.
+
+```ini
+[env:paperdiy]
+platform = espressif32@6.12.0
+board = esp32-s3-devkitc-1
+framework = arduino
+board_upload.flash_size = 16MB
+board_build.arduino.memory_type = qio_opi
+board_build.partitions = partitions/kanikey_16MB.csv
+board_build.filesystem = littlefs
+build_flags =
+    -std=gnu++17
+    -DESP32S3
+    -DARDUINO_USB_CDC_ON_BOOT=1
+    -DARDUINO_USB_MODE=1
+    -DCORE_DEBUG_LEVEL=1
+    -Isrc
+    -DTGC_BOARD_PAPERDIY
+    -DKANIKEY_ENV=\"paperdiy\"
+build_unflags = -std=gnu++11
+lib_deps =
+    M5Unified=https://github.com/m5stack/M5Unified#e125e73f28b6b83e621e48df432af426bb2ff935
+    m5stack/M5GFX@0.3.0
+```
+
+`paperdiy-dev` extends it with `-DKANIKEY_DEV=1`. `qio_opi` should produce
+`CONFIG_SPIRAM_MODE_OCT=y`; **verify by build** (`ESP.getPsramSize()` = 8 MB,
+no M5GFX `need OPI-PSRAM enabled`). The 16 MB table keeps the labels `app0`,
+`app1` and `spiffs` because OTA addresses slots by label; two ~6 MB app slots
+plus ~3 MB LittleFS, NVS and otadata is a reasonable first table. The
+Cardputer table is unchanged.
+
+`M5.begin()` with `cfg.clear_display = false` avoids a full white flash before
+the first frame (the M5Stack example does this). Set rotation 1 for 960×540;
+M5GFX uses `offset_rotation = 3`, rotation 1. The app currently hard-codes
+`gDisp->setRotation(0)` in `App::setup()` for the Cardputer; PD-01 must move
+rotation into the board so PaperDIY is not portrait. `fixedLandscape()` should
+return true.
+
+### 2.3 Display path
+
+`Panel_EPD` is not a normal framebuffer. It allocates in **PSRAM** and runs a
+background update task:
+
+- `_buf`: `panel_w * panel_h / 2` = **259,200 B** (4bpp current pixels).
+- `_step_framebuf`: `(memory_w * memory_h / 2) * 2 * sizeof(uint16_t)` =
+  **1,036,800 B** (2 bytes/pixel).
+- `_dma_bufs[2]`: small internal DMA buffers.
+- If either PSRAM allocation fails, the panel is unavailable. Octal PSRAM is
+  a hard requirement.
+
+These are code-derived sizes from
+[`Panel_EPD.inl`](https://github.com/m5stack/M5GFX/blob/0.3.0/src/lgfx/v1/platforms/esp32/Panel_EPD.inl),
+not measurements. The 4× path adds a 32.4 KB 240×135 canvas; the native path
+adds a 960×540 8-bit canvas (518,400 B, `setPsram(true)`), for ~1.82 MB total
+PSRAM. The TLS rule still applies: internal RAM, not PSRAM, must hold the
+contiguous block.
+
+Refresh modes ([M5Stack guide](https://docs.m5stack.com/en/arduino/paperdiy/display)):
+
+| Mode | Use | Trade-off |
+|---|---|---|
+| `epd_quality` | images, grayscale, first frame, full refresh | slowest, best ghosting control |
+| `epd_text` | text screens | faster, keeps grays; recommended for text |
+| `epd_fast` | navigation | faster, weaker ghosting control |
+| `epd_fastest` | fastest navigation | fastest, weakest ghosting control |
+
+Faster modes have lower quality and weaker ghosting control; a full
+`epd_quality` refresh is recommended after several partial fast refreshes.
+Timings are content-dependent and must be measured.
+
+**4× bring-up path.** The panel is exactly 4× the 240×135 UI. Keep the
+existing layout, draw into a 240×135 `grayscale_8bit` canvas (so the glyph
+pack's 4bpp alpha blends into 16 grays without an RGB332 detour), and add a
+grayscale `Theme` (black, white, 2–3 grays; no colour-only meaning). Present
+with `gCanvas->pushRotateZoom(gDisp, 0, 0, 0, 4.0f, 4.0f)` (or
+`pushImageRotateZoom`); confirm the overload and nearest-neighbour 4×. A
+full-screen 4× push writes all 518,400 destination pixels, so `Panel_EPD`
+sees a full-screen dirty rectangle: **partial updates are ineffective in the
+4× path**. Use `epd_quality` for the first frame/transitions and `epd_fastest`
+for navigation if the measured time allows; coalesce presents. The pack's
+64/32/20 px glyphs become 256/128/80 px (readable but blocky). A native
+960×540 layout needs new glyph sizes (e.g. 96/64/40 px) in a `KKGP` v2 pack
+and new layout constants — a separate go/no-go.
+
+**Native path (if 4× is rejected).** Draw into a 960×540 `grayscale_8bit`
+canvas (518,400 B, PSRAM) and use the panel's dirty-rect tracking for partial
+refreshes. Do not start this until the 4× measurements say it is needed.
+
+**Present policy.** The current loop draws when `gDirty` and 16 ms pass, and
+screens call `present()` directly. On e-paper: coalesce presents (push after
+~150 ms stable, at most once per ~500 ms), never while `displayBusy()`; skip
+periodic clock/battery presents; `waitDisplay()` before sleep, a full refresh,
+or an `epd_quality` change; count partials and run a full refresh every N
+(start N = 10, tune with ghosting photos). A 4× full-screen push is not a
+partial update; sub-second navigation needs the native path or a cropped
+240×135-region push.
+
+### 2.4 No-keyboard UI and read-only scope
+
+`Board.h` has `hasKeyboard()`/`nextKeyEvent()`; today `hasKeyboard()` is only
+logged and the no-keyboard branch returns no events. PaperDIY needs:
+
+- `hasKeyboard()` false; `nextKeyEvent()` still delivers events from the two
+  buttons (plus a dev injection for bring-up). The board-owned queue reads
+  `M5.BtnA/B` in `update()` and synthesizes `KeyEvent`s. PD-03 owns the final
+  mapping; PD-01/02 need at least the dev injection.
+- `fixedLandscape()` true, rotation 1; UI width/height 240×135 in the 4× path.
+- Proposed map (PD-03 decides): A short = Next/Down; A long = Confirm; B
+  short = Back/Esc; B long = Prev/Up. Hint bar names `A`/`B`. `kHoldMs` 600 ms.
+  G3/G4 are RTC-capable, so `ext1` wake is possible (`verify`).
+- Read-only: Home, lesson list/card, item detail, Stats, Sync, Outbox, About,
+  Settings (settings write NVS; no review/lesson POST/PUT). No reviews, quiz,
+  `PUT /start` or text entry. The lesson card can be viewed, not started.
+  The setup portal is browser-based, so Wi-Fi/token entry works without a
+  keyboard; SETUP-09 is Cardputer-only.
+- Full reviews need a text source: BT-01…BT-04, or a wired keyboard on the FPC
+  expansion (I2S/SPI; no I²C `verify`). A USB keyboard needs host mode/power;
+  the roadmap's wired option is FPC, not USB — `verify` the USB-C wiring.
+- On PaperDIY, a BLE keyboard requiring the **host to type a passkey** is
+  unusable without the built-in keyboard. BT must support Just Works or the
+  host-displays/numeric-comparison flows for PaperDIY; this is a BT-03
+  constraint.
+
+### 2.5 Power and sleep
+
+M5PM1 levels: L0 (battery/PM1 + FPC-I2S), L1 standby, L2/L3A (ESP32-S3,
+microSD, user buttons, FPC-SPI), L3B (e-paper power, FPC control, charge
+status). `M5.begin()` sets PM1 GPIO2 high for `EPD_PWR` and PM1 GPIO3 as the
+charge-status input ([M5PM1 guide](https://docs.m5stack.com/en/arduino/paperdiy/m5pm1);
+[M5Unified](https://github.com/m5stack/M5Unified/blob/0.2.26/src/utility/Power_Class.inl)).
+
+Compare two strategies:
+
+1. **ESP32 deep sleep:** `ext1` on G3/G4 plus a timer, `setPowerSave(true)` /
+   `setSleep(true)` to turn off the EPD boost, PM1 stays in L2. Fast wake, full
+   `setup()`, image retained. The power button is on the PM1; `verify` whether
+   it wakes the ESP32 or only power-cycles.
+2. **PM1 shutdown:** `pm1.shutdown()` cuts 3V3_L2 and the ESP32; the PM1 timer
+   or power button brings it back. Lowest current, full cold boot. The M5PM1
+   guide warns not to cut e-paper power before its state is saved.
+
+The 140 mAh cell is small: at 40.95 mA the upper bound is ~3.4 h before
+Wi-Fi/TLS and refresh peaks. Treat it as a desk companion: USB for long
+sessions, timer/button wake, sync, refresh only on change, sleep. PD-04
+chooses the strategy; PD-01 needs a working deep sleep and wake path.
+
+### 2.6 Spike questions and measurements
+
+**PD-01 — board/build.** (1) Builds with `qio_opi`, 16 MB flash, 8 MB PSRAM?
+(2) `board_M5PaperDIY` detected and 960×540 panel initialised, no
+`need OPI-PSRAM enabled`? (3) SD mounts and the pack opens (Cardputer CRC
+~3.6 s; measure here)? (4) Buttons read and `ext1` wakes; does the power
+button wake or power-cycle? (5) Battery/charge status from PM1? (6) Flash,
+static RAM, internal heap/largest and PSRAM at boot, after `M5.begin()`, after
+the canvas, before/after TLS?
+
+**PD-02 — rendering/refresh.** (1) Refresh time per mode for a full 960×540
+frame and a 240×135-equivalent region: `t0 = micros(); push...;
+gDisp->waitDisplay(); t1 = micros();` 20 runs, min/median/max. Do not time
+only `pushSprite()` (it queues). (2) Ghosting after 1/5/10/20/50 partial
+updates of a text screen, photos, then one `epd_quality` full refresh; record
+the unacceptable N. (3) 4× quality of Home/lesson/Stats at 1 m; glyphs and
+grays. (4) 4× cost vs native full frame; is partial navigation ineffective?
+(5) Present policy: 150 ms stable + 500 ms floor; does clock/battery trigger
+a refresh; presents per 10-key burst? (6) Native layout go/no-go: scope a
+960×540 layout + `KKGP` v2 96/64/40 px glyphs only if 4× fails.
+
+| Metric | Method | Proposed pass |
+|---|---|---|
+| Flash / static RAM | release size | fits 16 MB table with OTA |
+| PSRAM free after display + canvas | `MALLOC_CAP_SPIRAM` | ≥ 5 MB |
+| Internal heap / largest | `MALLOC_CAP_INTERNAL` | ≥ 60 KB / ≥ 40 KB |
+| Boot to first frame | `millis()` at first `present()` | ≤ 10 s |
+| SD mount + pack open | existing log lines | same order as Cardputer |
+| `epd_quality` / `epd_text` / `epd_fastest` full frame | `waitDisplay()` | ≤ 3 s / ≤ 2 s / ≤ 1.5 s |
+| 240×135-equivalent region | same | ≤ 500 ms |
+| Ghosting after N partials | photos | N = 10 acceptable with full refresh |
+| Deep-sleep current | PPK2/INA219, 10 min | ≤ 1 mA |
+| Wake to first frame | 20 trials | ≤ 5 s |
+| Refresh energy | PPK2/INA219 per frame | report mAh |
+
+All thresholds are proposed; none is a measurement.
+
+### 2.7 Go/no-go
+
+**PD-01:** builds with 16 MB + octal PSRAM; `board_M5PaperDIY`; 960×540; SD;
+both buttons; PM1 battery/charging; deep sleep + wake; internal heap ≥ 60 KB /
+largest ≥ 40 KB after display + canvas; PSRAM free ≥ 5 MB; boot to first frame
+≤ 10 s. If 0.2.26 + 0.3.0 + core 2.0.17 cannot init the panel, a newer
+library pair or core 3.x is a separate decision; the Cardputer stays green.
+
+**PD-02:** 4× renders Home/lesson/item/Stats legibly at 1 m, no colour-only
+meaning; refresh gates as above; presents coalesced, no per-key or periodic
+clock refresh, full refresh every N, `waitDisplay()` before sleep/mode change.
+If 4× fails, native 960×540 is a separate go/no-go with `KKGP` v2; do not
+ship a half-native layout. The first release stays read-only; full reviews
+wait for BT-01…BT-04.
+
+### 2.8 PD risks
+
+- **E-paper speed/ghosting.** 4× writes the full screen and makes partials
+  ineffective; native is more work. Batch/debounce if `epd_fastest` is slow.
+- **PSRAM.** `Panel_EPD` hard-fails without octal PSRAM; the `qio_opi` build
+  is a gate.
+- **Strapping pins.** G45/G46/G3; boot-test with the panel and boost on/off.
+- **Power/wake.** The power button is on the PM1; wake vs power-cycle is
+  unverified. 140 mAh makes sync cadence a product decision.
+- **M5GFX drift.** 0.3.0 is resolved, not pinned; pin it.
+- **Native scope.** 4× is a bring-up layout; native 960×540 + pack v2 is a
+  separate task.
+
+---
+
+## 3. Open questions for the owner
+
+1. Which three BLE keyboards and which Classic-only keyboard are available?
+   Confirm transports before the run.
+2. Is the test Cardputer ADV 1500 mAh (current spec) or an early 1750 mAh?
+3. Accept a partition-table change (smaller LittleFS, larger app slots) if
+   Bluedroid is chosen?
+4. Is 4× acceptable for the first PaperDIY release, or is native 960×540
+   required before PD-03?
+5. Does the PaperDIY power button wake the ESP32, or only power-cycle through
+   the PM1? This decides PD-04.
+6. Does the FPC expansion expose enough SPI/I2S for a wired keyboard, and is
+   I²C absent? `verify` from the schematic.
+7. Should BLE stay connected during reviews/lessons, or only during a session
+   (BT-04)? This changes battery/coexistence requirements.
+8. Does the first PaperDIY release need OTA, or is USB flashing enough? The
+   partition table depends on it.
+
+## 4. Key sources
+
+The inline links are the citations; these are the primary pages.
+
+- PaperDIY Complete Kit + pin map: https://docs.m5stack.com/en/core/PaperDIY_Complete_Kit
+- PaperDIY display guide (modes, library minimums): https://docs.m5stack.com/en/arduino/paperdiy/display
+- PaperDIY M5PM1 guide (power levels, EPD_PWR): https://docs.m5stack.com/en/arduino/paperdiy/m5pm1
+- Cardputer-Adv specs (1500 mAh, currents): https://docs.m5stack.com/en/core/Cardputer-Adv
+- M5GFX PaperDIY autodetect: https://github.com/m5stack/M5GFX/blob/0.3.0/src/M5GFX.cpp
+- M5Unified PaperDIY power: https://github.com/m5stack/M5Unified/blob/0.2.26/src/utility/Power_Class.inl
+- ESP-IDF S3 BLE overview: https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/ble/overview.html
+- ESP-IDF `ble_hidh.c`: https://github.com/espressif/esp-idf/blob/v4.4.7/components/esp_hid/src/ble_hidh.c
+- ESP-IDF `esp_hid_host` example: https://github.com/espressif/esp-idf/tree/v4.4.7/examples/bluetooth/esp_hid_host
+- NimBLE-Arduino: https://github.com/h2zero/NimBLE-Arduino
+- Third-party S3 Bluedroid/NimBLE size (indicative): https://benign.host/blog/esp32-ble-flash-budget/
