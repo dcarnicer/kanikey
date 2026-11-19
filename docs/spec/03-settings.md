@@ -26,8 +26,8 @@ lesson card/quiz, Outbox and Firmware, at most seven rows, `Esc: close`.
 the portal, on-device Wi-Fi, low-battery, sign-out and notices. Plain `/`
 remains Right and `?` in an answer field returns to the same item. Home's hint
 is `Enter: reviews  L  S  Esc: menu` (or `O: outbox  Enter  S  Esc: menu`).
-Two new native tests (340 on the merged main); release 1,613,409 B (87.9%),
-dev 1,681,009 B (91.6%). Hardware: Home showed the seven-row `home` table and
+Two new native tests (340 on the merged main); release 1,613,377 B (87.9%),
+dev 1,680,977 B (91.6%). Hardware: Home showed the seven-row `home` table and
 `Esc: close`; the Home hint shows `Esc: menu`. The other screens, the
 swallow/close path and the portal/Wi-Fi refusal remain.
 

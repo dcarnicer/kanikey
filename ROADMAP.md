@@ -131,17 +131,17 @@ Working on hardware:
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 293 native tests and the `cardputer-adv` build run in GitHub Actions alongside
+- 340 native tests and the `cardputer-adv` build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests; the release workflow adds
   the manifest tests and a tag-driven GitHub release.
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Last recorded round-2 build (CFG/SPEED-07 merges): **release 1,586,677 B /
-1,835,008 B flash (86.5%)**, **dev 1,654,337 B (90.2%)**; static RAM at the v1
-pass was 96,248 B (29.4%). The later REV-06/09/12 merge (293 native tests) has
-not been re-measured. At the recorded build, removing `efontJA_16` freed
-~468 KB and left ~248 KB of flash headroom. The loop task uses a 24 KiB stack;
+Last recorded build (ONB-01 + CFG-04, before GlyphPack's role status fix):
+**release 1,613,409 B / 1,835,008 B flash (87.9%)**, **dev 1,681,009 B
+(91.6%)**, static RAM 103,080/103,192 B (31.5%). The GlyphPack status fix
+shaves 32 B (release 1,613,377 B, dev 1,680,977 B). Removing `efontJA_16` freed
+~468 KB and left ~220 KB of flash headroom. The loop task uses a 24 KiB stack;
 the lazy review batch keeps the lesson-fetch minimum free heap above ~44 KB in
 the 2026-11-19 logs.
 
