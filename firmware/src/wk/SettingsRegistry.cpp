@@ -369,6 +369,8 @@ constexpr SettingDef kSettings[] = {
      kVoiceChoices, 2, 0, true, nullptr},
 
     // Account
+    {"account.wifi", kAccount, "Wi-Fi", "Scan and join a 2.4 GHz network", SettingKind::Action,
+     nullptr, nullptr, 0, 0, false, "scan"},
     {"setup.portal", kAccount, "Setup portal", "Wi-Fi, token and time zone", SettingKind::Action,
      nullptr, nullptr, 0, 0, false, "open"},
     {"account.signOut", kAccount, "Sign out", "Clear the token and local data",

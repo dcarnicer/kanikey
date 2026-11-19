@@ -31,6 +31,7 @@
 #include "app/StatsController.h"
 #include "app/StudyController.h"
 #include "app/SyncController.h"
+#include "app/WifiSetupController.h"
 #include "app/BootScreen.h"
 #include "app/DebugScreens.h"
 #include "app/FirmwareScreen.h"
@@ -104,6 +105,10 @@ void onKeyImpl(const KeyEvent& e) {
             snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "Setup cancelled");
             state().display.gDirty = true;
         }
+        return;
+    }
+    if (state().wifi.gWifiActive) {
+        wifiSetupKey(e);
         return;
     }
     if (state().ui.gNoticeActive) {
@@ -250,6 +255,17 @@ void onKeyImpl(const KeyEvent& e) {
             retryBoot();
         }
         return;
+    }
+    // The boot "Wi-Fi needed" state keeps the phone portal as the fallback
+    // (SETUP-09): Enter opens the on-device scan list, P opens the portal.
+    if (e.down && !state().session.gShowHome && e.key == Key::Other &&
+        !state().sync.gSyncing && state().storage.gSdOk &&
+        state().storage.gPack.ready() && !kk::DevWifi::hasSaved()) {
+        const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
+        if (c == 'p' || c == 'P') {
+            startSetupPortal();
+            return;
+        }
     }
     if (e.down && state().session.gShowHome && e.key == Key::Other &&
         (tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 'o' ||
@@ -447,9 +463,9 @@ void drawBoot() {
             break;
         case BootState::NoWifi:
             title = "Wi-Fi needed";
-            line1 = "Press Enter for setup";
-            line2 = "Join KaniKey-XXXX on your phone";
-            action = "Enter: setup";
+            line1 = "Set up a 2.4 GHz network here";
+            line2 = "or press P for the phone portal";
+            action = "Enter: on-device  P: phone";
             break;
         case BootState::NotSynced:
             title = "Not synced";
@@ -532,6 +548,10 @@ void draw() {
     }
     if (state().setup.gPortalActive) {
         drawSetupPortal();
+        return;
+    }
+    if (state().wifi.gWifiActive) {
+        drawWifiSetup();
         return;
     }
     if (state().ui.gLowBatteryPrompt) {
@@ -639,6 +659,7 @@ void draw() {
 bool homeOwnsScreen() {
     if (!state().session.gShowHome) return false;
     if (state().setup.gPortalActive || state().storage.gAssetServerActive) return false;
+    if (state().wifi.gWifiActive) return false;
     if (state().ui.gNoticeActive || state().ui.gLowBatteryPrompt ||
         state().ui.gSignOutConfirm || state().ui.gAboutActive ||
         state().ui.gOutboxScreen || state().stats.gStatsActive ||

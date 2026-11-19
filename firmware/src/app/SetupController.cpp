@@ -40,6 +40,7 @@
 #include "app/StudyScreens.h"
 #include "app/SyncController.h"
 #include "app/SyncScreen.h"
+#include "app/WifiSetupController.h"
 #include "board/Board.h"
 #include "Version.h"
 #include "platform/AudioCache.h"
@@ -257,8 +258,14 @@ void retryBoot() {
         startSetupPortal();
         return;
     }
-    if (!kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
+    if (!kk::DevToken::has()) {
+        // The token is still entered in the phone portal (SETUP-09 keeps that
+        // path); a missing Wi-Fi with a token goes to the on-device scan list.
         startSetupPortal();
+        return;
+    }
+    if (!kk::DevWifi::hasSaved()) {
+        openWifiSetup(WifiSetupOrigin::Boot);
         return;
     }
     if (!state().storage.gSdOk) {

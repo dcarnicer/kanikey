@@ -94,7 +94,7 @@ bool devForceBattery() {
 }
 
 void drawStatus() {
-    if (!state().display.gDisp || state().setup.gPortalActive || state().ui.gLowBatteryPrompt || state().ui.gSignOutConfirm || state().ui.gAboutActive ||
+    if (!state().display.gDisp || state().setup.gPortalActive || state().wifi.gWifiActive || state().ui.gLowBatteryPrompt || state().ui.gSignOutConfirm || state().ui.gAboutActive ||
         state().ota.gFirmwareActive || state().ui.gSettingsActive || state().ui.gPauseActive || state().sync.gSyncScreen || state().session.gShowHome ||
         state().review.gReviewActive || state().review.gReviewSummary || state().lesson.gLessonListActive || state().lesson.gLessonEmptyActive ||
         state().lesson.gLessonActive || state().lesson.gLessonBatchQuizActive || state().lesson.gLessonStartActive ||
@@ -154,17 +154,17 @@ bool powerTick(uint32_t now) {
     const uint32_t dimMs = static_cast<uint32_t>(kk::settingsDimSeconds()) * 1000u;
     const uint32_t blankMs = static_cast<uint32_t>(kk::settingsBlankSeconds()) * 1000u;
     const uint32_t sleepMs = static_cast<uint32_t>(kk::settingsSleepSeconds()) * 1000u;
-    if (!state().setup.gPortalActive && dimMs && !state().ui.gDimmed &&
+    if (!state().setup.gPortalActive && !state().wifi.gWifiActive && dimMs && !state().ui.gDimmed &&
         now - state().ui.gLastInputAt > dimMs) {
         tgc::board::setBrightness(20);
         state().ui.gDimmed = true;
     }
-    if (!state().setup.gPortalActive && blankMs && !state().ui.gScreenOff &&
+    if (!state().setup.gPortalActive && !state().wifi.gWifiActive && blankMs && !state().ui.gScreenOff &&
         now - state().ui.gLastInputAt > blankMs) {
         tgc::board::setDisplayOn(false);
         state().ui.gScreenOff = true;
     }
-    if (!state().setup.gPortalActive && !state().ui.gNoticeActive &&
+    if (!state().setup.gPortalActive && !state().wifi.gWifiActive && !state().ui.gNoticeActive &&
         !state().review.gReviewActive && !state().review.gReviewSummary &&
         !state().review.gFeedback && !state().lesson.gLessonActive &&
         !state().lesson.gLessonListActive && !state().lesson.gLessonEmptyActive &&

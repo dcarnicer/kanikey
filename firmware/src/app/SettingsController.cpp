@@ -40,6 +40,7 @@
 #include "app/StudyScreens.h"
 #include "app/SyncController.h"
 #include "app/SyncScreen.h"
+#include "app/WifiSetupController.h"
 #include "board/Board.h"
 #include "Version.h"
 #include "platform/AudioCache.h"
@@ -115,6 +116,7 @@ void setSettingsNote(const char* text, uint16_t color = kFaint) {
 bool settingsRowLocked(const char* id) {
     if (!id || !state().review.gReviewActive) return false;
     return std::strcmp(id, "setup.portal") == 0 ||
+           std::strcmp(id, "account.wifi") == 0 ||
            std::strcmp(id, "account.signOut") == 0 ||
            std::strcmp(id, "sync.clearCache") == 0 ||
            std::strcmp(id, "system.reset") == 0 ||
@@ -166,7 +168,12 @@ void settingsRunAction(const kk::SettingDef& def) {
         setSettingsNote("End the review session first", kWarn);
         return;
     }
-    if (std::strcmp(id, "setup.portal") == 0) {
+    if (std::strcmp(id, "account.wifi") == 0) {
+        // SETUP-09: keep Settings behind the scan list so Esc and a successful
+        // join return to the section the user came from.
+        state().ui.gSettingsNote[0] = 0;
+        openWifiSetup(WifiSetupOrigin::Settings);
+    } else if (std::strcmp(id, "setup.portal") == 0) {
         state().ui.gSettingsActive = false;
         state().session.gShowHome = false;
         startSetupPortal();
