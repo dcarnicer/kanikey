@@ -630,8 +630,12 @@ the dev image: 1,622,625 B / 1,835,008 B flash (88.4%), 96,336 B RAM (29.4%);
   their counts (`Reviews 12`, `Lessons 6`, `Study 5`, `Sync & data 6`,
   `Display & power 6`, `Reminders & sound 7`, `Account token set`, `System`);
   Reviews showed 12 rows; `Batch size` cycled 20 → 30 with Right and back to
-  20 with Left, with the help line. Review lock/reset/origin/scroll/upgrade
-  values remain.
+  20 with Left, with the help line. Review lock showed the faint destructive
+  rows with `End the review session first`. Reset settings after ARCH-04
+  (System → Reset settings, two Enters) showed `Settings reset`; token, Wi-Fi,
+  cache (A150 G143 M81 E147 B586) and the empty outbox survived. `Pause →
+  Settings → System → About → Esc ×3` returned to Pause. Origin/scroll/upgrade
+  values and the post-reset brightness/timers remain.
 - **REV feedback (REV-01/03).** 13 native tests cover the accepted tokens,
   synonyms, grouped readings and hint fallback; the hardware feedback look
   (multiple meanings, kanji groups, lesson quiz) remains.
@@ -801,7 +805,7 @@ instead.
 | `SPEED-07` | Home due count/next review updates within 60 s | — | — | `todo` | Two native Summary tests; the 60 s Home tick and the offline-clock line still need the hardware run (2026-11-19 v1 pass). |
 | `CFG-01` | Eight sections, open/back, cycle both ways, review lock, scroll, origin | `cardputer-adv-dev` | 2026-11-19 | `partial` | Home → Esc showed eight sections with counts (`Reviews 12`, `Lessons 6`, …); Reviews showed 12 rows; `Batch size` cycled 20 → 30 with Right and back to 20 with Left, with the help line. Remaining: `Esc`-back chain, wrap at both ends, review lock, scroll thumb, origin return. |
 | `CFG-02` | Registry persistence, defaults, R4 upgrade | `cardputer-adv-dev` | 2026-11-19 | `partial` | 47 rows and eight sections are live in the menu; one value (`Batch size`) cycled. Remaining: one change per section plus a power cycle, a fresh-NVS default check, and the v0.1.0 `order` → `rv.first` upgrade. |
-| `CFG-03` | Reset: second Enter, Esc cancel, keeps account, brightness, review lock | — | — | `todo` | Implemented; no reset run appears in the 2026-11-19 sections. |
+| `CFG-03` | Reset: second Enter, Esc cancel, keeps account, brightness, review lock | `cardputer-adv-dev` | 2026-11-19 | `partial` | Two Enters showed `Settings reset`; token/Wi-Fi/cache/outbox survived. Remaining: brightness/timers after reset and reset during a review. |
 | `CFG-04` | Help on Home/Settings/feedback/lesson/Outbox/Firmware; Esc closes; hint width | `cardputer-adv-dev` | 2026-11-19 | `partial` | `?` on Home opened the seven-row `home` table with `Esc: close`; Settings showed Up/Down/Enter/Left/Right/Esc; in an answer field `?` opened the `reviews` table without typing `?`; the Home hint `Enter: reviews  L  S  Esc: menu` fits. Remaining: lesson/Outbox/Firmware tables, the swallow/close path, plain `/` paging, portal/Wi-Fi refusal. |
 | `REV-01/03` | Feedback: all accepted answers/synonyms, grouped readings, hint line, lesson quiz | — | — | `todo` | 13 native tests; the hardware feedback look (multiple meanings, kanji groups, hint fallback, lesson quiz) was not run (2026-11-19 v1 pass). |
 | `REV-02` | WaniKani vs Strict typo policy | `cardputer-adv-dev` | 2026-11-19 | `partial` | Default: `tonigh` for 今夜 was CORRECT with `Close: tonight`; `tonite` (distance 3) correctly stayed NOT QUITE. Strict path and lesson quiz not run; R6 was returned to WaniKani. |
