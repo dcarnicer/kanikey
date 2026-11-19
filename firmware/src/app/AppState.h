@@ -66,6 +66,11 @@ struct StorageState {
     // opened inside the HTTP request can lose its descriptor when the client
     // closes.
     bool gPackRecheckPending = false;
+    // A pack just installed over HTTP already passed its transfer check
+    // (SHA-256 for the font, structure/kind for the radical upload). Skip the
+    // full-payload CRC reopen then: on a 9 MB font pack it takes seconds and
+    // cannot show progress. "Check pack again" still runs the CRC.
+    bool gPackRecheckSkipCrc = false;
 };
 
 struct SessionState {

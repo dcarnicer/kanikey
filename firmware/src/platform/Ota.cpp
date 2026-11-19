@@ -2,8 +2,10 @@
 #include "platform/Ota.h"
 
 #include <Preferences.h>
+#include <SD.h>
 #include <Update.h>
 #include <WiFiClientSecure.h>
+#include <esp_heap_caps.h>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 #include <mbedtls/sha256.h>
@@ -105,6 +107,16 @@ bool sameHex(std::string_view a, std::string_view b) {
         const char x = a[i] >= 'A' && a[i] <= 'F' ? static_cast<char>(a[i] - 'A' + 'a') : a[i];
         const char y = b[i] >= 'A' && b[i] <= 'F' ? static_cast<char>(b[i] - 'A' + 'a') : b[i];
         if (x != y) return false;
+    }
+    return true;
+}
+
+bool looksLikeSha256(std::string_view text) {
+    if (text.size() != 64) return false;
+    for (char c : text) {
+        const bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+                         (c >= 'A' && c <= 'F');
+        if (!hex) return false;
     }
     return true;
 }
@@ -249,6 +261,7 @@ const char* fetchStatusString(FetchStatus status) {
         case FetchStatus::BadImage: return "bad image";
         case FetchStatus::WriteFailed: return "write failed";
         case FetchStatus::NoSlot: return "no update slot";
+        case FetchStatus::NoSpace: return "not enough card space";
         case FetchStatus::BadUrl: return "bad URL";
         case FetchStatus::Cancelled: return "cancelled";
     }
@@ -356,6 +369,164 @@ FetchResult fetchText(std::string_view url, size_t maxBytes, std::string* out,
         result.status = FetchStatus::SizeMismatch;
     }
     return result;
+}
+
+FetchResult downloadToFile(const String& url, uint32_t expectedBytes,
+                           const std::string& expectedSha256, const String& tmpPath,
+                           ProgressFn progress, void* progressCtx, uint32_t idleTimeoutMs,
+                           uint32_t totalTimeoutMs) {
+    FetchResult result;
+    const String path = tmpPath;
+    if (path.length() <= 4 || !path.endsWith(".tmp")) {
+        result.status = FetchStatus::BadUrl;
+        return result;
+    }
+    if (!validHttpUrl(std::string_view(url.c_str(), url.length())) || expectedBytes == 0 ||
+        !looksLikeSha256(expectedSha256)) {
+        result.status = FetchStatus::BadUrl;
+        return result;
+    }
+    const uint64_t sdTotal = SD.totalBytes();
+    const uint64_t sdUsed = SD.usedBytes();
+    if (sdTotal == 0) {
+        result.status = FetchStatus::WriteFailed;
+        return result;
+    }
+    // Keep a small margin for the old file and FAT bookkeeping. The pack is
+    // written to .tmp first, so the final size is not double-counted.
+    if (sdUsed >= sdTotal || sdTotal - sdUsed < static_cast<uint64_t>(expectedBytes) + 65536) {
+        result.status = FetchStatus::NoSpace;
+        return result;
+    }
+    if (SD.exists(path)) SD.remove(path);
+    const int slash = path.lastIndexOf('/');
+    if (slash > 0) {
+        const String dir = path.substring(0, slash);
+        if (!SD.exists(dir)) SD.mkdir(dir);
+    }
+    File out = SD.open(path, FILE_WRITE);
+    if (!out) {
+        result.status = FetchStatus::WriteFailed;
+        return result;
+    }
+
+    const String finalPath = path.substring(0, path.length() - 4);
+    const size_t heapBefore = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    Serial.printf("[pack] downloading %s (%u bytes) to %s, heap %u\n", url.c_str(),
+                  static_cast<unsigned>(expectedBytes), path.c_str(),
+                  static_cast<unsigned>(heapBefore));
+
+    mbedtls_sha256_context sha;
+    mbedtls_sha256_init(&sha);
+    mbedtls_sha256_starts_ret(&sha, 0);
+    size_t written = 0;
+    unsigned char digest[32] = {};
+    bool bodyDone = false;
+    FetchStatus failure = FetchStatus::Ok;
+
+    const FetchStatus status = request(
+        url, nullptr, &result.httpCode, &result.tlsError, idleTimeoutMs,
+        [&](WiFiClient& client, size_t length) {
+            if (length != 0 && length != static_cast<size_t>(expectedBytes)) {
+                failure = FetchStatus::SizeMismatch;
+                return false;
+            }
+            // Let the caller draw the first 0% frame and cancel before TLS
+            // starts reading the body.
+            if (progress && !progress(0, expectedBytes, progressCtx)) {
+                failure = FetchStatus::Cancelled;
+                return false;
+            }
+            const uint32_t started = millis();
+            uint32_t lastData = started;
+            uint8_t buf[4096];
+            while (written < expectedBytes && millis() - started < totalTimeoutMs) {
+                const int avail = client.available();
+                if (avail > 0) {
+                    const size_t take = std::min<size_t>(
+                        sizeof buf,
+                        std::min<size_t>(static_cast<size_t>(avail), expectedBytes - written));
+                    const int n = client.read(buf, take);
+                    if (n > 0) {
+                        if (out.write(buf, static_cast<size_t>(n)) !=
+                            static_cast<size_t>(n)) {
+                            failure = FetchStatus::WriteFailed;
+                            return false;
+                        }
+                        mbedtls_sha256_update_ret(&sha, buf, static_cast<size_t>(n));
+                        written += static_cast<size_t>(n);
+                        lastData = millis();
+                        // One callback per 4 KB chunk: the App redraws only
+                        // when the percentage changes but pumps the keyboard
+                        // here, so Esc stays responsive on a slow link.
+                        if (progress && !progress(written, expectedBytes, progressCtx)) {
+                            failure = FetchStatus::Cancelled;
+                            return false;
+                        }
+                        continue;
+                    }
+                }
+                if (!client.connected() && !client.available()) break;
+                if (millis() - lastData > idleTimeoutMs) break;
+                delay(2);
+            }
+            if (written != expectedBytes) {
+                failure = FetchStatus::SizeMismatch;
+                return false;
+            }
+            bodyDone = true;
+            return true;
+        });
+
+    result.bytes = written;
+    if (status != FetchStatus::Ok) {
+        result.status = failure != FetchStatus::Ok ? failure : status;
+    } else if (!bodyDone || written != expectedBytes) {
+        result.status = FetchStatus::SizeMismatch;
+    } else {
+        mbedtls_sha256_finish_ret(&sha, digest);
+        const std::string hash = hexDigest(digest);
+        if (!sameHex(hash, expectedSha256)) {
+            Serial.printf("[pack] sha256 %s, expected %s\n", hash.c_str(),
+                          expectedSha256.c_str());
+            result.status = FetchStatus::HashMismatch;
+        } else {
+            result.status = FetchStatus::Ok;
+        }
+    }
+    mbedtls_sha256_free(&sha);
+    out.flush();
+    out.close();
+
+    if (result.status == FetchStatus::Ok && !replaceFile(path, finalPath)) {
+        result.status = FetchStatus::WriteFailed;
+    }
+    if (result.status != FetchStatus::Ok && SD.exists(path)) SD.remove(path);
+    Serial.printf("[pack] download: %s (%u/%u bytes, http %d, heap %u -> %u)\n",
+                  fetchStatusString(result.status), static_cast<unsigned>(written),
+                  static_cast<unsigned>(expectedBytes), result.httpCode,
+                  static_cast<unsigned>(heapBefore),
+                  static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
+    return result;
+}
+
+bool replaceFile(const String& tmpPath, const String& finalPath) {
+    if (tmpPath.isEmpty() || finalPath.isEmpty() || !SD.exists(tmpPath)) return false;
+    const String backupPath = finalPath + ".bak";
+    // Recover a pack left in the backup slot by a reset between the two
+    // renames; otherwise a later download would delete the last good copy.
+    if (!SD.exists(finalPath) && SD.exists(backupPath)) {
+        if (!SD.rename(backupPath, finalPath)) return false;
+    }
+    if (SD.exists(backupPath)) SD.remove(backupPath);
+    const bool hadOld = SD.exists(finalPath);
+    if (hadOld && !SD.rename(finalPath, backupPath)) return false;
+    if (!SD.rename(tmpPath, finalPath)) {
+        if (hadOld) SD.rename(backupPath, finalPath);
+        return false;
+    }
+    if (hadOld) SD.remove(backupPath);
+    return true;
 }
 
 FetchResult install(const AppImage& app, ProgressFn progress, void* progressCtx,

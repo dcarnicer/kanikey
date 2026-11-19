@@ -12,6 +12,7 @@ Every `vX.Y.Z` tag publishes:
 | Asset | Purpose |
 |---|---|
 | `kanikey-cardputer-adv.bin` | app-only ESP image (magic `0xE9`) |
+| `glyphs.kgp` (optional) | public font pack for the setup page (no WaniKani content) |
 | `kanikey-firmware.txt` | manifest read by the device |
 | `SHA256SUMS` | host-side checks |
 | `LICENSE`, `THIRD_PARTY_NOTICES.md` | notices |
@@ -22,13 +23,19 @@ The manifest is a tab-separated UTF-8 text file, at most 8 KiB:
 #kanikey-firmware	1
 version	v0.1.0
 app	cardputer-adv	kanikey-cardputer-adv.bin	1461584	<sha256 hex>
+pack	font	glyphs.kgp	9360216	<sha256 hex>
 ```
 
 - Line 1 is the header and format version. A reader of version 1 refuses any
   other version or a missing header.
-- `version` appears once, before the first `app`, as `vMAJOR.MINOR.PATCH`.
+- `version` appears once, before the first `app` or `pack`, as
+  `vMAJOR.MINOR.PATCH`.
 - `app` is `app`, the PlatformIO environment (`[a-z0-9-]{1,31}`), the image
   file name (or an absolute `https://` URL), the exact size and the SHA-256.
+- `pack` is `pack`, the pack type (`font` today), the file name (or an absolute
+  `https://` URL), the exact size and the SHA-256. It is optional; a manifest
+  without it still updates firmware, while the setup page uses it for
+  **Download pack**.
 - Relative file names resolve against the manifest URL's directory.
 - Blank lines and `#` lines are ignored; unknown record types are ignored for
   forward compatibility. A malformed known record rejects the whole manifest.
@@ -108,6 +115,9 @@ NVS under `fwfailver` / `fwfailcnt`.
 
 - The manifest and the image come from GitHub over HTTPS with the embedded root
   CAs in `platform/RootCerts.h`; certificate verification is never disabled.
+- The setup page's **Download pack** uses the same HTTPS and manifest rules: the
+  exact size and SHA-256 are checked while the `.tmp` is written, and the old
+  pack is replaced only after both match.
 - The size and SHA-256 from the manifest are enforced before the boot slot
   changes. `Update` also verifies the ESP image checksum and writes the image
   header last, so a cut download cannot boot.

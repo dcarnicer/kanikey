@@ -69,6 +69,12 @@ const AppImage* Manifest::find(std::string_view envName) const {
     return nullptr;
 }
 
+const PackImage* Manifest::findPack(std::string_view packType) const {
+    for (const PackImage& pack : packs)
+        if (pack.type == packType) return &pack;
+    return nullptr;
+}
+
 const char* manifestErrorString(ManifestError error) {
     switch (error) {
         case ManifestError::Ok: return "ok";
@@ -79,6 +85,8 @@ const char* manifestErrorString(ManifestError error) {
         case ManifestError::BadVersion: return "bad version";
         case ManifestError::BadApp: return "bad app record";
         case ManifestError::DuplicateApp: return "duplicate app";
+        case ManifestError::BadPack: return "bad pack record";
+        case ManifestError::DuplicatePack: return "duplicate pack";
     }
     return "?";
 }
@@ -231,6 +239,46 @@ ManifestParseResult parseManifest(std::string_view text, std::string_view manife
             }
             manifest.apps.push_back(std::move(app));
             sawApp = true;
+        } else if (fields[0] == "pack") {
+            if (!haveVersion || fields.size() != 5) {
+                result.error = ManifestError::BadPack;
+                result.line = lineNo;
+                return result;
+            }
+            PackImage pack;
+            pack.type = std::string(fields[1]);
+            pack.file = std::string(fields[2]);
+            if (!validEnv(pack.type) || !validFile(pack.file) ||
+                !parseU32(fields[3], &pack.bytes) || pack.bytes == 0) {
+                result.error = ManifestError::BadPack;
+                result.line = lineNo;
+                return result;
+            }
+            if (fields[4].size() != 64) {
+                result.error = ManifestError::BadPack;
+                result.line = lineNo;
+                return result;
+            }
+            for (char c : fields[4]) {
+                if (!isHex(c)) {
+                    result.error = ManifestError::BadPack;
+                    result.line = lineNo;
+                    return result;
+                }
+            }
+            pack.sha256 = std::string(fields[4]);
+            pack.url = resolveUrl(manifestUrl, pack.file);
+            if (pack.url.empty()) {
+                result.error = ManifestError::BadPack;
+                result.line = lineNo;
+                return result;
+            }
+            if (manifest.findPack(pack.type)) {
+                result.error = ManifestError::DuplicatePack;
+                result.line = lineNo;
+                return result;
+            }
+            manifest.packs.push_back(std::move(pack));
         }
         // Unknown record types are ignored on purpose.
     }

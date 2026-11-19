@@ -7,12 +7,17 @@
 //   #kanikey-firmware<TAB>1
 //   version<TAB>v0.1.0
 //   app<TAB>cardputer-adv<TAB>kanikey-cardputer-adv.bin<TAB>1423021<TAB><sha256>
+//   pack<TAB>font<TAB>glyphs.kgp<TAB>9360216<TAB><sha256>
 //
 // Blank lines and lines starting with '#' (after the header) are ignored.
-// `version` appears once, before the first `app`. A relative file name is
-// resolved against the manifest URL's directory. Any other record type is
-// ignored by this version, so later manifests can add records without a
+// `version` appears once, before the first `app` or `pack`. A relative file
+// name is resolved against the manifest URL's directory. Any other record type
+// is ignored by this version, so later manifests can add records without a
 // format bump. A malformed known record rejects the whole manifest.
+//
+// `pack` records are optional (the firmware update path does not require one);
+// the setup portal uses the `font` one to install the public glyph pack. `app`
+// keeps its existing meaning.
 //
 // The manifest is published as a GitHub release asset:
 //   https://github.com/dcarnicer/kanikey/releases/latest/download/kanikey-firmware.txt
@@ -34,12 +39,22 @@ struct AppImage {
     std::string sha256;  // 64 hex characters
 };
 
+struct PackImage {
+    std::string type;  // "font" today; the field is a lower-case token
+    std::string file;
+    std::string url;
+    uint32_t bytes = 0;
+    std::string sha256;
+};
+
 struct Manifest {
     uint32_t format = 0;
     std::string version;  // vX.Y.Z as written
     std::vector<AppImage> apps;
+    std::vector<PackImage> packs;
 
     const AppImage* find(std::string_view envName) const;
+    const PackImage* findPack(std::string_view packType) const;
 };
 
 enum class ManifestError : uint8_t {
@@ -51,6 +66,8 @@ enum class ManifestError : uint8_t {
     BadVersion,
     BadApp,
     DuplicateApp,
+    BadPack,
+    DuplicatePack,
 };
 const char* manifestErrorString(ManifestError error);
 
