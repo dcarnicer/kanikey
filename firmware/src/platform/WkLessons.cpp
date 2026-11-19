@@ -104,24 +104,48 @@ AssignmentBatch fetchAssignmentsForSubjects(const String& token,
 
 AssignmentBatch fetchPracticeAssignments(const String& token, int level, bool kanjiOnly) {
     AssignmentBatch result;
-    String path = "/v2/assignments?hidden=false&srs_stages=1,2,3,4";
+
+    // One stage group at a time: the full apprentice set (stages 1-4) can be
+    // larger than the shared 32 KB body buffer on a real account, and a
+    // truncated body loses every item. Individual stages stay small; the
+    // 4 x 64 reserve covers the 256-entry practice pool.
+    const auto fetchStages = [&](const char* stages) {
+        String path = "/v2/assignments?hidden=false&srs_stages=";
+        path += stages;
+        if (level > 0) {
+            path += "&levels=";
+            path += String(level);
+        }
+        if (kanjiOnly) path += "&subject_types=kanji";
+        WkAssignmentsResult ar = wkGetAssignmentsRetry(path, token, 32768, 64);
+        if (ar.http.httpCode != 200) {
+            if (!result.httpCode) result.httpCode = ar.http.httpCode;
+            result.error = "assignments HTTP " + String(ar.http.httpCode);
+            Serial.printf("[practice] stages %s failed: HTTP %d\n", stages, ar.http.httpCode);
+            return false;
+        }
+        if (!ar.parsed) {
+            result.error = "assignments JSON";
+            Serial.printf("[practice] stages %s parse failed (%u bytes%s)\n", stages,
+                          static_cast<unsigned>(ar.http.bytes),
+                          ar.http.truncated ? ", truncated" : "");
+            return false;
+        }
+        for (const Assignment& a : ar.assignments) result.assignments.push_back(a);
+        Serial.printf("[practice] stages %s: %u assignments\n", stages,
+                      static_cast<unsigned>(ar.assignments.size()));
+        return true;
+    };
+
+    bool any = false;
     if (level > 0) {
-        path += "&levels=";
-        path += String(level);
+        any = fetchStages("1,2,3,4");  // one level's kanji is small
+    } else {
+        for (const char* stages : {"1", "2", "3", "4"}) {
+            if (fetchStages(stages)) any = true;
+        }
     }
-    if (kanjiOnly) path += "&subject_types=kanji";
-    WkAssignmentsResult ar = wkGetAssignmentsRetry(path, token, 32768, 64);
-    if (ar.http.httpCode != 200) {
-        result.httpCode = ar.http.httpCode;
-        result.error = "assignments HTTP " + String(ar.http.httpCode);
-        return result;
-    }
-    if (!ar.parsed) {
-        result.error = "assignments JSON";
-        return result;
-    }
-    result.assignments = std::move(ar.assignments);
-    result.ok = true;
+    result.ok = any && !result.assignments.empty();
     return result;
 }
 
