@@ -132,10 +132,9 @@ bool portalValidateToken(const String& token, String* username, int* level, Stri
 }
 
 bool portalRecheckPack() {
-    // Both packs ready is only reported: re-opening them here was the FIX-25
-    // repro (the new descriptor died when the HTTP client closed).
-    if (state().storage.gFontPack.ready() && state().storage.gRadicalPack.ready())
-        return true;
+    // Always defer a real check, even when both packs are already ready: the
+    // page's Check pack again is the explicit full-CRC path. Opening inside
+    // the HTTP handler was the FIX-25 repro; loop() does it after the response.
     if (!state().storage.gSdOk) state().storage.gSdOk = mountSd();
     if (!state().storage.gSdOk) return false;
     // Opening inside the handler is unsafe and the CRC takes ~3.6 s. loop()
