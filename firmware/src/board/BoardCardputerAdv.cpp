@@ -166,8 +166,10 @@ void begin() {
     if (M5.getBoard() != m5::board_t::board_M5CardputerADV)
         Serial.printf("board: expected a Cardputer ADV, M5Unified found board %d\n",
                       static_cast<int>(M5.getBoard()));
-    // Landscape, the keyboard below the picture (M5GFX's own default here).
-    M5.Display.setRotation(1);
+    // Landscape, the keyboard below the picture. This ST7789V2 panel is
+    // configured with offset_rotation = 1, so rotation 0 is the landscape
+    // orientation (rotation 1 would turn it into 135x240 portrait).
+    M5.Display.setRotation(0);
     M5.Display.setBrightness(gBrightness);
     M5.BtnA.setHoldThresh(kHoldMs);
     pinMode(kKbdIntPin, INPUT_PULLUP);
@@ -228,7 +230,7 @@ lgfx::LGFX_Device& display() { return M5.Display; }
 int width() { return M5.Display.width(); }
 int height() { return M5.Display.height(); }
 
-void setOrientation(bool landscape) { setRotation(landscape ? 1 : 0); }
+void setOrientation(bool landscape) { setRotation(landscape ? 0 : 1); }
 bool landscape() { return M5.Display.width() > M5.Display.height(); }
 void setRotation(uint8_t r) { M5.Display.setRotation(r & 3); }
 uint8_t rotation() { return M5.Display.getRotation() & 3; }

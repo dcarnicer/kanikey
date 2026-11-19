@@ -5959,6 +5959,19 @@ void handleSerial() {
                           static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL)),
                           static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr) *
                                                 sizeof(StackType_t)));
+#ifdef KANIKEY_DEV
+            {
+                auto& display = tgc::board::display();
+                const auto& pc = display.getPanel()->config();
+                Serial.printf("[disp] rot %u %dx%d panel %dx%d off %u mem %dx%d\n",
+                              static_cast<unsigned>(display.getRotation()),
+                              static_cast<int>(display.width()),
+                              static_cast<int>(display.height()),
+                              static_cast<int>(pc.panel_width), static_cast<int>(pc.panel_height),
+                              static_cast<unsigned>(pc.offset_rotation),
+                              static_cast<int>(pc.memory_width), static_cast<int>(pc.memory_height));
+            }
+#endif
         } else if (gSerialLine == "i") {
             Serial.printf("[pack] %s\n", gPack.statusLine());
         } else if (gSerialLine == "S") {
@@ -6392,7 +6405,9 @@ void setup() {
 
     tgc::board::begin();
     gDisp = &tgc::board::display();
-    gDisp->setRotation(1);
+    // The Cardputer ADV panel uses rotation 0 for landscape (offset_rotation
+    // is 1 in M5GFX's board data); see board/BoardCardputerAdv.cpp.
+    gDisp->setRotation(0);
     gDisp->setBrightness(kk::settingsBrightness());
     kk::settingsApplyTimeZone();
 

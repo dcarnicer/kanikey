@@ -29,7 +29,7 @@ enum class Button : uint8_t {
 
 // --- Capabilities and keyboard ------------------------------------------------
 // fixedLandscape(): the panel is used one way only (Cardputer ADV: landscape,
-// rotation 1, over the keyboard), so the app has no Orientation setting.
+// rotation 0, over the keyboard), so the app has no Orientation setting.
 // hasKeyboard(): the board has a keyboard (Cardputer ADV); the hint bar names
 // keys and nextKeyEvent() delivers them.
 // nextKeyEvent(): the next key event update() read, oldest first; false when
@@ -71,7 +71,7 @@ inline bool sdPins(SdPins*) { return false; }
 
 constexpr uint32_t kHoldMs = 600;  // threshold for wasHeld()
 
-// Initialise display (portrait; the Cardputer ADV landscape), buttons, the
+// Initialise display (landscape; the Cardputer ADV panel), buttons, the
 // keyboard, power. Call once from setup().
 void begin();
 // Poll inputs; call once per loop() iteration before querying buttons.
@@ -81,10 +81,10 @@ lgfx::LGFX_Device& display();
 int width();   // width of the current rotation
 int height();  // height of the current rotation
 
-// Display rotation. Portrait is the default (begin() sets it); landscape swaps
-// the panel's width and height (e.g. 135x240 -> 240x135). width()/height()
+// Display rotation. Landscape is the default (begin() sets it); portrait swaps
+// the panel's width and height (e.g. 240x135 -> 135x240). width()/height()
 // follow the current rotation.
-void setOrientation(bool landscape);  // setRotation(landscape ? 1 : 0)
+void setOrientation(bool landscape);  // setRotation(landscape ? 0 : 1)
 bool landscape();
 // Rotation 0-3 as LovyanGFX's setRotation(): the top of the picture is at the
 // panel's top (0, native portrait), right (1, landscape), bottom (2) or left

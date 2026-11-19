@@ -128,7 +128,7 @@ Numbers measured in Tangocho (Cardputer ADV, no PSRAM):
 | Full frame | 64.8 KB ≈ 13 ms over SPI at 40 MHz |
 | SD pins | SCK 40, MISO 39, MOSI 14, CS 12; `otherCs` 5 for the LoRa Cap |
 | Keyboard | TCA8418 on internal I²C, INT on G11 |
-| Display | fixed rotation 1, keyboard underneath |
+| Display | fixed rotation 0 (landscape on this panel), keyboard underneath |
 | Battery | G10, 1:2 divider |
 | Sleep | wakes on G0 or any key (EXT1 on G11) |
 | Clock | no battery-backed RTC; SNTP or portal |
