@@ -731,8 +731,10 @@ A150 G143 M81 E147 B586).
   requeued the item and advanced to the next item (人) with no completion. The
   synthetic outbox was cleared before restoring the cache. The journal, warning,
   bar/help and practice checks remain.
-- **REV-07.** No native test (routing only). R9 On should open page 2/5 for a
-  wrong meaning and 3/5 for a wrong reading; the hardware check remains.
+- **REV-07.** No native test (routing only). With R9 On, a wrong `banana` for
+  今夜's meaning opened `ITEM DETAIL 2/6`, `MEANING MNEMONIC`, with `Tab/Esc:
+  back`; the synthetic cache was cleared and the real full sync restored. The
+  reading page, return path and empty-mnemonic state remain.
 
 ## Round 2 hardware checks
 
