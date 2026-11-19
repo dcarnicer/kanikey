@@ -739,14 +739,14 @@ def screen_about() -> Image.Image:
     text(im, 7, 34, "KaniKey 0.1.0 (ota_0)", 1, 1, TEXT)
 
     lines = [
-        ("Build Nov 19 2026 14:32", FAINT, 52),
-        ("Font: 7269 glyphs, 64/32/20 px", OK, 62),
-        ("Rad: 498 radicals", OK, 72),
-        ("Cache: 20 batch, 28 due", DIM, 82),
-        ("Last sync: 14:47", DIM, 92),
-        ("Wi-Fi: dev-net 192.168.1.42", DIM, 102),
-        ("Token: configured", DIM, 112),
-        ("Zone: Europe/Berlin", FAINT, 122),
+        ("Build Nov 19 2026 14:32", FAINT, 50),
+        ("Font: 7269 glyphs, 64/32/20 px", OK, 60),
+        ("Rad: 498 radicals", OK, 70),
+        ("Cache: 20 batch, 28 due", DIM, 80),
+        ("Last sync: 14:47", DIM, 90),
+        ("Wi-Fi: dev-net 192.168.1.42", DIM, 100),
+        ("Token: configured", DIM, 110),
+        ("Zone: Europe/Berlin", FAINT, 118),
         ("Heap: 145000 free / 110000 largest", FAINT, 126),
     ]
     for label, color, y in lines:

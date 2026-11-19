@@ -1067,31 +1067,31 @@ void drawAbout() {
                  state().ota.gOtaState.badgeVersion.c_str());
     else
         snprintf(build, sizeof build, "Build %s %s", __DATE__, __TIME__);
-    view.lines.push_back({build, state().ota.gOtaState.badgeVersion.empty() ? kFaint : kAccentHi, 52});
+    view.lines.push_back({build, state().ota.gOtaState.badgeVersion.empty() ? kFaint : kAccentHi, 50});
     view.lines.push_back({std::string("Font: ") + state().storage.gFontPack.statusLine(),
-                          state().storage.gFontPack.ready() ? kOk : kWarn, 62});
+                          state().storage.gFontPack.ready() ? kOk : kWarn, 60});
     view.lines.push_back({std::string("Rad: ") + state().storage.gRadicalPack.statusLine(),
-                          state().storage.gRadicalPack.ready() ? kOk : kWarn, 72});
+                          state().storage.gRadicalPack.ready() ? kOk : kWarn, 70});
     char cache[64];
     snprintf(cache, sizeof cache, "Cache: %u batch, %u due",
              static_cast<unsigned>(state().cache.gCachedBatchCount),
              static_cast<unsigned>(state().session.gDueReviews));
-    view.lines.push_back({cache, kDim, 82});
+    view.lines.push_back({cache, kDim, 80});
     view.lines.push_back({std::string("Last sync: ") + state().session.gSyncClock +
                               (state().cache.gOffline ? " (offline)" : ""),
-                          state().cache.gOffline ? kWarn : kDim, 92});
+                          state().cache.gOffline ? kWarn : kDim, 90});
     std::string wifi = kk::DevWifi::hasSaved() ? kk::DevWifi::savedSsid().c_str()
                                                 : "not configured";
     if (kk::DevWifi::connected()) {
         wifi += " ";
         wifi += kk::DevWifi::ip().c_str();
     }
-    view.lines.push_back({std::string("Wi-Fi: ") + wifi, kDim, 102});
+    view.lines.push_back({std::string("Wi-Fi: ") + wifi, kDim, 100});
     view.lines.push_back({std::string("Token: ") + (kk::DevToken::has() ? "configured" : "missing"),
-                          kk::DevToken::has() ? kDim : kWarn, 112});
+                          kk::DevToken::has() ? kDim : kWarn, 110});
     std::string zone = kk::settingsTimeZoneName().c_str();
     if (zone.empty()) zone = kk::settingsTimeZoneRule().c_str();
-    view.lines.push_back({std::string("Zone: ") + zone, kFaint, 122});
+    view.lines.push_back({std::string("Zone: ") + zone, kFaint, 118});
     char heap[48];
     snprintf(heap, sizeof heap, "Heap: %u free / %u largest",
              static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
