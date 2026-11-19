@@ -1,4 +1,5 @@
-// TNG-03: pure list-window math, hint-bar fallback, text layout and icons.
+// TNG-03: pure list-window math, hint-bar fallback, text layout, UI font
+// metrics and icons.
 #include <unity.h>
 
 #include <cstring>
@@ -9,6 +10,7 @@
 #include "ui/Icons.h"
 #include "ui/ListView.h"
 #include "ui/TextLayout.h"
+#include "ui/UiFont.h"
 
 using namespace kk::ui;
 
@@ -346,6 +348,50 @@ static void test_layout_prefix_and_suffix_by_code_point() {
     TEST_ASSERT_EQUAL_UINT64(text.size(), fitSuffix(text, 0, text.size(), -1, measure));
 }
 
+// ---------------------------------------------------------------- UI font
+
+static void test_uifont_ids_are_the_legacy_font_numbers() {
+    TEST_ASSERT_EQUAL(0, fontId(UiFont::Small));
+    TEST_ASSERT_EQUAL(1, fontId(UiFont::Base));
+    TEST_ASSERT_EQUAL(2, fontId(UiFont::Title));
+}
+
+static void test_uifont_heights_match_the_builtin_fonts() {
+    TEST_ASSERT_EQUAL(8, fontHeight(UiFont::Small));
+    TEST_ASSERT_EQUAL(8, fontHeight(UiFont::Base));
+    TEST_ASSERT_EQUAL(16, fontHeight(UiFont::Title));
+    TEST_ASSERT_EQUAL(8, fontLineHeight(UiFont::Small));
+    TEST_ASSERT_EQUAL(8, fontLineHeight(UiFont::Base));
+    TEST_ASSERT_EQUAL(16, fontLineHeight(UiFont::Title));
+}
+
+static void test_uifont_scale_matches_set_text_size() {
+    TEST_ASSERT_EQUAL(16, fontLineHeight(UiFont::Small, 2));
+    TEST_ASSERT_EQUAL(32, fontLineHeight(UiFont::Title, 2));
+    TEST_ASSERT_EQUAL(48, fontLineHeight(UiFont::Title, 3));
+    // applyFont() clamps scale 0 to 1, so the pure math does the same.
+    TEST_ASSERT_EQUAL(8, fontLineHeight(UiFont::Small, 0));
+    TEST_ASSERT_EQUAL(16, fontLineHeight(UiFont::Title, 0));
+}
+
+static void test_uifont_widths_match_the_builtin_cells() {
+    TEST_ASSERT_EQUAL(6, fontWidth(UiFont::Small));
+    TEST_ASSERT_EQUAL(6, fontWidth(UiFont::Base));
+    TEST_ASSERT_EQUAL(0, fontWidth(UiFont::Title));  // proportional
+    TEST_ASSERT_TRUE(fontIsMonospace(UiFont::Small));
+    TEST_ASSERT_TRUE(fontIsMonospace(UiFont::Base));
+    TEST_ASSERT_FALSE(fontIsMonospace(UiFont::Title));
+}
+
+static void test_uifont_small_and_base_are_the_same_m5gfx_font() {
+    // M5GFX maps setTextFont(1) to Font0; keep both ids but the same metrics.
+    TEST_ASSERT_TRUE(fontId(UiFont::Small) != fontId(UiFont::Base));
+    TEST_ASSERT_EQUAL(fontHeight(UiFont::Small), fontHeight(UiFont::Base));
+    TEST_ASSERT_EQUAL(fontWidth(UiFont::Small), fontWidth(UiFont::Base));
+    TEST_ASSERT_EQUAL(fontLineHeight(UiFont::Small, 2),
+                      fontLineHeight(UiFont::Base, 2));
+}
+
 // ---------------------------------------------------------------- icons
 
 static int iconInk(const Icon& icon) {
@@ -476,6 +522,11 @@ void run_ui_tests() {
     RUN_TEST(test_layout_ellipsize_short_text_and_force);
     RUN_TEST(test_layout_ellipsize_keeps_utf8_together);
     RUN_TEST(test_layout_prefix_and_suffix_by_code_point);
+    RUN_TEST(test_uifont_ids_are_the_legacy_font_numbers);
+    RUN_TEST(test_uifont_heights_match_the_builtin_fonts);
+    RUN_TEST(test_uifont_scale_matches_set_text_size);
+    RUN_TEST(test_uifont_widths_match_the_builtin_cells);
+    RUN_TEST(test_uifont_small_and_base_are_the_same_m5gfx_font);
     RUN_TEST(test_icon_tables_dimensions);
     RUN_TEST(test_icon_tables_have_ink);
     RUN_TEST(test_icon_padding_bits_are_clear);
