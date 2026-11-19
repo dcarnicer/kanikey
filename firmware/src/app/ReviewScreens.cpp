@@ -75,7 +75,8 @@ void drawFeedbackLine(lgfx::LovyanGFX& d, const ReviewView& view, int x, int y, 
 
 }  // namespace
 
-void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const ReviewView& view) {
+void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
+                      kk::GlyphPack& radicalPack, const ReviewView& view) {
     const kk::Subject* s = view.subject;
     if (!s) return;
     const kk::ReviewPart part = view.part;
@@ -111,9 +112,9 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const ReviewView&
 
     d.fillRect(4, 20, 88, 88, ui::kSurface);
     d.drawRect(4, 20, 88, 88, ui::kLine);
-    if (!drawSubjectPrompt(d, pack, *s, 48, 56, 78, 80, 64, ui::kText, ui::kSurface,
-                           kk::ClipRect{6, 22, 90, 106}))
-        drawMissingGlyph(d, pack, 48, 56);
+    if (!drawSubjectPrompt(d, fontPack, radicalPack, *s, 48, 56, 78, 80, 64, ui::kText,
+                           ui::kSurface, kk::ClipRect{6, 22, 90, 106}))
+        drawMissingGlyph(d, fontPack, radicalPack, 48, 56);
     char type[24];
     snprintf(type, sizeof type, "%s L%d", kindName(s->type), s->level);
     d.setTextFont(0);
@@ -145,9 +146,9 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const ReviewView&
             d.setTextColor(ui::kText, ui::kSurfaceHi);
             d.drawString(shown.c_str(), 106, 60);
             caret = 106 + d.textWidth(shown.c_str());
-        } else if (pack.drawTextRight(d, shown, 230, 80, 32, ui::kText, ui::kSurfaceHi,
+        } else if (fontPack.drawTextRight(d, shown, 230, 80, 32, ui::kText, ui::kSurfaceHi,
                                       kk::ClipRect{102, 54, 234, 86}) ||
-                   pack.drawTextRight(d, shown, 230, 80, 20, ui::kText, ui::kSurfaceHi,
+                   fontPack.drawTextRight(d, shown, 230, 80, 20, ui::kText, ui::kSurfaceHi,
                                       kk::ClipRect{102, 54, 234, 86})) {
             caret = 230;
         } else {
@@ -194,7 +195,7 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const ReviewView&
             d.drawString("Y", 100, 40);
             bool typedDrawn = false;
             if (!typed.empty())
-                typedDrawn = drawJapaneseFit(d, pack, typed, 108, 232, 56, 128, ui::kDim,
+                typedDrawn = drawJapaneseFit(d, fontPack, typed, 108, 232, 56, 128, ui::kDim,
                                              ui::kBg,
                                              kk::ClipRect{108, 38, 236, 58});
             if (!typedDrawn) {
@@ -208,7 +209,7 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const ReviewView&
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("A", 100, 72);
             const int lines = drawReadingTokens(
-                d, pack, view.answers, 108, 68, 128, 2, ok ? ui::kOk : ui::kErr, ui::kBg,
+                d, fontPack, view.answers, 108, 68, 128, 2, ok ? ui::kOk : ui::kErr, ui::kBg,
                 kk::ClipRect{108, 66, 236, 110});
             if (lines < 0) {
                 d.setTextFont(1);
@@ -248,8 +249,8 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const ReviewView&
     d.setTextDatum(lgfx::top_left);
 }
 
-void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
-                            const ReviewDetailView& view) {
+void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
+                            kk::GlyphPack& radicalPack, const ReviewDetailView& view) {
     const kk::Subject* s = view.subject;
     if (!s) return;
 
@@ -270,9 +271,9 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
 
     d.fillRect(4, 20, 74, 64, ui::kSurface);
     d.drawRect(4, 20, 74, 64, ui::kLine);
-    if (!drawSubjectPrompt(d, pack, *s, 41, 52, 70, 62, 60, ui::kText, ui::kSurface,
-                           kk::ClipRect{6, 22, 76, 82}))
-        drawMissingGlyph(d, pack, 41, 52);
+    if (!drawSubjectPrompt(d, fontPack, radicalPack, *s, 41, 52, 70, 62, 60, ui::kText,
+                           ui::kSurface, kk::ClipRect{6, 22, 76, 82}))
+        drawMissingGlyph(d, fontPack, radicalPack, 41, 52);
     char type[24];
     snprintf(type, sizeof type, "%s L%d", kindName(s->type), s->level);
     d.setTextFont(0);
@@ -318,7 +319,7 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
                     }
             if (reading.empty()) {
                 d.drawString("none", 94, 88);
-            } else if (!drawJapaneseFit(d, pack, reading, 94, 232, 98, 142, ui::kReading,
+            } else if (!drawJapaneseFit(d, fontPack, reading, 94, 232, 98, 142, ui::kReading,
                                         ui::kBg, kk::ClipRect{94, 80, 236, 100})) {
                 d.setTextFont(1);
                 d.setTextSize(1);
@@ -364,7 +365,7 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
                 if (row >= 4) break;
                 const int y = 50 + row * 18;
                 if (!c->characters.empty())
-                    pack.drawTextFit(d, c->characters, 86, y + 15, 20, 24, ui::kText, ui::kBg,
+                    fontPack.drawTextFit(d, c->characters, 86, y + 15, 20, 24, ui::kText, ui::kBg,
                                      kk::ClipRect{86, y, 112, y + 17});
                 else {
                     d.setTextFont(0);

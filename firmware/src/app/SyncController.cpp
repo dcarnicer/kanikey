@@ -645,7 +645,7 @@ void syncPrefetchStep() {
 void startSyncJob(SyncKind kind, bool modal, bool coldBoot) {
     if (kind == SyncKind::Skip) return;
     if (state().storage.gFsFormatPrompt) return;  // wait for the storage choice
-    if (!state().storage.gSdOk || !state().storage.gPack.ready() || !kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
+    if (!state().storage.gSdOk || !state().storage.gFontPack.ready() || !kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
         state().sync.gSyncScreen = false;
         state().display.gDirty = true;
         return;

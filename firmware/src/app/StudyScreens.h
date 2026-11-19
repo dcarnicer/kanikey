@@ -31,7 +31,7 @@ struct CriticalListView {
     int selectedIndex = 0;
 };
 
-void drawCriticalListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
-                            const CriticalListView& view);
+void drawCriticalListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
+                            kk::GlyphPack& radicalPack, const CriticalListView& view);
 
 }  // namespace kk::app

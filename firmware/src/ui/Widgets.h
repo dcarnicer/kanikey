@@ -1,7 +1,7 @@
 #pragma once
 // Shared drawing widgets for the Review and Lesson screens: pills, input
 // trimming and subject/reading glyph drawing. Each caller owns the transfer
-// window (startWrite()/present()) and passes its own GlyphPack.
+// window (startWrite()/present()) and passes the font and radical packs.
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -18,14 +18,18 @@ void drawPill(lgfx::LovyanGFX& d, int x, int y, const char* text, uint16_t fg, u
 // Drops whole UTF-8 code points from the front until the text fits maxWidth.
 void trimFrontToWidth(lgfx::LovyanGFX& d, std::string& text, int maxWidth);
 
-// Draws the subject's radical bitmap or its character centred at (cx, cy).
-// Returns false when neither is available; the caller draws the missing state.
-bool drawSubjectPrompt(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const kk::Subject& s, int cx,
-                       int cy, int maxWidth, int maxHeight, int radicalMaxSide, uint16_t fg,
+// Draws the subject's radical bitmap from `radicalPack`, or its character from
+// `fontPack`, centred at (cx, cy). Returns false when neither is available;
+// the caller draws the missing state.
+bool drawSubjectPrompt(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
+                       kk::GlyphPack& radicalPack, const kk::Subject& s, int cx, int cy,
+                       int maxWidth, int maxHeight, int radicalMaxSide, uint16_t fg,
                        uint16_t bg, const kk::ClipRect& clip);
 
-// "?" plus the pack status, centred at (cx, cy).
-void drawMissingGlyph(lgfx::LovyanGFX& d, const kk::GlyphPack& pack, int cx, int cy);
+// "?" plus the pack status, centred at (cx, cy). "no pack" means the font pack
+// is missing; a radical-only miss says "no glyph".
+void drawMissingGlyph(lgfx::LovyanGFX& d, const kk::GlyphPack& fontPack,
+                      const kk::GlyphPack& radicalPack, int cx, int cy);
 
 // 20 px reading that fits maxWidth, or right-aligned to `right` when it is too
 // wide. Returns false when the pack lacks a glyph; a long reading is not

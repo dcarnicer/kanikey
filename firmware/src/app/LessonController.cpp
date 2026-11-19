@@ -438,7 +438,7 @@ void showLessonList() {
 
     auto& d = target();
     d.startWrite();
-    drawLessonListScreen(d, state().storage.gPack, view);
+    drawLessonListScreen(d, state().storage.gFontPack, state().storage.gRadicalPack, view);
     d.endWrite();
     present();
 }
@@ -518,7 +518,7 @@ void showLesson() {
     view.total = state().lesson.gLessonBrowse.selectedCount();
 
     d.startWrite();
-    drawLessonCardScreen(d, state().storage.gPack, view);
+    drawLessonCardScreen(d, state().storage.gFontPack, state().storage.gRadicalPack, view);
     d.endWrite();
     present();
 }
@@ -574,7 +574,7 @@ void showLessonBatchQuiz() {
 
     auto& d = target();
     d.startWrite();
-    drawReviewScreen(d, state().storage.gPack, view);
+    drawReviewScreen(d, state().storage.gFontPack, state().storage.gRadicalPack, view);
     d.endWrite();
     present();
 }
@@ -641,7 +641,7 @@ void showLessonQuiz() {
 
     auto& d = target();
     d.startWrite();
-    drawLessonQuizScreen(d, state().storage.gPack, view);
+    drawLessonQuizScreen(d, state().storage.gFontPack, state().storage.gRadicalPack, view);
     d.endWrite();
     present();
 }

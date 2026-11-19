@@ -1,14 +1,17 @@
 #pragma once
-// Reader for the KKGP visual glyph pack on the microSD card.
+// Reader for the KKGP visual glyph packs on the microSD card.
 //
-// The pack stores 4bpp anti-aliased glyphs at several pixel sizes, plus
-// optional radical bitmaps. Entries are sorted, so a glyph lookup is a binary
-// search over the entry table and never loads the whole pack into RAM.
+// The card holds two files:
+//   /kanikey/glyphs.kgp   font pack, kind 1: glyphs only, no radicals
+//   /kanikey/radicals.kgp radical pack, kind 2: radical table only
+// A legacy combined pack (v1, or v2 kind 0) can be opened for either role.
 //
-// Format v1 (all little-endian):
+// Format v2 (all little-endian):
 //   header  32 B: "KKGP", u16 version, u16 header size, u16 glyphs,
 //                 u16 radicals, u32 table offset, u32 data offset,
-//                 u32 data length, u32 crc32, u32 reserved
+//                 u32 data length, u32 crc32, u32 kind
+//   kind: 0 = combined/legacy layout, 1 = font (glyphs only),
+//         2 = radicals (radical table only)
 //   glyph   20 B: u32 codepoint, u32 data offset, u32 payload length,
 //                 u8 width, u8 height, u8 size, u8 advance,
 //                 i8 xoffset, i8 yoffset, u8 encoding, u8 reserved
@@ -16,11 +19,17 @@
 //                 u8 width, u8 height, u8 encoding, u8 reserved
 //   payload: 4bpp RLE, high nibble = run - 1, low nibble = alpha 0..15,
 //            pixels row-major; radicals are stored once at their native size.
+//
+// Version 1 uses the same header with a reserved u32 at offset 28. It is a
+// combined pack and stays readable; v2 kind 1/2 files keep the same body and
+// CRC, so the reader differs only in the header kind/table checks.
 #include <FS.h>
 #include <M5GFX.h>
 
 #include <cstdint>
 #include <string_view>
+
+#include "wk/GlyphPackHeader.h"
 
 namespace kk {
 
@@ -50,16 +59,18 @@ public:
     GlyphPack(const GlyphPack&) = delete;
     GlyphPack& operator=(const GlyphPack&) = delete;
 
-    // Opens the pack read-only. On failure `statusLine()` explains why and the
+    // Opens the pack read-only for the requested role. A combined v1/v2 file
+    // serves both roles; a v2 font file cannot answer the radical role (and
+    // the other way round). On failure `statusLine()` explains why and the
     // object stays not-ready; callers fall back to the built-in font.
     // The CRC-32 pass covers the whole payload and takes ~3.6 s on a 3.7 MB
     // card pack, so it is off by default: pass `checkCrc` only for an explicit
     // check or a newly written file, never on the boot path.
-    bool open(fs::FS& fs, const char* path, bool checkCrc = false);
-    // Re-opens the pack from the fs and path of the last open(). Validates the
-    // header and table like open() but skips the CRC pass, which covers the
-    // whole payload. Used when a File handle died after the pack was already
-    // open (FIX-25) and by the app after it replaced the pack file.
+    bool open(fs::FS& fs, const char* path, PackRole role, bool checkCrc = false);
+    // Re-opens the pack from the fs, path and role of the last open().
+    // Validates the header and table like open() but skips the CRC pass, which
+    // covers the whole payload. Used when a File handle died after the pack was
+    // already open (FIX-25) and by the app after it replaced a pack file.
     bool reopen();
     void close();
 
@@ -67,6 +78,8 @@ public:
     const char* statusLine() const { return status_; }
     uint16_t glyphCount() const { return glyphCount_; }
     uint16_t radicalCount() const { return radicalCount_; }
+    uint16_t version() const { return version_; }
+    PackKind kind() const { return kind_; }
 
     // True when every non-space code point can be drawn at `size`.
     bool covers(std::string_view text, uint8_t size) const;
@@ -105,7 +118,7 @@ private:
         GlyphInfo info;
     };
 
-    bool openPath(fs::FS& fs, const char* path, bool crcCheck);
+    bool openPath(fs::FS& fs, const char* path, PackRole role, bool crcCheck);
     // Re-opens the file once after seek()/position()/read() showed that its
     // handle is dead. One log line; false when the pack was not ready or the
     // new handle fails validation.
@@ -125,7 +138,10 @@ private:
     mutable File file_;
     fs::FS* fs_ = nullptr;
     char path_[96] = {};
+    PackRole role_ = PackRole::Font;
     bool ready_ = false;
+    uint16_t version_ = 0;
+    PackKind kind_ = PackKind::Combined;
     uint16_t glyphCount_ = 0;
     uint16_t radicalCount_ = 0;
     uint32_t tableOffset_ = 0;

@@ -54,7 +54,11 @@ struct StorageState {
     bool gDevForceBattery = false;
 #endif
     char gSdLine[48] = "SD: not mounted";
-    kk::GlyphPack gPack;
+    // ONB-01: /kanikey/glyphs.kgp (font, no WaniKani content) and
+    // /kanikey/radicals.kgp (personal, token-generated). A legacy v1 combined
+    // pack at glyphs.kgp still serves both roles.
+    kk::GlyphPack gFontPack;
+    kk::GlyphPack gRadicalPack;
     WiFiServer gAssetServer{8080};
     bool gAssetServerActive = false;
     // A portal "Check pack" that needs an open is deferred to loop(): a File

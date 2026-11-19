@@ -1,5 +1,5 @@
 // Shared drawing widgets used by the Review and Lesson screens. View code:
-// the caller owns startWrite()/present() and passes its GlyphPack.
+// the caller owns startWrite()/present() and passes the font and radical packs.
 #include "ui/Widgets.h"
 
 #include <algorithm>
@@ -27,22 +27,27 @@ void trimFrontToWidth(lgfx::LovyanGFX& d, std::string& text, int maxWidth) {
     }
 }
 
-// Radicals use their own bitmap; everything else uses the character pack. The
-// caller draws an explicit missing-glyph state when this returns false.
-bool drawSubjectPrompt(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const kk::Subject& s, int cx,
-                       int cy, int maxWidth, int maxHeight, int radicalMaxSide, uint16_t fg,
+// Radicals use the radical pack's bitmap first; everything else uses the
+// font pack. The caller draws an explicit missing-glyph state when this
+// returns false.
+bool drawSubjectPrompt(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
+                       kk::GlyphPack& radicalPack, const kk::Subject& s, int cx, int cy,
+                       int maxWidth, int maxHeight, int radicalMaxSide, uint16_t fg,
                        uint16_t bg, const kk::ClipRect& clip) {
     if (s.type == kk::SubjectType::Radical) {
         const int side = std::min({maxWidth, maxHeight, radicalMaxSide});
-        if (pack.drawRadical(d, s.id, cx, cy, side, side, fg, bg, clip)) return true;
+        if (radicalPack.drawRadical(d, s.id, cx, cy, side, side, fg, bg, clip)) return true;
     }
     if (!s.characters.empty() &&
-        pack.drawTextCentered(d, s.characters, 64, cx, cy, maxWidth, maxHeight, fg, bg, clip))
+        fontPack.drawTextCentered(d, s.characters, 64, cx, cy, maxWidth, maxHeight, fg, bg,
+                                  clip))
         return true;
     return false;
 }
 
-void drawMissingGlyph(lgfx::LovyanGFX& d, const kk::GlyphPack& pack, int cx, int cy) {
+void drawMissingGlyph(lgfx::LovyanGFX& d, const kk::GlyphPack& fontPack,
+                      const kk::GlyphPack& radicalPack, int cx, int cy) {
+    const bool noFont = !fontPack.ready();
     d.setTextDatum(lgfx::middle_center);
     d.setTextFont(4);
     d.setTextSize(1);
@@ -51,8 +56,15 @@ void drawMissingGlyph(lgfx::LovyanGFX& d, const kk::GlyphPack& pack, int cx, int
     d.setTextFont(0);
     d.setTextSize(1);
     d.setTextColor(kFaint, kSurface);
-    d.drawString(pack.ready() ? "no glyph" : "no pack", cx, cy + 12);
-    d.drawString("check SD", cx, cy + 21);
+    d.drawString(noFont ? "no pack" : "no glyph", cx, cy + 12);
+    // "check SD" is the boot-level failure; a missing radical bitmap on a
+    // working font pack is a different, non-fatal state.
+    if (noFont)
+        d.drawString("check SD", cx, cy + 21);
+    else if (!radicalPack.ready())
+        d.drawString("no radicals", cx, cy + 21);
+    else
+        d.drawString("not in pack", cx, cy + 21);
     d.setTextDatum(lgfx::top_left);
 }
 

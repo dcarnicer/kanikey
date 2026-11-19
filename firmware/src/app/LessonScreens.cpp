@@ -65,8 +65,8 @@ void drawFeedbackLine(lgfx::LovyanGFX& d, const LessonQuizView& view, int x, int
 
 }  // namespace
 
-void drawLessonListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
-                          const LessonListView& view) {
+void drawLessonListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
+                          kk::GlyphPack& radicalPack, const LessonListView& view) {
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
@@ -107,7 +107,7 @@ void drawLessonListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
         bool promptDrawn = false;
         if (s) {
             if (s->type == kk::SubjectType::Radical) {
-                promptDrawn = pack.drawRadical(d, s->id, 20, y + 10, 20, 18, ui::kText,
+                promptDrawn = radicalPack.drawRadical(d, s->id, 20, y + 10, 20, 18, ui::kText,
                                                ui::kSurface,
                                                kk::ClipRect{10, y + 1, 30, y + 19});
             } else if (!s->characters.empty()) {
@@ -115,7 +115,7 @@ void drawLessonListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
                 const char* p = first.c_str();
                 kk::utf8Next(&p);
                 first.resize(static_cast<size_t>(p - first.c_str()));
-                promptDrawn = pack.drawTextCentered(d, first, 20, 20, y + 10, 20, 20,
+                promptDrawn = fontPack.drawTextCentered(d, first, 20, y + 10, 20, 20, 20,
                                                     ui::kText, ui::kSurface,
                                                     kk::ClipRect{10, y + 1, 30, y + 19});
             }
@@ -197,8 +197,8 @@ void drawLessonEmptyScreen(lgfx::LovyanGFX& d, const LessonEmptyView& view) {
     d.drawString("Esc: home", 8, 125);
 }
 
-void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
-                          const LessonCardView& view) {
+void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
+                          kk::GlyphPack& radicalPack, const LessonCardView& view) {
     const kk::Subject* s = view.subject;
     if (!s) return;
 
@@ -237,9 +237,9 @@ void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
 
     d.fillRect(4, 20, 74, 64, ui::kSurface);
     d.drawRect(4, 20, 74, 64, ui::kLine);
-    if (!drawSubjectPrompt(d, pack, *s, 41, 52, 70, 62, 60, ui::kText, ui::kSurface,
-                           kk::ClipRect{6, 22, 76, 82}))
-        drawMissingGlyph(d, pack, 41, 52);
+    if (!drawSubjectPrompt(d, fontPack, radicalPack, *s, 41, 52, 70, 62, 60, ui::kText,
+                           ui::kSurface, kk::ClipRect{6, 22, 76, 82}))
+        drawMissingGlyph(d, fontPack, radicalPack, 41, 52);
 
     const char* kind = s->type == kk::SubjectType::Vocabulary ? "VOCAB"
                        : s->type == kk::SubjectType::Radical ? "RADICAL"
@@ -259,9 +259,9 @@ void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
 
     if (!view.reading.empty()) {
         std::string reading = view.reading;
-        if (!pack.drawTextFit(d, reading, 86, 80, 32, 148, ui::kReading, ui::kBg,
-                              kk::ClipRect{86, 50, 236, 88}) &&
-            !drawJapaneseFit(d, pack, reading, 86, 232, 80, 148, ui::kReading, ui::kBg,
+        if (!fontPack.drawTextFit(d, reading, 86, 80, 32, 148, ui::kReading, ui::kBg,
+                                  kk::ClipRect{86, 50, 236, 88}) &&
+            !drawJapaneseFit(d, fontPack, reading, 86, 232, 80, 148, ui::kReading, ui::kBg,
                              kk::ClipRect{86, 50, 236, 88})) {
             d.setTextFont(1);
             d.setTextSize(1);
@@ -291,8 +291,8 @@ void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
     d.setTextDatum(lgfx::top_left);
 }
 
-void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
-                          const LessonQuizView& view) {
+void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
+                          kk::GlyphPack& radicalPack, const LessonQuizView& view) {
     if (!view.subject) return;
     const kk::Subject& s = *view.subject;
     d.fillScreen(ui::kBg);
@@ -313,9 +313,9 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
 
     d.fillRect(4, 20, 74, 64, ui::kSurface);
     d.drawRect(4, 20, 74, 64, ui::kLine);
-    if (!drawSubjectPrompt(d, pack, s, 41, 52, 70, 62, 60, ui::kText, ui::kSurface,
-                           kk::ClipRect{6, 22, 76, 82}))
-        drawMissingGlyph(d, pack, 41, 52);
+    if (!drawSubjectPrompt(d, fontPack, radicalPack, s, 41, 52, 70, 62, 60, ui::kText,
+                           ui::kSurface, kk::ClipRect{6, 22, 76, 82}))
+        drawMissingGlyph(d, fontPack, radicalPack, 41, 52);
 
     const bool meaning = view.meaning;
     if (view.complete) {
@@ -358,7 +358,7 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
             d.drawString("Y", 86, 40);
             bool typedDrawn = false;
             if (!typed.empty())
-                typedDrawn = drawJapaneseFit(d, pack, typed, 94, 232, 56, 142, ui::kDim,
+                typedDrawn = drawJapaneseFit(d, fontPack, typed, 94, 232, 56, 142, ui::kDim,
                                              ui::kBg,
                                              kk::ClipRect{94, 38, 236, 58});
             if (!typedDrawn) {
@@ -372,7 +372,7 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("A", 86, 72);
             const int lines = drawReadingTokens(
-                d, pack, view.answers, 94, 68, 142, 2, ok ? ui::kOk : ui::kErr, ui::kBg,
+                d, fontPack, view.answers, 94, 68, 142, 2, ok ? ui::kOk : ui::kErr, ui::kBg,
                 kk::ClipRect{94, 66, 236, 110});
             if (lines < 0) {
                 d.setTextFont(1);
@@ -426,9 +426,9 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
             d.setTextColor(ui::kText, ui::kSurfaceHi);
             d.drawString(shown.c_str(), 92, 60);
             caret = 92 + d.textWidth(shown.c_str());
-        } else if (pack.drawTextRight(d, shown, 230, 80, 32, ui::kText, ui::kSurfaceHi,
+        } else if (fontPack.drawTextRight(d, shown, 230, 80, 32, ui::kText, ui::kSurfaceHi,
                                       kk::ClipRect{88, 54, 234, 86}) ||
-                   pack.drawTextRight(d, shown, 230, 80, 20, ui::kText, ui::kSurfaceHi,
+                   fontPack.drawTextRight(d, shown, 230, 80, 20, ui::kText, ui::kSurfaceHi,
                                       kk::ClipRect{88, 54, 234, 86})) {
             caret = 230;
         } else {

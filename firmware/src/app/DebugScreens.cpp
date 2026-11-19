@@ -72,8 +72,8 @@ void drawDebugScreen(lgfx::LovyanGFX& d, const DebugView& view) {
     }
 }
 
-void drawRadicalTestScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
-                           const RadicalTestView& view) {
+void drawRadicalTestScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
+                           kk::GlyphPack& radicalPack, const RadicalTestView& view) {
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
@@ -87,9 +87,9 @@ void drawRadicalTestScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
 
     d.fillRect(4, 38, 232, 66, ui::kSurface);
     d.drawRect(4, 38, 232, 66, ui::kLine);
-    const bool ok = pack.drawRadical(d, view.subjectId, 120, 71, 96, 62, ui::kText,
-                                     ui::kSurface, kk::ClipRect{6, 40, 234, 102});
-    if (!ok) drawMissingGlyph(d, pack, 120, 71);
+    const bool ok = radicalPack.drawRadical(d, view.subjectId, 120, 71, 96, 62, ui::kText,
+                                            ui::kSurface, kk::ClipRect{6, 40, 234, 102});
+    if (!ok) drawMissingGlyph(d, fontPack, radicalPack, 120, 71);
 
     d.setTextFont(1);
     d.setTextSize(1);

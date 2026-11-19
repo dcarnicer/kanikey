@@ -36,8 +36,10 @@ struct ReviewView {
     std::vector<std::string> synonyms;  // drawn faint after the answers
 };
 
-// Draws the review prompt or feedback frame into d.
-void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const ReviewView& view);
+// Draws the review prompt or feedback frame into d. `fontPack` draws glyphs;
+// `radicalPack` supplies radical bitmaps.
+void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
+                      kk::GlyphPack& radicalPack, const ReviewView& view);
 
 struct ReviewDetailView {
     const kk::Subject* subject = nullptr;
@@ -50,8 +52,8 @@ struct ReviewDetailView {
 };
 
 // Draws one page of the review item detail into d.
-void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
-                            const ReviewDetailView& view);
+void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
+                            kk::GlyphPack& radicalPack, const ReviewDetailView& view);
 
 struct ReviewSummaryView {
     unsigned reviews = 0;

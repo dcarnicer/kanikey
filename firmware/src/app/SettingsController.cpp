@@ -178,7 +178,7 @@ void settingsRunAction(const kk::SettingDef& def) {
         state().session.gShowHome = false;
         startSetupPortal();
     } else if (std::strcmp(id, "sync.now") == 0) {
-        if (!state().storage.gSdOk || !state().storage.gPack.ready() ||
+        if (!state().storage.gSdOk || !state().storage.gFontPack.ready() ||
             !kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
             setSettingsNote("Configure Wi-Fi, token and pack", kWarn);
             return;
@@ -1075,28 +1075,30 @@ void drawAbout() {
     else
         snprintf(build, sizeof build, "Build %s %s", __DATE__, __TIME__);
     view.lines.push_back({build, state().ota.gOtaState.badgeVersion.empty() ? kFaint : kAccentHi, 52});
-    view.lines.push_back({std::string("Pack: ") + state().storage.gPack.statusLine(),
-                          state().storage.gPack.ready() ? kOk : kWarn, 63});
+    view.lines.push_back({std::string("Font: ") + state().storage.gFontPack.statusLine(),
+                          state().storage.gFontPack.ready() ? kOk : kWarn, 62});
+    view.lines.push_back({std::string("Rad: ") + state().storage.gRadicalPack.statusLine(),
+                          state().storage.gRadicalPack.ready() ? kOk : kWarn, 72});
     char cache[64];
     snprintf(cache, sizeof cache, "Cache: %u batch, %u due",
              static_cast<unsigned>(state().cache.gCachedBatchCount),
              static_cast<unsigned>(state().session.gDueReviews));
-    view.lines.push_back({cache, kDim, 74});
+    view.lines.push_back({cache, kDim, 82});
     view.lines.push_back({std::string("Last sync: ") + state().session.gSyncClock +
                               (state().cache.gOffline ? " (offline)" : ""),
-                          state().cache.gOffline ? kWarn : kDim, 85});
+                          state().cache.gOffline ? kWarn : kDim, 92});
     std::string wifi = kk::DevWifi::hasSaved() ? kk::DevWifi::savedSsid().c_str()
                                                 : "not configured";
     if (kk::DevWifi::connected()) {
         wifi += " ";
         wifi += kk::DevWifi::ip().c_str();
     }
-    view.lines.push_back({std::string("Wi-Fi: ") + wifi, kDim, 96});
+    view.lines.push_back({std::string("Wi-Fi: ") + wifi, kDim, 102});
     view.lines.push_back({std::string("Token: ") + (kk::DevToken::has() ? "configured" : "missing"),
-                          kk::DevToken::has() ? kDim : kWarn, 107});
+                          kk::DevToken::has() ? kDim : kWarn, 112});
     std::string zone = kk::settingsTimeZoneName().c_str();
     if (zone.empty()) zone = kk::settingsTimeZoneRule().c_str();
-    view.lines.push_back({std::string("Zone: ") + zone, kFaint, 118});
+    view.lines.push_back({std::string("Zone: ") + zone, kFaint, 122});
     char heap[48];
     snprintf(heap, sizeof heap, "Heap: %u free / %u largest",
              static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),

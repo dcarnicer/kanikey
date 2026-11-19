@@ -131,19 +131,22 @@ bool portalValidateToken(const String& token, String* username, int* level, Stri
 }
 
 bool portalRecheckPack() {
-    // A ready pack is only reported: re-opening it here was the FIX-25 repro
-    // (the new descriptor died when the HTTP client closed).
-    if (state().storage.gPack.ready()) return true;
+    // Both packs ready is only reported: re-opening them here was the FIX-25
+    // repro (the new descriptor died when the HTTP client closed).
+    if (state().storage.gFontPack.ready() && state().storage.gRadicalPack.ready())
+        return true;
     if (!state().storage.gSdOk) state().storage.gSdOk = mountSd();
     if (!state().storage.gSdOk) return false;
     // Opening inside the handler is unsafe and the CRC takes ~3.6 s. loop()
-    // does it with the CRC after the response, so the next page load shows the
-    // new status.
+    // does it after the response, so the next page load shows the new status.
+    // A working font pack keeps the immediate "ready" answer; the radical
+    // pack is optional and may still arrive on the next page load.
     state().storage.gPackRecheckPending = true;
-    return false;
+    return state().storage.gFontPack.ready();
 }
 
-String portalPackStatus() { return String(state().storage.gPack.statusLine()); }
+String portalFontPackStatus() { return String(state().storage.gFontPack.statusLine()); }
+String portalRadicalPackStatus() { return String(state().storage.gRadicalPack.statusLine()); }
 
 void portalSwitchToStation() {
     const String ssid = kk::DevWifi::savedSsid();
@@ -187,7 +190,8 @@ bool startSetupPortal() {
     state().ui.gScreenOff = false;
     state().setup.gSetupHooks.validateToken = portalValidateToken;
     state().setup.gSetupHooks.recheckPack = portalRecheckPack;
-    state().setup.gSetupHooks.packStatus = portalPackStatus;
+    state().setup.gSetupHooks.fontPackStatus = portalFontPackStatus;
+    state().setup.gSetupHooks.radicalPackStatus = portalRadicalPackStatus;
     state().setup.gSetupHooks.onSwitchToStation = portalSwitchToStation;
     state().setup.gSetupHooks.onFinish = portalFinish;
     state().session.gShowHome = false;
@@ -241,16 +245,10 @@ void retryBoot() {
     }
     if (!state().storage.gSdOk) {
         state().storage.gSdOk = mountSd();
-        if (state().storage.gSdOk) {
-            state().storage.gPack.open(SD, "/kanikey/glyphs.kgp");
-            Serial.printf("[pack] %s\n", state().storage.gPack.statusLine());
-        }
+        if (state().storage.gSdOk) openGlyphPacks();
     }
-    if (state().storage.gSdOk && !state().storage.gPack.ready()) {
-        state().storage.gPack.open(SD, "/kanikey/glyphs.kgp");
-        Serial.printf("[pack] %s\n", state().storage.gPack.statusLine());
-    }
-    if (state().storage.gSdOk && state().storage.gPack.ready() && !state().session.gHaveSummary && kk::DevToken::has() && loadCache()) {
+    if (state().storage.gSdOk && !state().storage.gFontPack.ready()) openGlyphPacks();
+    if (state().storage.gSdOk && state().storage.gFontPack.ready() && !state().session.gHaveSummary && kk::DevToken::has() && loadCache()) {
         state().display.gDirty = true;
         return;
     }
@@ -270,8 +268,9 @@ void retryBoot() {
     }
     if (!state().storage.gSdOk) {
         snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "SD: not mounted");
-    } else if (!state().storage.gPack.ready()) {
-        snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "Pack: %s", state().storage.gPack.statusLine());
+    } else if (!state().storage.gFontPack.ready()) {
+        snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "Pack: %s",
+                 state().storage.gFontPack.statusLine());
     } else if (!kk::DevToken::has()) {
         snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "Token: not configured");
     } else if (!kk::DevWifi::hasSaved()) {
@@ -298,7 +297,8 @@ void drawSetupPortal() {
     view.tokenLevel = state().setup.gSetupPortal.tokenLevel();
     view.tokenConfigured = kk::DevToken::has();
     view.message = state().setup.gSetupPortal.message();
-    view.packStatus = state().setup.gSetupPortal.packStatus().c_str();
+    view.fontPackStatus = state().setup.gSetupPortal.fontPackStatus().c_str();
+    view.radicalPackStatus = state().setup.gSetupPortal.radicalPackStatus().c_str();
 
     auto& d = target();
     d.startWrite();
@@ -310,12 +310,13 @@ void drawSetupPortal() {
 // Shared boot tail: load the cache when storage is available, then start the
 // setup portal or a sync. Used by setup() and after the storage prompt.
 void continueBootAfterStorage() {
-    const bool cacheLoaded = state().storage.gSdOk && state().storage.gPack.ready() && loadCache();
+    const bool cacheLoaded = state().storage.gSdOk && state().storage.gFontPack.ready() && loadCache();
     Serial.printf("[wifi] saved credentials: %s\n", kk::DevWifi::hasSaved() ? "yes" : "no");
     if (!state().storage.gSdOk) {
         snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "SD: not mounted");
-    } else if (!state().storage.gPack.ready()) {
-        snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "Pack: %s", state().storage.gPack.statusLine());
+    } else if (!state().storage.gFontPack.ready()) {
+        snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "Pack: %s",
+                 state().storage.gFontPack.statusLine());
     } else if (!kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
         if (cacheLoaded)
             snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "NET: offline (cached)");

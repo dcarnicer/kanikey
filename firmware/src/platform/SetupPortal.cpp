@@ -139,8 +139,16 @@ const char kPageFoot[] =
 
 }  // namespace
 
+String SetupPortal::fontPackStatus() const {
+    return hooks_.fontPackStatus ? hooks_.fontPackStatus() : String("unknown");
+}
+
+String SetupPortal::radicalPackStatus() const {
+    return hooks_.radicalPackStatus ? hooks_.radicalPackStatus() : String("unknown");
+}
+
 String SetupPortal::packStatus() const {
-    return hooks_.packStatus ? hooks_.packStatus() : String("unknown");
+    return String("font: ") + fontPackStatus() + "; radicals: " + radicalPackStatus();
 }
 
 bool SetupPortal::beginAp(const SetupPortalHooks& hooks, const String& notice) {
@@ -357,7 +365,8 @@ void SetupPortal::sendPage(const String& notice, bool ok, int code) {
     // notices a LAN user may trigger before unlocking stay that short.
     if (notice.length()) snprintf(message_, sizeof message_, "%s", notice.c_str());
 
-    const String pack = htmlEscape(packStatus());
+    const String fontPack = htmlEscape(fontPackStatus());
+    const String radicalPack = htmlEscape(radicalPackStatus());
     const String zone = htmlEscape(settingsTimeZoneName().length() ? settingsTimeZoneName()
                                                                    : settingsTimeZoneRule());
     String h;
@@ -417,8 +426,10 @@ void SetupPortal::sendPage(const String& notice, bool ok, int code) {
 
     appendNotice();
 
-    h += "<h2>Visual pack</h2><p class=\"muted\">";
-    h += pack;
+    h += "<h2>Visual pack</h2><p class=\"muted\">Font: ";
+    h += fontPack;
+    h += "<br>Radicals: ";
+    h += radicalPack;
     h += "</p><form method=\"post\" action=\"/pack\"><button type=\"submit\">Check pack again</button></form>";
 
     h += "<h2>Time</h2><p class=\"muted\">Zone: <code>";

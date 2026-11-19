@@ -13,10 +13,6 @@
 namespace kk {
 
 namespace {
-uint16_t le16(const uint8_t* p) {
-    return static_cast<uint16_t>(p[0] | (static_cast<uint16_t>(p[1]) << 8));
-}
-
 uint32_t le32(const uint8_t* p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
@@ -31,6 +27,8 @@ constexpr uint8_t kEncodingRle4 = 1;
 void GlyphPack::close() {
     if (file_) file_.close();
     ready_ = false;
+    version_ = 0;
+    kind_ = PackKind::Combined;
     glyphCount_ = 0;
     radicalCount_ = 0;
     tableOffset_ = dataOffset_ = dataLength_ = 0;
@@ -39,20 +37,22 @@ void GlyphPack::close() {
     snprintf(status_, sizeof status_, "no pack");
 }
 
-bool GlyphPack::open(fs::FS& fs, const char* path, bool checkCrc) {
-    return openPath(fs, path, checkCrc);
+bool GlyphPack::open(fs::FS& fs, const char* path, PackRole role, bool checkCrc) {
+    return openPath(fs, path, role, checkCrc);
 }
 
 bool GlyphPack::reopen() {
     if (!fs_ || !path_[0]) return false;
     char path[sizeof path_];
     snprintf(path, sizeof path, "%s", path_);
-    return openPath(*fs_, path, false);
+    const PackRole role = role_;
+    return openPath(*fs_, path, role, false);
 }
 
-bool GlyphPack::openPath(fs::FS& fs, const char* path, bool crcCheck) {
+bool GlyphPack::openPath(fs::FS& fs, const char* path, PackRole role, bool crcCheck) {
     close();
     fs_ = &fs;
+    role_ = role;
     snprintf(path_, sizeof path_, "%s", path);
     file_ = fs.open(path, FILE_READ);
     if (!file_) {
@@ -69,25 +69,19 @@ bool GlyphPack::openPath(fs::FS& fs, const char* path, bool crcCheck) {
 
     uint8_t h[kHeaderBytes];
     if (!readAt(0, h, sizeof h)) return fail("pack: no header");
-    if (std::memcmp(h, "KKGP", 4) != 0) return fail("pack: not KKGP");
-    const uint16_t version = le16(h + 4);
-    const uint16_t headerSize = le16(h + 6);
-    glyphCount_ = le16(h + 8);
-    radicalCount_ = le16(h + 10);
-    tableOffset_ = le32(h + 12);
-    dataOffset_ = le32(h + 16);
-    dataLength_ = le32(h + 20);
-    if (version != 1 || headerSize < kHeaderBytes) return fail("pack: bad version");
 
-    const uint32_t fileSize = file_.size();
-    if (dataOffset_ > fileSize || dataLength_ > fileSize - dataOffset_)
-        return fail("pack: truncated");
-    if (dataLength_ == 0 || glyphCount_ == 0) return fail("pack: empty");
-    if (tableOffset_ < kHeaderBytes) return fail("pack: bad table");
-    const uint64_t tableEnd = static_cast<uint64_t>(tableOffset_) +
-                              static_cast<uint64_t>(glyphCount_) * kGlyphBytes +
-                              static_cast<uint64_t>(radicalCount_) * kRadicalBytes;
-    if (tableEnd > dataOffset_) return fail("pack: bad table");
+    PackHeader header;
+    const PackHeaderStatus status =
+        parsePackHeader(h, sizeof h, static_cast<uint32_t>(file_.size()), role, &header);
+    if (status != PackHeaderStatus::Ok) return fail(packHeaderStatusText(status));
+
+    version_ = header.version;
+    kind_ = header.kind;
+    glyphCount_ = header.glyphCount;
+    radicalCount_ = header.radicalCount;
+    tableOffset_ = header.tableOffset;
+    dataOffset_ = header.dataOffset;
+    dataLength_ = header.dataLength;
 
     // The header CRC covers the entry table and the payload, from the table
     // offset to the end of the data (tools/glyph-pack/build.py packs the table
@@ -97,7 +91,7 @@ bool GlyphPack::openPath(fs::FS& fs, const char* path, bool crcCheck) {
     // a file that was just written pays for it, never the boot path.
     if (crcCheck) {
         const uint32_t t0 = millis();
-        const bool ok = checkStoredCrc(le32(h + 24));
+        const bool ok = checkStoredCrc(header.crc);
         Serial.printf("[pack] crc %s, %u ms\n", ok ? "ok" : "bad",
                       static_cast<unsigned>(millis() - t0));
         if (!ok) return fail("pack: bad crc");
@@ -105,28 +99,34 @@ bool GlyphPack::openPath(fs::FS& fs, const char* path, bool crcCheck) {
 
     // The first entries repeat the same code point at every stored size; a
     // short scan is enough to discover all sizes without reading the table.
-    const uint16_t scan = std::min<uint16_t>(glyphCount_, 64);
-    for (uint16_t i = 0; i < scan; ++i) {
-        GlyphInfo g;
-        if (!readGlyph(i, &g)) return fail("pack: bad entry");
-        bool seen = false;
-        for (uint8_t s = 0; s < sizeCount_; ++s)
-            if (sizes_[s] == g.size) seen = true;
-        if (!seen && sizeCount_ < sizeof sizes_) sizes_[sizeCount_++] = g.size;
+    // A radical-only pack has no glyph rows and no sizes to discover.
+    if (glyphCount_) {
+        const uint16_t scan = std::min<uint16_t>(glyphCount_, 64);
+        for (uint16_t i = 0; i < scan; ++i) {
+            GlyphInfo g;
+            if (!readGlyph(i, &g)) return fail("pack: bad entry");
+            bool seen = false;
+            for (uint8_t s = 0; s < sizeCount_; ++s)
+                if (sizes_[s] == g.size) seen = true;
+            if (!seen && sizeCount_ < sizeof sizes_) sizes_[sizeCount_++] = g.size;
+        }
+        if (sizeCount_ == 0) return fail("pack: no sizes");
+        std::sort(sizes_, sizes_ + sizeCount_, [](uint8_t a, uint8_t b) { return a > b; });
     }
-    if (sizeCount_ == 0) return fail("pack: no sizes");
-    std::sort(sizes_, sizes_ + sizeCount_, [](uint8_t a, uint8_t b) { return a > b; });
 
     ready_ = true;
     char sizeText[24] = {};
     int n = 0;
     for (uint8_t i = 0; i < sizeCount_; ++i)
         n += snprintf(sizeText + n, sizeof sizeText - n, "%s%u", i ? "/" : "", sizes_[i]);
-    if (radicalCount_)
+    if (kind_ == PackKind::Radical) {
+        snprintf(status_, sizeof status_, "%u radicals", radicalCount_);
+    } else if (kind_ == PackKind::Font || radicalCount_ == 0 || sizeCount_ == 0) {
+        snprintf(status_, sizeof status_, "%u glyphs, %s px", glyphCount_, sizeText);
+    } else {
         snprintf(status_, sizeof status_, "%u glyphs, %u radicals, %s px", glyphCount_,
                  radicalCount_, sizeText);
-    else
-        snprintf(status_, sizeof status_, "%u glyphs, %s px", glyphCount_, sizeText);
+    }
     return true;
 }
 

@@ -12,14 +12,16 @@ namespace {
 const char* kStudyLabels[kStudyRows] = {"Recent mistakes", "Recent lessons", "Critical items",
                                         "Current level"};
 
-void drawPrompt(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const kk::Subject* s, int cx, int cy) {
+void drawPrompt(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack, kk::GlyphPack& radicalPack,
+                const kk::Subject* s, int cx, int cy) {
     if (!s) {
-        ui::drawMissingGlyph(d, pack, cx, cy);
+        ui::drawMissingGlyph(d, fontPack, radicalPack, cx, cy);
         return;
     }
-    if (!ui::drawSubjectPrompt(d, pack, *s, cx, cy, 20, 18, 18, ui::kText, ui::kSurface,
+    if (!ui::drawSubjectPrompt(d, fontPack, radicalPack, *s, cx, cy, 20, 18, 18, ui::kText,
+                               ui::kSurface,
                                kk::ClipRect{cx - 10, cy - 9, cx + 10, cy + 9}))
-        ui::drawMissingGlyph(d, pack, cx, cy);
+        ui::drawMissingGlyph(d, fontPack, radicalPack, cx, cy);
 }
 }  // namespace
 
@@ -64,8 +66,8 @@ void drawStudyMenuScreen(lgfx::LovyanGFX& d, const StudyMenuView& view) {
     d.drawString("Enter: open  Esc: home", 8, 125);
 }
 
-void drawCriticalListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
-                            const CriticalListView& view) {
+void drawCriticalListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
+                            kk::GlyphPack& radicalPack, const CriticalListView& view) {
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
@@ -106,7 +108,7 @@ void drawCriticalListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
         }
         d.fillRect(9, y, 22, 20, ui::kSurface);
         d.drawRect(9, y, 22, 20, ui::kLine);
-        drawPrompt(d, pack, item.subject, 20, y + 10);
+        drawPrompt(d, fontPack, radicalPack, item.subject, 20, y + 10);
 
         char label[72];
         snprintf(label, sizeof label, "%s", item.meaning.c_str());

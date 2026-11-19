@@ -106,6 +106,26 @@ void assetRespond(WiFiClient& client, int code, const char* reason);
 void stopAssetServer();
 void startAssetServer();
 void uploadSdFile(const String& line);
+
+// ONB-01: a serial/asset upload may replace either pack. Only a matching
+// pack file is closed for the transfer; any pack upload re-opens both because
+// a v1 combined glyphs.kgp can also serve the radical role.
+struct PackTarget {
+    kk::GlyphPack* pack = nullptr;
+    kk::PackRole role = kk::PackRole::Font;
+};
+
+PackTarget packTarget(const String& path) {
+    if (path == "/kanikey/glyphs.kgp")
+        return {&state().storage.gFontPack, kk::PackRole::Font};
+    if (path == "/kanikey/radicals.kgp")
+        return {&state().storage.gRadicalPack, kk::PackRole::Radical};
+    return {};
+}
+
+void reopenPacksAfterUpload() {
+    if (state().storage.gSdOk) openGlyphPacks();
+}
 #ifdef KANIKEY_DEV
 // "K <keys>" presses grid keys as if typed, so hardware checks can drive the
 // real key handlers and the romaji IME. \n Enter, \e Esc, \t Tab, \b
@@ -459,8 +479,9 @@ void uploadSdFile(const String& line) {
         const String dir = path.substring(0, slash);
         if (!SD.exists(dir)) SD.mkdir(dir);
     }
-    const bool isPack = path == "/kanikey/glyphs.kgp";
-    if (isPack) state().storage.gPack.close();
+    const PackTarget target = packTarget(path);
+    const bool isPack = target.pack != nullptr;
+    if (isPack) target.pack->close();
     // Same tmp-and-rename as the Wi-Fi upload: a short transfer keeps the old
     // file, a bad pack CRC never replaces a working pack.
     const String tmpPath = path + ".tmp";
@@ -468,7 +489,7 @@ void uploadSdFile(const String& line) {
     File f = SD.open(tmpPath, FILE_WRITE);
     if (!f) {
         Serial.printf("[up] cannot open %s\n", tmpPath.c_str());
-        if (isPack) state().storage.gPack.open(SD, "/kanikey/glyphs.kgp");
+        if (isPack) reopenPacksAfterUpload();
         return;
     }
 
@@ -525,25 +546,21 @@ void uploadSdFile(const String& line) {
     if (!writeOk || got != size) {
         SD.remove(tmpPath);
         Serial.printf("[up] failed, kept %s\n", path.c_str());
-        if (isPack) {
-            state().storage.gPack.open(SD, "/kanikey/glyphs.kgp");
-            Serial.printf("[pack] %s\n", state().storage.gPack.statusLine());
-        }
+        if (isPack) reopenPacksAfterUpload();
         state().display.gDirty = true;
         return;
     }
 
     if (isPack) {
-        const bool crcOk = state().storage.gPack.open(SD, tmpPath.c_str(), true);
+        const bool crcOk = target.pack->open(SD, tmpPath.c_str(), target.role, true);
         char status[48];
-        snprintf(status, sizeof status, "%s", state().storage.gPack.statusLine());
-        state().storage.gPack.close();
+        snprintf(status, sizeof status, "%s", target.pack->statusLine());
+        target.pack->close();
         Serial.printf("[pack] tmp %s\n", status);
         if (!crcOk) {
             SD.remove(tmpPath);
             Serial.println("[up] bad pack crc, kept the old pack");
-            state().storage.gPack.open(SD, "/kanikey/glyphs.kgp");
-            Serial.printf("[pack] %s\n", state().storage.gPack.statusLine());
+            reopenPacksAfterUpload();
             state().display.gDirty = true;
             return;
         }
@@ -552,17 +569,11 @@ void uploadSdFile(const String& line) {
     if (!SD.rename(tmpPath, path)) {
         SD.remove(tmpPath);
         Serial.printf("[up] rename failed, %s removed\n", path.c_str());
-        if (isPack) {
-            state().storage.gPack.open(SD, "/kanikey/glyphs.kgp");
-            Serial.printf("[pack] %s\n", state().storage.gPack.statusLine());
-        }
+        if (isPack) reopenPacksAfterUpload();
         state().display.gDirty = true;
         return;
     }
-    if (isPack) {
-        state().storage.gPack.open(SD, "/kanikey/glyphs.kgp");
-        Serial.printf("[pack] %s\n", state().storage.gPack.statusLine());
-    }
+    if (isPack) reopenPacksAfterUpload();
     state().display.gDirty = true;
 }
 
@@ -644,7 +655,7 @@ void showRadicalTest() {
 
     auto& d = target();
     d.startWrite();
-    drawRadicalTestScreen(d, state().storage.gPack, view);
+    drawRadicalTestScreen(d, state().storage.gFontPack, state().storage.gRadicalPack, view);
     d.endWrite();
     present();
 }
@@ -688,8 +699,9 @@ void serviceAssetServer() {
         const String dir = path.substring(0, slash);
         if (!SD.exists(dir)) SD.mkdir(dir);
     }
-    const bool isPack = path == "/kanikey/glyphs.kgp";
-    if (isPack) state().storage.gPack.close();
+    const PackTarget target = packTarget(path);
+    const bool isPack = target.pack != nullptr;
+    if (isPack) target.pack->close();
     // Write a tmp file and rename it over the old one, so an interrupted
     // upload never leaves a broken pack or asset behind (FIX-24 c).
     const String tmpPath = path + ".tmp";
@@ -699,7 +711,7 @@ void serviceAssetServer() {
         Serial.printf("[asset] cannot open %s\n", tmpPath.c_str());
         assetRespond(client, 500, "Cannot Open");
         stopAssetServer();
-        if (isPack) state().storage.gPack.open(SD, "/kanikey/glyphs.kgp");
+        if (isPack) reopenPacksAfterUpload();
         return;
     }
 
@@ -738,27 +750,23 @@ void serviceAssetServer() {
         SD.remove(tmpPath);
         assetRespond(client, 500, writeOk ? "Short Body" : "Write Failed");
         stopAssetServer();
-        if (isPack) {
-            state().storage.gPack.open(SD, "/kanikey/glyphs.kgp");
-            Serial.printf("[pack] kept old: %s\n", state().storage.gPack.statusLine());
-        }
+        if (isPack) reopenPacksAfterUpload();
         return;
     }
 
     if (isPack) {
         // A new pack is verified before it replaces the working one. The CRC
         // runs here, not at boot (3,587 ms for the 3.7 MB pack).
-        const bool crcOk = state().storage.gPack.open(SD, tmpPath.c_str(), true);
+        const bool crcOk = target.pack->open(SD, tmpPath.c_str(), target.role, true);
         char status[48];
-        snprintf(status, sizeof status, "%s", state().storage.gPack.statusLine());
-        state().storage.gPack.close();
+        snprintf(status, sizeof status, "%s", target.pack->statusLine());
+        target.pack->close();
         Serial.printf("[pack] tmp %s\n", status);
         if (!crcOk) {
             SD.remove(tmpPath);
             assetRespond(client, 422, "Bad Pack");
             stopAssetServer();
-            state().storage.gPack.open(SD, "/kanikey/glyphs.kgp");
-            Serial.printf("[pack] kept old: %s\n", state().storage.gPack.statusLine());
+            reopenPacksAfterUpload();
             return;
         }
     }
@@ -767,19 +775,13 @@ void serviceAssetServer() {
         SD.remove(tmpPath);
         assetRespond(client, 500, "Rename Failed");
         stopAssetServer();
-        if (isPack) {
-            state().storage.gPack.open(SD, "/kanikey/glyphs.kgp");
-            Serial.printf("[pack] %s\n", state().storage.gPack.statusLine());
-        }
+        if (isPack) reopenPacksAfterUpload();
         return;
     }
     assetRespond(client, 201, "Created");
     // The client is closed before the pack is opened again (FIX-25).
     stopAssetServer();
-    if (isPack) {
-        state().storage.gPack.open(SD, "/kanikey/glyphs.kgp");
-        Serial.printf("[pack] %s\n", state().storage.gPack.statusLine());
-    }
+    if (isPack) reopenPacksAfterUpload();
 }
 
 void handleSerial() {
@@ -821,7 +823,8 @@ void handleSerial() {
             }
 #endif
         } else if (state().ui.gSerialLine == "i") {
-            Serial.printf("[pack] %s\n", state().storage.gPack.statusLine());
+            Serial.printf("[pack] font: %s\n", state().storage.gFontPack.statusLine());
+            Serial.printf("[pack] radicals: %s\n", state().storage.gRadicalPack.statusLine());
         } else if (state().ui.gSerialLine == "S") {
             startAssetServer();
         } else if (state().ui.gSerialLine == "r") {
@@ -1171,12 +1174,14 @@ void handleSerial() {
                 Serial.println("[pack] no SD");
             } else {
                 kk::GlyphPack bad;
-                const bool opened = bad.open(SD, "/kanikey/glyphs-bad.kgp", true);
+                const bool opened =
+                    bad.open(SD, "/kanikey/glyphs-bad.kgp", kk::PackRole::Font, true);
                 Serial.printf("[pack] bad-crc test opened=%d status=%s\n", opened ? 1 : 0,
                               bad.statusLine());
-                state().storage.gPack.close();
-                state().storage.gPack.open(SD, "/kanikey/glyphs.kgp");
-                Serial.printf("[pack] restored: %s\n", state().storage.gPack.statusLine());
+                state().storage.gFontPack.close();
+                reopenPacksAfterUpload();
+                Serial.printf("[pack] restored: %s\n",
+                              state().storage.gFontPack.statusLine());
             }
         } else if (state().ui.gSerialLine == "O") {
             state().storage.gDevForceBattery = !state().storage.gDevForceBattery;
