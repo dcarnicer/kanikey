@@ -137,9 +137,9 @@ Working on hardware:
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Last recorded build (ARCH-04 + TNG-03): **release 1,658,133 B / 1,835,008 B
-flash (90.4%)**, **dev 1,726,141 B (94.1%)**, static RAM 105,384/105,520 B
-(32.2%).
+Last recorded build (ARCH-04 + TNG-03 migration): **release 1,658,561 B /
+1,835,008 B flash (90.4%)**, **dev 1,726,597 B (94.1%)**, static RAM
+105,384/105,520 B (32.2%).
 Removing `efontJA_16` freed ~468 KB; the dev image now has ~111 KB of headroom.
 The loop task uses a 24 KiB stack;
 the lazy review batch keeps the lesson-fetch minimum free heap above ~44 KB in
@@ -782,7 +782,7 @@ merged and CFG-01/02/03/04, REV-01/02/03/04/05/06/07/08/09/10/11/12,
 LES-01…LES-06, SETUP-09, ONB-01/02 and SPEED-01/02/03/04/05/07 are in review. The
 eight-section Settings menu replaces the flat list; the registry now has 48
 rows after the Account › Wi-Fi action. Main has 412 native tests and builds at
-1,658,133 B (90.4%) release / 1,726,141 B (94.1%) dev. No round-2 task is
+1,658,561 B (90.4%) release / 1,726,597 B (94.1%) dev. No round-2 task is
 claimed as done
 here beyond the spec status above.
 

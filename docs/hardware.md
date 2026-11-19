@@ -763,7 +763,11 @@ A150 G143 M81 E147 B586).
   to Pause with Settings selected. Sleep/dim, firmware install, low battery and
   debug routes remain.
 - **TNG-03.** Fifteen native tests cover the list-window math and hint
-  fallbacks; no screen is migrated yet, so there is nothing to see on hardware.
+  fallbacks. Phase 2 migrated Home hints, Settings, the Wi-Fi scan list, Outbox,
+  the lesson list window and Study/critical windows to the shared primitives;
+  lesson/critical/study rows keep their custom 20 px painters. Home,
+  Settings and the Wi-Fi list rendered with the same layout after flashing;
+  the remaining window/scroll cases are in the table.
 
 ## Round 2 hardware checks
 
