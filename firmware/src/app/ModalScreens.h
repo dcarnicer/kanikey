@@ -29,6 +29,15 @@ void drawPauseScreen(lgfx::LovyanGFX& d, const PauseView& view);
 // Draws the low battery prompt into d.
 void drawLowBatteryScreen(lgfx::LovyanGFX& d, const LowBatteryView& view);
 
+// The LES-05 workload guard. `reasons` are the already formatted lines from
+// kk::formatWorkloadReason(), at most three.
+struct WorkloadView {
+    std::vector<std::string> reasons;
+};
+
+// Draws the workload guard into d.
+void drawWorkloadScreen(lgfx::LovyanGFX& d, const WorkloadView& view);
+
 // The one confirmed start of a lesson batch. `failed` lists the subjects that
 // returned an error and offers a retry of the unstarted part of the batch.
 struct LessonStartView {

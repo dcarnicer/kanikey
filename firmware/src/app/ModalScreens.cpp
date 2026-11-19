@@ -78,6 +78,31 @@ void drawLowBatteryScreen(lgfx::LovyanGFX& d, const LowBatteryView& view) {
     d.drawString("Enter: continue  Esc: cancel", 8, 125);
 }
 
+void drawWorkloadScreen(lgfx::LovyanGFX& d, const WorkloadView& view) {
+    d.fillScreen(ui::kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+    d.setTextFont(2);
+    d.setTextSize(1);
+    d.setTextColor(ui::kBrand, ui::kBg);
+    d.drawString("KaniKey", 6, 2);
+    d.setTextFont(1);
+    d.setTextColor(ui::kWarn, ui::kBg);
+    d.drawString("workload check", 7, 22);
+
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextColor(ui::kText, ui::kBg);
+    int y = 52;
+    for (const std::string& reason : view.reasons) {
+        if (y > 104) break;
+        d.drawString(reason.c_str(), 8, y);
+        y += 12;
+    }
+    d.setTextColor(ui::kFaint, ui::kBg);
+    d.drawString("Enter: continue  Esc: back", 8, 125);
+}
+
 void drawLessonStartScreen(lgfx::LovyanGFX& d, const LessonStartView& view) {
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);

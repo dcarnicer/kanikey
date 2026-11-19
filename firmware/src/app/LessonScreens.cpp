@@ -219,7 +219,7 @@ void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
                  static_cast<unsigned>(view.index + 1),
                  static_cast<unsigned>(view.total),
                  static_cast<unsigned>(view.page + 1),
-                 static_cast<unsigned>(view.pages));
+                 static_cast<unsigned>(view.pages.size()));
         header = fallback;
     }
     d.setTextFont(0);
@@ -272,11 +272,16 @@ void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
 
     d.setTextFont(0);
     d.setTextSize(1);
-    d.setTextColor(ui::kDim, ui::kBg);
-    for (size_t i = 0; i < 3; ++i) {
-        const size_t idx = view.page * 3 + i;
-        if (idx >= view.lines.size()) break;
-        d.drawString(view.lines[idx].c_str(), 5, 92 + static_cast<int>(i) * 9);
+    const LessonPageView* cardPage =
+        view.page < view.pages.size() ? &view.pages[view.page] : nullptr;
+    if (cardPage) {
+        // The topic title sits above the three text lines so a continuation of
+        // a long topic still says which section it belongs to.
+        d.setTextColor(ui::kAccentHi, ui::kBg);
+        d.drawString(cardPage->title.c_str(), 5, 87);
+        d.setTextColor(ui::kDim, ui::kBg);
+        for (size_t i = 0; i < 3 && i < cardPage->lines.size(); ++i)
+            d.drawString(cardPage->lines[i].c_str(), 5, 96 + static_cast<int>(i) * 9);
     }
 
     d.setTextColor(ui::kFaint, ui::kBg);

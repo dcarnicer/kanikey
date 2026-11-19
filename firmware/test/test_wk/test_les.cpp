@@ -1,13 +1,18 @@
-// LES-01/LES-02/LES-03: batch browse, the local batch quiz and the start plan.
+// LES-01/LES-02/LES-03/LES-04/LES-05/LES-06: batch browse, ordering, the
+// workload guard, the local batch quiz, the start plan and the card topics.
 #include <unity.h>
 
 #include <algorithm>
+#include <cstring>
 #include <vector>
 
+#include "wk/LessonOrder.h"
+#include "wk/LessonPages.h"
 #include "wk/LessonSession.h"
 #include "wk/ReviewQueue.h"
 #include "wk/Summary.h"
 #include "wk/Types.h"
+#include "wk/WorkloadGuard.h"
 
 using namespace kk;
 
@@ -31,6 +36,36 @@ Subject lessonRadical(uint32_t id) {
     s.level = 1;
     s.meanings = {{"ground", true, true}};
     return s;
+}
+
+Subject lessonVocabulary(uint32_t id) {
+    Subject s;
+    s.id = id;
+    s.type = SubjectType::Vocabulary;
+    s.level = 2;
+    s.characters = "食べる";
+    s.meanings = {{"eat", true, true}, {"consume", false, true}};
+    s.readings = {{"たべる", true, true, ReadingType::Kunyomi}};
+    s.meaningMnemonic = "To eat is to enjoy a meal.";
+    s.readingMnemonic = "Tabe sounds like table.";
+    s.meaningHint = "Think of food.";
+    s.readingHint = "The okurigana is べる.";
+    s.meaningNote = "My meaning note.";
+    s.readingNote = "My reading note.";
+    s.partsOfSpeech = {"verb", "ichidan"};
+    s.contextSentences = {{"毎日食べる。", "I eat every day."}};
+    return s;
+}
+
+LessonCandidate lessonOrderCandidate(uint32_t assignmentId, uint16_t position, uint8_t level,
+                                     SubjectType type, uint32_t subjectId = 0) {
+    LessonCandidate c;
+    c.assignmentId = assignmentId;
+    c.subjectId = subjectId ? subjectId : assignmentId + 1000;
+    c.lessonPosition = position;
+    c.level = level;
+    c.type = type;
+    return c;
 }
 
 Assignment lessonAssignment(uint32_t id, uint32_t subjectId) {
@@ -341,12 +376,230 @@ static void test_lesson_start_plan_all_started() {
     TEST_ASSERT_EQUAL_PTR(nullptr, plan.nextPending());
 }
 
+static void test_lesson_order_type_groups() {
+    std::vector<LessonCandidate> candidates = {
+        lessonOrderCandidate(10, 0, 1, SubjectType::Vocabulary),
+        lessonOrderCandidate(20, 9, 3, SubjectType::Radical),
+        lessonOrderCandidate(30, 1, 2, SubjectType::Kanji),
+        lessonOrderCandidate(40, 5, 1, SubjectType::Radical),
+        lessonOrderCandidate(50, 2, 1, SubjectType::Vocabulary),
+        lessonOrderCandidate(60, 0, 2, SubjectType::KanaVocabulary),
+    };
+    sortLessonCandidates(&candidates, LessonOrder::TypeGroups);
+    TEST_ASSERT_EQUAL_UINT32(40, candidates[0].assignmentId);
+    TEST_ASSERT_EQUAL_UINT32(20, candidates[1].assignmentId);
+    TEST_ASSERT_EQUAL_UINT32(30, candidates[2].assignmentId);
+    TEST_ASSERT_EQUAL_UINT32(10, candidates[3].assignmentId);
+    TEST_ASSERT_EQUAL_UINT32(50, candidates[4].assignmentId);
+    TEST_ASSERT_EQUAL_UINT32(60, candidates[5].assignmentId);
+}
+
+static void test_lesson_order_interleave_round_robin() {
+    std::vector<LessonCandidate> candidates = {
+        lessonOrderCandidate(1, 1, 1, SubjectType::Radical),
+        lessonOrderCandidate(2, 2, 1, SubjectType::Radical),
+        lessonOrderCandidate(3, 1, 1, SubjectType::Kanji),
+        lessonOrderCandidate(4, 1, 1, SubjectType::Vocabulary),
+        lessonOrderCandidate(5, 2, 1, SubjectType::Vocabulary),
+        lessonOrderCandidate(6, 3, 1, SubjectType::Vocabulary),
+    };
+    sortLessonCandidates(&candidates, LessonOrder::Interleave);
+    TEST_ASSERT_EQUAL_UINT32(1, candidates[0].assignmentId);
+    TEST_ASSERT_EQUAL_UINT32(3, candidates[1].assignmentId);
+    TEST_ASSERT_EQUAL_UINT32(4, candidates[2].assignmentId);
+    TEST_ASSERT_EQUAL_UINT32(2, candidates[3].assignmentId);
+    TEST_ASSERT_EQUAL_UINT32(5, candidates[4].assignmentId);
+    TEST_ASSERT_EQUAL_UINT32(6, candidates[5].assignmentId);
+}
+
+static void test_lesson_order_ties_break_by_id() {
+    std::vector<LessonCandidate> candidates = {
+        lessonOrderCandidate(300, 4, 1, SubjectType::Kanji),
+        lessonOrderCandidate(200, 4, 1, SubjectType::Kanji),
+        lessonOrderCandidate(100, 4, 1, SubjectType::Kanji),
+    };
+    sortLessonCandidates(&candidates, LessonOrder::WaniKani);
+    TEST_ASSERT_EQUAL_UINT32(100, candidates[0].assignmentId);
+    TEST_ASSERT_EQUAL_UINT32(200, candidates[1].assignmentId);
+    TEST_ASSERT_EQUAL_UINT32(300, candidates[2].assignmentId);
+}
+
+static void test_lesson_order_unknown_level_stays_last_in_type_groups() {
+    std::vector<LessonCandidate> candidates = {
+        lessonOrderCandidate(1, 0, 0, SubjectType::Radical),
+        lessonOrderCandidate(2, 9, 5, SubjectType::Radical),
+    };
+    sortLessonCandidates(&candidates, LessonOrder::TypeGroups);
+    TEST_ASSERT_EQUAL_UINT32(2, candidates[0].assignmentId);
+    TEST_ASSERT_EQUAL_UINT32(1, candidates[1].assignmentId);
+}
+
+static void test_lesson_order_from_value() {
+    TEST_ASSERT_EQUAL(LessonOrder::WaniKani, lessonOrderFromValue(0));
+    TEST_ASSERT_EQUAL(LessonOrder::TypeGroups, lessonOrderFromValue(1));
+    TEST_ASSERT_EQUAL(LessonOrder::Interleave, lessonOrderFromValue(2));
+    TEST_ASSERT_EQUAL(LessonOrder::WaniKani, lessonOrderFromValue(99));
+}
+
+static void test_lesson_pages_kanji_topics() {
+    Subject kanji = lessonKanji(1);
+    kanji.meaningMnemonic = "Eat with your mouth.";
+    kanji.meaningHint = "Think of a mouth.";
+    kanji.readingMnemonic = "Shoku sounds like shock.";
+    kanji.readingHint = "Long o.";
+    kanji.meaningNote = "A kanji note.";
+    kanji.readingNote = "A reading note.";
+    Subject radical = lessonRadical(2);
+    std::vector<const Subject*> components = {&radical};
+
+    const std::vector<LessonPageText> pages = buildLessonPages(kanji, components);
+    TEST_ASSERT_EQUAL_UINT32(3, pages.size());
+    TEST_ASSERT_EQUAL_STRING("Meaning", pages[0].title);
+    TEST_ASSERT_NOT_NULL(strstr(pages[0].body.c_str(), "Meanings: eat"));
+    TEST_ASSERT_NOT_NULL(strstr(pages[0].body.c_str(), "Eat with your mouth."));
+    TEST_ASSERT_NOT_NULL(strstr(pages[0].body.c_str(), "Hint: Think of a mouth."));
+    TEST_ASSERT_EQUAL_STRING("Reading", pages[1].title);
+    TEST_ASSERT_NOT_NULL(strstr(pages[1].body.c_str(), "Readings: しょく"));
+    TEST_ASSERT_NOT_NULL(strstr(pages[1].body.c_str(), "Shoku sounds like shock."));
+    TEST_ASSERT_EQUAL_STRING("Components and notes", pages[2].title);
+    TEST_ASSERT_NOT_NULL(strstr(pages[2].body.c_str(), "Components: ground"));
+    TEST_ASSERT_NOT_NULL(strstr(pages[2].body.c_str(), "Meaning note: A kanji note."));
+    TEST_ASSERT_NOT_NULL(strstr(pages[2].body.c_str(), "Reading note: A reading note."));
+}
+
+static void test_lesson_pages_radical_skips_reading() {
+    Subject radical = lessonRadical(2);
+    radical.meaningMnemonic = "The ground under your feet.";
+    const std::vector<LessonPageText> pages = buildLessonPages(radical, {});
+    TEST_ASSERT_EQUAL_UINT32(1, pages.size());
+    TEST_ASSERT_EQUAL_STRING("Meaning", pages[0].title);
+    TEST_ASSERT_NOT_NULL(strstr(pages[0].body.c_str(), "The ground under your feet."));
+    for (const LessonPageText& page : pages)
+        TEST_ASSERT_TRUE(strcmp(page.title, "Reading") != 0);
+}
+
+static void test_lesson_pages_context_only_when_present() {
+    Subject vocabulary = lessonVocabulary(3);
+    const std::vector<LessonPageText> withContext = buildLessonPages(vocabulary, {});
+    TEST_ASSERT_EQUAL_STRING("Context", withContext.back().title);
+    TEST_ASSERT_NOT_NULL(strstr(withContext.back().body.c_str(), "Parts of speech: verb, ichidan"));
+    TEST_ASSERT_NOT_NULL(strstr(withContext.back().body.c_str(), "I eat every day."));
+
+    vocabulary.partsOfSpeech.clear();
+    vocabulary.contextSentences.clear();
+    const std::vector<LessonPageText> withoutContext = buildLessonPages(vocabulary, {});
+    for (const LessonPageText& page : withoutContext)
+        TEST_ASSERT_TRUE(strcmp(page.title, "Context") != 0);
+}
+
+static void test_lesson_pages_notes_page_omitted_when_empty() {
+    Subject kanji = lessonKanji(1);
+    kanji.meaningMnemonic = "A mnemonic.";
+    const std::vector<LessonPageText> pages = buildLessonPages(kanji, {});
+    TEST_ASSERT_EQUAL_UINT32(2, pages.size());
+    TEST_ASSERT_EQUAL_STRING("Meaning", pages[0].title);
+    TEST_ASSERT_EQUAL_STRING("Reading", pages[1].title);
+}
+
+static void test_lesson_pages_titles() {
+    Subject vocabulary = lessonVocabulary(3);
+    Subject component = lessonRadical(4);
+    const std::vector<LessonPageText> pages = buildLessonPages(vocabulary, {&component});
+    TEST_ASSERT_EQUAL_UINT32(4, pages.size());
+    TEST_ASSERT_EQUAL_STRING("Meaning", pages[0].title);
+    TEST_ASSERT_EQUAL_STRING("Reading", pages[1].title);
+    TEST_ASSERT_EQUAL_STRING("Components and notes", pages[2].title);
+    TEST_ASSERT_EQUAL_STRING("Context", pages[3].title);
+}
+
+static void test_workload_guard_apprentice_threshold() {
+    WorkloadThresholds limits;
+    limits.apprentice = 100;
+    TEST_ASSERT_EQUAL_UINT8(kWorkloadNone, workloadWarning(100, 0, 0, limits));
+    const uint8_t reasons = workloadWarning(120, 0, 0, limits);
+    TEST_ASSERT_EQUAL_UINT8(kWorkloadApprentice, reasons);
+
+    char line[48];
+    TEST_ASSERT_TRUE(formatWorkloadReason(reasons, kWorkloadApprentice, 120, 0, 0, limits,
+                                          line, sizeof line));
+    TEST_ASSERT_EQUAL_STRING("Apprentice items: 120 (limit 100)", line);
+    TEST_ASSERT_FALSE(formatWorkloadReason(reasons, kWorkloadDueReviews, 120, 0, 0, limits,
+                                           line, sizeof line));
+}
+
+static void test_workload_guard_due_reviews_threshold() {
+    WorkloadThresholds limits;
+    limits.dueReviews = 150;
+    TEST_ASSERT_EQUAL_UINT8(kWorkloadNone, workloadWarning(0, 150, 0, limits));
+    const uint8_t reasons = workloadWarning(0, 240, 0, limits);
+    TEST_ASSERT_EQUAL_UINT8(kWorkloadDueReviews, reasons);
+
+    char line[48];
+    TEST_ASSERT_TRUE(formatWorkloadReason(reasons, kWorkloadDueReviews, 0, 240, 0, limits,
+                                          line, sizeof line));
+    TEST_ASSERT_EQUAL_STRING("Reviews due: 240 (limit 150)", line);
+}
+
+static void test_workload_guard_started_today_threshold() {
+    WorkloadThresholds limits;
+    limits.startedToday = 15;
+    TEST_ASSERT_EQUAL_UINT8(kWorkloadNone, workloadWarning(0, 0, 15, limits));
+    const uint8_t reasons = workloadWarning(0, 0, 20, limits);
+    TEST_ASSERT_EQUAL_UINT8(kWorkloadStartedToday, reasons);
+
+    char line[48];
+    TEST_ASSERT_TRUE(formatWorkloadReason(reasons, kWorkloadStartedToday, 0, 0, 20, limits,
+                                          line, sizeof line));
+    TEST_ASSERT_EQUAL_STRING("Lessons started today: 20 (limit 15)", line);
+}
+
+static void test_workload_guard_all_off() {
+    WorkloadThresholds limits;
+    TEST_ASSERT_EQUAL_UINT8(kWorkloadNone, workloadWarning(999, 999, 999, limits));
+}
+
+static void test_workload_guard_multiple_reasons() {
+    WorkloadThresholds limits;
+    limits.apprentice = 100;
+    limits.dueReviews = 50;
+    limits.startedToday = 5;
+    const uint8_t reasons = workloadWarning(120, 240, 20, limits);
+    TEST_ASSERT_EQUAL_UINT8(kWorkloadApprentice | kWorkloadDueReviews | kWorkloadStartedToday,
+                            reasons);
+
+    char line[48];
+    TEST_ASSERT_TRUE(formatWorkloadReason(reasons, kWorkloadApprentice, 120, 240, 20, limits,
+                                          line, sizeof line));
+    TEST_ASSERT_EQUAL_STRING("Apprentice items: 120 (limit 100)", line);
+    TEST_ASSERT_TRUE(formatWorkloadReason(reasons, kWorkloadDueReviews, 120, 240, 20, limits,
+                                          line, sizeof line));
+    TEST_ASSERT_EQUAL_STRING("Reviews due: 240 (limit 50)", line);
+    TEST_ASSERT_TRUE(formatWorkloadReason(reasons, kWorkloadStartedToday, 120, 240, 20, limits,
+                                          line, sizeof line));
+    TEST_ASSERT_EQUAL_STRING("Lessons started today: 20 (limit 5)", line);
+}
+
 void run_les_tests() {
     RUN_TEST(test_lesson_browse_selects_first_n);
     RUN_TEST(test_lesson_browse_toggle_cap);
     RUN_TEST(test_lesson_browse_page_then_card);
     RUN_TEST(test_lesson_browse_previous_page_then_card);
     RUN_TEST(test_lesson_browse_header_format);
+    RUN_TEST(test_lesson_order_type_groups);
+    RUN_TEST(test_lesson_order_interleave_round_robin);
+    RUN_TEST(test_lesson_order_ties_break_by_id);
+    RUN_TEST(test_lesson_order_unknown_level_stays_last_in_type_groups);
+    RUN_TEST(test_lesson_order_from_value);
+    RUN_TEST(test_lesson_pages_kanji_topics);
+    RUN_TEST(test_lesson_pages_radical_skips_reading);
+    RUN_TEST(test_lesson_pages_context_only_when_present);
+    RUN_TEST(test_lesson_pages_notes_page_omitted_when_empty);
+    RUN_TEST(test_lesson_pages_titles);
+    RUN_TEST(test_workload_guard_apprentice_threshold);
+    RUN_TEST(test_workload_guard_due_reviews_threshold);
+    RUN_TEST(test_workload_guard_started_today_threshold);
+    RUN_TEST(test_workload_guard_all_off);
+    RUN_TEST(test_workload_guard_multiple_reasons);
     RUN_TEST(test_lesson_quiz_all_parts_required);
     RUN_TEST(test_lesson_quiz_requeues_wrong_part);
     RUN_TEST(test_lesson_quiz_warning_retries_same_part);

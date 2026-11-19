@@ -31,6 +31,7 @@
 #include "wk/Types.h"
 #include "wk/User.h"
 #include "wk/WifiSetup.h"
+#include "wk/WorkloadGuard.h"
 
 namespace kk::app {
 
@@ -175,6 +176,15 @@ struct LessonState {
     bool gLessonStartActive = false;
     bool gLessonStartFailed = false;
     bool gLessonStartOffline = false;
+    // LES-05 workload guard. It shares gLessonStartActive with the start
+    // confirmation so the existing key/draw dispatch reaches lessonStartKey().
+    bool gLessonWorkloadActive = false;
+    bool gLessonWorkloadConfirmed = false;
+    uint8_t gLessonWorkloadReasons = 0;
+    uint32_t gLessonWorkloadApprentice = 0;
+    uint32_t gLessonWorkloadDue = 0;
+    uint32_t gLessonWorkloadStartedToday = 0;
+    kk::WorkloadThresholds gLessonWorkloadLimits;
     bool gLessonActive = false;
     bool gLessonListActive = false;
     bool gLessonEmptyActive = false;

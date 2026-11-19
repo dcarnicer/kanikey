@@ -66,6 +66,7 @@
 #include "wk/AnswerDisplay.h"
 #include "wk/IdSample.h"
 #include "wk/LessonOrder.h"
+#include "wk/LessonPages.h"
 #include "wk/LessonQuiz.h"
 #include "wk/LessonSession.h"
 #include "wk/Outbox.h"
@@ -76,6 +77,7 @@
 #include "wk/Stats.h"
 #include "wk/SubjectText.h"
 #include "wk/Time.h"
+#include "wk/WorkloadGuard.h"
 #include "ui/Theme.h"
 
 namespace kk::app {
@@ -100,6 +102,7 @@ void startLessonBatchQuiz();
 void openLessonStartConfirm();
 void runLessonStart();
 void journalLessonStarted(const kk::LessonStartItem& item, bool offline);
+uint32_t lessonsStartedToday(uint32_t now);
 
 const kk::Subject* lessonSubjectById(uint32_t id) {
     for (const kk::Subject& s : state().lesson.gLessonBatch.subjects)
@@ -277,6 +280,40 @@ void openLessonStartConfirm() {
     state().display.gDirty = true;
 }
 
+struct StartedTodayCounter {
+    uint32_t dayStart = 0;
+    uint32_t now = 0;
+    uint32_t count = 0;
+};
+
+bool countStartedTodayVisitor(const kk::JournalRecord& record, void* user) {
+    auto* counter = static_cast<StartedTodayCounter*>(user);
+    if (!record.lessonStarted || record.completedAt == 0) return true;
+    if (record.completedAt >= counter->dayStart && record.completedAt <= counter->now)
+        ++counter->count;
+    return true;
+}
+
+// L6 counts this device's lesson starts from the local journal (ARCH-03).
+// `completedAt` is UTC seconds, so the window is local midnight to now.
+uint32_t lessonsStartedToday(uint32_t now) {
+    if (!state().storage.gFsOk || now < 1700000000u) return 0;
+    if (!kk::journalOpen(currentAccountKey(), false)) return 0;
+    struct tm local {};
+    const time_t t = static_cast<time_t>(now);
+    if (!localtime_r(&t, &local)) return 0;
+    local.tm_hour = 0;
+    local.tm_min = 0;
+    local.tm_sec = 0;
+    const time_t dayStart = mktime(&local);
+    if (dayStart <= 0) return 0;
+    StartedTodayCounter counter;
+    counter.dayStart = static_cast<uint32_t>(dayStart);
+    counter.now = now;
+    kk::journalForEach(countStartedTodayVisitor, &counter);
+    return counter.count;
+}
+
 // ARCH-03: one journal record per item started on this device. No SRS fields
 // are set; the lessonStarted flag is what the journal and later stats read.
 void journalLessonStarted(const kk::LessonStartItem& item, bool offline) {
@@ -445,31 +482,27 @@ void showLesson() {
                 break;
             }
 
-    std::string mnemonic = s->meaningMnemonic;
-    if (mnemonic.empty()) mnemonic = s->readingMnemonic;
-    if (mnemonic.empty()) mnemonic = s->meaningHint;
-    if (mnemonic.empty()) mnemonic = "No mnemonic cached.";
-    std::string components;
-    for (uint32_t id : s->componentSubjectIds) {
-        const kk::Subject* c = lessonComponentById(id);
-        if (!c) continue;
-        const std::string componentMeaning = subjectMainMeaning(*c);
-        if (componentMeaning.empty()) continue;
-        if (!components.empty()) components += " + ";
-        components += componentMeaning;
+    std::vector<const kk::Subject*> components;
+    components.reserve(s->componentSubjectIds.size());
+    for (uint32_t id : s->componentSubjectIds)
+        if (const kk::Subject* c = lessonComponentById(id)) components.push_back(c);
+
+    // LES-06: one topic per page; a long topic continues over more card pages
+    // with the same title. The browser owns the page count so Left/Enter ask
+    // the same number the card draws.
+    std::vector<LessonPageView> pages;
+    for (const kk::LessonPageText& topic : kk::buildLessonPages(*s, components)) {
+        const std::vector<std::string> lines = wrapLines(d, topic.body, 232);
+        for (size_t start = 0; start < lines.size(); start += 3) {
+            LessonPageView page;
+            page.title = topic.title;
+            for (size_t i = start; i < lines.size() && i < start + 3; ++i)
+                page.lines.push_back(lines[i]);
+            pages.push_back(std::move(page));
+        }
     }
-    std::string extra;
-    if (!components.empty()) extra += "Components: " + components + ". ";
-    if (!s->meaningHint.empty()) extra += "Hint: " + s->meaningHint + ". ";
-    if (!s->readingHint.empty()) extra += "Reading hint: " + s->readingHint + ". ";
-    if (!s->meaningNote.empty()) extra += "Meaning note: " + s->meaningNote + ". ";
-    if (!s->readingNote.empty()) extra += "Reading note: " + s->readingNote + ". ";
-    if (!extra.empty()) mnemonic += " " + extra;
-    std::vector<std::string> lines = wrapLines(d, mnemonic, 232);
-    const size_t pages = std::max<size_t>(1, (lines.size() + 2) / 3);
-    // The browser owns the page count so Left/Enter ask the same number the
-    // card draws, not the value from before the text was wrapped.
-    state().lesson.gLessonBrowse.setPageCount(pages);
+    if (pages.empty()) pages.emplace_back();
+    state().lesson.gLessonBrowse.setPageCount(pages.size());
 
     char header[24];
     state().lesson.gLessonBrowse.header(header, sizeof header);
@@ -479,9 +512,8 @@ void showLesson() {
     view.meaning = meaning;
     view.reading = reading;
     view.header = header;
-    view.lines = std::move(lines);
+    view.pages = std::move(pages);
     view.page = state().lesson.gLessonBrowse.page();
-    view.pages = state().lesson.gLessonBrowse.pageCount();
     view.index = state().lesson.gLessonBrowse.card();
     view.total = state().lesson.gLessonBrowse.selectedCount();
 
@@ -773,6 +805,33 @@ void lessonBatchQuizKey(const KeyEvent& e) {
 
 void drawLessonStart() {
     if (!state().display.gDisp) return;
+    LessonState& l = state().lesson;
+    if (l.gLessonWorkloadActive) {
+        WorkloadView view;
+        char line[48];
+        if (kk::formatWorkloadReason(l.gLessonWorkloadReasons, kk::kWorkloadApprentice,
+                                     l.gLessonWorkloadApprentice, l.gLessonWorkloadDue,
+                                     l.gLessonWorkloadStartedToday, l.gLessonWorkloadLimits,
+                                     line, sizeof line))
+            view.reasons.emplace_back(line);
+        if (kk::formatWorkloadReason(l.gLessonWorkloadReasons, kk::kWorkloadDueReviews,
+                                     l.gLessonWorkloadApprentice, l.gLessonWorkloadDue,
+                                     l.gLessonWorkloadStartedToday, l.gLessonWorkloadLimits,
+                                     line, sizeof line))
+            view.reasons.emplace_back(line);
+        if (kk::formatWorkloadReason(l.gLessonWorkloadReasons, kk::kWorkloadStartedToday,
+                                     l.gLessonWorkloadApprentice, l.gLessonWorkloadDue,
+                                     l.gLessonWorkloadStartedToday, l.gLessonWorkloadLimits,
+                                     line, sizeof line))
+            view.reasons.emplace_back(line);
+        auto& d = target();
+        d.startWrite();
+        drawWorkloadScreen(d, view);
+        d.endWrite();
+        present();
+        return;
+    }
+
     LessonStartView view;
     view.total = static_cast<unsigned>(state().lesson.gLessonStartPlan.size());
     view.started = static_cast<unsigned>(state().lesson.gLessonStartPlan.startedCount());
@@ -803,6 +862,25 @@ void drawLessonStart() {
 
 void lessonStartKey(const KeyEvent& e) {
     if (!e.down) return;
+    LessonState& l = state().lesson;
+    if (l.gLessonWorkloadActive) {
+        if (e.key == Key::Enter) {
+            // Continue the same entry: the guard is done, the battery prompt
+            // (if any) still gets the last word before the fetch.
+            l.gLessonWorkloadActive = false;
+            l.gLessonWorkloadConfirmed = true;
+            l.gLessonStartActive = false;
+            startLessons();
+        } else if (e.key == Key::Esc) {
+            l.gLessonWorkloadActive = false;
+            l.gLessonWorkloadConfirmed = false;
+            l.gLessonStartActive = false;
+            state().session.gShowHome = true;
+            releaseLessonData();
+            state().display.gDirty = true;
+        }
+        return;
+    }
     if (e.key == Key::Esc) {
         state().lesson.gLessonStartActive = false;
         state().lesson.gLessonStartFailed = false;
@@ -834,6 +912,9 @@ void releaseLessonData() {
     l.gLessonStartActive = false;
     l.gLessonStartFailed = false;
     l.gLessonStartOffline = false;
+    l.gLessonWorkloadActive = false;
+    l.gLessonWorkloadConfirmed = false;
+    l.gLessonWorkloadReasons = 0;
     l.gLessonBatchQueue = kk::ReviewQueue{};
     l.gLessonBatchCheck = kk::AnswerCheck{};
     l.gLessonBatchPart = kk::ReviewPart::None;
@@ -848,16 +929,59 @@ void releaseLessonData() {
 
 void startLessons() {
     if (!state().session.gHaveSummary) return;
-    state().lesson.gLessonQuizActive = false;
-    state().lesson.gLessonBatchQuizActive = false;
-    state().lesson.gLessonStartActive = false;
+    LessonState& l = state().lesson;
+    // A fresh entry from Home re-arms the workload guard; continuing a
+    // guard/battery confirmation keeps the earlier decision.
+    if (state().session.gShowHome) l.gLessonWorkloadConfirmed = false;
+    l.gLessonWorkloadActive = false;
+    l.gLessonQuizActive = false;
+    l.gLessonBatchQuizActive = false;
+    l.gLessonStartActive = false;
     if (state().session.gSummary.totalLessons() == 0) {
-        state().lesson.gLessonEmptyActive = true;
-        state().lesson.gLessonListActive = false;
-        state().lesson.gLessonActive = false;
+        l.gLessonEmptyActive = true;
+        l.gLessonListActive = false;
+        l.gLessonActive = false;
         state().session.gShowHome = false;
         state().display.gDirty = true;
         return;
+    }
+    // LES-05: local, non-blocking guard before any Wi-Fi join or request. The
+    // battery prompt stays the last gate.
+    l.gLessonEmptyActive = false;
+    l.gLessonListActive = false;
+    l.gLessonActive = false;
+    if (!l.gLessonWorkloadConfirmed) {
+        kk::WorkloadThresholds limits;
+        int value = 0;
+        if (kk::settingsGetInt("ls.appr", &value) && value > 0)
+            limits.apprentice = static_cast<uint32_t>(value);
+        value = 0;
+        if (kk::settingsGetInt("ls.due", &value) && value > 0)
+            limits.dueReviews = static_cast<uint32_t>(value);
+        value = 0;
+        if (kk::settingsGetInt("ls.daily", &value) && value > 0)
+            limits.startedToday = static_cast<uint32_t>(value);
+        const uint32_t now = effectiveNow();
+        const uint32_t apprentice =
+            state().session.gSrs.valid ? state().session.gSrs.apprentice : 0;
+        const uint32_t due = state().session.gSummary.dueReviews(now);
+        const uint32_t started = limits.startedToday ? lessonsStartedToday(now) : 0;
+        const uint8_t reasons = kk::workloadWarning(apprentice, due, started, limits);
+        if (reasons) {
+            l.gLessonWorkloadActive = true;
+            l.gLessonWorkloadReasons = reasons;
+            l.gLessonWorkloadApprentice = apprentice;
+            l.gLessonWorkloadDue = due;
+            l.gLessonWorkloadStartedToday = started;
+            l.gLessonWorkloadLimits = limits;
+            l.gLessonStartActive = true;
+            l.gLessonStartFailed = false;
+            l.gLessonStartOffline = false;
+            state().session.gShowHome = false;
+            Serial.printf("[lesson] workload guard %u\n", static_cast<unsigned>(reasons));
+            state().display.gDirty = true;
+            return;
+        }
     }
     if (!state().ui.gLowBatteryConfirmed && lowBatteryNow()) {
         requestLowBatteryConfirm(2);
@@ -938,7 +1062,9 @@ void startLessons() {
                 }
             ordered.push_back(c);
         }
-        kk::sortLessonCandidates(&ordered);
+        int lessonOrderValue = 0;
+        kk::settingsGetInt("ls.order", &lessonOrderValue);
+        kk::sortLessonCandidates(&ordered, kk::lessonOrderFromValue(lessonOrderValue));
         if (ordered.size() > lessonLimit) ordered.resize(lessonLimit);
         Serial.printf("[lesson] candidates %u, chosen %u\n",
                       static_cast<unsigned>(assignments.assignments.size()),
