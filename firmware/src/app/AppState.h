@@ -117,6 +117,26 @@ struct StageChange {
     uint8_t to = 0;
 };
 
+// REV-11: one typed wrong answer for the summary rows. The text is capped at
+// kMaxAnswerBytes; the vector keeps at most kSummaryWrongAnswers entries.
+struct WrongAnswer {
+    uint32_t assignmentId = 0;
+    kk::ReviewPart part = kk::ReviewPart::None;
+    std::string text;
+};
+
+// REV-11: the SRS pair of one completed assignment, recorded when its POST is
+// answered. The stage tracker forgets successful sends, so the summary keeps
+// its own bounded copy for the rows.
+struct SummaryStage {
+    uint32_t assignmentId = 0;
+    uint8_t from = 0;
+    uint8_t to = 0;
+};
+
+constexpr size_t kSummaryWrongAnswers = kk::kOutboxMax;
+constexpr size_t kSummaryStages = kk::kOutboxMax;
+
 struct ReviewState {
     kk::ReviewQueue gQueue;
     bool gReviewActive = false;
@@ -148,6 +168,12 @@ struct ReviewState {
     std::string gFeedbackInput;
     kk::SessionItem gCompletedItem;
     StageChange gStageChange;
+    // REV-11: summary rows and their per-item data. The wrong answers keep the
+    // last typed text of each failed part; the stages keep the POST response.
+    std::vector<WrongAnswer> gWrongAnswers;
+    std::vector<SummaryStage> gSummaryStages;
+    int gSummaryFocus = 0;     // 0 stats, 1 mistake list
+    int gSummarySelected = 0;  // row inside the mistake list
     uint32_t gStageUps = 0;        // successful upward moves in the current session
     uint32_t gReviewStartMs = 0;   // millis() when the current session started
     uint32_t gReviewElapsedMs = 0; // latched when the summary is entered

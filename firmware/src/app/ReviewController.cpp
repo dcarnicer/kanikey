@@ -102,6 +102,10 @@ bool reviewDetailsOnWrongEnabled();
 kk::SubmitPolicy reviewSubmitPolicy();
 // Queue, persist and count one completed item (normal answers and C).
 void applyCompletion();
+// REV-11: keep the typed wrong answers and per-assignment stage pairs for the
+// summary rows.
+void recordWrongAnswer(uint32_t assignmentId, kk::ReviewPart part, const std::string& text);
+void recordSummaryStage(uint32_t assignmentId, uint8_t from, uint8_t to);
 
 void clearReviewInput() {
     state().review.gMeaningInput.clear();
@@ -139,6 +143,33 @@ bool reviewWrongActionsEnabled() {
 bool reviewDetailsOnWrongEnabled() {
     int value = 0;
     return kk::settingsGetInt("rv.details", &value) && value != 0;
+}
+
+void recordWrongAnswer(uint32_t assignmentId, kk::ReviewPart part, const std::string& text) {
+    if (assignmentId == 0 || part == kk::ReviewPart::None) return;
+    std::string capped = text;
+    if (capped.size() > kk::kMaxAnswerBytes) capped.resize(kk::kMaxAnswerBytes);
+    auto& answers = state().review.gWrongAnswers;
+    for (WrongAnswer& answer : answers) {
+        if (answer.assignmentId != assignmentId || answer.part != part) continue;
+        answer.text = capped;
+        return;
+    }
+    if (answers.size() >= kSummaryWrongAnswers) answers.erase(answers.begin());
+    answers.push_back(WrongAnswer{assignmentId, part, capped});
+}
+
+void recordSummaryStage(uint32_t assignmentId, uint8_t from, uint8_t to) {
+    if (assignmentId == 0 || from == 0 || to == 0) return;
+    auto& stages = state().review.gSummaryStages;
+    for (SummaryStage& stage : stages) {
+        if (stage.assignmentId != assignmentId) continue;
+        stage.from = from;
+        stage.to = to;
+        return;
+    }
+    if (stages.size() >= kSummaryStages) stages.erase(stages.begin());
+    stages.push_back(SummaryStage{assignmentId, from, to});
 }
 
 kk::SubmitPolicy reviewSubmitPolicy() {
@@ -367,9 +398,45 @@ void showReviewSummary() {
         view.lastPercentage = lastSubject->percentageCorrect;
     }
 
+    // REV-11: the mistake rows keep the completed items' assignment order and
+    // attach the typed wrong answers and the per-assignment stage change.
+    const std::vector<kk::SummaryMistake> misses =
+        kk::summaryMistakes(state().review.gQueue.completed());
+    view.items.reserve(misses.size());
+    for (const kk::SummaryMistake& miss : misses) {
+        const kk::Subject* subject = subjectById(miss.subjectId);
+        if (!subject) continue;
+        ReviewSummaryItem item;
+        item.subject = subject;
+        item.incorrectMeaning =
+            static_cast<uint8_t>(std::min<unsigned>(miss.incorrectMeaning, 255));
+        item.incorrectReading =
+            static_cast<uint8_t>(std::min<unsigned>(miss.incorrectReading, 255));
+        for (const SummaryStage& stage : state().review.gSummaryStages) {
+            if (stage.assignmentId != miss.assignmentId) continue;
+            item.stageFrom = stage.from;
+            item.stageTo = stage.to;
+            item.stageValid = stage.from != 0 && stage.to != 0;
+        }
+        for (const WrongAnswer& wrong : state().review.gWrongAnswers) {
+            if (wrong.assignmentId != miss.assignmentId) continue;
+            if (wrong.part == kk::ReviewPart::Meaning) item.wrongMeaning = wrong.text;
+            else if (wrong.part == kk::ReviewPart::Reading) item.wrongReading = wrong.text;
+        }
+        view.items.push_back(item);
+    }
+    view.canNextBatch =
+        !view.practice && kk::summaryCanNextBatch(static_cast<unsigned>(state().session.gDueReviews));
+    view.focus = state().review.gSummaryFocus == 1 ? 1 : 0;
+    view.selected = state().review.gSummarySelected;
+    if (view.items.empty()) view.selected = 0;
+    else if (view.selected < 0) view.selected = 0;
+    else if (view.selected >= static_cast<int>(view.items.size()))
+        view.selected = static_cast<int>(view.items.size()) - 1;
+
     auto& d = target();
     d.startWrite();
-    drawReviewSummaryScreen(d, view);
+    drawReviewSummaryScreen(d, state().storage.gFontPack, state().storage.gRadicalPack, view);
     d.endWrite();
     present();
 }
@@ -445,6 +512,10 @@ void checkCurrent() {
         state().review.gCheck.status == kk::AnswerStatus::Correct ? millis() : 0;
     state().review.gFeedback = true;
     state().review.gFeedbackCompleted = false;
+    // REV-11: the summary can show the last text the user typed wrong for each
+    // part. Record it before the queue moves to the other part.
+    if (state().review.gCheck.status == kk::AnswerStatus::Incorrect)
+        recordWrongAnswer(item->assignmentId, state().review.gQueue.part(), input);
     if (state().review.gCheck.status != kk::AnswerStatus::Warning) {
         const kk::AnswerOutcome o = state().review.gQueue.answer(state().review.gCheck.status);
         if (o.completed) applyCompletion();
@@ -546,6 +617,12 @@ void endReview(bool send) {
     state().review.gFeedbackCompleted = false;
     state().review.gQueue = kk::ReviewQueue{};
     state().review.gWrapUp = false;
+    // REV-11: the summary rows and their typed wrong answers belong to this
+    // session only.
+    state().review.gWrongAnswers.clear();
+    state().review.gSummaryStages.clear();
+    state().review.gSummaryFocus = 0;
+    state().review.gSummarySelected = 0;
     state().study.gPracticeActive = false;
     state().study.gPracticeMode = 0;
     state().study.gPracticeSubjects.clear();
@@ -675,6 +752,13 @@ void startReview() {
     state().review.gReviewActive = true;
     state().review.gReviewSummary = false;
     state().review.gReviewStartMs = millis();
+    // REV-11: a new batch starts with an empty summary and no stale rows.
+    // Kept until here so a failed fetch or an outbox-full notice leaves the
+    // current summary (and its list) untouched.
+    state().review.gWrongAnswers.clear();
+    state().review.gSummaryStages.clear();
+    state().review.gSummaryFocus = 0;
+    state().review.gSummarySelected = 0;
     state().session.gShowHome = false;
     state().ui.gPauseActive = false;
     state().ui.gSettingsActive = false;
@@ -784,16 +868,70 @@ bool reviewKey(const KeyEvent& e) {
     return true;
 }
 
+// REV-11: the summary's own keys. Down/Tab opens the mistake list, Up/Down
+// move in it, Esc leaves it, Enter still goes Home and R starts another batch
+// only when the server summary still reports due reviews.
+void reviewSummaryKey(const KeyEvent& e) {
+    if (!e.down) return;
+    auto& r = state().review;
+    const int count =
+        static_cast<int>(kk::summaryMistakes(state().review.gQueue.completed()).size());
+    if (e.key == Key::Esc) {
+        if (r.gSummaryFocus == 1) {
+            r.gSummaryFocus = 0;
+            state().display.gDirty = true;
+        } else {
+            endReview();
+        }
+        return;
+    }
+    if (e.key == Key::Enter) {
+        endReview();
+        return;
+    }
+    if (e.key == Key::Down || e.key == Key::Tab) {
+        if (r.gSummaryFocus == 0)
+            r.gSummaryFocus = 1;
+        else
+            r.gSummarySelected = kk::summaryMoveSelection(r.gSummarySelected, count, 1);
+        state().display.gDirty = true;
+        return;
+    }
+    if (e.key == Key::Up) {
+        if (r.gSummaryFocus == 1) {
+            r.gSummarySelected = kk::summaryMoveSelection(r.gSummarySelected, count, -1);
+            state().display.gDirty = true;
+        }
+        return;
+    }
+    if (e.key != Key::Other) return;
+    const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
+    if ((c == 'r' || c == 'R') && !state().study.gPracticeActive &&
+        kk::summaryCanNextBatch(static_cast<unsigned>(state().session.gDueReviews)))
+        startReview();
+}
+
 // Applies the SRS stage change parsed from a successful POST /reviews. The
 // outbox calls this; the journal patch stays there because only the sender
 // knows which record it queued.
 void applyReviewUpdate(const kk::ReviewUpdate& update) {
+    // SPEED-01: the tracker holds every session record's pre-review stage, so
+    // each successful POST can report its own move. A record sent after a
+    // reboot may only have the completed item's queued stage.
+    uint8_t fromStage = state().review.gStageTracker.fromStage(update.assignmentId);
+    if (fromStage == 0) {
+        for (const kk::SessionItem& item : state().review.gQueue.completed())
+            if (item.assignmentId == update.assignmentId) {
+                fromStage = item.srsStage;
+                break;
+            }
+    }
     state().review.gStageChange.valid = true;
     state().review.gStageChange.to = update.srsStage;
-    // SPEED-01: the tracker holds every session record's pre-review stage, so
-    // each successful POST can report its own move.
-    state().review.gStageChange.from =
-        state().review.gStageTracker.fromStage(update.assignmentId);
+    state().review.gStageChange.from = fromStage;
+    // REV-11: keep the pair for the summary row before the tracker forgets a
+    // successfully sent assignment.
+    recordSummaryStage(update.assignmentId, fromStage, update.srsStage);
     if (state().review.gStageChange.from &&
         state().review.gStageChange.to > state().review.gStageChange.from)
         ++state().review.gStageUps;

@@ -14,6 +14,7 @@ void showReview();
 void showReviewDetail();
 void reviewDetailKey(const tgc::KeyEvent& e);
 void showReviewSummary();
+void reviewSummaryKey(const tgc::KeyEvent& e);
 void checkCurrent();
 void advanceFeedback();
 bool reviewAutoAdvance(uint32_t now);

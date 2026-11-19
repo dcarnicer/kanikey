@@ -65,6 +65,18 @@ struct ReviewDetailView {
 void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
                             kk::GlyphPack& radicalPack, const ReviewDetailView& view);
 
+// REV-11: one row of the session summary's mistake list.
+struct ReviewSummaryItem {
+    const kk::Subject* subject = nullptr;
+    uint8_t stageFrom = 0;
+    uint8_t stageTo = 0;
+    bool stageValid = false;
+    uint8_t incorrectMeaning = 0;
+    uint8_t incorrectReading = 0;
+    std::string wrongMeaning;
+    std::string wrongReading;
+};
+
 struct ReviewSummaryView {
     unsigned reviews = 0;
     unsigned accuracy = 0;
@@ -86,9 +98,17 @@ struct ReviewSummaryView {
     bool sending = false;
     unsigned sent = 0;
     unsigned sendTotal = 0;
+    // REV-11: the scrollable mistake list. `focus` 0 is the stats (the
+    // original layout), 1 is the list; `selected` indexes `items`.
+    std::vector<ReviewSummaryItem> items;
+    bool canNextBatch = false;
+    int focus = 0;
+    int selected = 0;
 };
 
-// Draws the session summary into d.
-void drawReviewSummaryScreen(lgfx::LovyanGFX& d, const ReviewSummaryView& view);
+// Draws the session summary into d. `fontPack` draws prompt characters and
+// readings; `radicalPack` supplies radical bitmaps for the mistake rows.
+void drawReviewSummaryScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
+                             kk::GlyphPack& radicalPack, const ReviewSummaryView& view);
 
 }  // namespace kk::app

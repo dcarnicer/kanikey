@@ -280,7 +280,7 @@ void onKeyImpl(const KeyEvent& e) {
         return;
     }
     if (state().review.gReviewSummary) {
-        if (e.down && (e.key == Key::Enter || e.key == Key::Esc)) endReview();
+        reviewSummaryKey(e);
         return;
     }
 #ifdef KANIKEY_DEV
