@@ -30,6 +30,9 @@ void ReviewQueue::build(const std::vector<Assignment>& assignments,
     queue_.clear();
     completed_.clear();
     part_ = ReviewPart::None;
+    lastIncorrectAssignmentId_ = 0;
+    lastIncorrectSubjectId_ = 0;
+    lastIncorrectPart_ = ReviewPart::None;
 
     std::vector<SessionItem> items;
     for (const Assignment& a : assignments) {
@@ -81,6 +84,9 @@ void ReviewQueue::buildPractice(const std::vector<const Subject*>& subjects, siz
     queue_.clear();
     completed_.clear();
     part_ = ReviewPart::None;
+    lastIncorrectAssignmentId_ = 0;
+    lastIncorrectSubjectId_ = 0;
+    lastIncorrectPart_ = ReviewPart::None;
     meaningFirst_ = true;
     backToBack_ = true;
     criticalSubjectIds_.clear();
@@ -169,6 +175,10 @@ AnswerOutcome ReviewQueue::answer(AnswerStatus status) {
     const bool meaning = part_ == ReviewPart::Meaning;
     if (status == AnswerStatus::Incorrect) {
         out.counted = true;
+        // REV-04: remember what to undo before the item is advanced/requeued.
+        lastIncorrectAssignmentId_ = item.assignmentId;
+        lastIncorrectSubjectId_ = item.subjectId;
+        lastIncorrectPart_ = part_;
         if (meaning) {
             if (item.incorrectMeaning < 0xFFFF) ++item.incorrectMeaning;
             item.meaningAttempted = true;
@@ -248,8 +258,55 @@ AnswerOutcome ReviewQueue::answer(AnswerStatus status) {
 void ReviewQueue::skip() {
     if (queue_.empty()) return;
     queue_.pop_front();
+    lastIncorrectAssignmentId_ = 0;
+    lastIncorrectSubjectId_ = 0;
+    lastIncorrectPart_ = ReviewPart::None;
     if (!queue_.empty()) setPart(queue_.front());
 }
+
+bool ReviewQueue::undoLastIncorrect() {
+    if (lastIncorrectPart_ == ReviewPart::None) return false;
+
+    // Reviews identify an item by its assignment; practice items all carry
+    // assignmentId 0, so fall back to the subject id there.
+    auto found = queue_.end();
+    for (auto it = queue_.begin(); it != queue_.end(); ++it) {
+        if (lastIncorrectAssignmentId_ != 0) {
+            if (it->assignmentId == lastIncorrectAssignmentId_) {
+                found = it;
+                break;
+            }
+        } else if (it->subjectId == lastIncorrectSubjectId_) {
+            found = it;
+            break;
+        }
+    }
+    if (found == queue_.end()) {
+        // The item completed, was wrapped up away or skipped meanwhile.
+        lastIncorrectAssignmentId_ = 0;
+        lastIncorrectSubjectId_ = 0;
+        lastIncorrectPart_ = ReviewPart::None;
+        return false;
+    }
+
+    SessionItem item = *found;
+    queue_.erase(found);
+    if (lastIncorrectPart_ == ReviewPart::Meaning) {
+        if (item.incorrectMeaning > 0) --item.incorrectMeaning;
+        item.meaningAttempted = false;
+    } else {
+        if (item.incorrectReading > 0) --item.incorrectReading;
+        item.readingAttempted = false;
+    }
+    queue_.push_front(item);
+    part_ = lastIncorrectPart_;
+    lastIncorrectAssignmentId_ = 0;
+    lastIncorrectSubjectId_ = 0;
+    lastIncorrectPart_ = ReviewPart::None;
+    return true;
+}
+
+void ReviewQueue::askAgain() { requeueFront(); }
 
 size_t ReviewQueue::wrapUp() {
     if (queue_.empty()) return 0;

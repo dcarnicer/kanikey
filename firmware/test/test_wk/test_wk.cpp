@@ -1177,7 +1177,7 @@ static void test_journal_record_roundtrip() {
     in.srsAfter = 4;
     in.srsAfterKnown = true;
     in.offline = true;
-    in.wrongAnswerOverride = true;
+    in.wrongAnswerOverride = 'A';
     in.incorrectMeaning = 2;
     in.incorrectReading = 1;
     uint8_t encoded[kJournalRecordBytes];
@@ -1191,10 +1191,20 @@ static void test_journal_record_roundtrip() {
     TEST_ASSERT_EQUAL(in.srsAfter, out.srsAfter);
     TEST_ASSERT_TRUE(out.srsAfterKnown);
     TEST_ASSERT_TRUE(out.offline);
-    TEST_ASSERT_TRUE(out.wrongAnswerOverride);
+    TEST_ASSERT_EQUAL_CHAR('A', out.wrongAnswerOverride);
     TEST_ASSERT_FALSE(out.practice);
     TEST_ASSERT_EQUAL(in.incorrectMeaning, out.incorrectMeaning);
     TEST_ASSERT_EQUAL(in.incorrectReading, out.incorrectReading);
+
+    in.wrongAnswerOverride = 'C';
+    journalEncodeRecord(in, encoded);
+    TEST_ASSERT_TRUE(journalDecodeRecord(encoded, &out));
+    TEST_ASSERT_EQUAL_CHAR('C', out.wrongAnswerOverride);
+
+    in.wrongAnswerOverride = 0;
+    journalEncodeRecord(in, encoded);
+    TEST_ASSERT_TRUE(journalDecodeRecord(encoded, &out));
+    TEST_ASSERT_EQUAL_CHAR(0, out.wrongAnswerOverride);
 }
 
 static void test_journal_block_crc() {

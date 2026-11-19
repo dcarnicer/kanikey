@@ -56,6 +56,8 @@ inline constexpr HelpEntry kReviewQuestionHelp[] = {
 
 inline constexpr HelpEntry kReviewFeedbackHelp[] = {
     {"Enter", "Next item"},
+    {"C", "Mark correct (undo mistake)"},
+    {"A", "Ask again later (undo mistake)"},
     {"Tab", "Item details"},
     {"Esc", "Pause"},
 };

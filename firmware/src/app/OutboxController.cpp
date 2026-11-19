@@ -433,6 +433,7 @@ bool queueReviewLocal(const kk::SessionItem& item) {
         record.subjectId = item.subjectId;
         record.assignmentId = item.assignmentId;
         record.srsBefore = item.srsStage;
+        record.wrongAnswerOverride = item.wrongAnswerOverride;
         record.offline = !kk::DevWifi::connected();
         record.incorrectMeaning =
             static_cast<uint8_t>(std::min<uint16_t>(item.incorrectMeaning, 255));
@@ -495,6 +496,7 @@ void journalPractice(const kk::SessionItem& item) {
     record.subjectId = item.subjectId;
     record.assignmentId = item.assignmentId;
     record.srsBefore = item.srsStage;
+    record.wrongAnswerOverride = item.wrongAnswerOverride;
     record.practice = true;
     record.offline = !kk::DevWifi::connected();
     record.incorrectMeaning =

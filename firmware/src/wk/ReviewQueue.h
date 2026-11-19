@@ -32,6 +32,9 @@ struct SessionItem {
     bool readingAttempted = false;
     uint16_t incorrectMeaning = 0;
     uint16_t incorrectReading = 0;
+    // REV-04: 'C' when the user marked a wrong part correct, 'A' when they
+    // asked it again; 0 otherwise. Local-only journal metadata.
+    char wrongAnswerOverride = 0;
 };
 
 struct AnswerOutcome {
@@ -93,6 +96,21 @@ public:
     // wrong already, so the failed part is not asked immediately.
     AnswerOutcome answer(AnswerStatus status);
 
+    // REV-04: undo the last incorrect answer (when its item is still queued).
+    // The matching counter is decremented, that part's attempted flag cleared
+    // and the item moved back to the front with the failed part selected.
+    // Returns false when no incorrect answer is recorded or the item is gone.
+    bool undoLastIncorrect();
+
+    // REV-04: ask the front item again later, with no mistake and both parts
+    // unanswered again. Use after undoLastIncorrect().
+    void askAgain();
+
+    // REV-04: tag the front item for the local journal ('C' or 'A').
+    void setWrongAnswerOverride(char overrideValue) {
+        if (!queue_.empty()) queue_.front().wrongAnswerOverride = overrideValue;
+    }
+
     // Drop the current item (the user skipped it). It is not submitted.
     void skip();
 
@@ -114,6 +132,10 @@ private:
     std::deque<SessionItem> queue_;
     std::vector<SessionItem> completed_;
     ReviewPart part_ = ReviewPart::None;
+    // REV-04: the last Incorrect answer, kept until it is undone or replaced.
+    uint32_t lastIncorrectAssignmentId_ = 0;
+    uint32_t lastIncorrectSubjectId_ = 0;
+    ReviewPart lastIncorrectPart_ = ReviewPart::None;
     bool meaningFirst_ = true;
     bool lowerLevelsFirst_ = false;
     bool backToBack_ = true;

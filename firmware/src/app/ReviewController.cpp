@@ -92,6 +92,10 @@ void feedReviewChar(char c);
 std::string reviewInput(bool meaning);
 bool hasRelatedSubjects(const kk::Subject& s);
 int detailPageKind(int index, const kk::Subject& s);
+// REV-04: R7 gates the C/A feedback actions.
+bool reviewWrongActionsEnabled();
+// Queue, persist and count one completed item (normal answers and C).
+void applyCompletion();
 
 void clearReviewInput() {
     state().review.gMeaningInput.clear();
@@ -121,6 +125,11 @@ uint32_t reviewAdvanceDelayMs() {
     return static_cast<uint32_t>(value);
 }
 
+bool reviewWrongActionsEnabled() {
+    int value = 0;
+    return kk::settingsGetInt("rv.wrong", &value) && value != 0;
+}
+
 // The serial test helper can inject a reading directly; release builds only
 // use the romaji IME.
 std::string reviewInput(bool meaning) {
@@ -144,6 +153,37 @@ int detailPageKind(int index, const kk::Subject& s) {
     }
     if (hasRelatedSubjects(s)) return 6;
     return 4;
+}
+
+// Queue, persist and count one completed item. Both a normal answer and the
+// REV-04 C shortcut go through here so the bookkeeping cannot drift.
+void applyCompletion() {
+    state().review.gCompletedItem = state().review.gQueue.completed().back();
+    state().review.gFeedbackCompleted = true;
+    if (state().study.gPracticeActive) {
+        state().review.gNeedsSubmit = false;
+        journalPractice(state().review.gCompletedItem);
+    } else {
+        // Queue and persist before the feedback is drawn: a crash, power loss
+        // or an OTA install on the feedback screen keeps the review.
+        state().review.gNeedsSubmit = queueReviewLocal(state().review.gCompletedItem);
+        if (state().session.gDueReviews > 0) --state().session.gDueReviews;
+        markCacheCompleted(state().review.gCompletedItem.subjectId,
+                           state().review.gCompletedItem.assignmentId);
+        if (!state().review.gNeedsSubmit) {
+            // Unreachable when startReview() checked the free slots; show the
+            // failure instead of silently losing the review.
+            state().review.gFeedback = false;
+            state().review.gReviewActive = false;
+            state().review.gReviewSummary = false;
+            state().session.gShowHome = false;
+            snprintf(state().ui.gNoticeLine, sizeof state().ui.gNoticeLine,
+                     "Review not saved; outbox full.");
+            state().ui.gNoticeLine2[0] = 0;
+            state().ui.gNoticeAction = NoticeAction::OutboxFull;
+            state().ui.gNoticeActive = true;
+        }
+    }
 }
 
 }  // namespace
@@ -176,6 +216,10 @@ void showReview() {
     view.srsStage = state().review.gFeedbackCompleted ? state().review.gCompletedItem.srsStage : (item ? item->srsStage : 0);
     view.wrapUpCount =
         state().review.gWrapUp ? static_cast<int>(state().review.gQueue.remaining()) : 0;
+    view.wrongShortcuts =
+        state().review.gFeedback &&
+        state().review.gCheck.status == kk::AnswerStatus::Incorrect &&
+        reviewWrongActionsEnabled();
     view.total = static_cast<int>(state().review.gQueue.completedCount() + state().review.gQueue.remaining());
     view.position = static_cast<int>(state().review.gQueue.completedCount()) + 1;
     if (state().review.gFeedback && state().review.gFeedbackCompleted)
@@ -311,33 +355,7 @@ void checkCurrent() {
     state().review.gFeedbackCompleted = false;
     if (state().review.gCheck.status != kk::AnswerStatus::Warning) {
         const kk::AnswerOutcome o = state().review.gQueue.answer(state().review.gCheck.status);
-        if (o.completed) {
-            state().review.gCompletedItem = state().review.gQueue.completed().back();
-            state().review.gFeedbackCompleted = true;
-            if (state().study.gPracticeActive) {
-                state().review.gNeedsSubmit = false;
-                journalPractice(state().review.gCompletedItem);
-            } else {
-                // Queue and persist before the feedback is drawn: a crash,
-                // power loss or an OTA install on the feedback screen keeps
-                // the review.
-                state().review.gNeedsSubmit = queueReviewLocal(state().review.gCompletedItem);
-                if (state().session.gDueReviews > 0) --state().session.gDueReviews;
-                markCacheCompleted(state().review.gCompletedItem.subjectId, state().review.gCompletedItem.assignmentId);
-                if (!state().review.gNeedsSubmit) {
-                    // Unreachable when startReview() checked the free slots;
-                    // show the failure instead of silently losing the review.
-                    state().review.gFeedback = false;
-                    state().review.gReviewActive = false;
-                    state().review.gReviewSummary = false;
-                    state().session.gShowHome = false;
-                    snprintf(state().ui.gNoticeLine, sizeof state().ui.gNoticeLine, "Review not saved; outbox full.");
-                    state().ui.gNoticeLine2[0] = 0;
-                    state().ui.gNoticeAction = NoticeAction::OutboxFull;
-                    state().ui.gNoticeActive = true;
-                }
-            }
-        }
+        if (o.completed) applyCompletion();
     }
     state().display.gDirty = true;
 }
@@ -577,6 +595,27 @@ bool reviewKey(const KeyEvent& e) {
             state().review.gReviewDetail = true;
             state().review.gReviewDetailPage = 0;
             state().display.gDirty = true;
+        } else if (state().review.gCheck.status == kk::AnswerStatus::Incorrect &&
+                   reviewWrongActionsEnabled()) {
+            // REV-04: C accepts the failed part, A puts it back without a
+            // mistake. Both undo the count the queue already recorded.
+            const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
+            state().review.gFeedbackCorrectAt = 0;
+            if (c == 'c' || c == 'C') {
+                if (state().review.gQueue.undoLastIncorrect()) {
+                    state().review.gQueue.setWrongAnswerOverride('C');
+                    const kk::AnswerOutcome o =
+                        state().review.gQueue.answer(kk::AnswerStatus::Correct);
+                    if (o.completed) applyCompletion();
+                }
+                advanceFeedback();
+            } else if (c == 'a' || c == 'A') {
+                if (state().review.gQueue.undoLastIncorrect()) {
+                    state().review.gQueue.setWrongAnswerOverride('A');
+                    state().review.gQueue.askAgain();
+                }
+                advanceFeedback();
+            }
         } else if (state().review.gCheck.status == kk::AnswerStatus::Correct) {
             // REV-06: a printable key skips the delay and starts the next
             // answer; any other key cancels the timer for this frame.

@@ -13,6 +13,9 @@ constexpr uint8_t kFlagPractice = 1u << 1;
 constexpr uint8_t kFlagWrongOverride = 1u << 2;
 constexpr uint8_t kFlagSrsAfterKnown = 1u << 3;
 constexpr uint8_t kFlagLessonStarted = 1u << 4;
+// REV-04: bit 2 marks an override, bit 5 selects A over C. Bit 2 alone stays
+// readable as the old boolean value.
+constexpr uint8_t kFlagWrongOverrideAskAgain = 1u << 5;
 constexpr uint8_t kUnknownStage = 0x0F;
 
 void put32(uint8_t* p, uint32_t v) {
@@ -37,7 +40,9 @@ void journalEncodeRecord(const JournalRecord& record, uint8_t out[kJournalRecord
     uint8_t flags = 0;
     if (record.offline) flags |= kFlagOffline;
     if (record.practice) flags |= kFlagPractice;
-    if (record.wrongAnswerOverride) flags |= kFlagWrongOverride;
+    if (record.wrongAnswerOverride == 'C') flags |= kFlagWrongOverride;
+    if (record.wrongAnswerOverride == 'A')
+        flags |= kFlagWrongOverride | kFlagWrongOverrideAskAgain;
     if (record.srsAfterKnown) flags |= kFlagSrsAfterKnown;
     if (record.lessonStarted) flags |= kFlagLessonStarted;
     out[13] = flags;
@@ -57,7 +62,10 @@ bool journalDecodeRecord(const uint8_t in[kJournalRecordBytes], JournalRecord* o
     record.srsAfter = record.srsAfterKnown ? after : 0;
     record.offline = (in[13] & kFlagOffline) != 0;
     record.practice = (in[13] & kFlagPractice) != 0;
-    record.wrongAnswerOverride = (in[13] & kFlagWrongOverride) != 0;
+    record.wrongAnswerOverride =
+        (in[13] & kFlagWrongOverride) == 0
+            ? 0
+            : ((in[13] & kFlagWrongOverrideAskAgain) ? 'A' : 'C');
     record.lessonStarted = (in[13] & kFlagLessonStarted) != 0;
     record.incorrectMeaning = in[14];
     record.incorrectReading = in[15];

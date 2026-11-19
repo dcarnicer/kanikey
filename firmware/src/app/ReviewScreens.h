@@ -22,6 +22,9 @@ struct ReviewView {
     bool feedback = false;
     bool minimalHeader = false;  // R10: hide the SRS/accuracy text
     bool showDetailHint = true;
+    // REV-04: compact `C ok  A later  Tab info` bar on Incorrect feedback
+    // when R7 is On.
+    bool wrongShortcuts = false;
     const char* escHint = "Esc: quit";
     // REV-05: > 0 draws `WRAP UP N` instead of the header until the summary.
     int wrapUpCount = 0;

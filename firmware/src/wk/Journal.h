@@ -22,7 +22,8 @@ struct JournalRecord {
     bool srsAfterKnown = false;
     bool offline = false;
     bool practice = false;
-    bool wrongAnswerOverride = false;
+    // REV-04: 'C' marked correct, 'A' asked again later, 0 none. Local only.
+    char wrongAnswerOverride = 0;
     bool lessonStarted = false;
     uint8_t incorrectMeaning = 0;
     uint8_t incorrectReading = 0;
