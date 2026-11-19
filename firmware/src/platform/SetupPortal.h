@@ -22,6 +22,17 @@
 
 namespace kk {
 
+// A pack action either finished, failed with a page message, or was cancelled
+// from the device keyboard. The portal keeps the card unchanged on anything
+// but Ok.
+enum class PortalPackResult : uint8_t { Ok, Failed, Cancelled };
+
+// Multipart file parts arrive from the WebServer in ~1.4 KB chunks. Start opens
+// and truncates the temporary file, Chunk is called for every buffer, Finish
+// validates and renames it, and Abort must delete it without touching the old
+// pack.
+enum class PackUploadPhase : uint8_t { Start, Chunk, Finish, Abort };
+
 struct SetupPortalHooks {
     // Checks GET /user with `token`; fills the user name/level or `error`.
     bool (*validateToken)(const String& token, String* username, int* level,
@@ -33,6 +44,17 @@ struct SetupPortalHooks {
     // the device screen.
     String (*fontPackStatus)() = nullptr;
     String (*radicalPackStatus)() = nullptr;
+    bool (*fontPackReady)() = nullptr;
+    // Fetches the font `pack` record from the release manifest, streams it to
+    // /kanikey/glyphs.kgp.tmp, checks size and SHA-256, then swaps it in. Draws
+    // its own progress and returns Cancelled when Esc was pressed.
+    PortalPackResult (*downloadPack)(String* message) = nullptr;
+    // Streams one multipart part to /kanikey/radicals.kgp.tmp. Finish checks
+    // that it opens as a v2 kind-2 radical pack before the swap. Draws its own
+    // progress and returns Cancelled when Esc was pressed.
+    PortalPackResult (*uploadRadicalPack)(const uint8_t* data, size_t length,
+                                          PackUploadPhase phase, size_t total,
+                                          String* message) = nullptr;
     // The AP page saved the home Wi-Fi: stop the AP, join it, then beginStation.
     void (*onSwitchToStation)() = nullptr;
     // The station page finished setup: stop the portal and start the app.
@@ -86,6 +108,9 @@ private:
     void handleWifi();
     void handleToken();
     void handlePack();
+    void handlePackDownload();
+    void handlePackUpload();
+    void handlePackUploadChunk();
     void handleTime();
     void handleFinish();
     void handleNotFound();
@@ -115,6 +140,18 @@ private:
     bool timeSet_ = false;
     String timeText_;
     std::vector<String> nearby_;
+    // Multipart upload state, valid only while the WebServer parses one
+    // request. The hook writes the file; the portal only tracks the result so
+    // the final handler can answer with one page.
+    PortalPackResult uploadResult_ = PortalPackResult::Ok;
+    bool uploadStarted_ = false;
+    size_t uploadTotal_ = 0;
+    String uploadMessage_;
+    // The response is built before loop() re-opens the new pack, so the first
+    // page after a successful transfer shows the installed state instead of
+    // the stale "pack missing" line. Cleared after one page.
+    String fontStatusOverride_;
+    String radicalStatusOverride_;
 };
 
 }  // namespace kk

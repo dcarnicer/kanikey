@@ -35,6 +35,7 @@ enum class FetchStatus : uint8_t {
     BadImage,
     WriteFailed,
     NoSlot,
+    NoSpace,
     BadUrl,
     Cancelled,
 };
@@ -78,6 +79,23 @@ FetchResult install(const AppImage& app, ProgressFn progress = nullptr,
                     uint32_t totalTimeoutMs = 10u * 60u * 1000u);
 bool activate();
 void abandon();
+
+// Streams `url` to `tmpPath` (which must end in ".tmp"), hashing with SHA-256
+// while writing and checking the exact size. On success the file replaces the
+// path without ".tmp" (the old file is kept until then); every failure and a
+// Cancelled progress callback remove the .tmp and leave the old file in place.
+// The body is never held in RAM: one 4 KB chunk is read, written and hashed at
+// a time. `progress` is called about every 32 KB and whenever the transfer ends.
+FetchResult downloadToFile(const String& url, uint32_t expectedBytes,
+                           const std::string& expectedSha256, const String& tmpPath,
+                           ProgressFn progress = nullptr, void* progressCtx = nullptr,
+                           uint32_t idleTimeoutMs = 15000,
+                           uint32_t totalTimeoutMs = 10u * 60u * 1000u);
+
+// Safe file swap on the SD card: the destination is moved to a temporary
+// backup, the new file is renamed into place, and the old file is restored if
+// that rename fails. False leaves the destination as it was (if it existed).
+bool replaceFile(const String& tmpPath, const String& finalPath);
 
 // The manifest URL: the GitHub latest release by default. A dev build may
 // override it with `U <url>` (NVS `fwurl`); release builds always use the

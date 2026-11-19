@@ -518,9 +518,9 @@ void drawBoot() {
             break;
         case BootState::NoPack:
             title = "Pack missing";
-            line1 = "Copy glyphs.kgp to";
-            line2 = "/kanikey/ on the SD card";
-            action = "Enter: check again";
+            line1 = "Press Enter to download it";
+            line2 = "from the setup page";
+            action = "Enter: setup";
             break;
         case BootState::NoToken:
             title = "Token needed";
@@ -905,8 +905,10 @@ void loop() {
         // Deferred from portalRecheckPack(): the HTTP request has returned, so
         // the new handle cannot be invalidated by the client closing.
         state().storage.gPackRecheckPending = false;
+        const bool checkCrc = !state().storage.gPackRecheckSkipCrc;
+        state().storage.gPackRecheckSkipCrc = false;
         if (!state().storage.gSdOk) state().storage.gSdOk = mountSd();
-        if (state().storage.gSdOk) openGlyphPacks(true);
+        if (state().storage.gSdOk) openGlyphPacks(checkCrc);
         state().display.gDirty = true;
     }
 

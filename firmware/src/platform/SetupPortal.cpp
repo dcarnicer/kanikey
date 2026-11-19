@@ -3,6 +3,7 @@
 #include "platform/SetupPortal.h"
 
 #include <WiFi.h>
+#include <SD.h>
 #include <esp_mac.h>
 #include <esp_random.h>
 #include <sys/time.h>
@@ -24,6 +25,11 @@ constexpr size_t kMaxNearby = 12;
 constexpr int64_t kMinPlausibleMs = 1767225600000LL;  // 2026-01-01T00:00:00Z
 constexpr int64_t kMaxPlausibleMs = 4102444800000LL;  // 2100-01-01T00:00:00Z
 constexpr uint32_t kLeaveGraceMs = 1200;
+// A radical pack is a few megabytes; the multipart body cannot be larger than
+// this and must also fit on the card. The .tmp is written before the old file
+// is replaced, so the free-space check uses the request length.
+constexpr size_t kMaxPackUploadBytes = 32u * 1024u * 1024u;
+constexpr uint64_t kPackSpaceMargin = 64u * 1024u;
 // No request for this long closes the portal and returns the device to boot.
 constexpr uint32_t kApIdleMs = 15u * 60u * 1000u;
 // Wrong station unlock codes before the code is replaced by a new one.
@@ -45,6 +51,32 @@ String htmlEscape(const String& in) {
         }
     }
     return out;
+}
+
+// One decimal, integer arithmetic: the page is also shown before the card has
+// mounted, when SD.totalBytes() is 0.
+String sizeText(uint64_t bytes) {
+    char buf[24];
+    if (bytes >= (1024ull * 1024ull * 1024ull)) {
+        const uint64_t tenths = (bytes * 10ull) / (1024ull * 1024ull * 1024ull);
+        snprintf(buf, sizeof buf, "%u.%u GB", static_cast<unsigned>(tenths / 10),
+                 static_cast<unsigned>(tenths % 10));
+    } else if (bytes >= (1024ull * 1024ull)) {
+        const uint64_t tenths = (bytes * 10ull) / (1024ull * 1024ull);
+        snprintf(buf, sizeof buf, "%u.%u MB", static_cast<unsigned>(tenths / 10),
+                 static_cast<unsigned>(tenths % 10));
+    } else if (bytes >= 1024ull) {
+        snprintf(buf, sizeof buf, "%u KB", static_cast<unsigned>(bytes / 1024ull));
+    } else {
+        snprintf(buf, sizeof buf, "%u B", static_cast<unsigned>(bytes));
+    }
+    return String(buf);
+}
+
+uint64_t sdFreeBytes() {
+    const uint64_t total = SD.totalBytes();
+    const uint64_t used = SD.usedBytes();
+    return total > used ? total - used : 0;
 }
 
 String sanitizeZone(const String& in) {
@@ -230,6 +262,12 @@ bool SetupPortal::beginStation(const SetupPortalHooks& hooks, const String& noti
 bool SetupPortal::startServer(const SetupPortalHooks& hooks) {
     if (active_ || server_) return false;
     hooks_ = hooks;
+    fontStatusOverride_ = "";
+    radicalStatusOverride_ = "";
+    uploadResult_ = PortalPackResult::Ok;
+    uploadStarted_ = false;
+    uploadTotal_ = 0;
+    uploadMessage_ = "";
     server_ = new WebServer(80);
     if (!server_) {
         snprintf(message_, sizeof message_, "Not enough memory for the setup portal");
@@ -292,6 +330,9 @@ void SetupPortal::registerRoutes() {
     server_->on("/wifi", HTTP_POST, [this]() { touch(); handleWifi(); });
     server_->on("/token", HTTP_POST, [this]() { touch(); handleToken(); });
     server_->on("/pack", HTTP_POST, [this]() { touch(); handlePack(); });
+    server_->on("/pack/download", HTTP_POST, [this]() { touch(); handlePackDownload(); });
+    server_->on("/pack/upload", HTTP_POST, [this]() { touch(); handlePackUpload(); },
+                [this]() { touch(); handlePackUploadChunk(); });
     server_->on("/time", HTTP_POST, [this]() { touch(); handleTime(); });
     server_->on("/finish", HTTP_POST, [this]() { touch(); handleFinish(); });
     server_->on("/favicon.ico", HTTP_GET, [this]() { server_->send(204); });
@@ -365,8 +406,11 @@ void SetupPortal::sendPage(const String& notice, bool ok, int code) {
     // notices a LAN user may trigger before unlocking stay that short.
     if (notice.length()) snprintf(message_, sizeof message_, "%s", notice.c_str());
 
-    const String fontPack = htmlEscape(fontPackStatus());
-    const String radicalPack = htmlEscape(radicalPackStatus());
+    const String fontPack =
+        htmlEscape(fontStatusOverride_.length() ? fontStatusOverride_ : fontPackStatus());
+    const String radicalPack = htmlEscape(radicalStatusOverride_.length()
+                                              ? radicalStatusOverride_
+                                              : radicalPackStatus());
     const String zone = htmlEscape(settingsTimeZoneName().length() ? settingsTimeZoneName()
                                                                    : settingsTimeZoneRule());
     String h;
@@ -432,6 +476,36 @@ void SetupPortal::sendPage(const String& notice, bool ok, int code) {
     h += radicalPack;
     h += "</p><form method=\"post\" action=\"/pack\"><button type=\"submit\">Check pack again</button></form>";
 
+    // The font pack comes from the public release; the radical pack is personal
+    // (WaniKani-derived), so it only arrives through this local upload form.
+    // Both write a .tmp and keep the old file until the new one passes its
+    // checks. The download needs the home network; the AP has no internet.
+    const bool fontReady = fontStatusOverride_.length() > 0 ||
+                           (hooks_.fontPackReady ? hooks_.fontPackReady() : false);
+    const String freeText = sizeText(sdFreeBytes());
+    h += "<script>function packWait(f,t){var e=document.getElementById('packwait');"
+         "if(e){e.textContent=t;e.style.display='block';}"
+         "var b=f.querySelector('button');if(b)b.disabled=true;}</script>";
+    if (mode_ == Mode::Station && !fontReady) {
+        h += "<form method=\"post\" action=\"/pack/download\" "
+             "onsubmit=\"packWait(this,'Downloading the font pack... Keep this page open.')\">"
+             "<button type=\"submit\" class=\"main\">Download pack</button></form>";
+        h += "<p class=\"muted\">The font pack is streamed from the release manifest over HTTPS. "
+             "Its exact size and SHA-256 are checked before the card is changed, and a failure "
+             "keeps the old file. Card free: ";
+        h += freeText;
+        h += ". Esc on the device cancels.</p>";
+    }
+    h += "<h3>Radical pack</h3>";
+    h += "<form method=\"post\" action=\"/pack/upload\" enctype=\"multipart/form-data\" "
+         "onsubmit=\"packWait(this,'Uploading the radical pack... Keep this page open.')\">"
+         "<input type=\"file\" name=\"pack\" accept=\".kgp\" required> "
+         "<button type=\"submit\">Upload radical pack</button></form>";
+    h += "<p class=\"muted\">The file must open as a KKGP v2 radical pack (structure and kind "
+         "are checked; the CRC is not) before it replaces the old radicals.kgp. Card free: ";
+    h += freeText;
+    h += ".</p><p id=\"packwait\" class=\"muted\" style=\"display:none\"></p>";
+
     h += "<h2>Time</h2><p class=\"muted\">Zone: <code>";
     h += zone;
     h += "</code> &middot; <span id=\"clock\">";
@@ -489,6 +563,8 @@ void SetupPortal::sendPage(const String& notice, bool ok, int code) {
     h += timeScript();
     h += kPageFoot;
     server_->send(code, "text/html", h);
+    fontStatusOverride_ = "";
+    radicalStatusOverride_ = "";
 }
 
 void SetupPortal::handleRoot() { sendPage("", true); }
@@ -595,6 +671,127 @@ void SetupPortal::handlePack() {
     String notice = ok ? String("Visual pack ready: ") + packStatus()
                        : String("Visual pack not found: ") + packStatus();
     sendPage(notice, ok);
+}
+
+void SetupPortal::handlePackDownload() {
+    if (!requireUnlock()) return;
+    if (mode_ != Mode::Station) {
+        sendPage("Connect the device to Wi-Fi first.", false, 400);
+        return;
+    }
+    if (!hooks_.downloadPack) {
+        sendPage("Pack download is not available.", false, 500);
+        return;
+    }
+    if (hooks_.fontPackReady && hooks_.fontPackReady()) {
+        sendPage("The font pack is already installed.", true);
+        return;
+    }
+    String message;
+    const PortalPackResult result = hooks_.downloadPack(&message);
+    if (message.length() == 0) {
+        message = result == PortalPackResult::Ok
+                      ? String("Font pack ready.")
+                      : (result == PortalPackResult::Cancelled
+                             ? String("Pack download cancelled. Card unchanged.")
+                             : String("Pack download failed."));
+    }
+    if (result == PortalPackResult::Ok) fontStatusOverride_ = "installed; reopening";
+    sendPage(message, result == PortalPackResult::Ok);
+}
+
+// The WebServer parses the multipart body before the route handler runs, so
+// the file part arrives here in ~1.4 KB buffers. Nothing is buffered whole:
+// the App hook writes each chunk to the card .tmp and checks Esc.
+void SetupPortal::handlePackUploadChunk() {
+    HTTPUpload& upload = server_->upload();
+    if (upload.status == UPLOAD_FILE_START) {
+        uploadResult_ = PortalPackResult::Ok;
+        uploadStarted_ = false;
+        uploadMessage_ = "";
+        const int length = server_->clientContentLength();
+        uploadTotal_ = length > 0 ? static_cast<size_t>(length) : 0;
+        // The body is parsed before the route handler, so the unlock and size
+        // checks must happen here; otherwise an unauthenticated LAN host could
+        // write the temporary file.
+        if (mode_ == Mode::Station && !unlocked()) {
+            uploadResult_ = PortalPackResult::Failed;
+            uploadMessage_ = "Enter the code shown on the KaniKey.";
+            return;
+        }
+        if (!hooks_.uploadRadicalPack) {
+            uploadResult_ = PortalPackResult::Failed;
+            uploadMessage_ = "Pack upload is not available.";
+            return;
+        }
+        if (uploadTotal_ == 0) {
+            uploadResult_ = PortalPackResult::Failed;
+            uploadMessage_ = "The browser did not send a file size.";
+            return;
+        }
+        if (uploadTotal_ > kMaxPackUploadBytes) {
+            uploadResult_ = PortalPackResult::Failed;
+            uploadMessage_ = "That file is too large for a radical pack.";
+            return;
+        }
+        const uint64_t freeBytes = sdFreeBytes();
+        if (freeBytes < static_cast<uint64_t>(uploadTotal_) + kPackSpaceMargin) {
+            uploadResult_ = PortalPackResult::Failed;
+            uploadMessage_ = "Not enough card space: need " + sizeText(uploadTotal_) +
+                             ", free " + sizeText(freeBytes) + ".";
+            return;
+        }
+        uploadStarted_ = true;
+        uploadResult_ = hooks_.uploadRadicalPack(nullptr, 0, PackUploadPhase::Start,
+                                                 uploadTotal_, &uploadMessage_);
+        if (uploadResult_ != PortalPackResult::Ok) uploadStarted_ = false;
+        return;
+    }
+    if (upload.status == UPLOAD_FILE_WRITE) {
+        if (!uploadStarted_ || uploadResult_ != PortalPackResult::Ok) return;
+        uploadResult_ = hooks_.uploadRadicalPack(upload.buf, upload.currentSize,
+                                                 PackUploadPhase::Chunk, uploadTotal_,
+                                                 &uploadMessage_);
+        return;
+    }
+    if (upload.status == UPLOAD_FILE_END) {
+        if (uploadStarted_) {
+            if (uploadResult_ == PortalPackResult::Ok)
+                uploadResult_ = hooks_.uploadRadicalPack(nullptr, 0, PackUploadPhase::Finish,
+                                                         uploadTotal_, &uploadMessage_);
+            else
+                hooks_.uploadRadicalPack(nullptr, 0, PackUploadPhase::Abort, uploadTotal_,
+                                         &uploadMessage_);
+        }
+        uploadStarted_ = false;
+        return;
+    }
+    if (upload.status == UPLOAD_FILE_ABORTED) {
+        if (uploadStarted_)
+            hooks_.uploadRadicalPack(nullptr, 0, PackUploadPhase::Abort, uploadTotal_,
+                                     &uploadMessage_);
+        uploadStarted_ = false;
+        if (uploadResult_ == PortalPackResult::Ok) uploadResult_ = PortalPackResult::Failed;
+        if (uploadMessage_.length() == 0) uploadMessage_ = "Upload interrupted.";
+    }
+}
+
+void SetupPortal::handlePackUpload() {
+    if (!requireUnlock()) {
+        uploadStarted_ = false;
+        uploadResult_ = PortalPackResult::Ok;
+        uploadMessage_ = "";
+        return;
+    }
+    String message = uploadMessage_;
+    const PortalPackResult result = uploadResult_;
+    const bool ok = result == PortalPackResult::Ok && message.length() > 0;
+    if (message.length() == 0) message = "Choose a radicals.kgp file to upload.";
+    if (ok) radicalStatusOverride_ = "installed; reopening";
+    sendPage(message, ok);
+    uploadStarted_ = false;
+    uploadResult_ = PortalPackResult::Ok;
+    uploadMessage_ = "";
 }
 
 void SetupPortal::handleTime() {

@@ -142,11 +142,339 @@ bool portalRecheckPack() {
     // A working font pack keeps the immediate "ready" answer; the radical
     // pack is optional and may still arrive on the next page load.
     state().storage.gPackRecheckPending = true;
+    state().storage.gPackRecheckSkipCrc = false;
     return state().storage.gFontPack.ready();
 }
 
 String portalFontPackStatus() { return String(state().storage.gFontPack.statusLine()); }
 String portalRadicalPackStatus() { return String(state().storage.gRadicalPack.statusLine()); }
+bool portalFontPackReady() { return state().storage.gFontPack.ready(); }
+
+// ONB-02: pack transfer helpers. Both paths draw the same loading frame and
+// watch Esc on every chunk; no pack body is kept in RAM.
+constexpr uint64_t kPackSpaceMargin = 64u * 1024u;
+constexpr const char* kFontTmpPath = "/kanikey/glyphs.kgp.tmp";
+constexpr const char* kRadicalTmpPath = "/kanikey/radicals.kgp.tmp";
+
+int gPackProgress = -1;
+File gUploadFile;
+size_t gUploadBytes = 0;
+int gUploadProgress = -1;
+
+// A transfer hook draws its own loading frame, then the portal page becomes
+// the message. Mark the display dirty on every return path so loop() repaints
+// the setup screen once the HTTP request and the deferred pack reopen finish.
+struct PackRepaintOnExit {
+    ~PackRepaintOnExit() { state().display.gDirty = true; }
+};
+
+void formatPackSize(uint64_t bytes, char* out, size_t n) {
+    if (bytes >= (1024ull * 1024ull * 1024ull)) {
+        const uint64_t tenths = (bytes * 10ull) / (1024ull * 1024ull * 1024ull);
+        snprintf(out, n, "%u.%u GB", static_cast<unsigned>(tenths / 10),
+                 static_cast<unsigned>(tenths % 10));
+    } else if (bytes >= (1024ull * 1024ull)) {
+        const uint64_t tenths = (bytes * 10ull) / (1024ull * 1024ull);
+        snprintf(out, n, "%u.%u MB", static_cast<unsigned>(tenths / 10),
+                 static_cast<unsigned>(tenths % 10));
+    } else {
+        snprintf(out, n, "%u KB", static_cast<unsigned>(bytes / 1024ull));
+    }
+}
+
+uint64_t sdFreeBytes() {
+    const uint64_t total = SD.totalBytes();
+    const uint64_t used = SD.usedBytes();
+    return total > used ? total - used : 0;
+}
+
+bool packCancelRequested() {
+    tgc::board::update();
+    bool cancel = false;
+    KeyEvent event;
+    while (tgc::board::nextKeyEvent(&event)) {
+        if (event.down && event.key == Key::Esc) cancel = true;
+    }
+    return cancel;
+}
+
+void drawPackProgress(const char* title, int percent) {
+    char line[24];
+    snprintf(line, sizeof line, "Pack %d%%", percent);
+    drawLoading(title, line);
+}
+
+bool portalPackProgress(size_t done, size_t total, void*) {
+    state().ui.gLastInputAt = millis();
+    if (state().ui.gScreenOff) wakeScreen();
+    if (packCancelRequested()) {
+        snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "Pack download cancelled");
+        return false;
+    }
+    if (!total) return true;
+    int percent = static_cast<int>((done * 100ull) / total);
+    if (percent > 100) percent = 100;
+    if (percent == gPackProgress) return true;
+    gPackProgress = percent;
+    drawPackProgress("Downloading pack", percent);
+    return true;
+}
+
+kk::PortalPackResult portalDownloadPack(String* message) {
+    PackRepaintOnExit repaint;
+    if (message) message->clear();
+    if (state().storage.gFontPack.ready()) {
+        if (message) *message = "The font pack is already installed.";
+        return kk::PortalPackResult::Failed;
+    }
+    if (!kk::DevWifi::connected()) {
+        if (message) *message = "Wi-Fi is not connected.";
+        return kk::PortalPackResult::Failed;
+    }
+    if (!state().storage.gSdOk) {
+        if (message) *message = "No SD card.";
+        return kk::PortalPackResult::Failed;
+    }
+
+    releaseCanvas();
+    drawLoading("Checking pack", "release manifest");
+    if (packCancelRequested()) {
+        ensureCanvas();
+        if (message) *message = "Pack download cancelled. Card unchanged.";
+        return kk::PortalPackResult::Cancelled;
+    }
+
+    const String manifestUrl = kk::ota::manifestUrl();
+    const std::string_view manifestView(manifestUrl.c_str(), manifestUrl.length());
+    std::string text;
+    const kk::ota::FetchResult fetched =
+        kk::ota::fetchText(manifestView, kk::ota::kManifestMaxBytes, &text);
+    char detail[120];
+    if (fetched.status != kk::ota::FetchStatus::Ok) {
+        snprintf(detail, sizeof detail, "Manifest: %s (HTTP %d).",
+                 kk::ota::fetchStatusString(fetched.status), fetched.httpCode);
+        ensureCanvas();
+        drawLoading("Pack failed", detail);
+        if (message) *message = detail;
+        return kk::PortalPackResult::Failed;
+    }
+    const kk::ota::ManifestParseResult parsed =
+        kk::ota::parseManifest(text, manifestView);
+    if (parsed.error != kk::ota::ManifestError::Ok) {
+        snprintf(detail, sizeof detail, "Manifest: %s.",
+                 kk::ota::manifestErrorString(parsed.error));
+        ensureCanvas();
+        drawLoading("Pack failed", detail);
+        if (message) *message = detail;
+        return kk::PortalPackResult::Failed;
+    }
+    const kk::ota::PackImage* pack = parsed.manifest.findPack("font");
+    if (!pack) {
+        ensureCanvas();
+        drawLoading("Pack failed", "no font pack in the manifest");
+        if (message) *message = "The release manifest has no font pack.";
+        return kk::PortalPackResult::Failed;
+    }
+    const uint64_t freeBytes = sdFreeBytes();
+    if (freeBytes < static_cast<uint64_t>(pack->bytes) + kPackSpaceMargin) {
+        char need[24];
+        char freeText[24];
+        formatPackSize(pack->bytes, need, sizeof need);
+        formatPackSize(freeBytes, freeText, sizeof freeText);
+        snprintf(detail, sizeof detail, "Not enough card space: need %s, free %s.", need,
+                 freeText);
+        ensureCanvas();
+        drawLoading("Pack failed", detail);
+        if (message) *message = detail;
+        return kk::PortalPackResult::Failed;
+    }
+
+    gPackProgress = -1;
+    if (packCancelRequested()) {
+        ensureCanvas();
+        drawLoading("Pack cancelled", "card unchanged");
+        if (message) *message = "Pack download cancelled. Card unchanged.";
+        return kk::PortalPackResult::Cancelled;
+    }
+    drawPackProgress("Downloading pack", 0);
+    const kk::ota::FetchResult result = kk::ota::downloadToFile(
+        String(pack->url.c_str(), static_cast<unsigned>(pack->url.size())), pack->bytes,
+        pack->sha256, kFontTmpPath, portalPackProgress, nullptr);
+    if (result.status != kk::ota::FetchStatus::Ok) {
+        if (result.status == kk::ota::FetchStatus::Cancelled) {
+            ensureCanvas();
+            drawLoading("Pack cancelled", "card unchanged");
+            if (message) *message = "Pack download cancelled. Card unchanged.";
+            return kk::PortalPackResult::Cancelled;
+        }
+        snprintf(detail, sizeof detail, "Pack download failed: %s (HTTP %d).",
+                 kk::ota::fetchStatusString(result.status), result.httpCode);
+        ensureCanvas();
+        drawLoading("Pack failed", detail);
+        if (message) *message = detail;
+        return kk::PortalPackResult::Failed;
+    }
+
+    // The manifest says "font"; prove that the downloaded file opens that way
+    // before the app keeps it. The SHA-256 already covered transport damage.
+    // This handle is only for the check: the app re-opens the pack from loop()
+    // after the HTTP request has returned (FIX-25).
+    kk::GlyphPack check;
+    const bool opened = check.open(SD, "/kanikey/glyphs.kgp", kk::PackRole::Font, false);
+    const bool rightKind = opened && check.glyphCount() > 0 &&
+                           (check.kind() == kk::PackKind::Font ||
+                            check.kind() == kk::PackKind::Combined);
+    const uint16_t glyphs = check.glyphCount();
+    char line[48];
+    snprintf(line, sizeof line, "%s", check.statusLine());
+    check.close();
+    if (!rightKind) {
+        SD.remove("/kanikey/glyphs.kgp");
+        snprintf(detail, sizeof detail, "Downloaded pack is not a font pack: %s", line);
+        ensureCanvas();
+        drawLoading("Pack rejected", line);
+        if (message) *message = detail;
+        return kk::PortalPackResult::Failed;
+    }
+    state().storage.gPackRecheckPending = true;
+    state().storage.gPackRecheckSkipCrc = true;
+    ensureCanvas();
+    drawLoading("Pack ready", line);
+    if (message) {
+        snprintf(detail, sizeof detail, "Font pack installed: %u glyphs.",
+                 static_cast<unsigned>(glyphs));
+        *message = detail;
+    }
+    return kk::PortalPackResult::Ok;
+}
+
+kk::PortalPackResult portalUploadRadicalPack(const uint8_t* data, size_t length,
+                                             kk::PackUploadPhase phase, size_t total,
+                                             String* message) {
+    PackRepaintOnExit repaint;
+    if (phase == kk::PackUploadPhase::Start) {
+        gUploadBytes = 0;
+        gUploadProgress = -1;
+        if (gUploadFile) gUploadFile.close();
+        if (!state().storage.gSdOk) {
+            if (message) *message = "No SD card.";
+            return kk::PortalPackResult::Failed;
+        }
+        const uint64_t freeBytes = sdFreeBytes();
+        if (freeBytes < static_cast<uint64_t>(total) + kPackSpaceMargin) {
+            char need[24];
+            char freeText[24];
+            formatPackSize(total, need, sizeof need);
+            formatPackSize(freeBytes, freeText, sizeof freeText);
+            if (message) *message = String("Not enough card space: need ") + need + ", free " +
+                                    freeText + ".";
+            return kk::PortalPackResult::Failed;
+        }
+        if (SD.exists(kRadicalTmpPath)) SD.remove(kRadicalTmpPath);
+        if (!SD.exists("/kanikey")) SD.mkdir("/kanikey");
+        gUploadFile = SD.open(kRadicalTmpPath, FILE_WRITE);
+        if (!gUploadFile) {
+            if (message) *message = "Could not write to the SD card.";
+            return kk::PortalPackResult::Failed;
+        }
+        state().ui.gLastInputAt = millis();
+        drawPackProgress("Uploading radical pack", 0);
+        Serial.printf("[pack] upload start (%u bytes declared)\n",
+                      static_cast<unsigned>(total));
+        return kk::PortalPackResult::Ok;
+    }
+
+    if (phase == kk::PackUploadPhase::Chunk) {
+        state().ui.gLastInputAt = millis();
+        if (state().ui.gScreenOff) wakeScreen();
+        if (!gUploadFile) {
+            if (message) *message = "The upload file is not open.";
+            return kk::PortalPackResult::Failed;
+        }
+        if (packCancelRequested()) {
+            gUploadFile.close();
+            SD.remove(kRadicalTmpPath);
+            if (message) *message = "Upload cancelled. Card unchanged.";
+            return kk::PortalPackResult::Cancelled;
+        }
+        if (total == 0 || gUploadBytes + length > total) {
+            gUploadFile.close();
+            SD.remove(kRadicalTmpPath);
+            if (message) *message = "The upload is larger than the browser declared.";
+            return kk::PortalPackResult::Failed;
+        }
+        if (length && gUploadFile.write(data, length) != length) {
+            gUploadFile.close();
+            SD.remove(kRadicalTmpPath);
+            if (message) *message = "Could not write the upload to the card.";
+            return kk::PortalPackResult::Failed;
+        }
+        gUploadBytes += length;
+        int percent = total ? static_cast<int>((gUploadBytes * 100ull) / total) : 0;
+        if (percent > 99) percent = 99;
+        if (percent != gUploadProgress) {
+            gUploadProgress = percent;
+            drawPackProgress("Uploading radical pack", percent);
+        }
+        return kk::PortalPackResult::Ok;
+    }
+
+    if (phase == kk::PackUploadPhase::Finish) {
+        if (!gUploadFile) {
+            if (message) *message = "The upload file is not open.";
+            return kk::PortalPackResult::Failed;
+        }
+        gUploadFile.flush();
+        gUploadFile.close();
+        drawLoading("Checking radical pack", "structure and kind");
+        // The gate is the header/table and the v2 kind. The CRC is not part of
+        // this check (GlyphPack::open only runs it when asked).
+        kk::GlyphPack check;
+        const bool opened = check.open(SD, kRadicalTmpPath, kk::PackRole::Radical, false);
+        const bool rightKind = opened && check.kind() == kk::PackKind::Radical &&
+                               check.radicalCount() > 0;
+        const uint16_t radicals = check.radicalCount();
+        char line[48];
+        snprintf(line, sizeof line, "%s", check.statusLine());
+        check.close();
+        if (!rightKind) {
+            SD.remove(kRadicalTmpPath);
+            drawLoading("Radical pack rejected", line);
+            Serial.printf("[pack] upload rejected: %s\n", line);
+            if (message) *message = String("Not a radical pack: ") + line + ".";
+            return kk::PortalPackResult::Failed;
+        }
+        // The old handle must not survive the swap. The app re-opens both packs
+        // from loop() after the HTTP request (FIX-25).
+        state().storage.gRadicalPack.close();
+        if (!kk::ota::replaceFile(kRadicalTmpPath, "/kanikey/radicals.kgp")) {
+            SD.remove(kRadicalTmpPath);
+            state().storage.gPackRecheckPending = true;
+            state().storage.gPackRecheckSkipCrc = true;
+            if (message) *message = "Could not replace the radical pack.";
+            return kk::PortalPackResult::Failed;
+        }
+        state().storage.gPackRecheckPending = true;
+        state().storage.gPackRecheckSkipCrc = true;
+        char count[32];
+        snprintf(count, sizeof count, "%u radicals", static_cast<unsigned>(radicals));
+        drawLoading("Radical pack ready", count);
+        Serial.printf("[pack] upload: %s, heap %u\n", count,
+                      static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
+        if (message) *message = String("Radical pack installed: ") + count +
+                                ". Reopening on the device.";
+        return kk::PortalPackResult::Ok;
+    }
+
+    if (phase == kk::PackUploadPhase::Abort) {
+        if (gUploadFile) gUploadFile.close();
+        if (SD.exists(kRadicalTmpPath)) SD.remove(kRadicalTmpPath);
+        if (message && message->length() == 0)
+            *message = "Upload cancelled. Card unchanged.";
+        return kk::PortalPackResult::Cancelled;
+    }
+    return kk::PortalPackResult::Failed;
+}
 
 void portalSwitchToStation() {
     const String ssid = kk::DevWifi::savedSsid();
@@ -192,6 +520,9 @@ bool startSetupPortal() {
     state().setup.gSetupHooks.recheckPack = portalRecheckPack;
     state().setup.gSetupHooks.fontPackStatus = portalFontPackStatus;
     state().setup.gSetupHooks.radicalPackStatus = portalRadicalPackStatus;
+    state().setup.gSetupHooks.fontPackReady = portalFontPackReady;
+    state().setup.gSetupHooks.downloadPack = portalDownloadPack;
+    state().setup.gSetupHooks.uploadRadicalPack = portalUploadRadicalPack;
     state().setup.gSetupHooks.onSwitchToStation = portalSwitchToStation;
     state().setup.gSetupHooks.onFinish = portalFinish;
     state().session.gShowHome = false;
@@ -249,6 +580,14 @@ void retryBoot() {
     }
     if (state().storage.gSdOk && !state().storage.gFontPack.ready()) openGlyphPacks();
     if (state().storage.gSdOk && state().storage.gFontPack.ready() && !state().session.gHaveSummary && kk::DevToken::has() && loadCache()) {
+        state().display.gDirty = true;
+        return;
+    }
+    // ONB-02: with a mounted card but no font pack, the setup portal is the way
+    // out (Download pack). Without a saved network the same call starts the
+    // setup access point, so the user can save Wi-Fi first.
+    if (state().storage.gSdOk && !state().storage.gFontPack.ready()) {
+        startSetupPortal();
         state().display.gDirty = true;
         return;
     }
