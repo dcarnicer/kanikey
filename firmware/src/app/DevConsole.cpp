@@ -1144,7 +1144,7 @@ void handleSerial() {
             Serial.printf("[power] force battery %d\n", state().storage.gDevForceBattery ? 1 : 0);
         } else if (state().ui.gSerialLine.startsWith("Z ")) {
             const int seconds = state().ui.gSerialLine.substring(2).toInt();
-            if (kk::settingsSetSleepSeconds(seconds))
+            if (kk::settingsSetSleepSecondsDev(seconds))
                 Serial.printf("[settings] sleep %d s\n", kk::settingsSleepSeconds());
             else
                 Serial.println("[settings] sleep value rejected");

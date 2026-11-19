@@ -702,8 +702,10 @@ meaning/reading notes are appended to the paged card after the mnemonic.
   are in [`03-settings.md`](spec/03-settings.md); this file does not duplicate
   them. CFG-03 adds `System › Reset settings` and CFG-04 a `?` key-help
   overlay. None of the sectioned menu or the new settings is implemented yet;
-  the flat list above is current. Strict-answer options belong to REV-02
-  (planned).
+  the flat list above is current. ARCH-02 now backs the seven existing
+  numeric/toggle rows with the pure registry and one NVS cache; the six
+  STUDY-era rows still use direct getters until CFG-02 adds them. Strict-answer
+  options belong to REV-02 (planned).
 
 ### 5.13 Outbox
 

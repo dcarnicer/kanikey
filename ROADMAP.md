@@ -747,11 +747,13 @@ round 2.
 | EXT-09 | REM-01…REM-03 | Device-local reminders and sounds | todo |
 | LESSON-08 | LES-04 | Lesson ordering | partial: default order done; L2 choices open |
 
-The other spec groups are tracked only in `docs/spec`: ARCH (controllers,
-settings registry, local stores, screen state), FIX (01-fixes), SPEED
-(submission/sync), CFG (sectioned settings), REV (review options), LES (batch
-flow), STUDY, STATS, REM/AUD, ONB (pack and setup) and DOC (this documentation
-pass). No round-2 task is claimed as done here beyond the spec status above.
+The other spec groups are tracked in `docs/spec`: ARCH (controllers, settings
+registry, local stores, screen state), FIX (01-fixes), SPEED (submission/sync),
+CFG (sectioned settings), REV (review options), LES (batch flow), STUDY, STATS,
+REM/AUD, ONB (pack and setup) and DOC (this documentation pass). ARCH-01 merged
+on 2026-11-19 and ARCH-02 is in review with 224 native tests; the current flat
+Settings menu stays until CFG-01/CFG-02. No round-2 task is claimed as done here
+beyond the spec status above.
 
 ## 11. Bluetooth keyboard (after v1)
 
