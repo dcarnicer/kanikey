@@ -49,6 +49,16 @@ bool settingsSetPracticeLessonsMode(int mode);
 int settingsPracticeSize();
 bool settingsSetPracticeSize(int size);
 
+// Sync preferences (SPEED-02, SPEED-04). The auto-sync mode is stored as its
+// meaning: 0 Off, 1 Quick, 2 Full. The full interval is stored in seconds and
+// the prefetch flag as 0/1.
+int settingsAutoSyncMode();
+bool settingsSetAutoSyncMode(int mode);
+int settingsSyncFullEverySeconds();
+bool settingsSetSyncFullEverySeconds(int seconds);
+bool settingsPrefetchReviews();
+bool settingsSetPrefetchReviews(bool prefetch);
+
 // "<+01>-1" / "<-0330>3:30": a fixed offset east of UTC, used when the browser
 // cannot provide a DST-aware rule.
 String formatFixedTimeZone(int offsetMinutes);

@@ -25,6 +25,9 @@ constexpr const char* kKeyCriticalMin = "st.critmin";
 constexpr const char* kKeyPracticeMistakes = "st.mistakes";
 constexpr const char* kKeyPracticeLessons = "st.recent";
 constexpr const char* kKeyPracticeSize = "st.practice";
+constexpr const char* kKeyAutoSync = "sy.wake";
+constexpr const char* kKeySyncFull = "sy.full";
+constexpr const char* kKeyPrefetch = "sy.prefetch";
 
 struct DisplaySettings {
     int brightness = 128;
@@ -40,6 +43,9 @@ struct DisplaySettings {
     int practiceMistakes = 24 * 3600;
     int practiceLessons = 0;
     int practiceSize = 10;
+    int autoSync = 1;  // 1 = Quick, 2 = Full, 0 = Off
+    int syncFull = 6 * 3600;
+    bool prefetch = true;
 };
 
 DisplaySettings& displaySettings() {
@@ -62,6 +68,9 @@ DisplaySettings& displaySettings() {
     values.practiceMistakes = p.getInt(kKeyPracticeMistakes, values.practiceMistakes);
     values.practiceLessons = p.getInt(kKeyPracticeLessons, values.practiceLessons);
     values.practiceSize = p.getInt(kKeyPracticeSize, values.practiceSize);
+    values.autoSync = p.getInt(kKeyAutoSync, values.autoSync);
+    values.syncFull = p.getInt(kKeySyncFull, values.syncFull);
+    values.prefetch = p.getInt(kKeyPrefetch, values.prefetch ? 1 : 0) != 0;
     p.end();
     if (values.criticalPercent != 60 && values.criticalPercent != 70 &&
         values.criticalPercent != 75 && values.criticalPercent != 80 &&
@@ -73,6 +82,9 @@ DisplaySettings& displaySettings() {
         values.practiceMistakes = 86400;
     if (values.practiceLessons < 0 || values.practiceLessons > 3) values.practiceLessons = 0;
     if (values.practiceSize < 10 || values.practiceSize > 20) values.practiceSize = 10;
+    if (values.autoSync < 0 || values.autoSync > 2) values.autoSync = 1;
+    if (values.syncFull != 3600 && values.syncFull != 21600 && values.syncFull != 86400)
+        values.syncFull = 21600;
     if (values.brightness < 8 || values.brightness > 255) values.brightness = 128;
     for (int* v : {&values.dim, &values.blank, &values.sleep})
         if (*v < 0 || *v > 3600) *v = 0;
@@ -247,6 +259,29 @@ bool settingsSetPracticeSize(int size) {
     DisplaySettings& v = displaySettings();
     v.practiceSize = size;
     return saveInt(kKeyPracticeSize, size);
+}
+
+int settingsAutoSyncMode() { return displaySettings().autoSync; }
+bool settingsSetAutoSyncMode(int mode) {
+    if (mode < 0 || mode > 2) mode = 1;
+    DisplaySettings& v = displaySettings();
+    v.autoSync = mode;
+    return saveInt(kKeyAutoSync, mode);
+}
+
+int settingsSyncFullEverySeconds() { return displaySettings().syncFull; }
+bool settingsSetSyncFullEverySeconds(int seconds) {
+    if (seconds != 3600 && seconds != 21600 && seconds != 86400) seconds = 21600;
+    DisplaySettings& v = displaySettings();
+    v.syncFull = seconds;
+    return saveInt(kKeySyncFull, seconds);
+}
+
+bool settingsPrefetchReviews() { return displaySettings().prefetch; }
+bool settingsSetPrefetchReviews(bool prefetch) {
+    DisplaySettings& v = displaySettings();
+    v.prefetch = prefetch;
+    return saveInt(kKeyPrefetch, prefetch ? 1 : 0);
 }
 
 String formatFixedTimeZone(int offsetMinutes) {

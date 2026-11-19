@@ -234,10 +234,10 @@ private:
 };
 
 bool encodeFile(const char magic[4], const CacheMeta& meta, const std::vector<uint8_t>& payload,
-                std::vector<uint8_t>* out) {
+                std::vector<uint8_t>* out, uint16_t version = kCacheVersion) {
     std::vector<uint8_t> bytes(kCacheHeaderBytes + payload.size(), 0);
     std::memcpy(bytes.data(), magic, 4);
-    put16(bytes.data() + 4, kCacheVersion);
+    put16(bytes.data() + 4, version);
     put16(bytes.data() + 6, 0);
     put32(bytes.data() + 8, meta.savedAt);
     put32(bytes.data() + 12, meta.accountKey);
@@ -250,16 +250,18 @@ bool encodeFile(const char magic[4], const CacheMeta& meta, const std::vector<ui
 }
 
 bool decodeFile(const char magic[4], const uint8_t* data, size_t size, CacheMeta* meta,
-                Reader* payload) {
+                Reader* payload, uint16_t* versionOut = nullptr) {
     if (!data || size < kCacheHeaderBytes) return false;
     if (std::memcmp(data, magic, 4) != 0) return false;
-    if (get16(data + 4) != kCacheVersion) return false;
+    const uint16_t version = get16(data + 4);
+    if (version < kCacheVersionMin || version > kCacheVersion) return false;
     if (get16(data + 6) != 0) return false;
     const uint32_t payloadSize = get32(data + 16);
     if (payloadSize != size - kCacheHeaderBytes) return false;
     if (get32(data + 20) != crc32(data + kCacheHeaderBytes, payloadSize)) return false;
     meta->savedAt = get32(data + 8);
     meta->accountKey = get32(data + 12);
+    if (versionOut) *versionOut = version;
     *payload = Reader(data + kCacheHeaderBytes, payloadSize);
     return true;
 }
@@ -624,7 +626,8 @@ uint32_t cacheAccountKey(std::string_view token) {
     return h;
 }
 
-bool encodeCacheSnapshot(const CacheSnapshot& snapshot, std::vector<uint8_t>* out) {
+bool encodeCacheSnapshot(const CacheSnapshot& snapshot, std::vector<uint8_t>* out,
+                         uint16_t version) {
     if (!out) return false;
     Writer w;
     w.str(snapshot.summary.nextReviewsAt);
@@ -634,18 +637,24 @@ bool encodeCacheSnapshot(const CacheSnapshot& snapshot, std::vector<uint8_t>* ou
     encodeUser(w, snapshot.user);
     encodeLevelProgress(w, snapshot.levelProgress);
     encodeSrsCounts(w, snapshot.srs);
+    if (version >= 12) {
+        w.u32(snapshot.lastFullAt);
+        w.u32(snapshot.lastQuickAt);
+        w.u32(snapshot.lastUserAt);
+    }
     if (snapshot.assignments.size() > kMaxAssignments) return false;
     w.u16(static_cast<uint16_t>(snapshot.assignments.size()));
     for (const Assignment& a : snapshot.assignments) encodeAssignment(w, a);
     if (!w.ok()) return false;
-    return encodeFile(kSnapshotMagic, snapshot.meta, w.bytes(), out);
+    return encodeFile(kSnapshotMagic, snapshot.meta, w.bytes(), out, version);
 }
 
 bool decodeCacheSnapshot(const uint8_t* data, size_t size, CacheSnapshot* out) {
     if (!out) return false;
     CacheMeta meta;
     Reader r;
-    if (!decodeFile(kSnapshotMagic, data, size, &meta, &r)) return false;
+    uint16_t version = kCacheVersion;
+    if (!decodeFile(kSnapshotMagic, data, size, &meta, &r, &version)) return false;
     CacheSnapshot snapshot;
     snapshot.meta = meta;
     if (!r.str(&snapshot.summary.nextReviewsAt) ||
@@ -655,6 +664,18 @@ bool decodeCacheSnapshot(const uint8_t* data, size_t size, CacheSnapshot* out) {
         !decodeLevelProgress(r, &snapshot.levelProgress) ||
         !decodeSrsCounts(r, &snapshot.srs))
         return false;
+    if (version >= 12) {
+        if (!r.u32(&snapshot.lastFullAt) || !r.u32(&snapshot.lastQuickAt) ||
+            !r.u32(&snapshot.lastUserAt))
+            return false;
+    } else {
+        // v11 knew only the save time; treat it as the last contact of each
+        // kind so the first boot after the upgrade does not run a full sync
+        // just because the new fields are missing.
+        snapshot.lastFullAt = meta.savedAt;
+        snapshot.lastQuickAt = meta.savedAt;
+        snapshot.lastUserAt = meta.savedAt;
+    }
     uint16_t count = 0;
     if (!r.u16(&count) || count > kMaxAssignments) return false;
     snapshot.assignments.reserve(count);
@@ -739,7 +760,8 @@ bool readSubjectCache(ByteSource* source, size_t fileSize, SubjectCache* out) {
     uint8_t header[kCacheHeaderBytes];
     if (!readExact(source, header, sizeof header)) return false;
     if (std::memcmp(header, kSubjectsMagic, 4) != 0) return false;
-    if (get16(header + 4) != kCacheVersion) return false;
+    const uint16_t version = get16(header + 4);
+    if (version < kCacheVersionMin || version > kCacheVersion) return false;
     if (get16(header + 6) != 0) return false;
     const uint32_t payloadSize = get32(header + 16);
     if (payloadSize != fileSize - kCacheHeaderBytes) return false;

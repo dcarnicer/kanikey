@@ -26,6 +26,7 @@
 #include "wk/RomajiIme.h"
 #include "wk/SrsCounts.h"
 #include "wk/Summary.h"
+#include "wk/SyncSteps.h"
 #include "wk/Types.h"
 #include "wk/User.h"
 
@@ -89,6 +90,11 @@ struct CacheState {
     size_t gCachedBatchCount = 0;
     bool gOffline = false;
     uint32_t gCacheSavedAt = 0;
+    // Last successful contact of each kind; mirrored into the snapshot so a
+    // wake can pick quick, full or skip (SPEED-02).
+    uint32_t gLastFullAt = 0;
+    uint32_t gLastQuickAt = 0;
+    uint32_t gLastUserAt = 0;
 };
 
 struct StageChange {
@@ -198,6 +204,27 @@ struct SyncRow {
     SyncRowState state = SyncRowState::Pending;
 };
 
+// One non-modal or modal sync in progress (SPEED-03). Each loop() pass performs
+// at most one request from this state. `sub` is the request index inside a
+// coarse step (Outbox item, Level count, SRS bucket).
+struct SyncJobState {
+    kk::SyncKind kind = kk::SyncKind::Skip;
+    kk::SyncStep step = kk::SyncStep::Idle;
+    uint8_t sub = 0;
+    bool active = false;
+    bool modal = false;
+    bool interrupted = false;
+    bool startReviewPending = false;
+    bool needsUser = false;
+    bool coldBoot = false;
+    uint32_t startedAt = 0;
+    uint32_t timeStartedAt = 0;
+    uint32_t outboxLastSeq = 0;
+    uint16_t levelTotal = 0;
+    uint16_t levelPassed = 0;
+    uint32_t srs[5] = {};
+};
+
 struct SyncState {
     bool gSyncing = false;
     bool gSyncAttempted = false;
@@ -213,6 +240,7 @@ struct SyncState {
     bool gSyncScreen = false;
     bool gSyncFinished = false;
     bool gSyncCancelRequested = false;
+    SyncJobState gSyncJob;
 };
 
 enum class SettingsOrigin : uint8_t { Home, Pause };
