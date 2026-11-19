@@ -10,24 +10,24 @@ Every item below was found and reproduced in the 2026-11-01 review of the firmwa
 | FIX-04 | Kanji readings are judged the opposite way from WaniKani | P1 | S | none | 0a | done |
 | FIX-05 | The "n" hint makes users fail | P1 | S | none | 0a | done |
 | FIX-06 | Real HTTP read timeout is 1 s | P1 | S | none | 0a | review |
-| FIX-07 | Setup AP password derivable from the beacon | P1 | S | none | 0a | review |
+| FIX-07 | Setup AP password derivable from the beacon | P1 | S | none | 0a | partial (key + AP passed; 15-min close not run) |
 | FIX-08 | Review batches are capped at 20 and always the same items | P1 | M | none | 0a+0b | done |
 | FIX-09 | After a wrong first part, the failed part is asked again immediately | P1 | S | none | 0a | done |
 | FIX-10 | A completed review is not in the outbox until the next Enter | P1 | S | none | 0b | done |
 | FIX-11 | Lesson start errors are silent | P1 | M | none | 0a+0b | done (sim) |
 | FIX-12 | Deep sleep during the lesson quiz | P2 | S | none | 0b | done (sim battery) |
 | FIX-13 | A full outbox drops reviews silently | P2 | S | none | 0b | done |
-| FIX-14 | Fixed 32 KB body cap with no fallback | P2 | M | none | 0a | review |
+| FIX-14 | Fixed 32 KB body cap with no fallback | P2 | M | none | 0a | partial (real 32 KB truncation fixed in the practice pool; forced cap not run) |
 | FIX-15 | Typo tolerance uses the typed length | P2 | S | none | 0a | done |
 | FIX-16 | Capitalised romaji in the meaning field is not recognised as a reading | P2 | S | none | 0a | done |
 | FIX-17 | IME lacks common romaji aliases | P2 | S | none | 0a | done |
 | FIX-18 | `/level_progressions` parsed into a full DOM | P2 | M | none | 0a | done |
 | FIX-19 | Station setup page has no authentication | P2 | S | FIX-07 | 0a | done |
-| FIX-20 | OTA marked valid after only 10 s of loop | P2 | S | none | 0b | review |
+| FIX-20 | OTA marked valid after only 10 s of loop | P2 | S | none | 0b | partial (good install/valid verified; bad first boot/two-strike not run) |
 | FIX-21 | LittleFS formats on any mount failure | P3 | S | none | 0b | done |
 | FIX-22 | Outbox save rename order | P3 | S | none | 0a | done |
 | FIX-23 | Small UX bugs | P3 | S | none | 0b | done |
-| FIX-24 | Latent robustness | P3 | S | none | 0a+0b | review |
+| FIX-24 | Latent robustness | P3 | S | none | 0a+0b | partial ((a)/(b) passed; (c) Wi-Fi upload verified 2026-11-19) |
 | FIX-25 | Re-opening the visual pack from the setup page breaks every glyph | P1 | S | none | 0a+0b | done |
 | FIX-26 | Cache store: noisy error log and rename order | P3 | S | none | 0a | done |
 | FIX-27 | Subject cache save aborts with bad_alloc | P0 | M | none | 0a | done |

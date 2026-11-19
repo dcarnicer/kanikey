@@ -569,3 +569,50 @@ review/lesson batch. Still to measure on the device: clip sizes for
 `M5.Speaker.playRaw()` covers the I2S/ES8311 path. Until then AUD-03 (playback)
 is a deliberate no-go, not a silent omission.
 
+### 2026-11-19 — v1 hardware pass (Cardputer ADV, dev image)
+
+Full pass on the real account (level 8, 464 due, 120 lessons, 7 critical) with
+the dev image: 1,622,625 B / 1,835,008 B flash (88.4%), 96,336 B RAM (29.4%);
+216 native tests pass. The release image is 1,556,989 B (84.8%), 96,248 B RAM.
+
+- **Panel rotation (fix).** The ST7789V2 panel is configured with
+  `offset_rotation = 1`, so `setRotation(1)` produced 135×240 portrait.
+  Rotation 0 is the landscape orientation (240×135). `board::begin()` and
+  `App::setup()` now use 0; the dev `h` command prints `rot`, size and panel
+  config (`rot 0 240x135 panel 135x240 off 1 mem 240x320`).
+- **OUTBOX (API-01/05).** Dev `J` seeded a 422, a 409 and a 50-attempt stuck
+  item. The screen listed all three (`HTTP 422`, `HTTP 409`, `gave up`); the
+  discard confirmation showed `WaniKani rejected this review (HTTP 422). 1
+  attempt, age 8m.`; Enter discarded only seq 1 (2 items left).
+- **Offline boot (CACHE-07).** With a real synced cache and a fake saved
+  network (`OfflineTest`), a reset loaded the cached Home (464 due, 120
+  lessons, SRS A145 G143 M81 E147 B586), `[cache] loaded: 20 cached
+  assignments`, and started a review from the cache (宝, 1/20) with no
+  network. The NVS was restored afterwards. The review → outbox → 201 path
+  was already verified in the previous run.
+- **API-03 401.** `T` saved a dev token; the boot `/v2/user` returned a real
+  401. The shared gate armed (`401 token rejected; blocking requests until the
+  token changes`); a following `u` logged `[http] /v2/user blocked by auth
+  (401)` with no TLS request. NVS restored. 403 was not run (needs a
+  read-only token).
+- **API-04 retry.** A real `/v2/assignments?...&srs_stages=1,2,3,4` response
+  returned 200 with 32,768 bytes truncated; the log shows the retry and a
+  second parse failure. This exposed the practice-pool bug below.
+- **Practice pool (new fix).** The full apprentice set exceeded the 32 KB
+  body cap and saved 1 assignment. Fetching stages 1-4 separately now saves
+  all 145 (12/28/54/51), with bodies of 5,768/13,529/26,157/24,606 bytes.
+  This is the real FIX-14 case; the subject-page 5 → 2 → 1 fallback was not
+  triggered.
+- **Wi-Fi upload (FIX-24c).** `S` plus `curl -T` uploaded 64 KB to
+  `/kanikey/test-upload.bin`; `[asset] done 65536/65536`.
+- **OTA good path (FIX-20).** A local v0.1.1 image and manifest were served
+  over HTTP; the dev `U`/`F`/`I` path installed it into app1. It booted as
+  0.1.1, the first sync succeeded, and a reset stayed on 0.1.1. The device was
+  then reflashed with the dev 0.1.0 image. The bad-first-boot/two-strike
+  rollback was not run.
+
+Remaining hardware checks: API-02 429 (native-tested; a real 429 was not
+provoked), API-03 403 (read-only token), FIX-06 slow server, FIX-07 15-minute
+AP close, FIX-14 forced small cap, FIX-20 bad-first-boot/two-strike, RAD-04
+low-level account and a real level-up.
+

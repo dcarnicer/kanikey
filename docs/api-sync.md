@@ -173,10 +173,14 @@ available_at, resurrected_at, hidden, data_updated_at
 - For lessons: `srs_stage == 0`, `started_at == null`, `hidden=false`,
   `unlocked_at != null`.
 
-**Practice pool (2026-11-06).** A full sync refreshes
+**Practice pool (2026-11-06; stage split 2026-11-19).** A full sync refreshes
 `/state/practice.bin` with apprentice assignments (stages 1-4) and the current
-level's kanji, up to 256. Practice filters this pool by `started_at` for the
-Recent-lessons window and by level for Current level, so those modes start
+level's kanji, up to 256. The all-levels apprentice set is fetched as four
+separate `srs_stages=1`, `2`, `3`, `4` requests: one combined
+`srs_stages=1,2,3,4` body for a real account exceeds the shared 32 KB body cap,
+and a truncated body loses every item. Each stage parses up to 64 assignments,
+which covers the 256-entry pool. Practice filters this pool by `started_at` for
+the Recent-lessons window and by level for Current level, so those modes start
 offline. `started_at` is parsed into `Assignment` but is not part of the KKCA
 snapshot format.
 

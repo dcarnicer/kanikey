@@ -3,15 +3,15 @@
 **A pocket-sized review terminal for WaniKani, built for the M5Stack Cardputer ADV.**
 
 > **Status: firmware preview — offline cache, lessons and OTA release path
-> (2026-10-29).**
+> (2026-11-19).**
 > The Cardputer ADV shows a live Home from `/user` + `/summary`, fetches a
 > 20-item due batch, runs a typed meaning/reading session and submits completed
 > items with `POST /v2/reviews` (201). Review order follows the account's
 > `reviews_presentation_order` (`shuffled` or `lower_levels_first`). A
 > persistent outbox makes reviews survive a reboot and offline sessions. Home,
 > the user and the review batch are now cached too: the snapshot restores them
-> at boot, shows `Offline` and can run a cached session (a deliberate
-> offline-boot hardware run is still pending). Lessons show a list/picker
+> at boot, shows `Offline` and can run a cached session; the deliberate
+> offline-boot hardware run is verified (2026-11-19). Lessons show a list/picker
 > sorted by level and `lesson_position` across up to 60 summary candidates,
 > then a card with meaning/reading and mnemonic pages; only the card's Enter
 > calls `PUT /assignments/{id}/start` (200). Study materials
@@ -62,9 +62,10 @@
 > endpoint-specific. Lesson ordering now sorts up to 60 summary candidates by
 > level and `lesson_position` before trimming to the batch. The remaining v1
 > gaps are the last lesson hardware checks (radical-only lessons,
-> notes/`lower_levels_first`), a deliberate offline boot, and hardware
-> verification of the 429/auth/parse-retry paths and the final OUTBOX screen
-> (currently native/host-inspected). Firmware
+> notes/`lower_levels_first`), API-02 429 and API-03 403, the OTA
+> bad-first-boot/two-strike rollback and the slow-server/forced-body-cap
+> checks. The deliberate offline boot, the OUTBOX screen, the 401 gate and the
+> parse-retry path are verified on hardware (2026-11-19). Firmware
 > updates arrive over HTTPS from GitHub releases with a size/SHA-256 manifest,
 > install into the spare 1.75 MiB slot and roll back on a failed first boot.
 > The source is MIT-licensed.

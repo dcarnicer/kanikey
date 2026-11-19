@@ -1,8 +1,8 @@
 # KaniKey roadmap
 
-Status snapshot: **2026-11-06**. This is the working backlog after the offline
-cache and the `efontJA_16` removal landed, not the original product
-plan. Product scope and UX live in [docs/design.md](docs/design.md),
+Status snapshot: **2026-11-19**. This is the working backlog after the offline
+cache, the `efontJA_16` removal and the first full v1 hardware pass landed, not
+the original product plan. Product scope and UX live in [docs/design.md](docs/design.md),
 [docs/ux.md](docs/ux.md) and [docs/api-sync.md](docs/api-sync.md).
 
 Round 2 (branch `spec/round-2`, 2026-11-01): the fixes from the 2026-11-01
@@ -12,15 +12,16 @@ wave 3 log); FIX-06, 07, 14, 20 and 24 still need the network/OTA and Wi-Fi
 upload checks listed there. FIX-07's random AP key and FIX-24 (a)/(b) have
 passed; FIX-24 (c) is partial.
 
-The review loop works on hardware. The main v1 gaps are the last lesson
-hardware checks and the lesson-ordering limitation, a deliberate offline boot,
-and hardware verification of the 429/auth/parse-retry paths and the final
-OUTBOX screen (they are code/native/host-inspected only). OTA, the MIT license
-and the release tooling are done; the cache batch is loaded lazily. The
-persistent offline cache restores Home, the user and a
-cached review batch after a reboot without network; first boot uses an
-on-device setup portal, and Settings covers display/power/study preferences
-plus sync, firmware, cache and sign-out.
+The review loop works on hardware. The 2026-11-19 pass closed the deliberate
+offline boot, the final OUTBOX screen, the 401 gate, the parse-retry path, the
+Wi-Fi upload and the OTA good-install path. The main v1 gaps are the last
+lesson hardware checks and the lesson-ordering limitation, API-02 429 and
+API-03 403, the OTA bad-first-boot/two-strike rollback, and the
+slow-server/forced-body-cap FIX checks. OTA, the MIT license and the release
+tooling are done; the cache batch is loaded lazily. The persistent offline
+cache restores Home, the user and a cached review batch after a reboot without
+network; first boot uses an on-device setup portal, and Settings covers
+display/power/study preferences plus sync, firmware, cache and sign-out.
 
 ## Where we are
 
@@ -33,18 +34,18 @@ Working on hardware:
   `reviews_presentation_order` (`shuffled` or `lower_levels_first`); the local
   `Order` setting still selects meaning-first or reading-first.
 - `POST /v2/reviews` with a persistent LittleFS outbox. The real-account path
-  online fetch → Wi-Fi off → review → reconnect → 201 is verified; the cached
-  Home/batch also restore at boot. A deliberate offline boot still needs a
-  network-off reboot.
+  online fetch → Wi-Fi off → review → reconnect → 201 is verified; the
+  deliberate offline reboot and a cached review session were verified on
+  2026-11-19.
 - 429 handling: `RateLimit-Reset` / `RateLimit-Remaining` are parsed and one
   shared gate blocks every request until the reset; Boot, Home and the sync
-  error line show the remaining seconds. This is native-tested; hardware
-  verification is pending.
+  error line show the remaining seconds. This is native-tested; a real 429 was
+  not provoked on hardware on 2026-11-19.
 - 401/403 handling and parse-failure retries are implemented and native-tested;
-  the shared auth gate and the retrying GET helpers have not had a hardware
-  pass. Rejected/stuck outbox rows, their attempt/age detail and dismissal are
-  native-tested; the earlier outbox hardware runs covered the send/reconcile
-  path, not the final OUTBOX screen.
+  the 401 gate and the retrying GET helpers were verified on hardware on
+  2026-11-19, while the 403 half is still pending. Rejected/stuck outbox rows,
+  their attempt/age detail and dismissal are native-tested and were verified on
+  the final OUTBOX screen on 2026-11-19.
 - Lessons: a list/picker with character, type, level and main meaning, sorted
   by level and `lesson_position`; the card shows meaning/reading, paged
   mnemonic, component meanings and hints, and `PUT /assignments/{id}/start`
@@ -127,21 +128,21 @@ Working on hardware:
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Current build: **1,527,557 B / 1,835,008 B flash (83.2%)**, **95,952 B /
-327,680 B static RAM (29.3%)**. The dev image is 1,593,441 B. Removing
-`efontJA_16` freed ~468 KB and leaves ~358 KB of flash headroom. The loop task
-uses a 24 KiB stack; the lazy review batch raised the lesson-fetch minimum free
-heap to ~56 KB.
+Current build: **1,556,989 B / 1,835,008 B flash (84.8%)**, **96,248 B /
+327,680 B static RAM (29.4%)**. The dev image is 1,622,625 B (88.4%), 96,336 B
+RAM. Removing `efontJA_16` freed ~468 KB and leaves ~272 KB of flash headroom.
+The loop task uses a 24 KiB stack; the lazy review batch keeps the lesson-fetch
+minimum free heap above ~44 KB in the 2026-11-19 logs.
 
 ## Priority summary
 
 | Priority | Workstream | Why | Status | Start with |
 |---:|---|---|---|---|
 | 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Done except a real low-level radical-only lesson; the synthetic radical lesson UI passed | RAD-04 |
-| 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Core and real-account E2E done; deliberate offline boot pending | CACHE-07 |
+| 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Done: real-account online fetch, deliberate offline reboot and cached session verified (2026-11-19) | CACHE-07 |
 | 3 | Complete lesson flow | List/picker, card, components, quiz, empty state, start and ordering exist; a real low-level run remains | Code complete; radical-only UI verified synthetically | RAD-04 |
 | 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; stats and local review history are live; audio remains | Partial | EXT-06 |
-| 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Code and docs done; hardware check pending for the final OUTBOX screen (API-01) and API-02…05 | — |
+| 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Code and docs done; OUTBOX (API-01/05), 401 (API-03) and parse retry (API-04) verified 2026-11-19; 429 (API-02) and 403 still pending | — |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done for v1; on-device Wi-Fi setup is v1.1 (SETUP-09) | SETUP-09 |
 | 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen, item detail, level progress and the Stats screen are live | Partial | UI-08 |
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal, OTA, storage and sleep done; widgets pending | TNG-03 |
@@ -152,21 +153,23 @@ heap to ~56 KB.
 
 ## Execution order
 
-Radicals and the offline cache are code-complete except for the real low-level
-lesson and the deliberate offline boot. The lesson flow is code-complete except
-for the real low-level checks; LESSON-08 now sorts a 60-item candidate pool by
-level and `lesson_position`. OTA, the license and the release tooling are done.
-The next work is the remaining network/OTA checks (FIX-06, 14, 20 and the Wi-Fi
-upload part of FIX-24) and the API-01…05 hardware pass.
+Radicals are code-complete except for the real low-level lesson; the offline
+cache and its deliberate reboot are verified. The lesson flow is code-complete
+except for the real low-level checks; LESSON-08 now sorts a 60-item candidate
+pool by level and `lesson_position`. OTA, the license and the release tooling
+are done. The 2026-11-19 pass closed the OUTBOX, 401, parse-retry, Wi-Fi upload
+and OTA good-install checks. What remains is API-02 429, API-03 403, the
+slow-server/forced-cap FIX checks, the OTA bad-first-boot/two-strike path, the
+real low-level lesson and a real level-up.
 
 | Order | Phase | Tasks | Outcome |
 |---:|---|---|---|
 | 0 | Close radicals (parallel) | RAD-04 (RAD-02 done) | Real radical prompts and a radical-only lesson |
-| 1 | Offline cache | CACHE-05 → CACHE-07, TNG-04, TNG-05 | Review and Home work after reboot without network (offline boot still untested) |
+| 1 | Offline cache | CACHE-05 → CACHE-07, TNG-04, TNG-05 | Review and Home work after reboot without network (offline boot verified 2026-11-19) |
 | 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | List, understand, quiz and start lessons (code complete) |
 | 3 | Setup and device UX | TNG-02 (done) | OTA release path (setup/settings complete) |
 | 4 | WaniKani data and detail | WK-11 (WK-01/03/04/05/06/07/08/09/10 done) | Forecast, SRS, level stats and local history/streak done |
-| 5 | API robustness | API-07 (API-01/02/03/04/05/06 done) | Done; hardware verification of API-01's final OUTBOX screen and API-02…05 still pending |
+| 5 | API robustness | API-07 (API-01/02/03/04/05/06 done) | OUTBOX/401/parse retry verified 2026-11-19; 429 (API-02) and 403 pending |
 | 6 | UI, stats and sync | UI-07 → UI-08 (UI-01/02/03/04/05/06 done) | Polish |
 | 7 | Technical debt and release | TECH-03 → TECH-08 (done; TECH-07 optional) | Version, OTA, license and hardening |
 | 8 | On-device Wi-Fi (v1.1) | SETUP-09 | Pick the network and type the password on the Cardputer |
@@ -238,10 +241,12 @@ reboot with Wi-Fi unavailable.
   summary drops assignments that are no longer due, `startReview` filters the
   outbox, and a successful/reconciled send also prunes the cache.
 - **CACHE-07 — End-to-end test.** Online fetch → reboot with Wi-Fi off →
-  complete a review → reconnect → outbox 201. **Done except the offline boot
-  (2026-10-28):** with the real account, online fetch → Wi-Fi off → review →
-  outbox pending → reconnect → 201 is verified, and the cached Home/batch
-  restore at boot. A reboot with Wi-Fi actually unavailable is still untested.
+  complete a review → reconnect → outbox 201. **Done (2026-11-19):** with the
+  real account, online fetch → Wi-Fi off → review → outbox pending →
+  reconnect → 201 is verified, and a deliberate reboot with the network
+  unavailable restores the cached Home and its 20-assignment batch and starts
+  a cached review. The review → outbox → 201 path was verified in the earlier
+  run; the offline reboot was the last gap.
 - **CACHE-08 — Save before sleep.** Persist the cache/outbox before dim,
   blank or deep sleep (coordinate with TNG-05). **Done:** the snapshot is saved
   after sync, batch fetch, review completion and lesson start, and again before
@@ -355,15 +360,15 @@ live; review history, audio and the remaining preferences still need work.
   Home's `Next review` line shows the next bucket count (`+12 at 18:00` /
   `18:00 (+12)`). A full heatmap remains an optional EXT-05 extension.
 
-## 5. Outbox and API robustness (code and docs done)
+## 5. Outbox and API robustness (code and docs done; 2026-11-19 pass)
 
 This section is code- and docs-complete. CRC/`.bak`, ambiguous-request
 reconciliation, offline end-to-end, Home pending/attention counts, the
 user-facing rejected/stuck path with attempt/age detail, the 50-attempt cap, the
 shared 429 gate, the shared 401 auth gate and parse retries all landed. The
-remaining work is hardware verification of the final OUTBOX screen
-(attempts/age/discard, API-01) and API-02…05; those paths are native or
-host-inspected only.
+2026-11-19 hardware pass verified the final OUTBOX screen (API-01/05), the 401
+gate (API-03) and the parse-retry path (API-04). API-02 (429) and the 403 half
+of API-03 remain native-tested only.
 
 - **API-01 — Dismiss `Rejected` items.** User-facing action with confirmation
   and a clear reason. **Done (2026-10-28):** the HTTP code is stored in the two
@@ -371,8 +376,10 @@ host-inspected only.
   files load with 0). Home shows `O: outbox` when attention is needed; the
   OUTBOX screen lists rejected items with their reason, scrolls, and confirms a
   discard of exactly that sequence. Pending/ambiguous items and the cache are
-  untouched. Dev `J` seeds a 422 and a 409 item. Native-tested; the final
-  OUTBOX screen still needs a hardware pass.
+  untouched. Dev `J` seeds a 422, a 409 and a stuck item. Native-tested and
+  **hardware-verified (2026-11-19):** the screen listed all three with
+  `HTTP 422`, `HTTP 409` and `gave up`; the confirmation showed the attempts
+  and age; the discard removed only the selected seq.
 - **API-02 — 429 backoff.** Wait for `RateLimit-Reset` and back off instead of
   retrying immediately. **Done (2026-10-29):** `RateLimit-Reset` and
   `RateLimit-Remaining` are parsed case-insensitively. A 429 arms one shared
@@ -382,7 +389,9 @@ host-inspected only.
   the clock is untrusted. Boot, Home and the sync error line show the remaining
   seconds; an outbox POST 429 stays `Pending`. Native-tested (5 cases). The
   countdown refreshes each second, Level/SRS 429s remain row warnings, batch
-  loops stop on 429 and ambiguous reconciliation is not downgraded.
+  loops stop on 429 and ambiguous reconciliation is not downgraded. A real 429
+  was not provoked on hardware on 2026-11-19; the gate remains native-tested
+  only.
 - **API-03 — 401/403 auth state.** Surface “token invalid/expired” and
   “missing permissions”; do not retry forever. **Done (2026-10-29):** a real 401
   arms one shared gate; GET/POST/PUT then return a synthetic local 401 without
@@ -396,8 +405,10 @@ host-inspected only.
   stop on auth; an optional materials/statistics/component 401 also stops the
   session. A failed lesson `PUT /start` returns Home with the auth state. A reconciliation blocked by the 401 gate stays `Ambiguous`, and
   Level/SRS 401s remain warnings while completing the sync. A 4xx is never
-  retried by the JSON/body helpers. Native tests cannot cover the TLS client;
-  hardware verification is pending.
+  retried by the JSON/body helpers. Native tests cannot cover the TLS client.
+  **401 hardware-verified (2026-11-19):** a real `/user` 401 armed the gate and
+  a following request logged `blocked by auth (401)` without a TLS call. The
+  403 path remains native-tested; it needs a read-only token.
 - **API-04 — Retry parse failures.** Retry truncated or parse-failed responses,
   not just transport errors. At the time, the subject DOM path failed the batch
   on a short body. **Done (2026-10-29):** `wkGetJsonRetry` parses each 200 body
@@ -407,7 +418,10 @@ host-inspected only.
   `/user` and `/summary` (streaming parser) use it, as do the optional
   level/SRS/study-material/statistics requests. The error strings (e.g.
   `subjects JSON`) survive both attempts, and a structurally valid empty
-  `/summary` is no longer treated as a parse failure.
+  `/summary` is no longer treated as a parse failure. **Hardware-exercised
+  (2026-11-19):** a real `/assignments` body was truncated at 32 KB, the log
+  showed the retry and the second parse failure; that finding led to the
+  practice-pool stage split (see `docs/hardware.md`).
 - **API-05 — Attempts and age.** Cap attempts and show attempt/age information
   for stuck items. **Done (2026-10-29):** `OutboxState::Stuck` (`4`) and a
   50-attempt cap; a would-be retry becomes stuck instead of sending. Pending
@@ -415,7 +429,9 @@ host-inspected only.
   the sync row. The OUTBOX screen lists both, shows `gave up`, attempts and age
   (`just now`/hours/days, or `age unknown` with a zero/untrusted timestamp) and
   dismisses only the selected seq. Flush skips stuck without blocking later
-  items; dev `J` adds a stuck seed. Native-tested.
+  items; dev `J` adds a stuck seed. Native-tested and **hardware-verified
+  (2026-11-19):** `gave up`, attempts/age and the single-seq discard were
+  checked on the device.
 - **API-06 — Manual sync and retry.** A clear action from Home/Settings and the
   error screens. **Done (2026-10-29):** Home shows
   `Enter: reviews  L: lessons  S: sync`; pressing `s` or `S` starts the same
