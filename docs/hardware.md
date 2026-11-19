@@ -688,8 +688,10 @@ A150 G143 M81 E147 B586).
   (no 5 GHz rows; `Sakurakou Keionbu!`, `Shimokitazawa`, `TP-Link_A1B3` and the
   DIGIFIBRA APs). `Esc` returned to Account. The password screen showed the
   selected SSID, a masked field and `Tab: show`; no password was printed.
-  The join/save/failure paths, manual hidden SSID, boot flow, review lock and
-  power guard remain.
+  Selecting Shimokitazawa with `wrongpass` showed `wrong password; try again`,
+  kept the password editable and left the saved Shimokitazawa credentials
+  intact (a later join succeeded). The successful on-device join/save, manual
+  hidden SSID, boot flow, review lock and power guard remain.
 - **LES-04/05/06.** Lessons showed `Order: WaniKani`; Right changed it to
   `Radicals>Kanji>Vocab` and again to `Interleave types`, and Left restored
   WaniKani. `Apprentice limit warning: 100` with A150 opened
@@ -823,7 +825,7 @@ instead.
 | `LES-04` | L2 order; fresh level shows the radical first, whole unlock reachable | `cardputer-adv-dev` | 2026-11-19 | `partial` | Lessons showed `Order: WaniKani`; Right changed it to `Radicals>Kanji>Vocab` then `Interleave types`; Left restored WaniKani. Fresh-level radical-first and the 60-candidate checks remain. |
 | `LES-05` | L4 threshold screen + Esc; L5/L6 and multi-reason | `cardputer-adv-dev` | 2026-11-19 | `partial` | L4 100 with A150 opened `WORKLOAD CHECK — Apprentice items: 150 (limit 100)` and `Enter: continue  Esc: back`; Esc returned Home without a fetch. L5/L6 and the multi-reason guard remain. |
 | `LES-06` | Kanji/radical/vocab topic pages, long mnemonic, `p` counter | `cardputer-adv-dev` | 2026-11-19 | `partial` | First VOCAB card `1/5 p1/6`, `VOCAB L7`, 以前, `Meaning`; page 2 `READING` and page 3 continued the reading topic. Kanji/radical card sets and the Context page remain. |
-| `SETUP-09` | Wi-Fi scan, masked password, join/save/failure, hidden SSID, boot, lock | `cardputer-adv-dev` | 2026-11-19 | `partial` | Settings › Account showed `Wi-Fi scan`, `Setup portal` and `Sign out`; Wi-Fi opened a 2.4 GHz list with SSID, signal bars and `WPA2` (no 5 GHz rows); `Esc` returned to Account; the password screen masked the field with `Tab: show`. Join/save/failure, hidden SSID, boot flow, review lock and power guard remain. |
+| `SETUP-09` | Wi-Fi scan, masked password, join/save/failure, hidden SSID, boot, lock | `cardputer-adv-dev` | 2026-11-19 | `partial` | 2.4 GHz list with SSID/signal/`WPA2`; `Esc` returned to Account; password masked with `Tab: show`; `wrongpass` for Shimokitazawa showed `wrong password; try again` and kept the saved network. Successful join/save, hidden SSID, boot flow, review lock and power guard remain. |
 | `ONB-01` | Split packs, v1 fallback, missing radical, About two lines | `cardputer-adv-dev` | 2026-11-19 | `partial` | The card still held the v1 combined `glyphs.kgp`; Home, lessons and About rendered through the fallback; About showed both `Font:` and `Rad:` lines split by role. Split `glyphs.kgp`/`radicals.kgp`, missing-radical boot and both upload paths remain. |
 | `ONB-02` | Portal download/upload, failure/cancel, heap | `cardputer-adv-dev` | 2026-11-19 | `partial` | Station page (code 915461) showed `Font: 7269 glyphs, 64/32/20 px`, `Radicals: 498 radicals`, `Check pack again`, `Upload radical pack` and `Card free: 29.5 GB`; `Download pack` was absent with a ready font. A 56-byte `glyphs-bad-small.kgp` returned `Not a radical pack: pack: no radicals.` and kept the 498 radicals. Empty-card download, cut Wi-Fi, valid phone upload, truncated upload, `Esc` cancel and heap checks remain. |
 | `FIX-06` | Slow/blackholed server read timeout; no resend | — | — | `todo` | Not run; needs a throttled or blackholed endpoint. |
