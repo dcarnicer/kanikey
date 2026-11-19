@@ -722,7 +722,7 @@ A150 G143 M81 E147 B586).
   multi-item prune, idempotence and summary checks remain.
 - **REV-02.** Default WaniKani policy: `tonigh` for 今夜 showed CORRECT with
   `Close: tonight`; `tonite` (distance 3) correctly stayed NOT QUITE. The Strict
-  path and the lesson quiz remain.
+  path and the lesson quiz remain; R6 was returned to WaniKani after the smoke.
 - **REV-10.** 15 native tests cover the repeat timer, the kana-aware Backspace,
   the clear path and the 64-byte cap; the hardware hold/clear/kana/paste checks
   remain.
