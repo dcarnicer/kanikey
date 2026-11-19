@@ -379,6 +379,7 @@ previous cached value.
 - Personal WaniKani token; never username/password.
 - Required permissions (the WaniKani portal groups them by resource):
   - Read **assignments**.
+  - Start **assignments** (`PUT /assignments/{id}/start`).
   - Read **subjects**.
   - Read **study materials**.
   - Read **review statistics**.
