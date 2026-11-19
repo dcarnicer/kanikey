@@ -71,7 +71,8 @@ def parse_shot(text: str, table: list[bytes]) -> Image.Image:
 
 
 def capture(port: str, timeout: float = 60.0, before: str | None = None,
-            marker: str = "home drawn", delay: float = 0.5) -> Image.Image:
+            marker: str = "home drawn", delay: float = 0.5,
+            marker_timeout: float = 30.0) -> Image.Image:
     table = rgb565_table()
     with serial.Serial(port, 115200, timeout=0.3) as s:
         s.dtr = False
@@ -109,7 +110,7 @@ def capture(port: str, timeout: float = 60.0, before: str | None = None,
             if sent and b"#end\n" in shot_buf:
                 text = shot_buf.decode("ascii", "replace")
                 return parse_shot(text, table)
-            if not sent and time.time() - started > 30:
+            if not sent and time.time() - started > marker_timeout:
                 s.write(b"p\n")
                 s.flush()
                 sent = True
@@ -127,9 +128,14 @@ def main() -> int:
                     help="wait for this serial log text before pressing p")
     ap.add_argument("--delay", type=float, default=0.5,
                     help="seconds to wait after --before (or the marker) before pressing p")
+    ap.add_argument("--timeout", type=float, default=60.0,
+                    help="overall seconds to wait for a complete dump")
+    ap.add_argument("--marker-timeout", type=float, default=30.0,
+                    help="seconds to wait for --marker before pressing p anyway")
     args = ap.parse_args()
 
-    img = capture(args.port, before=args.before, marker=args.marker, delay=args.delay)
+    img = capture(args.port, timeout=args.timeout, before=args.before, marker=args.marker,
+                  delay=args.delay, marker_timeout=args.marker_timeout)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     img.save(args.out)
     print(args.out)
