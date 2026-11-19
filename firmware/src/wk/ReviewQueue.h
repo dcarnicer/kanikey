@@ -4,6 +4,7 @@
 // when every required part is correct. Pure C++, no Arduino.
 #include <cstdint>
 #include <deque>
+#include <random>
 #include <vector>
 
 #include "wk/AnswerChecker.h"
@@ -12,6 +13,10 @@
 namespace kk {
 
 enum class ReviewPart : uint8_t { None, Meaning, Reading };
+
+// REV-06: true when an auto-advance delay is set and the feedback frame has
+// been visible for at least that long. A zero delay never advances.
+bool autoAdvanceDue(uint32_t delayMs, uint32_t elapsedMs);
 
 struct SessionItem {
     uint32_t assignmentId = 0;
@@ -66,6 +71,10 @@ public:
     // meaning first. Reading-first is a user preference.
     void setMeaningFirst(bool meaningFirst) { meaningFirst_ = meaningFirst; }
 
+    // REV-09: on keeps both parts of one item together; off interleaves the
+    // next item after each answered part. Call before build(); defaults to on.
+    void setBackToBack(bool backToBack) { backToBack_ = backToBack; }
+
     // WaniKani `reviews_presentation_order`. Call before build(); shuffled is
     // the default. lower_levels_first keeps the shuffle inside each level.
     void setLowerLevelsFirst(bool lowerLevelsFirst) { lowerLevelsFirst_ = lowerLevelsFirst; }
@@ -94,12 +103,17 @@ private:
     void setPart(SessionItem& item);
     void prepareItem(SessionItem& item);
     void requeueFront();
+    // REV-09: move the front item to a random position after at least one
+    // other item, without resetting its attempted flags.
+    void interleaveFront();
 
     std::deque<SessionItem> queue_;
     std::vector<SessionItem> completed_;
     ReviewPart part_ = ReviewPart::None;
     bool meaningFirst_ = true;
     bool lowerLevelsFirst_ = false;
+    bool backToBack_ = true;
+    std::mt19937 rng_{0x9E3779B9u};
     std::vector<uint32_t> criticalSubjectIds_;
 };
 

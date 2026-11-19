@@ -20,6 +20,10 @@ bool due(const Assignment& a, uint32_t now) {
 
 }  // namespace
 
+bool autoAdvanceDue(uint32_t delayMs, uint32_t elapsedMs) {
+    return delayMs > 0 && elapsedMs >= delayMs;
+}
+
 void ReviewQueue::build(const std::vector<Assignment>& assignments,
                         const std::vector<Subject>& subjects, uint32_t now, size_t limit,
                         uint32_t seed) {
@@ -43,8 +47,8 @@ void ReviewQueue::build(const std::vector<Assignment>& assignments,
         items.push_back(it);
     }
 
-    std::mt19937 rng(seed);
-    std::shuffle(items.begin(), items.end(), rng);
+    rng_.seed(seed);
+    std::shuffle(items.begin(), items.end(), rng_);
     if (lowerLevelsFirst_) {
         std::stable_sort(items.begin(), items.end(),
                          [](const SessionItem& a, const SessionItem& b) {
@@ -78,6 +82,7 @@ void ReviewQueue::buildPractice(const std::vector<const Subject*>& subjects, siz
     completed_.clear();
     part_ = ReviewPart::None;
     meaningFirst_ = true;
+    backToBack_ = true;
     criticalSubjectIds_.clear();
 
     std::vector<SessionItem> items;
@@ -95,8 +100,8 @@ void ReviewQueue::buildPractice(const std::vector<const Subject*>& subjects, siz
         items.push_back(it);
     }
 
-    std::mt19937 rng(seed);
-    std::shuffle(items.begin(), items.end(), rng);
+    rng_.seed(seed);
+    std::shuffle(items.begin(), items.end(), rng_);
     if (limit > 0 && items.size() > limit) items.resize(limit);
 
     for (const SessionItem& it : items) queue_.push_back(it);
@@ -139,6 +144,18 @@ void ReviewQueue::requeueFront() {
     if (!queue_.empty()) setPart(queue_.front());
 }
 
+void ReviewQueue::interleaveFront() {
+    if (queue_.empty()) return;
+    SessionItem item = queue_.front();
+    queue_.pop_front();
+    // Never the very front while another item exists: with N items left the
+    // item goes to one of positions 1..N. A single-item queue puts it back at
+    // the front so the other part is still asked.
+    const size_t pos = queue_.empty() ? 0 : 1 + (rng_() % queue_.size());
+    queue_.insert(queue_.begin() + static_cast<std::ptrdiff_t>(pos), item);
+    setPart(queue_.front());
+}
+
 AnswerOutcome ReviewQueue::answer(AnswerStatus status) {
     AnswerOutcome out;
     if (queue_.empty() || part_ == ReviewPart::None) return out;
@@ -165,7 +182,15 @@ AnswerOutcome ReviewQueue::answer(AnswerStatus status) {
                                           : (item.needsMeaning && !item.meaningDone);
         const bool otherAttempted = meaning ? item.readingAttempted : item.meaningAttempted;
         if (otherPending && !otherAttempted) {
-            part_ = meaning ? ReviewPart::Reading : ReviewPart::Meaning;
+            if (backToBack_ || queue_.size() == 1) {
+                // On, or a single-item queue that must not spin: ask the other
+                // part of the same item next.
+                part_ = meaning ? ReviewPart::Reading : ReviewPart::Meaning;
+            } else {
+                // REV-09 off: let another item ask next; the failed part comes
+                // back later with the same attempted flag.
+                interleaveFront();
+            }
             out.advanced = true;
             return out;
         }
@@ -204,6 +229,13 @@ AnswerOutcome ReviewQueue::answer(AnswerStatus status) {
         requeueFront();
         out.advanced = true;
         out.requeued = true;
+        return out;
+    }
+
+    // REV-09 off: give the next item a turn and keep the part just answered.
+    if (!backToBack_) {
+        interleaveFront();
+        out.advanced = true;
         return out;
     }
 

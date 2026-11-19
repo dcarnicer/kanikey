@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "wk/AnswerDisplay.h"
+#include "wk/ReviewQueue.h"
 #include "wk/Text.h"
 #include "wk/Types.h"
 
@@ -134,6 +135,17 @@ static void test_first_sentence_empty() {
     TEST_ASSERT_EQUAL_STRING("", firstSentence("   ").c_str());
 }
 
+// ------------------------------------------------------------- REV-06
+
+static void test_auto_advance_due() {
+    TEST_ASSERT_FALSE(autoAdvanceDue(0, 10000));  // Off never advances
+    TEST_ASSERT_FALSE(autoAdvanceDue(500, 0));
+    TEST_ASSERT_FALSE(autoAdvanceDue(500, 499));
+    TEST_ASSERT_TRUE(autoAdvanceDue(500, 500));
+    TEST_ASSERT_TRUE(autoAdvanceDue(500, 501));
+    TEST_ASSERT_TRUE(autoAdvanceDue(2000, 2000));
+}
+
 }  // namespace
 
 void run_rev_tests() {
@@ -150,4 +162,5 @@ void run_rev_tests() {
     RUN_TEST(test_first_sentence_without_stop);
     RUN_TEST(test_first_sentence_trims_leading_space);
     RUN_TEST(test_first_sentence_empty);
+    RUN_TEST(test_auto_advance_due);
 }

@@ -40,6 +40,15 @@ void buildFive(ReviewQueue* q, std::vector<Subject>* subjects,
     q->build(*assignments, *subjects, 1000, 0);
 }
 
+// Two due subjects, no limit: interleaving must put the answered item behind
+// exactly one other item regardless of the shuffle.
+void buildTwo(ReviewQueue* q, std::vector<Subject>* subjects,
+              std::vector<Assignment>* assignments) {
+    for (uint32_t i = 1; i <= 2; ++i) subjects->push_back(kanji(i));
+    for (uint32_t i = 1; i <= 2; ++i) assignments->push_back(assignment(10 + i, i));
+    q->build(*assignments, *subjects, 1000, 0);
+}
+
 }  // namespace
 
 static void test_wrong_meaning_then_correct_reading_requeues() {
@@ -155,9 +164,147 @@ static void test_both_parts_correct_completes() {
     TEST_ASSERT_EQUAL(1, q.completedCount());
 }
 
+// ------------------------------------------------------------- REV-09
+
+static void test_back_to_back_on_asks_other_part() {
+    const Subject s = kanji(1);
+    ReviewQueue q;
+    q.setBackToBack(true);
+    q.build({assignment(10, s.id)}, {s}, 1000);
+    TEST_ASSERT_EQUAL(ReviewPart::Meaning, q.part());
+
+    const AnswerOutcome o = q.answer(AnswerStatus::Correct);
+    TEST_ASSERT_TRUE(o.advanced);
+    TEST_ASSERT_FALSE(o.completed);
+    TEST_ASSERT_EQUAL(ReviewPart::Reading, q.part());
+    TEST_ASSERT_EQUAL(1, q.remaining());
+    TEST_ASSERT_EQUAL(s.id, q.current()->subjectId);
+}
+
+static void test_back_to_back_off_interleaves_two_items() {
+    std::vector<Subject> subjects;
+    std::vector<Assignment> assignments;
+    ReviewQueue q;
+    q.setBackToBack(false);
+    buildTwo(&q, &subjects, &assignments);
+    const uint32_t first = q.current()->subjectId;
+    const uint32_t second = q.queue()[1].subjectId;
+
+    const AnswerOutcome o = q.answer(AnswerStatus::Correct);
+    TEST_ASSERT_TRUE(o.advanced);
+    TEST_ASSERT_FALSE(o.completed);
+    TEST_ASSERT_EQUAL(2, q.remaining());
+    TEST_ASSERT_EQUAL(second, q.current()->subjectId);
+    TEST_ASSERT_EQUAL(first, q.queue()[1].subjectId);
+}
+
+static void test_back_to_back_off_preserves_done_part() {
+    std::vector<Subject> subjects;
+    std::vector<Assignment> assignments;
+    ReviewQueue q;
+    q.setBackToBack(false);
+    buildTwo(&q, &subjects, &assignments);
+    const uint32_t first = q.current()->subjectId;
+    q.answer(AnswerStatus::Correct);  // meaning of the first item
+
+    const SessionItem* moved = nullptr;
+    for (const SessionItem& item : q.queue())
+        if (item.subjectId == first) moved = &item;
+    TEST_ASSERT_NOT_NULL(moved);
+    TEST_ASSERT_TRUE(moved->meaningDone);
+    TEST_ASSERT_FALSE(moved->readingDone);
+    TEST_ASSERT_TRUE(moved->meaningAttempted);
+    TEST_ASSERT_FALSE(moved->readingAttempted);
+}
+
+static void test_back_to_back_off_last_part_completes() {
+    const Subject s = kanji(1);
+    ReviewQueue q;
+    q.setBackToBack(false);
+    q.build({assignment(10, s.id)}, {s}, 1000);
+
+    AnswerOutcome o = q.answer(AnswerStatus::Correct);
+    TEST_ASSERT_FALSE(o.completed);
+    TEST_ASSERT_EQUAL(ReviewPart::Reading, q.part());
+    TEST_ASSERT_EQUAL(1, q.remaining());
+
+    o = q.answer(AnswerStatus::Correct);
+    TEST_ASSERT_TRUE(o.advanced);
+    TEST_ASSERT_TRUE(o.completed);
+    TEST_ASSERT_TRUE(q.empty());
+    TEST_ASSERT_EQUAL(1, q.completedCount());
+}
+
+static void test_back_to_back_off_wrong_requeues_other_part() {
+    std::vector<Subject> subjects;
+    std::vector<Assignment> assignments;
+    ReviewQueue q;
+    q.setBackToBack(false);
+    buildTwo(&q, &subjects, &assignments);
+    const uint32_t first = q.current()->subjectId;
+    const uint32_t second = q.queue()[1].subjectId;
+
+    const AnswerOutcome o = q.answer(AnswerStatus::Incorrect);
+    TEST_ASSERT_TRUE(o.counted);
+    TEST_ASSERT_TRUE(o.advanced);
+    TEST_ASSERT_FALSE(o.completed);
+    TEST_ASSERT_EQUAL(second, q.current()->subjectId);
+    TEST_ASSERT_EQUAL(first, q.queue()[1].subjectId);
+    const SessionItem& failed = q.queue()[1];
+    TEST_ASSERT_FALSE(failed.meaningDone);
+    TEST_ASSERT_FALSE(failed.readingDone);
+    TEST_ASSERT_TRUE(failed.meaningAttempted);
+    TEST_ASSERT_FALSE(failed.readingAttempted);
+}
+
+static void test_back_to_back_off_single_item_does_not_stall() {
+    const Subject s = kanji(1);
+    ReviewQueue q;
+    q.setBackToBack(false);
+    q.build({assignment(10, s.id)}, {s}, 1000);
+
+    // A wrong meaning still asks the reading (the same item) next, so the
+    // single-item queue cannot spin on the failed part.
+    AnswerOutcome o = q.answer(AnswerStatus::Incorrect);
+    TEST_ASSERT_TRUE(o.advanced);
+    TEST_ASSERT_EQUAL(ReviewPart::Reading, q.part());
+    TEST_ASSERT_EQUAL(1, q.remaining());
+
+    // The correct reading requeues the item; the failed meaning is asked again.
+    o = q.answer(AnswerStatus::Correct);
+    TEST_ASSERT_TRUE(o.advanced);
+    TEST_ASSERT_FALSE(o.completed);
+    TEST_ASSERT_EQUAL(ReviewPart::Meaning, q.part());
+    TEST_ASSERT_EQUAL(1, q.remaining());
+
+    o = q.answer(AnswerStatus::Correct);
+    TEST_ASSERT_TRUE(o.completed);
+    TEST_ASSERT_TRUE(q.empty());
+}
+
+static void test_back_to_back_off_same_item_not_first() {
+    std::vector<Subject> subjects;
+    std::vector<Assignment> assignments;
+    ReviewQueue q;
+    q.setBackToBack(false);
+    buildTwo(&q, &subjects, &assignments);
+    const uint32_t first = q.current()->subjectId;
+
+    q.answer(AnswerStatus::Correct);
+    TEST_ASSERT_NOT_EQUAL(first, q.current()->subjectId);
+    TEST_ASSERT_NOT_EQUAL(first, q.queue().front().subjectId);
+}
+
 void run_queue_tests() {
     RUN_TEST(test_wrong_meaning_then_correct_reading_requeues);
     RUN_TEST(test_wrong_reading_then_correct_meaning_requeues);
     RUN_TEST(test_requeued_item_returns_after_four);
     RUN_TEST(test_both_parts_correct_completes);
+    RUN_TEST(test_back_to_back_on_asks_other_part);
+    RUN_TEST(test_back_to_back_off_interleaves_two_items);
+    RUN_TEST(test_back_to_back_off_preserves_done_part);
+    RUN_TEST(test_back_to_back_off_last_part_completes);
+    RUN_TEST(test_back_to_back_off_wrong_requeues_other_part);
+    RUN_TEST(test_back_to_back_off_single_item_does_not_stall);
+    RUN_TEST(test_back_to_back_off_same_item_not_first);
 }

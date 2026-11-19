@@ -109,6 +109,9 @@ struct ReviewState {
     bool gReviewActive = false;
     bool gReviewSummary = false;
     bool gFeedback = false;
+    // REV-06: millis() when correct feedback appeared; 0 when the auto-advance
+    // timer is off.
+    uint32_t gFeedbackCorrectAt = 0;
     bool gNeedsSubmit = false;
     uint32_t gPendingSeq = 0;  // outbox record queued at completion, sent on Enter
     bool gFeedbackCompleted = false;

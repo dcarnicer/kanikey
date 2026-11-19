@@ -88,7 +88,7 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const ReviewView&
     d.setTextSize(1);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString(view.header ? view.header : "REVIEWS", 6, 3);
-    if (view.srsStage > 0) {
+    if (view.srsStage > 0 && !view.minimalHeader) {
         char srs[24];
         if (s->hasReviewStats)
             snprintf(srs, sizeof srs, "SRS %u  %u%%", static_cast<unsigned>(view.srsStage),
