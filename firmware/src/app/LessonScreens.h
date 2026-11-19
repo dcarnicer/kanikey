@@ -37,14 +37,20 @@ struct LessonEmptyView {
 // Draws the empty lesson state into d.
 void drawLessonEmptyScreen(lgfx::LovyanGFX& d, const LessonEmptyView& view);
 
+struct LessonPageView {
+    std::string title;              // "Meaning", "Reading", ...
+    std::vector<std::string> lines; // pre-wrapped; at most three per screen page
+};
+
 struct LessonCardView {
     const kk::Subject* subject = nullptr;
     std::string meaning;
     std::string reading;
     std::string header;  // "2/5 p1/3" from the lesson browser
-    std::vector<std::string> lines;  // pre-wrapped mnemonic and notes
+    // One entry per drawn card page. A long topic body is split over several
+    // entries, each carrying the topic title.
+    std::vector<LessonPageView> pages;
     size_t page = 0;
-    size_t pages = 1;
     size_t index = 0;
     size_t total = 0;
 };
