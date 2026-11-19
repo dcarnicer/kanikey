@@ -301,6 +301,35 @@ def progress(im: Image.Image, x: int, y: int, w: int, h: int, done: int, total: 
         rect(im, x, y, max(1, w * done // total), h, fill)
 
 
+def clipped(s: str, max_width: int, font: int = 0, size: int = 1) -> str:
+    """Trim from the end until the string fits, like the screen's while loop."""
+    while len(s) > 1 and text_width(s, font, size) > max_width:
+        s = s[:-1]
+    return s
+
+
+def list_window(count: int, selected: int, visible: int) -> tuple[int, int]:
+    """The firmware's listWindow(): centred selection, clamped first row."""
+    if count <= 0:
+        return 0, 0
+    selected = 0 if selected < 0 else count - 1 if selected >= count else selected
+    first = selected - visible // 2
+    max_first = max(0, count - visible)
+    first = min(max(first, 0), max_first)
+    return first, min(visible, count - first)
+
+
+def scrollbar(im: Image.Image, x: int, y: int, height: int, count: int, visible: int,
+              first: int) -> None:
+    if count <= visible or visible <= 0:
+        return
+    rect(im, x, y, 2, height, LINE)
+    thumb = max(10, height * visible // count)
+    max_first = count - visible
+    thumb_y = y + ((height - thumb) * first // max_first if max_first > 0 else 0)
+    rect(im, x, thumb_y, 2, thumb, ACCENT_HI)
+
+
 # --- Japanese pack stand-in ---------------------------------------------------
 def find_font() -> Path | None:
     candidates = [
@@ -345,7 +374,7 @@ def jp_fit(im: Image.Image, x: int, y: int, s: str, prefer: int, max_width: int,
 
 
 # --- screens ------------------------------------------------------------------
-def screen_home() -> Image.Image:
+def screen_home(outbox: bool = False) -> Image.Image:
     im = Image.new("RGB", (W, H), BG)
     text(im, 6, 2, "KaniKey", 2, 1, BRAND)
     text(im, 198, 5, "Synced 14:47", 1, 1, DIM, "rt")
@@ -377,8 +406,15 @@ def screen_home() -> Image.Image:
         rect(im, x, 107, 4, 4, color)
         text(im, x + 5, 106, label, 0, 1, DIM)
 
-    text(im, 8, 117, "L12 42% since 03 Feb", 0, 1, FAINT)
-    text(im, 8, 125, "Enter  L  T  P  S", 0, 1, FAINT)
+    # The outbox line replaces the level line and changes the hint to the
+    # attention variant (HomeScreen.cpp:117-138).
+    if outbox:
+        text(im, 8, 117, "Outbox: 2 need attention", 0, 1, ERR)
+        hint = "O: outbox  Enter  S  Esc: menu"
+    else:
+        text(im, 8, 117, "L12 42% since 03 Feb", 0, 1, FAINT)
+        hint = "Enter: reviews  L  S  Esc: menu"
+    text(im, 8, 125, hint, 0, 1, FAINT)
     return im
 
 
@@ -434,24 +470,38 @@ def screen_review_feedback(correct: bool) -> Image.Image:
         text(im, 100, 38, "You typed", 0, 1, FAINT)
         text(im, 100, 47, "eat", 1, 1, DIM)
         text(im, 100, 65, "Answer", 0, 1, FAINT)
-        text(im, 100, 74, "eat", 1, 1, OK)
+        text(im, 100, 74, "eat / food", 0, 1, OK)
     else:
         pill(im, 100, 20, "NOT QUITE", ERR, ERR_BG)
         text(im, 100, 38, "You typed", 0, 1, FAINT)
         text(im, 100, 47, "eta", 1, 1, DIM)
         text(im, 100, 65, "Answer", 0, 1, FAINT)
-        text(im, 100, 74, "eat", 1, 1, ERR)
-        text(im, 100, 92, "Incorrect meaning", 0, 1, FAINT)
+        text(im, 100, 74, "eat / food", 0, 1, ERR)
+        # REV-03: the first hint sentence, never a generic "Incorrect meaning".
+        text(im, 100, 92, "Picture eating a meal.", 0, 1, FAINT)
     text(im, 6, 125, "Enter: next  Tab: details", 0, 1, FAINT)
     text(im, 233, 125, "Esc: quit", 0, 1, FAINT, "rt")
+    return im
+
+
+def screen_review_check() -> Image.Image:
+    """R6 Strict typo warning: pill and message only, no typed/answer rows."""
+    im = Image.new("RGB", (W, H), BG)
+    review_header(im)
+    review_subject(im)
+    pill(im, 100, 20, "CHECK", WARN, SURFACE_HI)
+    text(im, 100, 40, "Close. Check the", 0, 1, FAINT)
+    text(im, 100, 48, "spelling", 0, 1, FAINT)
+    text(im, 6, 125, "Enter: edit", 0, 1, FAINT)
+    text(im, 233, 125, "Esc: pause", 0, 1, FAINT, "rt")
     return im
 
 
 def screen_lesson() -> Image.Image:
     im = Image.new("RGB", (W, H), BG)
     text(im, 6, 3, "LESSON", 1, 1, DIM)
-    text(im, 233, 5, "p1/3", 0, 1, FAINT, "rt")
-    text(im, 233 - text_width("p1/3", 0) - 8, 5, "2/5", 0, 1, DIM, "rt")
+    # One header string: card position then mnemonic page (LessonSession.cpp).
+    text(im, 233, 5, "2/5 p1/3", 0, 1, DIM, "rt")
     progress(im, 0, 14, 240, 2, 1, 5, ACCENT_HI, SURFACE_HI)
 
     rect(im, 4, 20, 74, 64, SURFACE, LINE)
@@ -460,16 +510,18 @@ def screen_lesson() -> Image.Image:
     text(im, 86, 38, "rest", 1, 1, TEXT)
     jp(im, 86, 80, "きゅう", 32, READING, "ls")
 
+    # LES-06: the topic title above three 6x8 body lines.
+    text(im, 5, 87, "Meaning", 0, 1, ACCENT_HI)
     lines = [
-        "A person leans against a tree",
-        "in the shade. That is rest.",
-        "Picture yourself stopping there.",
+        "Meanings: rest. A person leans against",
+        "a tree in the shade and takes a break.",
+        "Picture yourself resting there.",
     ]
     for i, line_text in enumerate(lines):
-        text(im, 5, 92 + i * 9, line_text, 0, 1, DIM)
+        text(im, 5, 96 + i * 9, line_text, 0, 1, DIM)
 
-    text(im, 5, 125, "Space p  Q quiz", 0, 1, FAINT)
-    text(im, 233, 125, "Enter start  Esc list", 0, 1, FAINT, "rt")
+    text(im, 5, 125, "Q quiz", 0, 1, FAINT)
+    text(im, 233, 125, "Enter/Space: next  Esc: list", 0, 1, FAINT, "rt")
     return im
 
 
@@ -520,35 +572,126 @@ def screen_sync() -> Image.Image:
     return im
 
 
-def screen_settings() -> Image.Image:
-    im = Image.new("RGB", (W, H), BG)
+def _settings_list(im: Image.Image, rows: list[tuple[str, str]], title: str,
+                   selected: int, visible: int = 7) -> None:
     text(im, 6, 2, "KaniKey", 2, 1, BRAND)
-    text(im, 7, 22, "settings", 1, 1, DIM)
+    text(im, 7, 22, title, 1, 1, DIM)
     text(im, 232, 5, "Esc: back", 0, 1, FAINT, "rt")
     line(im, 4, 36, 235, 36, LINE)
 
-    rows = [
-        ("Brightness", "128"),
-        ("Dim after", "30s"),
-        ("Blank after", "60s"),
-        ("Sleep after", "2m"),
-        ("Review batch", "20"),
-        ("Order", "Meaning"),
-        ("Lesson batch", "5"),
-    ]
-    for i, (label, value) in enumerate(rows):
-        y = 42 + i * 11
-        focus = i == 0
+    first, drawn = list_window(len(rows), selected, visible)
+    for r in range(drawn):
+        i = first + r
+        label, value = rows[i]
+        y = 42 + r * 11
+        focus = i == selected
         if focus:
             rect(im, 4, y - 2, 228, 11, SURFACE_HI)
             rect(im, 4, y - 2, 2, 11, ACCENT)
         text(im, 10, y, label, 0, 1, TEXT if focus else DIM)
         text(im, 228, y, value, 0, 1, ACCENT_HI if focus else FAINT, "rt")
 
-    # 19 rows total; the seven-row window sits at the top.
-    rect(im, 235, 42, 2, 66, LINE)
-    rect(im, 235, 42, 2, max(10, 66 * 7 // 19), ACCENT_HI)
-    text(im, 8, 123, "Enter: change  Esc: back", 0, 1, FAINT)
+    scrollbar(im, 235, 42, 66, len(rows), visible, first)
+
+
+def screen_settings() -> Image.Image:
+    im = Image.new("RGB", (W, H), BG)
+    rows = [
+        ("Reviews", "12 settings"),
+        ("Lessons", "6 settings"),
+        ("Study", "5 settings"),
+        ("Sync & data", "6 settings"),
+        ("Display & power", "6 settings"),
+        ("Reminders & sound", "7 settings"),
+        ("Account", "token set"),
+        ("System", "3 settings"),
+    ]
+    _settings_list(im, rows, "settings", 0)
+    text(im, 8, 123, "Enter: open  Esc: back", 0, 1, FAINT)
+    return im
+
+
+def screen_settings_reviews() -> Image.Image:
+    """Settings > Reviews scrolled to the live review options (R6-R12)."""
+    im = Image.new("RGB", (W, H), BG)
+    rows = [
+        ("Batch size", "20"),
+        ("Order", "Account preference"),
+        ("Type order", "Off"),
+        ("First question", "Meaning"),
+        ("Back-to-back", "On"),
+        ("Typos", "WaniKani"),
+        ("Wrong answer actions", "Off"),
+        ("Auto-advance on correct", "Off"),
+        ("Details on wrong", "Off"),
+        ("Header info", "SRS+accuracy"),
+        ("Prioritize critical", "Off"),
+        ("Submit reviews", "At session end"),
+    ]
+    _settings_list(im, rows, "Reviews", 9)
+    text(im, 8, 123, "SRS and accuracy in the header", 0, 1, FAINT)
+    return im
+
+
+def screen_wifi_scan() -> Image.Image:
+    im = Image.new("RGB", (W, H), BG)
+    text(im, 6, 2, "KaniKey", 2, 1, BRAND)
+    text(im, 7, 22, "Wi-Fi · 2.4 GHz networks", 1, 1, DIM)
+    text(im, 232, 5, "Esc: back", 0, 1, FAINT, "rt")
+    line(im, 4, 36, 235, 36, LINE)
+
+    rows = [
+        ("dev-net", "||||", "WPA2"),
+        ("dev-net-guest", "|||", "WPA2"),
+        ("Studio 2.4", "|||", "WPA2/3"),
+        ("cafe-wifi", "||", "WPA2"),
+        ("Lobby", "|", "WPA2"),
+        ("OldRouter", "|", "WEP"),
+        ("+ Enter network name", "", "hidden"),
+    ]
+    visible = 6
+    selected = 0
+    first, drawn = list_window(len(rows), selected, visible)
+    for r in range(drawn):
+        i = first + r
+        ssid, signal, security = rows[i]
+        y = 42 + r * 11
+        focus = i == selected
+        if focus:
+            rect(im, 4, y - 2, 228, 11, SURFACE_HI)
+            rect(im, 4, y - 2, 2, 11, ACCENT)
+        manual = i == len(rows) - 1
+        label_color = (ACCENT_HI if focus else DIM) if manual else (TEXT if focus else DIM)
+        text(im, 9, y, clipped(ssid, 142), 0, 1, label_color)
+        if manual:
+            text(im, 228, y, "hidden", 0, 1, FAINT, "rt")
+        else:
+            text(im, 228, y, security, 0, 1, ACCENT_HI if focus else FAINT, "rt")
+            if signal:
+                text(im, 228 - text_width(security) - 5, y, signal, 0, 1,
+                     TEXT if focus else DIM, "rt")
+    scrollbar(im, 235, 42, 66, len(rows), visible, first)
+    text(im, 8, 124, "Enter: choose  R: rescan", 0, 1, FAINT)
+    return im
+
+
+def screen_wifi_password() -> Image.Image:
+    im = Image.new("RGB", (W, H), BG)
+    text(im, 6, 2, "KaniKey", 2, 1, BRAND)
+    text(im, 7, 22, "Wi-Fi · password", 1, 1, DIM)
+    text(im, 232, 5, "Esc: back", 0, 1, FAINT, "rt")
+    line(im, 4, 36, 235, 36, LINE)
+
+    text(im, 8, 44, "Network", 0, 1, DIM)
+    text(im, 8, 55, "dev-net", 1, 1, TEXT)
+    text(im, 8, 78, "Password", 0, 1, DIM)
+    text(im, 232, 78, "Tab: show", 0, 1, ACCENT_HI, "rt")
+
+    rect(im, 6, 88, 228, 18, SURFACE, LINE)
+    text(im, 10, 93, "**********", 1, 1, TEXT)
+    rect(im, 10 + text_width("**********") + 1, 93, 2, 10, ACCENT_HI)
+    text(im, 8, 112, "8-63 characters", 0, 1, FAINT)
+    text(im, 8, 124, "Enter: connect  Esc: back", 0, 1, FAINT)
     return im
 
 
@@ -568,17 +711,67 @@ def screen_setup() -> Image.Image:
     return im
 
 
+def screen_setup_station() -> Image.Image:
+    im = Image.new("RGB", (W, H), BG)
+    text(im, 6, 2, "KaniKey", 2, 1, BRAND)
+    text(im, 7, 22, "setup · Wi-Fi", 1, 1, DIM)
+    text(im, 233, 5, "84%", 1, 1, DIM, "rt")
+
+    text(im, 8, 36, "Connected", 1, 1, OK)
+    text(im, 8, 48, "dev-net", 2, 1, TEXT)
+    text(im, 8, 66, "Open on this network", 1, 1, DIM)
+    text(im, 8, 76, "http://192.168.1.42/", 1, 1, ACCENT_HI)
+    text(im, 8, 88, "Page code 123456", 2, 1, TEXT)
+    text(im, 8, 106, "Token OK: dev L12", 1, 1, OK)
+    # ONB-01 status pair. This is the message-empty branch; a portal notice
+    # replaces the Font line on a live station screen.
+    text(im, 8, 113, "Font: 7269 glyphs, 64/32/20 px", 0, 1, FAINT)
+    text(im, 8, 121, "Rad: 498 radicals", 0, 1, FAINT)
+    text(im, 8, 128, "Enter code on page  Esc: cancel", 0, 1, FAINT)
+    return im
+
+
+def screen_about() -> Image.Image:
+    im = Image.new("RGB", (W, H), BG)
+    text(im, 6, 2, "KaniKey", 2, 1, BRAND)
+    text(im, 7, 22, "about · unofficial", 1, 1, DIM)
+    text(im, 232, 5, "Esc: back", 0, 1, FAINT, "rt")
+    text(im, 7, 34, "KaniKey 0.1.0 (ota_0)", 1, 1, TEXT)
+
+    lines = [
+        ("Build Nov 19 2026 14:32", FAINT, 52),
+        ("Font: 7269 glyphs, 64/32/20 px", OK, 62),
+        ("Rad: 498 radicals", OK, 72),
+        ("Cache: 20 batch, 28 due", DIM, 82),
+        ("Last sync: 14:47", DIM, 92),
+        ("Wi-Fi: dev-net 192.168.1.42", DIM, 102),
+        ("Token: configured", DIM, 112),
+        ("Zone: Europe/Berlin", FAINT, 122),
+        ("Heap: 145000 free / 110000 largest", FAINT, 126),
+    ]
+    for label, color, y in lines:
+        text(im, 7, y, label, 0, 1, color)
+    return im
+
+
 SCREENS = [
     ("home", screen_home),
+    ("home-outbox", lambda: screen_home(True)),
     ("review-meaning", screen_review_meaning),
     ("review-reading", screen_review_reading),
     ("review-correct", lambda: screen_review_feedback(True)),
     ("review-wrong", lambda: screen_review_feedback(False)),
+    ("review-check", screen_review_check),
     ("lesson", screen_lesson),
     ("summary", screen_summary),
     ("sync", screen_sync),
     ("settings", screen_settings),
+    ("settings-reviews", screen_settings_reviews),
     ("setup", screen_setup),
+    ("setup-station", screen_setup_station),
+    ("wifi-scan", screen_wifi_scan),
+    ("wifi-password", screen_wifi_password),
+    ("about", screen_about),
 ]
 
 
@@ -595,7 +788,8 @@ def save(name: str, im: Image.Image) -> Path:
 
 
 def overview(paths: list[tuple[str, Path]]) -> Path:
-    cols, rows = 2, 5
+    cols = 3
+    rows = (len(paths) + cols - 1) // cols
     cell_w, cell_h = W * 2, H * 2
     gap = 16
     top = 44
