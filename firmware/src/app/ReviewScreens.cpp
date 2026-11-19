@@ -2,10 +2,12 @@
 // startWrite()/endWrite() (the caller owns the transfer window).
 #include "app/ReviewScreens.h"
 
+#include <algorithm>
 #include <cstdio>
 
 #include "ui/Text.h"
 #include "ui/Widgets.h"
+#include "wk/SessionStats.h"
 #include "wk/Text.h"
 
 namespace kk::app {
@@ -18,6 +20,23 @@ std::string subjectMainMeaning(const kk::Subject& s) {
         if (m.accepted) return m.text;
     if (!s.meanings.empty()) return s.meanings[0].text;
     return std::string();
+}
+
+// REV-11: the reading shown on a summary row, primary first.
+std::string subjectPrimaryReading(const kk::Subject& s) {
+    for (const kk::Reading& r : s.readings)
+        if (r.accepted && r.primary) return r.text;
+    for (const kk::Reading& r : s.readings)
+        if (r.accepted) return r.text;
+    return std::string();
+}
+
+// REV-11: the meaning column is the subject's primary meaning, not just the
+// first accepted one.
+std::string subjectPrimaryMeaning(const kk::Subject& s) {
+    for (const kk::Meaning& m : s.meanings)
+        if (m.accepted && m.primary) return m.text;
+    return subjectMainMeaning(s);
 }
 
 const char* kindName(kk::SubjectType type) {
@@ -71,6 +90,100 @@ void drawFeedbackLine(lgfx::LovyanGFX& d, const ReviewView& view, int x, int y, 
     }
     const std::string text = feedbackLine(view);
     if (!text.empty()) drawWrapped(d, text, x, y, w, 2, ui::kFaint, ui::kBg, true);
+}
+
+// REV-11: the first code point of a subject's character string, for the small
+// 20 px prompt on a mistake row. Multi-character vocabulary shows its first
+// character, like the review prompt's compact form.
+std::string firstCodePoint(const std::string& text) {
+    const char* p = text.c_str();
+    const char* start = p;
+    if (kk::utf8Next(&p) == 0) return std::string();
+    return std::string(start, static_cast<size_t>(p - start));
+}
+
+// REV-11: one summary mistake row. Left to right: the prompt character, the
+// primary meaning plus the wrong-answer/stage line, and the reading. The
+// selected row gets the highlight background the whole way across.
+void drawSummaryMistakeRow(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
+                           kk::GlyphPack& radicalPack, const ReviewSummaryItem& item,
+                           int x, int y, int w, int h, bool selected) {
+    const uint16_t bg = selected ? ui::kSurfaceHi : ui::kBg;
+    if (selected) d.fillRect(x, y, w, h, bg);
+    const kk::Subject* s = item.subject;
+    const kk::ClipRect clip{x, y, x + w, y + h};
+    if (s) {
+        const int cx = x + 12;
+        const int cy = y + h / 2;
+        const std::string prompt = firstCodePoint(s->characters);
+        const bool drawn =
+            (s->type == kk::SubjectType::Radical &&
+             radicalPack.drawRadical(d, s->id, cx, cy, 20, 20, ui::kText, bg, clip)) ||
+            (!prompt.empty() &&
+             fontPack.drawTextCentered(d, prompt, 20, cx, cy, 20, 20, ui::kText, bg, clip));
+        if (!drawn) {
+            d.setTextFont(0);
+            d.setTextSize(1);
+            d.setTextColor(ui::kWarn, bg);
+            d.drawString("?", x + 9, y + 8);
+        }
+    }
+
+    // The reading column is fixed so rows line up; a missing reading simply
+    // leaves it empty (radicals).
+    const int textX = x + 26;
+    const int right = x + w - 4;
+    const int readLeft = right - 78;
+    const int textRight = readLeft - 5;
+
+    d.setTextFont(1);
+    d.setTextSize(1);
+    std::string meaning = s ? subjectPrimaryMeaning(*s) : std::string();
+    if (meaning.empty()) meaning = "-";
+    while (meaning.size() > 1 && d.textWidth(meaning.c_str()) > textRight - textX)
+        meaning.pop_back();
+    d.setTextColor(ui::kText, bg);
+    d.drawString(meaning.c_str(), textX, y + 2);
+
+    if (s) {
+        const std::string reading = subjectPrimaryReading(*s);
+        const kk::ClipRect readClip{readLeft, y, right, y + h};
+        if (!reading.empty() &&
+            !drawJapaneseFit(d, fontPack, reading, readLeft, right, y + 18, 78,
+                             ui::kReading, bg, readClip)) {
+            d.setTextFont(0);
+            d.setTextSize(1);
+            d.setTextColor(ui::kWarn, bg);
+            d.drawString("no glyph", readLeft, y + 8);
+        }
+    }
+
+    // The stage sits at the right edge of the text column; `pending` when the
+    // POST has not answered this assignment yet.
+    char stage[24];
+    kk::formatSummaryStage(item.stageValid, item.stageFrom, item.stageTo, stage, sizeof stage);
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextDatum(lgfx::top_right);
+    d.setTextColor(item.stageValid && item.stageTo > item.stageFrom ? ui::kOk : ui::kFaint,
+                   bg);
+    d.drawString(stage, textRight, y + 13);
+    d.setTextDatum(lgfx::top_left);
+
+    // The last typed wrong meaning when it is known; otherwise both archived
+    // counters. The typed reading is kept but not drawn: kana needs a 20 px
+    // pack glyph and the reading column already shows the accepted answer.
+    char count[40];
+    snprintf(count, sizeof count, "M%u R%u", static_cast<unsigned>(item.incorrectMeaning),
+             static_cast<unsigned>(item.incorrectReading));
+    std::string wrong =
+        item.incorrectMeaning > 0 && !item.wrongMeaning.empty()
+            ? "x " + item.wrongMeaning
+            : std::string(count);
+    const int wrongMax = textRight - textX - 50;  // reserve the stage text
+    while (wrong.size() > 1 && d.textWidth(wrong.c_str()) > wrongMax) wrong.pop_back();
+    d.setTextColor(item.incorrectMeaning || item.incorrectReading ? ui::kWarn : ui::kFaint, bg);
+    d.drawString(wrong.c_str(), textX, y + 13);
 }
 
 }  // namespace
@@ -469,15 +582,127 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     d.drawString("Space: page  Tab/Esc: back", 5, 125);
 }
 
-void drawReviewSummaryScreen(lgfx::LovyanGFX& d, const ReviewSummaryView& view) {
+void drawReviewSummaryScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
+                             kk::GlyphPack& radicalPack, const ReviewSummaryView& view) {
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
+
+    // REV-11: the mistake list is a page of at most three rows. The selection
+    // drives the window so Up/Down can walk a longer list.
+    const int count = static_cast<int>(view.items.size());
+    int selected = view.selected;
+    if (selected < 0) selected = 0;
+    if (count > 0 && selected >= count) selected = count - 1;
+    const int first = kk::summaryWindowStart(selected, count, 3);
 
     d.setTextFont(1);
     d.setTextSize(1);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString(view.practice ? "PRACTICE" : "SESSION", 6, 3);
+
+    if (view.focus == 1) {
+        // The header carries the page counter and the way back to the stats;
+        // the footer below stays the same as the unfocused summary.
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextDatum(lgfx::top_right);
+        if (count > 0) {
+            char counter[16];
+            const int last = std::min(first + 3, count);
+            snprintf(counter, sizeof counter, "%d-%d/%d", first + 1, last, count);
+            d.drawString(counter, 233, 5);
+            d.drawString("Esc: stats", 233 - d.textWidth(counter) - 8, 5);
+        } else {
+            d.drawString("Esc: stats", 233, 5);
+        }
+        d.setTextDatum(lgfx::top_left);
+    }
+
+    // REV-11: the list needs three 20 px prompt glyphs, so while it is focused
+    // the big values collapse to two compact lines. Esc brings the original
+    // stats layout back.
+    if (view.focus == 1) {
+        char line[64];
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(ui::kDim, ui::kBg);
+        snprintf(line, sizeof line, "%u reviews  %u%%  %s", view.reviews, view.accuracy,
+                 view.duration);
+        d.drawString(line, 8, 15);
+
+        if (view.practice) {
+            d.setTextColor(ui::kFaint, ui::kBg);
+            d.drawString("Nothing was sent to WaniKani", 8, 24);
+            if (view.skipped) {
+                snprintf(line, sizeof line, "%u skipped", view.skipped);
+                d.setTextDatum(lgfx::top_right);
+                d.setTextColor(ui::kWarn, ui::kBg);
+                d.drawString(line, 232, 24);
+                d.setTextDatum(lgfx::top_left);
+            }
+        } else {
+            if (view.stageUps) {
+                snprintf(line, sizeof line, "%u item%s moved up", view.stageUps,
+                         view.stageUps == 1 ? "" : "s");
+                d.setTextColor(ui::kOk, ui::kBg);
+            } else {
+                snprintf(line, sizeof line, "No stage changes");
+                d.setTextColor(ui::kFaint, ui::kBg);
+            }
+            d.drawString(line, 8, 24);
+
+            char outbox[40];
+            if (view.sending)
+                snprintf(outbox, sizeof outbox, "Sending %u/%u", view.sent, view.sendTotal);
+            else if (view.attention)
+                snprintf(outbox, sizeof outbox, "%u need attention", view.attention);
+            else if (view.pending)
+                snprintf(outbox, sizeof outbox, "%u pending", view.pending);
+            else
+                snprintf(outbox, sizeof outbox, "All reviews sent");
+            d.setTextColor(view.sending ? ui::kWarn
+                           : view.attention ? ui::kErr
+                           : view.pending   ? ui::kWarn
+                                            : ui::kFaint,
+                           ui::kBg);
+            d.setTextDatum(lgfx::top_right);
+            d.drawString(outbox, 232, 24);
+            d.setTextDatum(lgfx::top_left);
+        }
+        d.drawFastHLine(8, 33, 224, ui::kLine);
+
+        if (count == 0) {
+            d.setTextFont(0);
+            d.setTextSize(1);
+            d.setTextColor(ui::kFaint, ui::kBg);
+            d.drawString("No mistakes", 8, 50);
+        } else {
+            for (int i = 0; i < 3; ++i) {
+                const int index = first + i;
+                if (index >= count) break;
+                drawSummaryMistakeRow(d, fontPack, radicalPack, view.items[index], 4,
+                                      38 + i * 26, 232, 24, index == selected);
+            }
+        }
+
+        if (view.sending) {
+            d.fillRect(8, 121, 224, 3, ui::kSurfaceHi);
+            const unsigned total = view.sendTotal ? view.sendTotal : 1;
+            const unsigned sent = view.sent > total ? total : view.sent;
+            d.fillRect(8, 121, static_cast<int>(224u * sent / total), 3, ui::kAccentHi);
+            d.setTextFont(0);
+            d.setTextSize(1);
+            d.setTextColor(ui::kFaint, ui::kBg);
+            d.drawString("Esc: stop", 8, 125);
+            return;
+        }
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(ui::kFaint, ui::kBg);
+        d.drawString(view.canNextBatch ? "Enter: home  R: next batch" : "Enter: home", 8, 125);
+        return;
+    }
 
     char reviews[16];
     snprintf(reviews, sizeof reviews, "%u", view.reviews);
@@ -592,7 +817,7 @@ void drawReviewSummaryScreen(lgfx::LovyanGFX& d, const ReviewSummaryView& view) 
         return;
     }
     d.setTextColor(ui::kFaint, ui::kBg);
-    d.drawString("Enter: home", 8, 125);
+    d.drawString(view.canNextBatch ? "Enter: home  R: next batch" : "Enter: home", 8, 125);
 }
 
 }  // namespace kk::app
