@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include <cmath>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -35,6 +36,7 @@
 #include "wk/ReviewStatistics.h"
 #include "wk/RomajiIme.h"
 #include "wk/SessionStats.h"
+#include "wk/SettingsModel.h"
 #include "wk/SrsCounts.h"
 #include "wk/Stats.h"
 #include "wk/SubjectCodec.h"
@@ -2706,6 +2708,220 @@ static void test_ota_url_resolution() {
     TEST_ASSERT_EQUAL(ManifestError::BadApp, r.error);
 }
 
+// --------------------------------------------------------------- settings
+static int gSettingsLoadCalls = 0;
+
+static int settingsTestReader(void* context, const char* nvsKey, int fallback) {
+    (void)context;
+    ++gSettingsLoadCalls;
+    if (std::strcmp(nvsKey, "bright") == 0) return 192;
+    if (std::strcmp(nvsKey, "order") == 0) return 0;
+    if (std::strcmp(nvsKey, "sleep") == 0) return 9999;  // not a choice
+    return fallback;
+}
+
+static bool isSettingSection(const char* section) {
+    static const char* const kSections[] = {
+        "Reviews", "Lessons", "Study", "Sync & data",
+        "Display & power", "Reminders & sound", "Account", "System",
+    };
+    for (const char* name : kSections)
+        if (std::strcmp(section, name) == 0) return true;
+    return false;
+}
+
+static void test_settings_registry_ids() {
+    size_t count = 0;
+    const SettingDef* all = settingsAll(&count);
+    TEST_ASSERT_NOT_NULL(all);
+    TEST_ASSERT_EQUAL(13, static_cast<int>(count));
+    for (size_t i = 0; i < count; ++i) {
+        const SettingDef& def = all[i];
+        TEST_ASSERT_NOT_NULL(def.id);
+        TEST_ASSERT_NOT_NULL(def.section);
+        TEST_ASSERT_NOT_NULL(def.label);
+        TEST_ASSERT_NOT_NULL(def.help);
+        TEST_ASSERT_GREATER_THAN(0, static_cast<int>(std::strlen(def.id)));
+        TEST_ASSERT_GREATER_THAN(0, static_cast<int>(std::strlen(def.section)));
+        TEST_ASSERT_GREATER_THAN(0, static_cast<int>(std::strlen(def.label)));
+        TEST_ASSERT_EQUAL_PTR(&all[i], settingById(def.id));
+        const bool keyed = def.kind == SettingKind::Choice || def.kind == SettingKind::Toggle;
+        if (keyed) {
+            TEST_ASSERT_NOT_NULL(def.nvsKey);
+            TEST_ASSERT_GREATER_THAN(0, static_cast<int>(std::strlen(def.nvsKey)));
+            TEST_ASSERT_LESS_OR_EQUAL(15, static_cast<int>(std::strlen(def.nvsKey)));
+            for (const char* c = def.nvsKey; *c; ++c)
+                TEST_ASSERT_TRUE((*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') ||
+                                 *c == '.' || *c == '_' || *c == '-');
+            TEST_ASSERT_NOT_NULL(def.choices);
+            TEST_ASSERT_GREATER_OR_EQUAL(2, def.choiceCount);
+            TEST_ASSERT_EQUAL_PTR(&all[i], settingByNvsKey(def.nvsKey));
+        } else {
+            TEST_ASSERT_NULL(def.nvsKey);
+            TEST_ASSERT_NULL(def.choices);
+            TEST_ASSERT_EQUAL(0, def.choiceCount);
+        }
+        for (size_t j = i + 1; j < count; ++j)
+            TEST_ASSERT_TRUE(std::strcmp(def.id, all[j].id) != 0);
+    }
+    TEST_ASSERT_NULL(settingById("nope"));
+    TEST_ASSERT_NULL(settingByNvsKey("nope"));
+}
+
+static void test_settings_registry_defaults() {
+    struct Expected {
+        const char* id;
+        const char* nvsKey;
+        int defaultValue;
+    };
+    static const Expected kExpected[] = {
+        {"P1", "bright", 128},  {"P2", "dim", 30},      {"P3", "blank", 60},
+        {"P4", "sleep", 120},   {"R1", "revsize", 20},   {"R4", "order", 1},
+        {"L1", "lessonsz", 5},
+    };
+    for (const Expected& expected : kExpected) {
+        const SettingDef* def = settingById(expected.id);
+        TEST_ASSERT_NOT_NULL(def);
+        TEST_ASSERT_NOT_NULL(def->nvsKey);
+        TEST_ASSERT_EQUAL_STRING(expected.nvsKey, def->nvsKey);
+        TEST_ASSERT_EQUAL_INT(expected.defaultValue, def->defaultValue);
+        TEST_ASSERT_EQUAL_INT(expected.defaultValue,
+                             settingValidate(*def, def->defaultValue));
+    }
+}
+
+static void test_settings_cycle_wraps() {
+    const SettingDef* brightness = settingById("P1");
+    TEST_ASSERT_NOT_NULL(brightness);
+    TEST_ASSERT_EQUAL_INT(64, settingNextValue(*brightness, 255));
+    TEST_ASSERT_EQUAL_INT(192, settingNextValue(*brightness, 128));
+    TEST_ASSERT_EQUAL_INT(255, settingPrevValue(*brightness, 64));
+    TEST_ASSERT_EQUAL_INT(64, settingPrevValue(*brightness, 128));
+    TEST_ASSERT_EQUAL_INT(128, settingNextValue(*brightness, 200));
+    TEST_ASSERT_EQUAL_INT(128, settingPrevValue(*brightness, 200));
+
+    const SettingDef* dim = settingById("P2");
+    TEST_ASSERT_NOT_NULL(dim);
+    TEST_ASSERT_EQUAL_INT(0, settingNextValue(*dim, 60));
+    TEST_ASSERT_EQUAL_INT(60, settingPrevValue(*dim, 0));
+
+    const SettingDef* order = settingById("R4");
+    TEST_ASSERT_NOT_NULL(order);
+    TEST_ASSERT_EQUAL_INT(0, settingNextValue(*order, 1));
+    TEST_ASSERT_EQUAL_INT(1, settingPrevValue(*order, 0));
+    TEST_ASSERT_EQUAL_INT(1, settingNextValue(*order, 7));
+}
+
+static void test_settings_validate() {
+    const SettingDef* brightness = settingById("P1");
+    const SettingDef* dim = settingById("P2");
+    const SettingDef* order = settingById("R4");
+    TEST_ASSERT_NOT_NULL(brightness);
+    TEST_ASSERT_NOT_NULL(dim);
+    TEST_ASSERT_NOT_NULL(order);
+    TEST_ASSERT_EQUAL_INT(128, settingValidate(*brightness, 200));
+    TEST_ASSERT_EQUAL_INT(192, settingValidate(*brightness, 192));
+    TEST_ASSERT_EQUAL_INT(128, settingValidate(*brightness, -1));
+    TEST_ASSERT_EQUAL_INT(15, settingValidate(*dim, 15));
+    TEST_ASSERT_EQUAL_INT(30, settingValidate(*dim, 45));
+    TEST_ASSERT_EQUAL_INT(1, settingValidate(*order, 5));
+}
+
+static void test_settings_help_width() {
+    size_t count = 0;
+    const SettingDef* all = settingsAll(&count);
+    TEST_ASSERT_NOT_NULL(all);
+    for (size_t i = 0; i < count; ++i) {
+        TEST_ASSERT_GREATER_THAN(0, static_cast<int>(std::strlen(all[i].help)));
+        TEST_ASSERT_LESS_OR_EQUAL(38, static_cast<int>(std::strlen(all[i].help)));
+        if (all[i].choices)
+            for (uint8_t c = 0; c < all[i].choiceCount; ++c)
+                TEST_ASSERT_GREATER_THAN(0, static_cast<int>(std::strlen(all[i].choices[c].label)));
+    }
+}
+
+static void test_settings_sections() {
+    size_t count = 0;
+    const SettingDef* all = settingsAll(&count);
+    TEST_ASSERT_NOT_NULL(all);
+    TEST_ASSERT_EQUAL(13, static_cast<int>(count));
+    for (size_t i = 0; i < count; ++i)
+        TEST_ASSERT_TRUE(isSettingSection(all[i].section));
+
+    const SettingDef* out[16];
+    const struct {
+        const char* name;
+        int expected;
+    } kSections[] = {
+        {"Display & power", 4}, {"Reviews", 2},    {"Lessons", 1},
+        {"Sync & data", 2},     {"Account", 2},    {"System", 2},
+        {"Study", 0},           {"Reminders & sound", 0},
+    };
+    size_t total = 0;
+    for (const auto& section : kSections) {
+        const size_t found = settingsInSection(section.name, out, 16);
+        TEST_ASSERT_EQUAL_INT(section.expected, static_cast<int>(found));
+        total += found;
+    }
+    TEST_ASSERT_EQUAL_INT(13, static_cast<int>(total));
+    TEST_ASSERT_EQUAL(2, static_cast<int>(settingsInSection("Display & power", out, 2)));
+    TEST_ASSERT_EQUAL_STRING("P1", out[0]->id);
+    TEST_ASSERT_EQUAL_STRING("P2", out[1]->id);
+}
+
+static void test_settings_cache() {
+    gSettingsLoadCalls = 0;
+    SettingsCache cache;
+    cache.load(settingsTestReader, nullptr);
+    TEST_ASSERT_TRUE(cache.loaded());
+    TEST_ASSERT_EQUAL(7, static_cast<int>(cache.size()));
+    TEST_ASSERT_EQUAL(7, gSettingsLoadCalls);
+
+    int value = 0;
+    TEST_ASSERT_TRUE(cache.get("bright", &value));
+    TEST_ASSERT_EQUAL_INT(192, value);
+    TEST_ASSERT_TRUE(cache.get("order", &value));
+    TEST_ASSERT_EQUAL_INT(0, value);
+    TEST_ASSERT_TRUE(cache.get("sleep", &value));
+    TEST_ASSERT_EQUAL_INT(120, value);  // invalid stored 9999 -> default
+    TEST_ASSERT_FALSE(cache.get("missing", &value));
+    TEST_ASSERT_FALSE(cache.set("missing", 1));
+
+    TEST_ASSERT_TRUE(cache.set("bright", 64));
+    TEST_ASSERT_TRUE(cache.get("bright", &value));
+    TEST_ASSERT_EQUAL_INT(64, value);
+    TEST_ASSERT_FALSE(cache.set("bright", 64));
+    TEST_ASSERT_EQUAL(7, gSettingsLoadCalls);  // get/set never reload
+
+    SettingsCache defaults;
+    defaults.load();
+    TEST_ASSERT_TRUE(defaults.loaded());
+    TEST_ASSERT_TRUE(defaults.get("dim", &value));
+    TEST_ASSERT_EQUAL_INT(30, value);
+}
+
+static void test_settings_value_labels() {
+    char buf[24];
+    const SettingDef* brightness = settingById("P1");
+    const SettingDef* dim = settingById("P2");
+    const SettingDef* sleep = settingById("P4");
+    const SettingDef* portal = settingById("setup.portal");
+    TEST_ASSERT_NOT_NULL(brightness);
+    TEST_ASSERT_NOT_NULL(dim);
+    TEST_ASSERT_NOT_NULL(sleep);
+    TEST_ASSERT_NOT_NULL(portal);
+    settingValueLabel(*brightness, 128, buf, sizeof buf);
+    TEST_ASSERT_EQUAL_STRING("128", buf);
+    settingValueLabel(*dim, 0, buf, sizeof buf);
+    TEST_ASSERT_EQUAL_STRING("off", buf);
+    settingValueLabel(*dim, 15, buf, sizeof buf);
+    TEST_ASSERT_EQUAL_STRING("15s", buf);
+    settingValueLabel(*sleep, 120, buf, sizeof buf);
+    TEST_ASSERT_EQUAL_STRING("2m", buf);
+    settingValueLabel(*portal, 0, buf, sizeof buf);
+    TEST_ASSERT_EQUAL_STRING("", buf);
+}
+
 void run_queue_tests();
 void run_ota_tests();
 void run_answer_tests();
@@ -2848,6 +3064,14 @@ int main(int, char**) {
     RUN_TEST(test_ota_versions);
     RUN_TEST(test_ota_offer);
     RUN_TEST(test_ota_url_resolution);
+    RUN_TEST(test_settings_registry_ids);
+    RUN_TEST(test_settings_registry_defaults);
+    RUN_TEST(test_settings_cycle_wraps);
+    RUN_TEST(test_settings_validate);
+    RUN_TEST(test_settings_help_width);
+    RUN_TEST(test_settings_sections);
+    RUN_TEST(test_settings_cache);
+    RUN_TEST(test_settings_value_labels);
     run_queue_tests();
     run_ota_tests();
     run_answer_tests();

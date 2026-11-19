@@ -830,3 +830,26 @@ wire formats, key bindings or UI.
 (Review↔Outbox↔Cache, Sync→Outbox/Cache/Study, Settings→Setup/Sync). Small
 shared subject-text helpers (`subjectMainMeaning`, `correctAnswer`) moved to
 the pure `wk/SubjectText.h`. `main.cpp` and `App.h` are unchanged.
+
+---
+
+## 2026-11-19 — Settings registry and generic NVS access (ARCH-02)
+
+**Decision:** `wk/SettingsRegistry.cpp` is the single table of setting IDs,
+NVS keys, defaults, choices and help text; `wk/SettingsModel` provides the
+pure lookup/cycle/validate/value-label functions and a fixed-capacity
+`SettingsCache`. `platform/DeviceSettings` loads the keyed rows once at boot
+through `settingsGetInt`/`settingsSetInt`; the seven existing getters/setters
+become wrappers with unchanged NVS keys and defaults. The six STUDY-era keys
+keep direct getters until CFG-02 adds them to the registry.
+
+**Why:** CFG-01/CFG-02 add about 25 rows; without one table, each setting
+means changes in three places and nothing can be tested without hardware. The
+only visible change is that a stored value outside a choice list falls back to
+its default, as ARCH-02 specifies.
+
+**Implications:** `settingsAction()`/`drawSettings()` are untouched, so the
+current flat 19-row menu stays until CFG-01. A no-op change performs no NVS
+write. The dev-only `Z <seconds>` idle-sleep hook bypasses the choice list with
+`settingsSetSleepSecondsDev`; normal callers stay validated. CFG-02 owns the
+remaining rows and the settings section UX.

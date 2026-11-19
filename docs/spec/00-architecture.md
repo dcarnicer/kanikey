@@ -5,7 +5,7 @@ These four tasks are wave 1 of round 2: they do not add features, they make the 
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
 | ARCH-01 | Split `app/App.cpp` into controllers | P1 | L | none | 1 (first) | review (2026-11-19: refactor done; hardware smoke partial; +7.5 KB flash) |
-| ARCH-02 | Settings registry | P1 | M | ARCH-01 | 1 (after ARCH-01; ∥ ARCH-03, ARCH-04) | todo |
+| ARCH-02 | Settings registry | P1 | M | ARCH-01 | 1 (after ARCH-01; ∥ ARCH-03, ARCH-04) | review (2026-11-19: registry + 224 tests; menu/CFG-02 pending) |
 | ARCH-03 | Local stores shared by STATS, STUDY and REM | P1 | M | ARCH-01 | 1 (after ARCH-01; ∥ ARCH-02, ARCH-04) | done (2026-11-06) |
 | ARCH-04 | Screen state machine | P2 | M | ARCH-01 | 1 (after ARCH-01; before wave 2 starts) | todo |
 
@@ -112,6 +112,20 @@ IDs and section names are the ones CFG-02 uses, so CFG-02 only adds rows. The ro
 - [ ] `settingsAction()` and `drawSettings()` are untouched and still show 13 rows.
 - [ ] NVS is read once at boot; a change performs at most one write and no write when the value is unchanged.
 - [ ] The seven tests above pass.
+
+**Implementation (2026-11-19).** `wk/SettingsModel.{h,cpp}` and
+`wk/SettingsRegistry.cpp` add the pure registry, cache, cycle and validation;
+`platform/DeviceSettings` loads the 13 registry keys once and exposes
+`settingsGetInt`/`settingsSetInt`, with the existing getters as wrappers.
+224 native tests pass (8 new); `cardputer-adv` builds at 1,566,905 B (85.4%,
++2,344 B over ARCH-01) and `cardputer-adv-dev` at 1,633,889 B (89.0%). The
+current menu already has 19 rows because the six STUDY settings landed after
+this task was written; `settingsAction()`/`drawSettings()` are untouched and
+those six keys keep their direct getters until CFG-02 adds them to the
+registry. The dev-only `Z <seconds>` idle-sleep hook uses a raw sleep setter,
+because the registry's 2-minute choice list would otherwise reject 30 s.
+Hardware checks: brightness 192 and Meaning-first survive a reboot; the menu
+still renders/cycles; a no-op change does not write NVS.
 
 ### ARCH-03 — Local stores shared by STATS, STUDY and REM
 

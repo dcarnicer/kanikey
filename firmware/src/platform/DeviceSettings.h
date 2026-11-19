@@ -28,6 +28,11 @@ int settingsBlankSeconds();
 bool settingsSetBlankSeconds(int seconds);
 int settingsSleepSeconds();
 bool settingsSetSleepSeconds(int seconds);
+#ifdef KANIKEY_DEV
+// Dev-only raw setter for the `Z <seconds>` idle-sleep simulation. The normal
+// setter validates against the menu choices, which would turn 30 s into 120 s.
+bool settingsSetSleepSecondsDev(int seconds);
+#endif
 // Study preferences: review session size, lesson batch size and whether the
 // meaning or the reading is asked first.
 int settingsReviewBatchSize();
@@ -48,6 +53,12 @@ int settingsPracticeLessonsMode();  // 0 Apprentice, 1 24h, 2 3d, 3 7d
 bool settingsSetPracticeLessonsMode(int mode);
 int settingsPracticeSize();
 bool settingsSetPracticeSize(int size);
+
+// Generic access for registry-driven rows. `settingsGetInt` reads the fixed
+// boot cache; `settingsSetInt` validates against the registry, writes NVS only
+// when the value changes, and returns true when the value is already current.
+bool settingsGetInt(const char* nvsKey, int* out);
+bool settingsSetInt(const char* nvsKey, int value);
 
 // "<+01>-1" / "<-0330>3:30": a fixed offset east of UTC, used when the browser
 // cannot provide a DST-aware rule.
