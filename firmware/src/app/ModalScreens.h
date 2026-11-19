@@ -2,12 +2,14 @@
 // Modal screens: Pause, low battery and sign-out confirmation, drawn from
 // explicit view data. The app adapter fills the views from its state and keeps
 // startWrite()/present().
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 #include "board/Board.h"
 #include "ui/Theme.h"
+#include "wk/HelpTable.h"
 
 namespace kk::app {
 
@@ -53,5 +55,16 @@ void drawLessonStartScreen(lgfx::LovyanGFX& d, const LessonStartView& view);
 
 // Draws the sign-out confirmation into d.
 void drawSignOutScreen(lgfx::LovyanGFX& d);
+
+// CFG-04: the key help overlay. `title` is the screen name and `rows` the
+// static chord table of that screen; at most kHelpMaxRows rows are drawn.
+struct HelpView {
+    const char* title = "";
+    const HelpEntry* rows = nullptr;
+    size_t count = 0;
+};
+
+// Draws the help overlay into d, above the screen's own frame.
+void drawHelpScreen(lgfx::LovyanGFX& d, const HelpView& view);
 
 }  // namespace kk::app

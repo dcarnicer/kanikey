@@ -19,6 +19,7 @@
 #include "platform/WkReview.h"
 #include "wk/AnswerChecker.h"
 #include "wk/CriticalItems.h"
+#include "wk/HelpTable.h"
 #include "wk/LessonQuiz.h"
 #include "wk/LessonSession.h"
 #include "wk/LevelProgress.h"
@@ -330,6 +331,10 @@ struct UiState {
     char gNoticeLine2[64] = "";
     char gSettingsNote[48] = "";
     uint16_t gSettingsNoteColor = kk::ui::kFaint;
+    // CFG-04: the key help overlay. gHelpScreen picks the static table; Esc
+    // closes it and every other key is swallowed.
+    bool gHelpActive = false;
+    kk::HelpScreen gHelpScreen = kk::HelpScreen::None;
     bool gShift = false;
     bool gFn = false;
     bool gCtrl = false;

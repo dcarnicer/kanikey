@@ -168,6 +168,40 @@ void drawLessonStartScreen(lgfx::LovyanGFX& d, const LessonStartView& view) {
     d.drawString("Enter: start  Esc: back", 8, 125);
 }
 
+void drawHelpScreen(lgfx::LovyanGFX& d, const HelpView& view) {
+    d.fillScreen(ui::kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+    d.setTextFont(2);
+    d.setTextSize(1);
+    d.setTextColor(ui::kBrand, ui::kBg);
+    d.drawString("KaniKey", 6, 2);
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(ui::kDim, ui::kBg);
+    d.drawString(view.title, 7, 22);
+    d.drawFastHLine(4, 36, 232, ui::kLine);
+
+    size_t rows = view.count;
+    if (rows > kHelpMaxRows) rows = kHelpMaxRows;
+    for (size_t i = 0; i < rows; ++i) {
+        const int y = 42 + static_cast<int>(i) * 11;
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(ui::kAccentHi, ui::kBg);
+        d.drawString(view.rows[i].keys, 8, y);
+        d.setTextDatum(lgfx::top_right);
+        d.setTextColor(ui::kText, ui::kBg);
+        d.drawString(view.rows[i].action, 232, y);
+        d.setTextDatum(lgfx::top_left);
+    }
+
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextColor(ui::kFaint, ui::kBg);
+    d.drawString("Esc: close", 8, 125);
+}
+
 void drawSignOutScreen(lgfx::LovyanGFX& d) {
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);

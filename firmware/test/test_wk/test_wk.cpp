@@ -14,6 +14,7 @@
 #include "wk/Catalog.h"
 #include "wk/CriticalItems.h"
 #include "wk/Crc32.h"
+#include "wk/HelpTable.h"
 #include "wk/HttpRetry.h"
 #include "wk/Outbox.h"
 #include "wk/Practice.h"
@@ -657,6 +658,42 @@ static void test_cardputer_event_fields() {
     TEST_ASSERT_TRUE(tgc::cardputerAdvEvent(static_cast<uint8_t>(codeAt(11, 2)), &e));
     TEST_ASSERT_FALSE(e.down);
     TEST_ASSERT_EQUAL(tgc::Key::Up, e.key);
+}
+
+// ---------------------------------------------------------------- help overlay
+static void test_help_question_mark_is_shift_slash() {
+    // CFG-04: / is the Right arrow, so the help chord must be recognised by
+    // grid position and Shift rather than by Key::Other.
+    TEST_ASSERT_EQUAL(tgc::Key::Right, tgc::cardputerKeyAt(12, 3));
+    TEST_ASSERT_EQUAL_CHAR('?', tgc::cardputerCharAt(12, 3, true));
+    TEST_ASSERT_EQUAL_CHAR('/', tgc::cardputerCharAt(12, 3, false));
+}
+
+static void test_help_tables_are_short() {
+    const kk::HelpTable none = kk::helpFor(kk::HelpScreen::None);
+    TEST_ASSERT_NULL(none.rows);
+    TEST_ASSERT_EQUAL(0, static_cast<int>(none.count));
+    for (kk::HelpScreen screen : kk::kHelpScreens) {
+        const kk::HelpTable table = kk::helpFor(screen);
+        TEST_ASSERT_NOT_NULL(table.rows);
+        TEST_ASSERT_GREATER_THAN(0, static_cast<int>(table.count));
+        TEST_ASSERT_LESS_OR_EQUAL(static_cast<int>(kk::kHelpMaxRows),
+                                   static_cast<int>(table.count));
+        TEST_ASSERT_TRUE(kk::helpScreenTitle(screen)[0] != '\0');
+        for (size_t i = 0; i < table.count; ++i) {
+            TEST_ASSERT_NOT_NULL(table.rows[i].keys);
+            TEST_ASSERT_NOT_NULL(table.rows[i].action);
+            TEST_ASSERT_TRUE(table.rows[i].keys[0] != '\0');
+            TEST_ASSERT_TRUE(table.rows[i].action[0] != '\0');
+            // Font0 is 6 px per character: 34 characters leave a 20 px gap in
+            // the 224 px between x=8 and x=232.
+            const size_t width = std::strlen(table.rows[i].keys) +
+                                 std::strlen(table.rows[i].action);
+            TEST_ASSERT_LESS_OR_EQUAL(34, static_cast<int>(width));
+            for (size_t j = i + 1; j < table.count; ++j)
+                TEST_ASSERT_TRUE(std::strcmp(table.rows[i].keys, table.rows[j].keys) != 0);
+        }
+    }
 }
 
 
@@ -3645,6 +3682,8 @@ int main(int, char**) {
     RUN_TEST(test_cardputer_characters);
     RUN_TEST(test_cardputer_modifiers);
     RUN_TEST(test_cardputer_event_fields);
+    RUN_TEST(test_help_question_mark_is_shift_slash);
+    RUN_TEST(test_help_tables_are_short);
     RUN_TEST(test_json_values_and_escapes);
     RUN_TEST(test_json_rejects_bad_input);
     RUN_TEST(test_json_stream_events);
