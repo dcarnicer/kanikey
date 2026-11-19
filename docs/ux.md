@@ -635,6 +635,13 @@ Warning and the empty-mnemonic state (see [`docs/hardware.md`](hardware.md)).
   outbox count update after each item. `Esc: stop` leaves the rest pending for
   the next sync. `Every 5` shows `Sending n/5` on the review hint bar after the
   5th/10th completion; `Immediately` keeps one POST per completion.
+- **REV-11 mistakes list (2026-11-19).** The summary footer is
+  `Enter: home  R: next batch` while due reviews remain; `Down`/`Tab` opens a
+  three-row list (`1-3/7`) with the prompt character, primary meaning and
+  reading, wrong counts or the last wrong text and `SRS 3->4`/`pending`.
+  `Up`/`Down` wrap, `Esc` returns to the stats and `Enter` still goes Home. `R`
+  starts another batch without returning Home; it is absent with no due reviews
+  and in practice.
 
 **Implementation note (2026-10-28).** The values use the built-in 32 px font
 and fall back to 16 px if one would cross its column. Accuracy and duration

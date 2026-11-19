@@ -14,7 +14,7 @@ These twelve tasks turn the review session into a configurable, WaniKani-faithfu
 | REV-08 | More review orders | P2 | L | ARCH-01, ARCH-02, ARCH-03; SPEED-05 for option B | 2 | todo |
 | REV-09 | Back-to-back | P2 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-10 | Input editing | P2 | M | ARCH-01 | 2 | review (2026-11-19: merged; hardware pending) |
-| REV-11 | Richer session summary | P2 | M | ARCH-01, SPEED-01 | 2 | todo |
+| REV-11 | Richer session summary | P2 | M | ARCH-01, SPEED-01 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-12 | Minimal header | P3 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
 
 **Implementation (2026-11-19).** REV-01/03 are merged: feedback lists every
@@ -72,6 +72,16 @@ and with R7 Off, and the help hides the two rows in that case. Seven new
 native tests (368 on the merged main); release 1,631,237 B (88.9%), dev
 1,698,625 B (92.6%). The hardware C/A, warning, bar/help and practice checks
 remain.
+
+**Implementation (2026-11-19, REV-11).** The summary keeps the stats layout and
+adds `R: next batch` when due reviews remain. `Down`/`Tab` opens a three-row
+mistakes list with the prompt character, primary meaning/reading, wrong counts
+or last typed wrong answer and `SRS 3->4`/`pending`; `Up`/`Down` wrap, `Esc`
+returns to stats and `Enter` closes. Wrong answers are kept in a bounded
+vector, and a bounded map records each item's stage from the SPEED-01 tracker
+before it is forgotten. Six new native tests (380 on the merged main); release
+1,638,529 B (89.3%), dev 1,706,041 B (93.0%). The hardware list/navigation,
+`R`, stage updates during the send loop and 240×135 layout remain.
 
 ### REV-01 — Show all accepted answers on feedback
 

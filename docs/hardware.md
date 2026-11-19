@@ -742,6 +742,10 @@ A150 G143 M81 E147 B586).
   the summary decision and the bounded StageTracker. The summary send loop,
   Esc-stop, offline failure, Every-5/Immediately and heap/canvas checks remain
   on hardware.
+- **REV-11.** Six native tests cover the mistake filter, both-part counts, the
+  empty list, stage text, selection wrap and next-batch availability. The
+  three-row list, `R`, stage updates during the send loop and the 240×135
+  layout remain.
 
 ## Round 2 hardware checks
 
