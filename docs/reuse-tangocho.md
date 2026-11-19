@@ -65,7 +65,7 @@ maintaining it now.
 | `ui/HintBar.h` | Hint bar and keycaps | **Adapted (2026-11-19)** | Geometry, width fallback and left/right hints; screens migrate next |
 | `ui/KeyInput.h` | TCA8418 → actions map | **Extended** | Normal/Shift/Fn layers, characters, modifiers |
 | `ui/TextLayout.h` | Wrap and pagination | **Adapted (2026-11-19)** | Pure wrap/ellipsis/UTF-8 trim; drawWrapped delegates |
-| `ui/UiFace.h`, `UiFont.h` | Pre-rendered UI font | **Adapted** | Add 10/14/20 px and needed glyphs |
+| `ui/UiFace.h`, `UiFont.h` | Pre-rendered UI font | **Adapted (2026-11-19)** | Small/Base/Title map to built-in 6x8/6x8/16 px; the 10/14/20 design values are not built-in |
 | `ui/Icons.h` | 1bpp icons | **Adapted (2026-11-19)** | Check, cross, Wi-Fi, sync, SD, key, outbox; screens not migrated yet |
 | `app/Display` | Canvas, present, rotation | **Stays** | No rotation; partial push for input |
 | `app/ScreenKit` | Header, hints, lists, errors | **Adapted** | New 240×135 layout and texts |

@@ -131,14 +131,14 @@ Working on hardware:
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 427 native tests and the `cardputer-adv` build run in GitHub Actions alongside
+- 432 native tests and the `cardputer-adv` build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests; the release workflow adds
   the manifest tests and a tag-driven GitHub release.
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Last recorded build (TNG-03 phase 3): **release 1,660,245 B / 1,835,008 B
-flash (90.5%)**, **dev 1,728,293 B (94.2%)**, static RAM 105,384/105,520 B
+Last recorded build (TNG-03 UiFont): **release 1,660,285 B / 1,835,008 B
+flash (90.5%)**, **dev 1,728,333 B (94.2%)**, static RAM 105,384/105,520 B
 (32.2%).
 Removing `efontJA_16` freed ~468 KB; the dev image now has ~111 KB of headroom.
 The loop task uses a 24 KiB stack;
@@ -156,7 +156,7 @@ the 2026-11-19 logs.
 | 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Code and docs done; OUTBOX (API-01/05), 401 (API-03) and parse retry (API-04) verified 2026-11-19; 429 (API-02) and 403 still pending | — |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | v1 done; SETUP-09 on-device Wi-Fi is in review 2026-11-19 (scan/password mask smoked; join paths pending) | SETUP-09 |
 | 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen, item detail, level progress and the Stats screen are live | Partial | UI-08 |
-| 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal, OTA, storage and sleep done; ListView/HintBar/TextLayout/Icons added and most screens migrated; UiFont and icon adoption pending | TNG-03 |
+| 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal, OTA, storage and sleep done; ListView/HintBar/TextLayout/Icons/UiFont added and most screens migrated; icon adoption and remaining custom rows pending | TNG-03 |
 | 9 | Technical debt, CI and release | Maintainability and shipping | Done (TECH-01…06, TECH-08); TECH-07 only if needed | TECH-07 |
 | 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | EXT-01…05 done; audio, reminders and stroke order remain; round 2 specified in `docs/spec` | STUDY |
 | 11 | Bluetooth keyboard | Optional full-size input; BLE-only, shares the 2.4 GHz radio and the no-PSRAM heap | Post-v1; needs the BT-01 host-stack spike | BT-01 |
@@ -614,7 +614,8 @@ SRS and deck catalog remain intentionally dropped. See
   is hand-drawn. **Partial (2026-11-19):** `ui/ListView`, `ui/HintBar`,
   `ui/TextLayout` (wrapping/ellipsis/UTF-8 trim) and `ui/Icons` are added with
   30 native tests; Home/Settings/Wi-Fi/Outbox/lesson/Study lists and hints use
-  them. `UiFont`, icon adoption in screens and the remaining custom rows
+  them. `UiFont` (Small/Base/Title mapping to the built-in 6x8/6x8/16 px
+  fonts) is added; icon adoption in screens and the remaining custom rows
   remain.
 - **TNG-04 — Storage layer.** Adapt LittleFS/SD paths and atomic writes for the
   assignment/subject cache (CACHE-01/CACHE-02). **Done:** `platform/CacheStore`
@@ -782,8 +783,8 @@ REM/AUD, ONB (pack and setup) and DOC (this documentation pass). ARCH-01/02 are
 merged and CFG-01/02/03/04, REV-01/02/03/04/05/06/07/08/09/10/11/12,
 LES-01…LES-06, SETUP-09, ONB-01/02 and SPEED-01/02/03/04/05/07 are in review. The
 eight-section Settings menu replaces the flat list; the registry now has 48
-rows after the Account › Wi-Fi action. Main has 427 native tests and builds at
-1,660,245 B (90.5%) release / 1,728,293 B (94.2%) dev. No round-2 task is
+rows after the Account › Wi-Fi action. Main has 432 native tests and builds at
+1,660,285 B (90.5%) release / 1,728,333 B (94.2%) dev. No round-2 task is
 claimed as done
 here beyond the spec status above.
 
