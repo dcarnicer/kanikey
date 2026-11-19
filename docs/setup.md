@@ -4,36 +4,40 @@ KaniKey is a pocket review terminal for WaniKani on the M5Stack Cardputer ADV.
 This guide goes from the box to a finished review session and is written for
 someone who has not built the firmware.
 
-> **The public font pack comes from the device.** When the card has no
-> `/kanikey/glyphs.kgp`, the station page offers **Download pack**; it fetches
-> the public font pack from the release manifest and checks its size and
-> SHA-256. The personal radical pack can be uploaded from the same page. A
-> computer is only needed for a custom font or a pack built from your account;
-> see §3.
+> **The normal setup path needs no computer.** When the card has no
+> `/kanikey/glyphs.kgp`, the station page can fetch the public font pack from
+> the release manifest and check its size and SHA-256. The personal radical pack
+> can be uploaded from your phone on the same page. A computer is only needed
+> for a custom font pack or to build a radical pack from your account; see §3.
+> If the current release does not publish a font pack, the page says so and you
+> can build it in §3.2 and copy it once instead (§3.3).
 
 ---
 
 ## Quick start
 
 1. **Prepare the card (once).** Use a **FAT32** microSD card. It can be empty:
-   the setup page downloads the public font pack and accepts the personal
-   radical pack. If you already built packs on a computer, copy them to
-   `/kanikey/glyphs.kgp` (font) and `/kanikey/radicals.kgp`; a v1 combined
-   `glyphs.kgp` from an older build still works. See §3 for both paths.
+   the station page can download the public font pack (when the release
+   includes it) and the setup page accepts the personal radical pack. If you
+   build packs on a computer, copy them to `/kanikey/glyphs.kgp` (font) and
+   `/kanikey/radicals.kgp` (radical); see §3. A v1 combined `glyphs.kgp` with
+   radical entries from an older build still works.
 2. **Charge and start.** Connect USB-C, insert the card and turn the device on.
-   `No SD card` means the card is missing or not FAT32. `Pack missing` means
-   `/kanikey/glyphs.kgp` is not on the card. Fix it and press `Enter`; a missing
-   `radicals.kgp` only affects radical images, not text.
-3. **Open setup.** With no Wi-Fi or token saved, the device starts the
-   `KaniKey-XXXX` setup network automatically; if the screen shows `Token
-   needed` or `Wi-Fi needed` instead, press `Enter`. On your phone, join
-   `KaniKey-XXXX` with the password on the screen and open
-   `http://192.168.4.1/`. Save your home Wi-Fi (2.4 GHz).
+   `No SD card` means the card is missing, not mounted or not FAT32. `Pack
+   missing` means `/kanikey/glyphs.kgp` did not open; press `Enter` to open
+   setup and download or check it (§3.1). A missing `radicals.kgp` only affects
+   image-only radical prompts, not text.
+3. **Set up Wi-Fi.** With no Wi-Fi and no token saved, the device starts the
+   `KaniKey-XXXX` setup network automatically. Join it with the password on the
+   screen, open `http://192.168.4.1/` and save your home Wi-Fi (2.4 GHz). If the
+   screen shows `Wi-Fi needed` instead, press `Enter` to pick the network on the
+   device, or `P` for the phone portal.
 4. **Finish on your home network.** Reconnect the phone to the same Wi-Fi, open
    the address shown on the device, enter the 6-digit `Page code`, paste your
    WaniKani token and press **Validate and save**. The time and time zone are
    set automatically from the browser. If the font pack is missing, press
-   **Download pack**; then press **Start KaniKey**.
+   **Download pack** (station page only) or build and copy the file (§3.2,
+   §3.3); then press **Start KaniKey**.
 5. **Wait for the first sync.** When it succeeds, the device opens Home.
    `Enter` starts reviews, `L` opens lessons and `Esc` opens Settings.
 
@@ -42,22 +46,29 @@ someone who has not built the firmware.
 ## 1. What you need
 
 - M5Stack Cardputer ADV, charged over USB-C. You can set it up while charging.
-- A **FAT32** microSD card. exFAT is not supported. The packs are a few
-  megabytes (the public font pack is about 9 MB), so almost any card is large
+- A **FAT32** microSD card. exFAT is not supported. The public font pack is
+  about 9 MB and the radical pack is smaller, so almost any card is large
   enough.
 - A **2.4 GHz** Wi-Fi network and its password. The ESP32-S3 inside the
   Cardputer does not join 5 GHz-only networks.
 - A WaniKani account.
-- A phone or computer with a browser for the two setup pages. A phone is
-  enough; no app is installed.
-- For a custom pack only: a computer with Python 3.11+, `uv` (or `pip`), the
-  Noto Sans JP font file and a card reader or SD slot. The public font pack
-  downloads on the device and the personal radical pack can be uploaded from a
-  phone; see §3.
+- A phone or computer with a browser for the setup pages: Wi-Fi, the token,
+  the browser time zone and the radical pack upload. A phone is enough; no app
+  is installed. Once the device is set up, Wi-Fi can also be changed on the
+  device.
+- For a custom pack only: a computer with Python 3.11+ and Pillow, plus a font
+  file (Noto Sans JP is the default). Building the personal radical pack also
+  needs `cairosvg` and a WaniKani token. A custom font pack needs a card reader
+  (or the pack replacement in §3.6 on a device that already has a working
+  font); the radical pack can be uploaded from the setup page. See §3.2.
+
+The public font pack can be downloaded on the device (when the release includes
+it) and the personal radical pack can be uploaded from a phone, so a computer is
+optional for the main path.
 
 You do not need a KaniKey account, a KaniKey password or a KaniKey app. The
 device talks to WaniKani, to its time servers and to GitHub for firmware
-updates; there is no KaniKey server.
+updates and the public font pack; there is no KaniKey server.
 
 Out of the box there is nothing to assemble: charge the device over USB-C,
 insert the prepared card and turn it on. The battery is internal and charges
@@ -92,6 +103,10 @@ notes, critical items and some level and statistics figures are missing, but
 the device still reviews. Without **Assignments: start**, lesson cards cannot be
 started; without **Reviews: create**, completed reviews cannot be sent.
 
+Setup validates the token with `GET /user` only. The first sync exercises the
+other permissions; a token that passes setup but lacks one of them shows
+`Missing permissions` then.
+
 The token is pasted into a password field, so it is masked in the form. It is
 validated with `GET /user` before it is saved, stored in the device's NVS, and
 shown only as `configured` (About) or `A token is already stored` (setup page).
@@ -105,25 +120,70 @@ through **Settings › Setup portal**. There is no KaniKey password to recover.
 
 ## 3. The visual pack
 
-The firmware has no Japanese font built in. Text and radical prompts are drawn
-from two files on the card:
+The firmware has no Japanese font built in. Japanese text and radical prompts
+are drawn from two files on the card:
 
 ```
-/kanikey/glyphs.kgp    font: kana, kanji and the Latin glyphs
+/kanikey/glyphs.kgp    font: kana and kanji (the English UI uses the built-in font)
 /kanikey/radicals.kgp  personal: the image-only radical bitmaps
 ```
 
+**Public font pack.** A public `glyphs.kgp` contains glyphs rendered from an OFL
+font (Noto Sans JP by default). It has no WaniKani content and can be published
+with a release. **Personal radical pack.** `radicals.kgp` is generated from your
+own WaniKani account's subject images. It is personal: do not publish or share
+it.
+
 Both use the `KKGP` v2 header: glyphs at 64, 32 and 20 px in the font pack, and
-radical bitmaps in the personal pack; the body and CRC are unchanged from v1.
-A v1 **combined** `glyphs.kgp` from an older build still opens for both roles,
-so an existing card keeps working. The font pack contains no WaniKani-derived
-data and can be built without a token; the radical pack is personal, so do not
-publish or share it.
+radical bitmaps in the personal pack; the body and CRC are the same as v1. A
+v1 **combined** `glyphs.kgp` with radical entries from an older build still
+opens for both roles, so an existing card keeps working. A font pack can be
+built without a token; a radical pack needs one. A missing radical pack leaves
+all text working and only changes image-only radical prompts to `no glyph`.
 
-### 3.1 Build the packs (once, on a computer)
+### 3.1 Get the packs from the setup page (no computer)
 
-From a checkout (or the source ZIP) of this repository, the simplest path is a
-font-only split build (no token, fixed kana + JIS X 0208 set):
+The setup pages can install both files on a new card when the release provides
+the public font pack. **Download pack** is offered on the **station page**
+(§4.2), after the device has joined your home Wi-Fi; the `KaniKey-XXXX` setup
+network has no internet. **Upload radical pack** works on either setup page
+because the file goes directly from your phone to the device.
+
+- **Download pack** appears while `/kanikey/glyphs.kgp` is missing. The device
+  reads the `pack font` record from the release manifest, streams the file to
+  `/kanikey/glyphs.kgp.tmp` over HTTPS, and checks the exact size and SHA-256
+  while it writes. The device shows `Downloading pack` / `Pack 34%`; `Esc`
+  cancels. Only a file that passes both checks and opens as a font pack is
+  kept. Offline, TLS, HTTP, size and hash failures delete the `.tmp` and leave
+  the old file in place; the page shows the reason. A file that downloads but
+  is not a font pack is deleted. If the release manifest has no `pack font`
+  record, the page says `The release manifest has no font pack`; build a pack in
+  §3.2 and copy it as in §3.3.
+- **Upload radical pack** takes a `radicals.kgp` built by `build.py` (§3.2) and
+  streams the multipart part to `/kanikey/radicals.kgp.tmp`. It accepts only a
+  v2 **kind-2** radical pack up to 32 MB, checks the structure and kind, and
+  renames it only on success. The CRC is **not** checked on this path. A wrong,
+  truncated or v1 combined file is deleted and the page says why. `Esc`
+  cancels; the old `radicals.kgp` stays.
+- **Check pack again** reports both status lines and, if a pack is missing or
+  did not open, re-opens both after the page responds. The full font-pack CRC
+  runs then and can take several seconds, so the new result can appear on the
+  next page load.
+
+The browser only talks to the device. The device fetches the public font pack
+from the release manifest; the radical pack never leaves your phone and the
+device. No WaniKani token is involved in either transfer.
+
+The setup-page transfers are new. Their hardware checks and any known limits
+are listed in [docs/hardware.md](hardware.md).
+
+### 3.2 Build the packs (optional, on a computer)
+
+The setup page is the normal path for the public font pack and the radical
+pack when the release includes the font pack. Build packs yourself only for a
+custom font, an offline copy, or a radical pack for your account. From a
+checkout (or the source ZIP) of this repository, the simplest path is a
+font-only split build (no token; fixed kana + JIS X 0208 set):
 
 ```sh
 uv run --with pillow python3 tools/glyph-pack/build.py --split dist
@@ -136,10 +196,13 @@ WANIKANI_TOKEN=... uv run --with pillow --with cairosvg \
   python3 tools/glyph-pack/build.py --split dist
 ```
 
-The second command writes `dist/glyphs.kgp` and `dist/radicals.kgp`; without a
-token the font pack is written and the tool prints `no token: radicals.kgp
-skipped`. The old single-file form is still available with
-`--out dist/glyphs.kgp` (without a token it has glyphs but no radical bitmaps).
+Replace `...` with your WaniKani token.
+
+The token command writes `dist/glyphs.kgp` and `dist/radicals.kgp`. Without a
+token the font pack is still written and the tool prints
+`no token: radicals.kgp skipped (font pack only)`. The legacy single-file form
+is still available with `--out dist/glyphs.kgp`, but it writes one combined pack
+and needs a token, `--chars` or `--tangocho`; it is not the two-file layout.
 
 Install `uv` once from <https://docs.astral.sh/uv/> if needed. With plain
 Python instead:
@@ -149,39 +212,47 @@ python3 -m pip install pillow cairosvg
 WANIKANI_TOKEN=... python3 tools/glyph-pack/build.py --split dist
 ```
 
-The generator reads `WANIKANI_TOKEN`; `--token` also works. It calls
-`GET /user` for the highest level your subscription allows and `GET /subjects`
-for the account characters, renders them with Noto Sans JP and rasterizes the
-radical SVG images. The packs stay on your computer and card; nothing is
-uploaded to a KaniKey server.
+The generator reads `WANIKANI_TOKEN`; `--token` also works. With `--split`, the
+font pack is always the fixed public set (kana + JIS X 0208) and the token is
+used only to fetch your account's radical SVGs up to the subscription level.
+The legacy `--out` build without `--chars` calls `GET /user` and
+`GET /subjects` and renders your account characters into one combined pack. The
+packs stay on your computer and card; nothing is uploaded to a KaniKey server.
 
-By default the generator looks for Noto Sans JP at
+By default the generator looks for Noto Sans JP in Tangocho's cache at
 `~/code/tangocho/tools/pack-builder/cache/noto/NotoSansJP-Regular.otf`. If that
 file is not there, download Noto Sans JP (OFL) from
 <https://fonts.google.com/noto/specimen/Noto+Sans+JP> and add
 `--font /path/to/NotoSansJP-Regular.otf`.
 
-### 3.2 Copy them to the card
+### 3.3 Copy them to the card
 
-With the card in a card reader, copy the files to the lowercase `kanikey`
-folder in the card's root. The firmware looks for exactly
-`/kanikey/glyphs.kgp` and `/kanikey/radicals.kgp`; do not rename them.
+If you downloaded or built packs on a computer, copy them with the card in a
+card reader. (If you installed both files with the setup page, skip this
+section.) Copy the files to the lowercase `kanikey` folder in the card's root.
+The firmware looks for exactly `/kanikey/glyphs.kgp` and
+`/kanikey/radicals.kgp`; do not rename them.
 
 macOS, if the card is mounted as `KANIKEY`:
 
 ```sh
 mkdir -p /Volumes/KANIKEY/kanikey
 cp dist/glyphs.kgp /Volumes/KANIKEY/kanikey/glyphs.kgp
-cp dist/radicals.kgp /Volumes/KANIKEY/kanikey/radicals.kgp   # if built with a token
+```
+
+If you built a radical pack, copy it too:
+
+```sh
+cp dist/radicals.kgp /Volumes/KANIKEY/kanikey/radicals.kgp
 ```
 
 Replace `KANIKEY` with the name the card actually mounts under. On Windows,
-create `kanikey` in the card's root and copy the files as
+create `kanikey` in the card's root and copy the files you have as
 `D:\kanikey\glyphs.kgp` and `D:\kanikey\radicals.kgp` (use the card's drive
 letter). On Linux, the path is usually
 `/media/<user>/<card>/kanikey/`. Eject the card safely before removing it.
 
-### 3.3 Check the packs on the device
+### 3.4 Check the packs on the device
 
 The setup page and **About** show both status lines, for example:
 
@@ -190,75 +261,66 @@ Font: 19683 glyphs, 64/32/20 px
 Rad:  498 radicals
 ```
 
-`Pack missing` (or `no pack` when no card is mounted) means `glyphs.kgp` is
-missing or could not be opened; that gates boot and sync. A missing
-`radicals.kgp` leaves all text working and only changes image-only radical
-prompts to `no glyph` (the status line says `no radicals`). In the setup page
-press **Check pack again**. The full CRC of the font pack takes a few seconds,
-so the new result can appear on the next page load. On boot, `Pack missing` with
-`Press Enter to download it` opens the setup portal; use **Download pack** in
-§3.6. A damaged or truncated file reports a `pack: ...` error (for example
-`pack: bad crc`); copy it again or download it again. A v1 combined file still
-works for both roles.
+The counts come from the packs; your radical count may differ.
 
-You can configure Wi-Fi and the token before the pack is ready, but reviews and
-lessons need it for Japanese text.
+`Pack missing` on boot means `glyphs.kgp` is missing or did not open; the
+device cannot reach Home until a font pack opens. The status line says `no
+pack` when no card or pack is open. A missing `radicals.kgp` leaves all text
+working and only changes image-only radical prompts to `no glyph`; the radical
+status says `pack missing` (or `pack: no radicals` for a pack with no radical
+entries).
 
-### 3.4 When to rebuild it
+In the setup page press **Check pack again**. If a pack is missing or did not
+open, the device re-opens both after the page responds; the full font-pack CRC
+runs then and can take several seconds, so the new result can appear on the next
+page load. On boot, `Pack missing` with `Press Enter to download it` opens the
+setup portal; save home Wi-Fi if the setup network appears, then use **Download
+pack** in §3.1. A file that does not open reports a `pack: ...` error at boot
+(for example `pack: truncated`); a CRC mismatch (`pack: bad crc`) can appear
+when **Check pack again** runs or when a pack is replaced from a computer
+(§3.6). Copy or download it again. A v1 combined file with radical entries still
+works for both roles; one built without radicals serves the font only.
 
-- A prompt shows `no glyph`: the character or radical is not in the pack.
-- You changed subscription and the pack was built for fewer levels than your
-  account now allows.
+You can configure Wi-Fi and the token before the pack is ready, but the first
+sync needs the font pack; reviews and lessons also need it for Japanese text.
+Pack sizes, CRC timing and the measurements behind these checks are in
+[docs/hardware.md](hardware.md).
+
+### 3.5 When to rebuild it
+
+- A prompt shows `no glyph`: the character is not in the font pack, or the
+  radical is not in the radical pack.
+- You changed subscription and the radical pack was built for fewer levels than
+  your account now allows.
 - You changed the font with `--font`.
 
-Normal level-ups do not require a rebuild when the pack was built with your
-current `max_level_granted`: the generator included every level your
-subscription allows.
+Normal level-ups do not require a rebuild when the radical pack was built with
+your current `max_level_granted`: the generator included every level your
+subscription allows. The public font pack already covers the fixed JIS X 0208
+set.
 
-### 3.5 Pack updates over Wi-Fi (optional)
+### 3.6 Pack updates from a computer (optional)
 
-Instead of removing the card, you can upload a new pack to a device that already
-has a working one. The device must be on Home, connected to the computer by USB
-and on the same network. Close the setup portal first; `push` waits for Home and
-otherwise restarts the device.
+You do not need this section for normal use: use **Download pack** or **Upload
+radical pack** in §3.1. If you prefer to copy a new pack from a computer without
+removing the card, you can upload it over Wi-Fi. The device must be on Home,
+connected to the computer by USB and on the same network. Close the setup portal
+first; `push` waits for Home and otherwise restarts the device.
 
 ```sh
 uv run --with pyserial python3 tools/device.py push \
   dist/glyphs.kgp /kanikey/glyphs.kgp
+
+uv run --with pyserial python3 tools/device.py push \
+  dist/radicals.kgp /kanikey/radicals.kgp
 ```
 
 `push` uses `/dev/cu.usbmodem1101` by default; add
 `--port /dev/cu.usbmodemXXXX` if your device appears on another port. For the
-first install, use **Download pack** in §3.6 or the card reader: a device
-without a pack does not reach Home, and `push` waits for it. An interrupted
-upload writes a temporary file and leaves the previous pack in place. A
-completed pack is CRC-checked before it replaces the old one.
-
-### 3.6 Pack from the setup page (no computer)
-
-The station page (§4.2) can install both packs: the public font pack comes from
-the release server, and the personal radical pack comes from your phone over
-the local network.
-
-- **Download pack** appears while `/kanikey/glyphs.kgp` is missing. The device
-  reads the `pack font` record from the release manifest, streams the file to
-  `/kanikey/glyphs.kgp.tmp` over HTTPS, and checks the exact size and SHA-256
-  while it writes. The device shows `Pack 34%`; `Esc` cancels. Only a file that
-  passes both checks and opens as a font pack is kept. Offline, TLS, HTTP, size
-  and hash failures delete the `.tmp` and show the reason; the old file is
-  untouched.
-- **Upload radical pack** takes a `radicals.kgp` built by `build.py` and streams
-  the multipart part to `/kanikey/radicals.kgp.tmp`. It is renamed only when it
-  opens as a KKGP v2 **kind-2** radical pack. The structure and kind are
-  checked; the CRC is **not** checked on this path. A wrong, truncated or v1
-  combined file is deleted and the page says why. `Esc` cancels; the old
-  `radicals.kgp` stays.
-- **Check pack again** still re-opens both files and runs the full CRC on an
-  explicit check.
-
-The browser only talks to the device. The device fetches the public font pack
-from the release manifest; the radical pack never leaves your phone and the
-device. No WaniKani token is involved in either transfer.
+first font pack, use **Download pack** in §3.1 or the card reader in §3.3: a
+device without a font pack does not reach Home, and `push` waits for it. An
+interrupted upload writes a temporary file and leaves the previous pack in
+place. A completed pack is CRC-checked before it replaces the old one.
 
 ---
 
@@ -267,10 +329,13 @@ device. No WaniKani token is involved in either transfer.
 ### 4.1 The setup network
 
 1. Insert the card and turn the device on.
-2. With the card and pack ready, a missing Wi-Fi or token starts the setup
-   network automatically. If the screen shows `Token needed` (`Press Enter for
-   setup`) or `Wi-Fi needed` (`Join KaniKey-XXXX on your phone`), the portal has
-   stopped or was cancelled: press `Enter` to open it again.
+2. On a first boot the device needs the pack, Wi-Fi and a token. With no Wi-Fi
+   and no token saved it starts the setup network below. If Wi-Fi is saved but
+   the token is missing, it tries that network and opens the station page when
+   it connects, otherwise it falls back to the setup network. If the screen
+   shows `Token needed` or `Pack missing`, press `Enter` to open the portal. If
+   it shows `Wi-Fi needed` (token saved, Wi-Fi missing), press `Enter` to pick
+   the network on the device, or `P` for the phone portal.
 3. The screen switches to `KaniKey` / `setup` and shows:
    - `Join this Wi-Fi`
    - the network name `KaniKey-XXXX`
@@ -282,9 +347,12 @@ device. No WaniKani token is involved in either transfer.
 5. Open `http://192.168.4.1/`. This first page needs no unlock code: the WPA2
    key already protects it.
 
-The page shows the **Visual pack** status, the **Time** line and a **Home Wi-Fi**
-form. Enter your network name and password and press **Save and connect**. The
-name field also suggests nearby networks.
+The page has the **Visual pack** status, **Check pack again**, the **Upload
+radical pack** form, the **Time** line and a **Home Wi-Fi** form. Enter your
+network name and password and press **Save and connect**. The name field
+suggests nearby 2.4 GHz networks. **Download pack** is not offered on this page
+because the setup network has no internet; save Wi-Fi first and use the station
+page (§3.1).
 
 If the device cannot join, it brings the setup network back with
 `Could not join "<ssid>". Check the password and try again.` Check that the
@@ -299,7 +367,7 @@ home Wi-Fi. The screen now reads `setup · Wi-Fi` and shows:
 - your network name
 - `Open on this network` and an address such as `http://192.168.1.23/`
 - `Page code 123456`
-- the token state and `Pack: ...`
+- the token state, `Font: ...` and `Rad: ...`
 - `Enter code on page  Esc: cancel`
 
 Reconnect your phone to the same home Wi-Fi and open that address. The station
@@ -319,7 +387,7 @@ The station page then has these sections:
   **Download pack** while the font pack is missing, and the **Upload radical
   pack** form. The download is size- and SHA-256-checked; the upload must open
   as a v2 kind-2 pack. Both write a `.tmp` first and `Esc` on the device
-  cancels. See §3.6.
+  cancels. See §3.1.
 - **Time** — the clock and time zone are copied from the browser
   automatically; there is nothing to set. The page shows the zone name and the
   resulting clock.
@@ -327,61 +395,70 @@ The station page then has these sections:
   success it shows `Valid token for <username> (level N).` A 401/403 or a
   network/TLS error is shown and nothing is saved. If a token is already
   stored, the page offers to validate or replace it.
-- **Change Wi-Fi** — an expandable form for a new network; see §8.
+- **Change Wi-Fi** — an expandable form for a new network; see §8. Wi-Fi can
+  also be changed on the device without a phone.
 - **Finish** — **Start KaniKey**.
 
 **Start KaniKey** validates the token once more if needed and closes the portal.
-The device shows `Setup complete. Starting KaniKey...` and runs the first sync:
+It does not require the font pack, but the first sync cannot start without it.
+When a font pack is ready, the page shows `Setup complete. Starting KaniKey...`,
+the device shows `Setup complete` / `Syncing...`, and the first sync runs:
 Wi-Fi, Outbox, Account, Summary, Level, SRS and Critical rows, then Home. The
-first sync can take several seconds.
-
-The pack is not part of the Finish check. If the **Visual pack** section says
-`pack missing` or `no pack`, use **Download pack** (or copy the file to the
-card) and press **Check pack again** before starting.
+first sync can take several seconds. If the **Visual pack** section says `pack
+missing` or `no pack`, use **Download pack** (or build and copy the file, §3.2
+and §3.3) and press **Check pack again** before starting.
 
 ### 4.3 If setup stops
 
-The portal closes after **15 minutes without a page request**. The setup network
-disappears and the device returns to its boot screen. Nothing is corrupted.
-`Esc: cancel` on the device closes it immediately as well.
+The portal closes after **15 minutes without a page request**. Any
+`KaniKey-XXXX` setup network disappears and the device returns to its boot
+screen. Nothing is corrupted. `Esc: cancel` on the device closes it immediately
+as well.
 
-Press `Enter` on `Token needed` or `Wi-Fi needed` to open setup again; if both
-Wi-Fi and the token are already saved and the device boots to Home, use
-**Settings › Setup portal** instead. A new setup network gets a new password,
-and every portal start gets a new `Page code`. Wi-Fi credentials are saved when
-you press **Save and connect**, even if the join then fails; the token is saved
-only after it validates. If setup stopped after Wi-Fi but before the token,
-reopening goes straight to the station page when the saved network is
-reachable, or back to the `KaniKey-XXXX` page when it is not.
+Press `Enter` on `Token needed` or `Pack missing` to open setup again. On
+`Wi-Fi needed`, `Enter` opens the on-device Wi-Fi list and `P` opens the phone
+portal. If both Wi-Fi and the token are already saved and the device boots to
+Home, use **Settings › Setup portal** instead. A new setup network gets a new
+password, and every portal start gets a new `Page code`. Wi-Fi credentials are
+saved when you press **Save and connect**, even if the join then fails; the
+token is saved only after it validates. If setup stopped after Wi-Fi but before
+the token, reopening goes straight to the station page when the saved network
+is reachable, or back to the `KaniKey-XXXX` page when it is not.
 
-Setup only reads `GET /user`; it does not start lessons or submit reviews. The
-first sync after **Start KaniKey** may send reviews that were already waiting in
-the outbox.
+Setup makes only a `GET /user` request to WaniKani; it does not start lessons
+or submit reviews. The first sync after **Start KaniKey** may send reviews that
+were already waiting in the outbox.
 
 ---
 
 ## 5. Daily use
 
-- Turn the device on. A configured device syncs on boot. `S` on Home or
+- Turn the device on. A configured device normally syncs on boot or wake
+  (unless **Settings › Auto sync on wake** is Off). `S` on Home or
   **Settings › Sync now** runs a sync manually.
 - Home shows the review and lesson counts. `Enter` starts reviews, `L` opens
   lessons, `T` opens stats, `P` opens extra study and `Esc` opens Settings.
+  `O` opens the Outbox when a review needs attention; see §6.
 - Type the meaning; press `Enter`. Type the reading in romaji; the field shows
   kana; press `Enter`.
 - A wrong answer shows the correct answer; press `Enter` to continue. The item
   comes back later in the session.
-- `L` opens the lesson list; `Enter` opens the selected card. On the card,
-  `Enter` starts that lesson in WaniKani. `Q` on the card opens the optional
-  local quiz, which never starts the lesson.
-- `Esc` in a review opens Pause: Continue, End session or Settings. At the end
-  of a session the summary appears; `Enter` returns to Home.
+- `L` opens the lesson list. `Space` selects or deselects a lesson; `Enter`
+  opens the selected cards. `Enter` or `Space` turns the card pages; `Enter` on
+  the last page moves on, and `Esc` returns to the list. After the last card,
+  the batch quiz runs (default **Required**, **Settings › Lesson quiz**) and
+  then the start screen appears. `Enter` there starts the whole selected batch
+  in WaniKani. Browsing and the quiz never start a lesson. `Q` on a card opens
+  an optional local single-item quiz.
+- `Esc` in a review opens Pause: Continue, Wrap up, End session or Settings. At
+  the end of a session the summary appears; `Enter` returns to Home.
 - On battery the screen dims after 30 s, blanks after 60 s and deep-sleeps after
-  2 minutes when no review or lesson is active. A key wakes it; the first key on
-  a blank screen only wakes the panel. The timings are under
-  **Settings › Dim after / Blank after / Sleep after**.
+  2 minutes when no review, lesson or menu screen is open. A key wakes it; the
+  first key on a blank screen only wakes the panel. USB power prevents deep
+  sleep. The timings are under **Settings › Dim after / Blank after / Sleep
+  after**.
 - Below 20% battery, starting reviews or lessons asks for confirmation. USB
   power skips that prompt.
-- `O` on Home opens the Outbox when a review needs attention. See §6.
 
 ---
 
@@ -417,7 +494,7 @@ Settings, the cache and the outbox survive a reboot and a firmware update.
 ### 7.1 Over the air (normal)
 
 1. Connect the device to Wi-Fi.
-2. Press `Esc` from Home and open **Firmware**.
+2. Press `Esc` from Home, open **Settings** and choose **Firmware**.
 3. The screen shows the running version and slot and the last check or install
    result. **Check now** checks the latest GitHub release. The device also checks
    once a day after a successful sync.
@@ -429,8 +506,9 @@ Keep the device on power and connected during the install. The first boot of a
 new image is on probation: if it crashes, resets or loses power before it is
 marked valid, the bootloader returns to the previous image. It is marked valid
 after the first successful WaniKani request, or after about 10 minutes of
-running. Leave it running for a few minutes after the restart. A failed check or
-install stays on the screen with its reason and keeps the current image.
+running. Leave it running for about 10 minutes after the restart, or until it
+completes a sync. A failed check or install stays on the screen with its reason
+and keeps the current image.
 
 ### 7.2 One-time USB flash for v0.1.0
 
@@ -438,31 +516,55 @@ A device still running v0.1.0 cannot follow GitHub's redirects, so its update
 check fails. Flash it once over USB; later releases update over the air.
 
 Download `kanikey-cardputer-adv.bin` from
-<https://github.com/dcarnicer/kanikey/releases/latest>, then either build and
-flash from a checkout:
+<https://github.com/dcarnicer/kanikey/releases/latest>, then write the released
+app-only image to the app slot at `0x10000`:
+
+```sh
+python3 -m pip install esptool
+python3 -m esptool --chip esp32s3 --port /dev/cu.usbmodemXXXX \
+  write_flash 0x10000 kanikey-cardputer-adv.bin
+```
+
+Replace `/dev/cu.usbmodemXXXX` with the port the device appears on (on macOS,
+`ls /dev/cu.usbmodem*`; on Windows, `COMx`). If you prefer to build from a
+checkout and have PlatformIO Core installed:
 
 ```sh
 cd firmware
 pio run -e cardputer-adv -t upload --upload-port /dev/cu.usbmodemXXXX
 ```
 
-or write the released app-only image to the app slot at `0x10000`:
-
-```sh
-esptool.py --chip esp32s3 --port /dev/cu.usbmodemXXXX \
-  write_flash 0x10000 kanikey-cardputer-adv.bin
-```
-
-`esptool.py` comes from `python3 -m pip install esptool`. This USB path is for a
-v0.1.0 device, whose active slot is `app0`. Do not use it to move a device that
-has already updated itself.
+This USB path is for a v0.1.0 device, whose active slot is `app0`. Do not use it
+to move a device that has already updated itself.
 
 ---
 
 ## 8. Changing Wi-Fi
 
-1. Press `Esc` from Home and open **Setup portal**. It is disabled during a
-   review; end the session first.
+You can change Wi-Fi on the device or from the setup portal. Both are disabled
+during a review; end the session first.
+
+### 8.1 On the device (no phone)
+
+1. Press `Esc` from Home and open **Settings › Account › Wi-Fi**. The boot
+   `Wi-Fi needed` screen opens the same list with `Enter`; `P` there opens the
+   phone portal instead.
+2. The device scans 2.4 GHz networks and lists each name with its signal and
+   security. Up/Down selects, `Enter` chooses and `R` rescans. For a hidden
+   network choose `+ Enter network name`, type the name and press `Enter`.
+3. On the password screen type the password; `Tab` shows or hides it. Press
+   `Enter` to connect (8–63 characters; leave it empty for an open network).
+   `Esc` goes back.
+4. If the join succeeds, the credentials are saved; from Settings the note
+   `Wi-Fi: <name>` appears, and from the boot screen the device continues
+   booting. If it fails, the reason stays on screen; check the password and
+   that the network is 2.4 GHz. A 5 GHz-only network does not appear in the
+   list.
+
+### 8.2 From the setup portal
+
+1. Press `Esc` from Home and open **Settings › Setup portal**. It is disabled
+   during a review; end the session first.
 2. If the device can join the saved network, the station page opens at its
    address. Enter the `Page code` shown on the device, then open the
    **Change Wi-Fi** section, enter the new network name and password and press
@@ -483,23 +585,27 @@ The token, cache and outbox are not affected by a Wi-Fi change.
 | Symptom | What it means | What to do |
 |---|---|---|
 | `No SD card` / `Insert a FAT32 card with /kanikey/glyphs.kgp` | Card missing, not mounted or not FAT32 | Insert it, format it as FAT32, then press `Enter: retry` |
-| `Pack missing` / setup page `pack missing` or `no pack` | `/kanikey/glyphs.kgp` is missing or could not be opened | Press `Enter` to open setup and use **Download pack** (§3.6), or copy the pack (§3.2) and press **Check pack again** |
-| `pack: bad crc` or another `pack: ...` error | The pack file is damaged, truncated or from another format | Copy the correct pack again; rebuild it if the copy keeps failing |
-| `no glyph` on an item | The character or radical is not in the pack | Rebuild the pack with the current token and copy it (§3.4) |
+| `Pack missing` / setup page `pack missing` or `no pack` | `/kanikey/glyphs.kgp` is missing or could not be opened | Press `Enter` to open setup; on the station page use **Download pack** (§3.1). If the release has no pack, build it (§3.2) and copy it (§3.3), then press **Check pack again** |
+| `pack: bad crc` or another `pack: ...` error | The pack file is damaged, truncated or from another format | Copy the correct pack again (§3.3) or download it again; if it keeps failing, rebuild it (§3.2) |
+| **Download pack** fails | The button needs the station page and a release manifest with a `pack font` record; an offline, TLS, HTTP, size or hash error stops the transfer | Join home Wi-Fi and try again. If the page says `The release manifest has no font pack`, build a pack (§3.2) and copy it (§3.3). A transfer failure leaves the old file in place |
+| **Upload radical pack** says `Not a radical pack: ...` / `pack: wrong kind` | The file is not a KKGP v2 kind-2 radical pack, is truncated, or is a v1 combined file | Use `dist/radicals.kgp` from `build.py --split` with a token (§3.2) and upload it again. The old radical pack is kept |
+| Pack transfer stops when you press `Esc` on the device | The download or upload was cancelled; the `.tmp` is deleted | Start the transfer again; the old file is unchanged |
+| The Wi-Fi list is empty, or a network is missing or cannot be joined | No 2.4 GHz network was found, the network is 5 GHz-only, or its security type (WEP, 802.1X, WAPI) is not supported | Press `R` to rescan, move closer, or choose `+ Enter network name` for a hidden SSID. Use a WPA2/WPA3 network; the phone portal uses the same Wi-Fi stack |
+| `no glyph` on an item | The character is not in the font pack, or the radical is not in the radical pack | For a radical, build a radical pack from your account (§3.2) and upload it (§3.1). For a character, build and copy a font pack that includes it (§3.2, §3.3) |
 | `Token rejected` / `Auth: token rejected` | HTTP 401: the token was revoked, deleted or mistyped | Create a new token, then **Settings › Setup portal** and paste it |
 | `Missing permissions` / `Auth: missing permissions` | HTTP 403: the token lacks a permission | Create a new token with the missing permission and paste it in **Setup portal**; only the affected features stop |
 | `Rate limited; retry in Ns` / `Retry in Ns` | HTTP 429 | Wait for the countdown. The shared gate pauses every request until then; do not power-cycle the device repeatedly |
 | `Offline - ...` / `Stale cache - ...` | No Wi-Fi or DNS, or an old cache | Cached reviews still work. Check the 2.4 GHz network and press `S` to sync |
 | `Sync failed` / `Check Wi-Fi and token` | The first sync could not finish | Check the 2.4 GHz network and the token, then press `Enter: retry`; use **Setup portal** if the token is wrong |
-| `Could not join "<ssid>"` | Wrong password or a 5 GHz-only network | Re-enter the password on the setup page; use a 2.4 GHz network |
-| Setup network disappeared, or the page no longer loads | The portal closed after 15 idle minutes, or the phone is on mobile data | Press `Enter` on the boot screen's setup prompt, or open **Settings › Setup portal** once Home. Reconnect the phone to the device network or home Wi-Fi |
+| `Could not join "<ssid>"` | Wrong password, a 5 GHz-only network, or the network is out of range | Re-enter the password on the setup page or **Settings › Account › Wi-Fi**; use a 2.4 GHz network |
+| Setup network disappeared, or the page no longer loads | The portal closed after 15 idle minutes, or the phone is on mobile data | Press `Enter` on `Token needed`/`Pack missing`; on `Wi-Fi needed` press `Enter` for the on-device list or `P` for the portal. Once Home, use **Settings › Setup portal**. Reconnect the phone to the device network or home Wi-Fi |
 | `Unlock` asks for a code; `Wrong code` / `Too many tries` | The station page is locked | Type the 6-digit `Page code` from the screen. After five wrong codes, use the new code on screen |
-| The clock or time zone is wrong | The browser's clock or zone was wrong, or no sync has run | Reopen **Setup portal** from a phone with the correct time and zone; a sync also sets the clock from the network |
+| The clock or time zone is wrong | The browser's clock or zone was wrong, or the clock has not synced | Reopen **Setup portal** from a phone with the correct time and zone. A sync sets the clock from the network but does not change the time zone |
 | `Outbox: N pending` | Reviews are queued and not sent yet | They will send on the next sync; press `S` when Wi-Fi is back |
 | `Outbox: N need attention` / `HTTP 422` / `HTTP 409` / `gave up` | A review was rejected or could not be sent | Open `O`, read the reason, then discard it if it is no longer useful. Discarding does not change WaniKani |
 | `Outbox full` | All 128 outbox slots are used | Sync to flush, or dismiss rejected/stuck items in `O` |
 | `Storage unreadable` | The internal storage for the cache/outbox cannot be read | `Enter` formats it, which loses pending reviews and the cache; `Esc` continues without storage (no outbox or cache) |
-| Firmware check fails | No Wi-Fi/TLS, or no release is available | Check the network and try **Check now** again; the current image is unchanged |
+| Firmware check fails | No Wi-Fi/TLS, no release is available, or the device is still on v0.1.0 | Check the network and try **Check now** again; if this is a v0.1.0 device, use the USB flash in §7.2. The current image is unchanged |
 | The screen is black | The device blanked or deep-slept to save power | Press a key. The first press only wakes the screen |
 | Low-battery prompt | The battery is below 20% | Charge it, or connect USB power |
 
@@ -510,15 +616,21 @@ The token, cache and outbox are not affected by a Wi-Fi change.
 - The WaniKani token stays in NVS on the Cardputer. It is not sent to any
   KaniKey server, is never logged and is never shown back.
 - There is no KaniKey account, cloud sync or telemetry. The device contacts
-  `api.wanikani.com`, its NTP servers and GitHub (firmware updates).
+  `api.wanikani.com`, its NTP servers and GitHub (firmware updates and the
+  public font pack).
 - The visual pack, cache and outbox stay on your card and device. WaniKani
-  content is fetched with your token and is not shipped in the repository.
+  content is fetched with your token and is not shipped in the repository. The
+  public font pack contains only glyphs from an OFL font and no WaniKani
+  content; the radical pack is built from your account and is personal. The
+  font download involves no token, and the radical upload stays on your local
+  network.
 - The setup access point is local and WPA2-protected. The station page is
   locked with the 6-digit code because it is reachable from the whole home
   network. The setup pages themselves use HTTP on the local network, so set up
   on a network you trust.
 - **Sign out** removes the token and all cached account data: cache, journal,
-  outbox and practice data. It keeps Wi-Fi and the visual pack on the card.
+  outbox, audio cache and practice data. It keeps Wi-Fi and the visual pack on
+  the card.
 
 ---
 
@@ -531,8 +643,10 @@ The token, cache and outbox are not affected by a Wi-Fi change.
 - It does not have its own login, password or cloud service. Access is the
   WaniKani API token, which you can revoke and replace in WaniKani.
 - It does not ship WaniKani content. Meanings, readings, mnemonics and radical
-  images are requested with your token and stored on your card. Audio is not
-  played yet (see §12).
+  images are requested with your token and stored on your card. The public font
+  pack contains no WaniKani content; a radical pack built from your account is
+  personal and must not be published or shared. Audio is not played yet (see
+  §12).
 - It does not support phones, watches or other boards. This firmware is for the
   Cardputer ADV only.
 - It does not provide a forum, community, push notifications, an app store
@@ -546,7 +660,9 @@ The token, cache and outbox are not affected by a Wi-Fi change.
 
 These are future plans, not features you can use today:
 
-- A pack generator in the phone's browser, without a computer.
+- A pack generator in the phone's browser that renders new glyphs or radical
+  images. The setup page can download the published public font pack and accept
+  a prepared radical pack, but it does not build either from a character list.
 - On-device rendering of characters that are not in the pack.
 - Vocabulary pronunciation playback and stroke order. The firmware can parse
   pronunciation metadata, but playback is not enabled yet.
@@ -555,27 +671,32 @@ These are future plans, not features you can use today:
 
 ## Appendix A — Custom pack options
 
-The standard command builds every character your account can use, with Noto
-Sans JP. Extra options:
+The no-token split command builds the fixed public font set with Noto Sans JP.
+Extra options:
 
 ```sh
 # Test pack from a character list: no token, no radical bitmaps
 uv run --with pillow python3 tools/glyph-pack/build.py \
   --chars "食休日本語" --out dist/glyphs-test.kgp
 
-# Another OFL font (the account token is still needed for the full pack)
+# Custom font, public character set: font pack only, no token
+uv run --with pillow python3 tools/glyph-pack/build.py \
+  --split dist --font /path/to/font.otf
+
+# Legacy combined pack from your account, with radicals
 WANIKANI_TOKEN=... uv run --with pillow --with cairosvg \
-  python3 tools/glyph-pack/build.py \
-  --font /path/to/font.otf --out dist/glyphs.kgp
+  python3 tools/glyph-pack/build.py --out dist/glyphs.kgp
 ```
 
 | Option | Effect |
 |---|---|
+| `--split DIR` | Write `DIR/glyphs.kgp` (font) and, with a token, `DIR/radicals.kgp` (radical); without a token, font only |
+| `--out PATH` | Write one combined v2 kind-0 pack (legacy); default `dist/glyphs.kgp`. Needs a token, `--chars` or `--tangocho`; cannot be combined with `--split` |
 | `--font PATH` | Use another OFL font file |
-| `--chars "食休日本語"` | Build from this character list; no API, no radicals |
-| `--no-kana` | Omit the kana block in a `--chars` or `--tangocho` build |
-| `--out PATH` | Write the pack somewhere other than `dist/glyphs.kgp` |
-| `--tangocho` | Build from Tangocho's local kanji cache; no token, no radicals |
+| `--chars "食休日本語"` | Build the font from this character list; without a token, no API and no radicals |
+| `--no-kana` | Omit the kana block in a `--chars`, `--tangocho` or `--split` build |
+| `--tangocho` | Build a combined pack from Tangocho's local kanji cache; no token, no radicals; not with `--split` |
+| `--token TOKEN` | Same as the `WANIKANI_TOKEN` environment variable |
 
 A pack built without a token has no radical bitmaps; image-only radical prompts
 then show `no glyph`.
