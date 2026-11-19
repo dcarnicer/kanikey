@@ -20,8 +20,11 @@ still loads), and the Y1/Y2/Y3 accessors (not yet in the Settings menu). 17 new
 native tests (233 on the branch). A hardware smoke found the automatic job
 stops at `SyncStep::Time` after the first pass (`sub 0`, trusted clock, no
 pause screen, no further loop passes), so the merge was reverted from `main`
-and the branch is being fixed. The manual modal Sync now path remains the
-current stable behaviour.
+and the branch is being fixed. A first fix replaced the blocking
+`configTzTime()` with the ESP-IDF SNTP task and made the Time step a pure poll:
+the hardware smoke now reaches `[time] synced`, but the job still stops before
+the next request, so a second fix is in progress. The manual modal Sync now
+path remains the current stable behaviour.
 
 ### SPEED-01 — Submission policy
 

@@ -614,9 +614,12 @@ the dev image: 1,622,625 B / 1,835,008 B flash (88.4%), 96,336 B RAM (29.4%);
 - **SPEED auto-sync (not merged).** The non-modal SPEED-02/03/04 job from
   `spec/SPEED-sync` joins Wi-Fi, draws Home, and then stops at
   `SyncStep::Time` after the first pass (`sub 0`, trusted clock, no pause
-  screen; the loop stops reaching its end log). The merge was reverted from
-  `main`; the branch is being fixed. The manual modal Sync now path is the
-  stable behaviour.
+  screen; the loop stops reaching its end log). A first fix replaced the
+  blocking `configTzTime()` with the ESP-IDF SNTP task and made Time a pure
+  poll; the second smoke reaches `[time] synced` but still stops before the
+  next request. The merge was reverted from `main`; the branch is under a
+  second investigation. The manual modal Sync now path is the stable
+  behaviour.
 
 Remaining hardware checks: API-02 429 (native-tested; a real 429 was not
 provoked), API-03 403 (read-only token), FIX-06 slow server, FIX-07 15-minute
