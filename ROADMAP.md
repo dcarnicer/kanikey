@@ -760,7 +760,7 @@ round 2.
 | EXT-09 | REM-01…REM-03 | Device-local reminders and sounds | todo |
 | Complete lesson flow | LES-01, LES-02, LES-03, LES-04, LES-05, LES-06 | Browse → batch quiz → confirmed start → order/workload/topic pages | review (2026-11-19; hardware partial) |
 | LESSON-08 | LES-04 | Lesson ordering | review: WaniKani/type groups/interleave; 60-pool check pending |
-| Settings menu | CFG-01, CFG-02, CFG-03 | Eight sections, 48-row registry, reset | review (2026-11-19; hardware partial) |
+| Settings menu | CFG-01, CFG-02, CFG-03, CFG-04 | Eight sections, 48-row registry, reset, help overlay | review (2026-11-19; hardware partial) |
 | On-device Wi-Fi | SETUP-09 | 2.4 GHz scan, manual SSID, masked password | review (2026-11-19; scan/password mask smoke) |
 | Review feedback | REV-01, REV-03 | All accepted answers, synonyms, hint line | review (2026-11-19; hardware pending) |
 | Typo policy | REV-02 | WaniKani close-answer acceptance / Strict | review (2026-11-19; hardware pending) |
@@ -777,8 +777,8 @@ REM/AUD, ONB (pack and setup) and DOC (this documentation pass). ARCH-01/02 are
 merged and CFG-01/02/03, REV-01/02/03, REV-05/06/09/12, LES-01…LES-06,
 SETUP-09, ONB-01 and SPEED-02/03/04/05/07 are in review. The eight-section
 Settings menu replaces the flat list; the registry now has 48 rows after the
-Account › Wi-Fi action. Main has 338 native tests and builds at 1,611,837 B
-(87.8%) release / 1,679,413 B (91.5%) dev. No round-2 task is claimed as done
+Account › Wi-Fi action. Main has 340 native tests and builds at 1,613,409 B
+(87.9%) release / 1,681,009 B (91.6%) dev. No round-2 task is claimed as done
 here beyond the spec status above.
 
 ## 11. Bluetooth keyboard (after v1)

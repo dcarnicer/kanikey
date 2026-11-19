@@ -698,6 +698,19 @@ A150 G143 M81 E147 B586).
   answering `tonight` for 今夜 moved to the `READING` question without Enter.
   R8 was returned to Off. Back-to-back Off, minimal header and the
   wrong/warning/detail/pause/blank guards remain.
+- **CFG-04.** `?` on Home opened the `home` table with Enter/L/O/S/T/P/Esc
+  rows and `Esc: close`; the normal Home hint shows
+  `Enter: reviews  L  S  Esc: menu` without clipping. The other screen tables,
+  the swallow/close path and the portal/Wi-Fi refusal remain.
+- **ONB-01.** The card still holds the v1 combined `glyphs.kgp`; Home, lessons
+  and About render from it through the fallback. About shows both `Font:` and
+  `Rad:` lines, and the status is now split by role so a combined pack does not
+  repeat the other table. The split font/radical files, missing-radical boot
+  and both upload paths remain.
+- **REV-05.** Pause showed the four rows `Continue / Wrap up / End session /
+  Settings`. On the synthetic cache, after completing 今夜's meaning and
+  opening Wrap up, the reading question stayed with `WRAP UP 1` and `1/1`. The
+  multi-item prune, idempotence and summary checks remain.
 
 ## Round 2 hardware checks
 

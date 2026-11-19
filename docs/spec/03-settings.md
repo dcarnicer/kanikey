@@ -7,7 +7,7 @@ Decision D3 turns Settings into a sectioned menu backed by the ARCH-02 registry,
 | CFG-01 | Sectioned settings menu | P1 | M | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware smoke partial) |
 | CFG-02 | Settings registry of record | P1 | M | ARCH-02 | 2 | review (2026-11-19: 47 rows; hardware smoke partial) |
 | CFG-03 | Reset settings to defaults | P2 | S | CFG-02 | 2 | review (2026-11-19: reset implemented; hardware pending) |
-| CFG-04 | Key help overlay | P2 | S | CFG-01 | 2 | todo |
+| CFG-04 | Key help overlay | P2 | S | CFG-01 | 2 | review (2026-11-19: merged; hardware partial) |
 
 **Implementation (2026-11-19).** 47 registry rows (39 keyed, 8 actions) with
 the eight sections, help line, two-way cycling, review lock and Reset
@@ -17,8 +17,19 @@ new native tests (285 on the merged main). Builds: release 1,586,677 B
 (86.5%), dev 1,654,337 B (90.2%). Hardware: Home → Settings showed the eight
 sections and their counts; Reviews showed 12 settings; `Batch size` cycled
 20 → 30 with Right and back to 20 with Left, with the help line. Review
-lock/reset/origin/scroll/clipping, the upgrade values and the actions remain;
-CFG-04 is not implemented.
+lock/reset/origin/scroll/clipping, the upgrade values and the actions remain.
+
+**Implementation (2026-11-19, CFG-04).** Shift+`/` (grid 12,3) opens a per-screen
+help overlay in `wk/HelpTable.h`: Home, Settings, reviews question/feedback,
+lesson card/quiz, Outbox and Firmware, at most seven rows, `Esc: close`.
+`Esc` closes and every other key is swallowed; the overlay is refused during
+the portal, on-device Wi-Fi, low-battery, sign-out and notices. Plain `/`
+remains Right and `?` in an answer field returns to the same item. Home's hint
+is `Enter: reviews  L  S  Esc: menu` (or `O: outbox  Enter  S  Esc: menu`).
+Two new native tests (340 on the merged main); release 1,613,409 B (87.9%),
+dev 1,681,009 B (91.6%). Hardware: Home showed the seven-row `home` table and
+`Esc: close`; the Home hint shows `Esc: menu`. The other screens, the
+swallow/close path and the portal/Wi-Fi refusal remain.
 
 ### CFG-01 — Sectioned settings menu
 

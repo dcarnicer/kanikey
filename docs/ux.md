@@ -813,11 +813,16 @@ the mnemonic. **Hardware pending:** the full quiz with mistakes, offline start,
 - **Implementation (2026-11-19, CFG-01/02/03).** The sectioned menu above is
   live, backed by the 47-row registry. The destructive rows (`Setup portal`,
   `Firmware › Install update`, `Sign out`, `Clear cache`, `Reset settings`) are
-  faint and inert during a review. CFG-04's `?` key-help overlay is still
-  planned. **Hardware pending:** the review lock, `Reset settings`, origin
-  return, scrolling/clipping and upgrade values; the 2026-11-19 log records the
-  eight sections and one `Batch size` cycle (see
+  faint and inert during a review. **Hardware pending:** the review lock,
+  `Reset settings`, origin return, scrolling/clipping and upgrade values; the
+  2026-11-19 log records the eight sections and one `Batch size` cycle (see
   [`docs/hardware.md`](hardware.md), 2026-11-19).
+- **CFG-04 key help (2026-11-19).** `Shift`+`/` (`?`) opens a per-screen table
+  on Home, Settings, reviews, lessons, Outbox and Firmware: title, key chord
+  left, action right, at most seven rows and `Esc: close`. `Esc` closes and no
+  key reaches the screen underneath; the overlay is refused during the setup
+  portal, on-device Wi-Fi, low-battery, sign-out and notices. Plain `/` is
+  still Right and `?` works inside an answer field.
 
 ### 5.13 Outbox
 
