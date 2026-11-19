@@ -4,7 +4,7 @@ These four tasks are wave 1 of round 2: they do not add features, they make the 
 
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
-| ARCH-01 | Split `app/App.cpp` into controllers | P1 | L | none | 1 (first) | todo |
+| ARCH-01 | Split `app/App.cpp` into controllers | P1 | L | none | 1 (first) | review (2026-11-19: refactor done; hardware smoke partial; +7.5 KB flash) |
 | ARCH-02 | Settings registry | P1 | M | ARCH-01 | 1 (after ARCH-01; ∥ ARCH-03, ARCH-04) | todo |
 | ARCH-03 | Local stores shared by STATS, STUDY and REM | P1 | M | ARCH-01 | 1 (after ARCH-01; ∥ ARCH-02, ARCH-04) | done (2026-11-06) |
 | ARCH-04 | Screen state machine | P2 | M | ARCH-01 | 1 (after ARCH-01; before wave 2 starts) | todo |
@@ -49,6 +49,18 @@ These four tasks are wave 1 of round 2: they do not add features, they make the 
 - [ ] `pio run -e cardputer-adv` and `-e cardputer-adv-dev` build; release flash is within ±2 KB of `main`.
 - [ ] `pio test -e native` passes with `test_wk.cpp` untouched.
 - [ ] The hardware smoke list passes on both images.
+
+**Implementation (2026-11-19).** `App.cpp` is 783 lines and keeps only
+`setup()`, `loop()`, the `draw()`/`onKey()` routers and the Home/Boot adapters.
+The controllers and `AppState` are the files listed above; `wk/SubjectText.h`
+holds the two shared subject-text helpers. 216 native tests pass;
+`cardputer-adv` builds at 1,564,561 B (85.3%, **+7,572 B** over main) and
+`cardputer-adv-dev` at 1,631,425 B (88.9%). The +7.5 KB is accepted: it comes
+from lost cross-translation-unit inlining, the split unblocks the wave-2
+tasks, and the app slot still has ~270 KB free. Hardware smoke passed for
+boot/Home, sync, a review prompt, Settings, OUTBOX and the dev `J`/`o`/`z`
+commands; lessons, pause, sleep/wake, `Tab`, `C`/`X` and the full feedback/
+detail path remain to be checked.
 
 ### ARCH-02 — Settings registry
 

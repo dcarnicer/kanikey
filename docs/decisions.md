@@ -809,3 +809,24 @@ Subjects come from the SD catalog; missing ones are fetched online and stored
 there, otherwise they are skipped and counted in `N items skipped`. Settings
 S3/S4/S5 control the two windows and the session size (Apprentice/24 h, 24 h,
 10 by default).
+
+---
+
+## 2026-11-19 — App.cpp is split into controllers over one AppState
+
+**Decision:** `app/App.cpp` keeps only `setup()`, `loop()`, the `draw()` and
+`onKey()` routers and the Home/Boot adapters. The cache, sync, outbox, review,
+lesson, stats, study, settings, setup, power and dev-console flows live in
+their own controllers, and `app/AppState.{h,cpp}` owns the single `AppState`
+instance returned by `state()`. The fields keep their old names so the move is
+mechanical and reviewable. Controller headers declare only the entry points
+another translation unit calls; the rest stays inside the `.cpp`.
+
+**Why:** every wave-2 task needed `App.cpp`, so parallel agents conflicted on
+every hunk. The split gives each task its own file without changing components,
+wire formats, key bindings or UI.
+
+**Implications:** cross-controller calls are explicit through the headers
+(Review↔Outbox↔Cache, Sync→Outbox/Cache/Study, Settings→Setup/Sync). Small
+shared subject-text helpers (`subjectMainMeaning`, `correctAnswer`) moved to
+the pure `wk/SubjectText.h`. `main.cpp` and `App.h` are unchanged.

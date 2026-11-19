@@ -1,0 +1,399 @@
+// Session cache, the lazy review batch and the SD mount.
+#include <Arduino.h>
+#include <LittleFS.h>
+#include <SD.h>
+#include <SPI.h>
+#include <WiFi.h>
+#include <esp_heap_caps.h>
+#include <esp_system.h>
+#include <time.h>
+
+#include <algorithm>
+#include <cstring>
+
+#include "app/AboutScreen.h"
+#include "app/App.h"
+#include "app/AppState.h"
+#include "app/AppUi.h"
+#include "app/BootScreen.h"
+#include "app/CacheController.h"
+#include "app/DebugScreens.h"
+#include "app/DevConsole.h"
+#include "app/FirmwareScreen.h"
+#include "app/HomeScreen.h"
+#include "app/LessonController.h"
+#include "app/LessonScreens.h"
+#include "app/LoadingScreen.h"
+#include "app/ModalScreens.h"
+#include "app/OutboxController.h"
+#include "app/OutboxScreen.h"
+#include "app/PowerController.h"
+#include "app/ReviewController.h"
+#include "app/ReviewScreens.h"
+#include "app/SettingsController.h"
+#include "app/SettingsScreen.h"
+#include "app/SetupController.h"
+#include "app/SetupScreen.h"
+#include "app/StatsController.h"
+#include "app/StatsScreen.h"
+#include "app/StudyController.h"
+#include "app/StudyScreens.h"
+#include "app/SyncController.h"
+#include "app/SyncScreen.h"
+#include "board/Board.h"
+#include "Version.h"
+#include "platform/AudioCache.h"
+#include "platform/CacheStore.h"
+#include "platform/CriticalStore.h"
+#include "platform/DeviceSettings.h"
+#include "platform/DevToken.h"
+#include "platform/DevWifi.h"
+#include "platform/GlyphPack.h"
+#include "platform/JournalStore.h"
+#include "platform/OutboxStore.h"
+#include "platform/Ota.h"
+#include "platform/PracticeStore.h"
+#include "platform/SetupPortal.h"
+#include "platform/SubjectCatalog.h"
+#include "platform/WkClient.h"
+#include "platform/WkLessons.h"
+#include "platform/WkLevelProgress.h"
+#include "platform/WkProbe.h"
+#include "platform/WkReview.h"
+#include "platform/WkReviewStatistics.h"
+#include "platform/WkSrsCounts.h"
+#include "wk/AnswerChecker.h"
+#include "wk/IdSample.h"
+#include "wk/LessonOrder.h"
+#include "wk/LessonQuiz.h"
+#include "wk/Outbox.h"
+#include "wk/ReviewQueue.h"
+#include "wk/ReviewResponse.h"
+#include "wk/RomajiIme.h"
+#include "wk/SessionStats.h"
+#include "wk/Stats.h"
+#include "wk/SubjectText.h"
+#include "wk/Time.h"
+#include "ui/Theme.h"
+
+namespace kk::app {
+namespace {
+
+using tgc::Key;
+using tgc::KeyEvent;
+using namespace kk::ui;
+
+void removeSubjectFromReviews(kk::Summary& summary, uint32_t subjectId);
+// Completed-but-unsent reviews are still in the outbox; they must not come
+// back as due after a reboot.
+void pruneCacheOutbox();
+// A fresh summary is authoritative: drop cached assignments that are no
+// longer due or that were reviewed in the meantime.
+void saveSubjectCache();
+uint32_t cacheAgeSeconds();
+
+void removeSubjectFromReviews(kk::Summary& summary, uint32_t subjectId) {
+    for (kk::SummaryBucket& b : summary.reviews) {
+        auto it = std::find(b.subjectIds.begin(), b.subjectIds.end(), subjectId);
+        if (it == b.subjectIds.end()) continue;
+        b.subjectIds.erase(it);
+        if (b.count > 0) --b.count;
+    }
+}
+
+// Completed-but-unsent reviews are still in the outbox; they must not come
+// back as due after a reboot.
+void pruneCacheOutbox() {
+    if (state().outbox.gOutbox.empty()) return;
+    for (size_t i = 0; i < state().cache.gBatch.assignments.size();) {
+        if (outboxHasAssignment(state().cache.gBatch.assignments[i].id)) {
+            removeSubjectFromReviews(state().session.gSummary, state().cache.gBatch.assignments[i].subjectId);
+            state().cache.gBatch.assignments.erase(state().cache.gBatch.assignments.begin() + i);
+        } else {
+            ++i;
+        }
+    }
+    for (const kk::OutboxItem& it : state().outbox.gOutbox)
+        if (it.subjectId) removeSubjectFromReviews(state().session.gSummary, it.subjectId);
+    state().cache.gBatch.ok = !state().cache.gBatch.assignments.empty() && !state().cache.gBatch.subjects.empty();
+}
+
+// A fresh summary is authoritative: drop cached assignments that are no
+// longer due or that were reviewed in the meantime.
+void saveSubjectCache() {
+    if (!state().storage.gFsOk) return;  // no storage: keep everything in memory only
+    if (!state().storage.gSdOk || !state().cache.gBatch.ok || state().cache.gBatch.subjects.empty() || !kk::DevToken::has()) return;
+    kk::CacheMeta meta;
+    meta.savedAt = state().cache.gBatch.fetchedAt ? state().cache.gBatch.fetchedAt : state().session.gSyncedAt;
+    meta.accountKey = currentAccountKey();
+    // cacheSaveSubjects() logs the count, size and time of a good save.
+    if (!kk::cacheSaveSubjects(SD, meta, state().cache.gBatch.subjects))
+        Serial.println("[cache] subjects save failed");
+}
+
+uint32_t cacheAgeSeconds() {
+    const uint32_t now = static_cast<uint32_t>(time(nullptr));
+    if (state().cache.gCacheSavedAt == 0 || now < 1700000000u || now < state().cache.gCacheSavedAt) return 0;
+    return now - state().cache.gCacheSavedAt;
+}
+
+}  // namespace
+
+void pruneBatchToSummary(uint32_t now) {
+    if (state().cache.gBatch.assignments.empty()) return;
+    const std::vector<uint32_t> due = state().session.gSummary.dueSubjectIds(now, 1000);
+    for (size_t i = 0; i < state().cache.gBatch.assignments.size();) {
+        const kk::Assignment& a = state().cache.gBatch.assignments[i];
+        const bool stillDue = std::find(due.begin(), due.end(), a.subjectId) != due.end();
+        if (!stillDue || outboxHasAssignment(a.id) || (a.availableAt && a.availableAt > now))
+            state().cache.gBatch.assignments.erase(state().cache.gBatch.assignments.begin() + i);
+        else
+            ++i;
+    }
+    state().cache.gBatch.ok = !state().cache.gBatch.assignments.empty() && !state().cache.gBatch.subjects.empty();
+}
+
+void clearLevelUpNotice() {
+    state().session.gLevelUpNotice = false;
+    state().session.gLevelUpFrom = 0;
+    state().session.gLevelUpTo = 0;
+    state().session.gLevelUpAt = 0;
+}
+
+uint32_t currentAccountKey() {
+    const String token = kk::DevToken::load();
+    return kk::cacheAccountKey(std::string_view(token.c_str(), token.length()));
+}
+
+// Without SNTP there is no battery-backed clock. Use the last cache save as
+// the reference so cached due counts and available_at checks stay meaningful.
+uint32_t effectiveNow() {
+    const uint32_t now = static_cast<uint32_t>(time(nullptr));
+    if (now >= 1700000000u) return now;
+    if (state().cache.gCacheSavedAt) return state().cache.gCacheSavedAt;
+    if (state().cache.gBatch.fetchedAt) return state().cache.gBatch.fetchedAt;
+    return now;
+}
+
+void applySummary(uint32_t now) {
+    state().session.gDueReviews = state().session.gSummary.dueReviews(now);
+    state().session.gLessons = state().session.gSummary.totalLessons();
+    char hhmm[8] = "--:--";
+    const uint32_t nextAt = state().session.gSummary.nextReviewAt(now);
+    if (nextAt) localHm(nextAt, hhmm, sizeof hhmm);
+    kk::formatNextReview(state().session.gSummary, now, hhmm, state().session.gNextReview, sizeof state().session.gNextReview);
+}
+
+void saveCacheSnapshot() {
+    if (!state().storage.gFsOk) return;  // no storage: keep everything in memory only
+    if (!state().session.gHaveSummary || !kk::DevToken::has()) return;
+    kk::CacheSnapshot snapshot;
+    snapshot.meta.savedAt = state().session.gSyncedAt;
+    snapshot.meta.accountKey = currentAccountKey();
+    snapshot.summary = state().session.gSummary;
+    if (state().session.gHaveUser) snapshot.user = state().session.gUser;
+    snapshot.levelProgress = state().session.gLevelProgress;
+    snapshot.srs = state().session.gSrs;
+    if (state().cache.gBatch.ok) {
+        snapshot.assignments = state().cache.gBatch.assignments;
+    } else if (state().cache.gBatchEvicted) {
+        // The batch is on disk only: keep its assignments instead of writing an
+        // empty list. The summary and the other fields still come from memory.
+        kk::CacheSnapshot previous;
+        if (kk::cacheLoadSnapshot(&previous) &&
+            previous.meta.accountKey == snapshot.meta.accountKey)
+            snapshot.assignments = std::move(previous.assignments);
+    }
+    if (!kk::cacheSaveSnapshot(snapshot)) {
+        Serial.println("[cache] snapshot save failed");
+        return;
+    }
+    state().cache.gCacheSavedAt = snapshot.meta.savedAt;
+    state().cache.gCachedBatchCount = snapshot.assignments.size();
+    Serial.printf("[cache] snapshot saved: %u assignments, %u due\n",
+                  static_cast<unsigned>(snapshot.assignments.size()),
+                  static_cast<unsigned>(state().session.gDueReviews));
+}
+
+void saveCacheAll() {
+    saveCacheSnapshot();
+    saveSubjectCache();
+}
+
+bool loadCache() {
+    if (!state().storage.gFsOk || !state().storage.gSdOk || !kk::DevToken::has()) return false;
+    kk::CacheSnapshot snapshot;
+    if (!kk::cacheLoadSnapshot(&snapshot)) return false;
+    const uint32_t key = currentAccountKey();
+    if (snapshot.meta.accountKey != key) {
+        Serial.println("[cache] token/account changed; discarding cache");
+        kk::cacheClearSnapshot();
+        kk::cacheClearSubjects(SD);
+        return false;
+    }
+    state().session.gSummary = std::move(snapshot.summary);
+    state().session.gHaveSummary = true;
+    state().session.gHaveUser = !snapshot.user.username.empty() && snapshot.user.level > 0;
+    if (state().session.gHaveUser) state().session.gUser = std::move(snapshot.user);
+    state().session.gLevelProgress = snapshot.levelProgress;
+    state().session.gSrs = snapshot.srs;
+
+    // The assignment list is cheap and only a few hundred bytes; the subjects
+    // are not. Keep the count for About and let startReview() load the batch
+    // from disk when it is actually needed.
+    state().cache.gBatch = kk::ReviewBatch{};
+    state().cache.gCachedBatchCount = snapshot.assignments.size();
+    state().cache.gBatchEvicted = state().cache.gCachedBatchCount > 0;
+
+    state().cache.gCacheSavedAt = snapshot.meta.savedAt;
+    state().session.gSyncedAt = snapshot.meta.savedAt;
+    if (state().session.gSyncedAt) localHm(state().session.gSyncedAt, state().session.gSyncClock, sizeof state().session.gSyncClock);
+    pruneCacheOutbox();
+    applySummary(effectiveNow());
+    state().cache.gOffline = true;
+    state().session.gShowHome = true;
+    Serial.printf("[cache] loaded: %u cached assignments (batch lazy), %u due, saved %u\n",
+                  static_cast<unsigned>(state().cache.gCachedBatchCount),
+                  static_cast<unsigned>(state().session.gDueReviews), static_cast<unsigned>(state().cache.gCacheSavedAt));
+    if (state().session.gSrs.valid)
+        Serial.printf("[cache] srs A %u, G %u, M %u, E %u, B %u\n",
+                      static_cast<unsigned>(state().session.gSrs.apprentice), static_cast<unsigned>(state().session.gSrs.guru),
+                      static_cast<unsigned>(state().session.gSrs.master),
+                      static_cast<unsigned>(state().session.gSrs.enlightened),
+                      static_cast<unsigned>(state().session.gSrs.burned));
+    return true;
+}
+
+// Loads the cached review batch (assignments + subjects) on demand. The
+// snapshot is authoritative for the assignment list; the subject cache on SD
+// supplies the data used by the review screens.
+bool loadCachedBatch() {
+    if (!state().storage.gFsOk || !state().storage.gSdOk || !kk::DevToken::has()) return false;
+    kk::CacheSnapshot snapshot;
+    if (!kk::cacheLoadSnapshot(&snapshot) || snapshot.assignments.empty()) return false;
+    const uint32_t key = currentAccountKey();
+    if (snapshot.meta.accountKey != key) return false;
+
+    kk::SubjectCache subjects;
+    if (!kk::cacheLoadSubjects(SD, &subjects) || subjects.meta.accountKey != key) return false;
+
+    kk::ReviewBatch batch;
+    for (const kk::Assignment& a : snapshot.assignments) {
+        const kk::Subject* match = nullptr;
+        for (const kk::Subject& s : subjects.subjects)
+            if (s.id == a.subjectId) {
+                match = &s;
+                break;
+            }
+        if (!match) continue;
+        batch.assignments.push_back(a);
+        batch.subjects.push_back(*match);
+    }
+    // Keep component subjects too, for the offline detail card.
+    for (const kk::Subject& s : subjects.subjects) {
+        if (std::any_of(batch.subjects.begin(), batch.subjects.end(),
+                        [&s](const kk::Subject& x) { return x.id == s.id; }))
+            continue;
+        batch.subjects.push_back(s);
+    }
+    if (batch.assignments.empty()) return false;
+    batch.fetchedAt = snapshot.meta.savedAt;
+    batch.ok = true;
+    state().cache.gBatch = std::move(batch);
+    state().cache.gBatchEvicted = false;
+    state().cache.gCachedBatchCount = state().cache.gBatch.assignments.size();
+    pruneCacheOutbox();
+    pruneBatchToSummary(effectiveNow());
+    state().cache.gCachedBatchCount = state().cache.gBatch.assignments.size();
+    state().cache.gBatch.ok = !state().cache.gBatch.assignments.empty() && !state().cache.gBatch.subjects.empty();
+    Serial.printf("[cache] batch loaded: %u assignments, %u subjects\n",
+                  static_cast<unsigned>(state().cache.gBatch.assignments.size()),
+                  static_cast<unsigned>(state().cache.gBatch.subjects.size()));
+    return state().cache.gBatch.ok;
+}
+
+// Drops the batch's subject strings when the app leaves review mode or starts
+// a lesson fetch. The assignment list and subjects stay on disk, so the next
+// session reloads them without a network round trip.
+void evictCachedBatch(bool save) {
+    if (state().cache.gBatch.assignments.empty() && state().cache.gBatch.subjects.empty() && !state().cache.gBatchEvicted) return;
+    if (save) saveCacheSnapshot();
+    if (!state().cache.gBatch.assignments.empty()) state().cache.gCachedBatchCount = state().cache.gBatch.assignments.size();
+    state().cache.gBatch = kk::ReviewBatch{};
+    state().cache.gBatchEvicted = state().cache.gCachedBatchCount > 0;
+    Serial.printf("[cache] batch evicted, %u assignments remain on disk\n",
+                  static_cast<unsigned>(state().cache.gCachedBatchCount));
+}
+
+void markCacheCompleted(uint32_t subjectId, uint32_t assignmentId) {
+    if (!state().session.gHaveSummary) return;
+    removeSubjectFromReviews(state().session.gSummary, subjectId);
+    for (size_t i = 0; i < state().cache.gBatch.assignments.size();) {
+        if (state().cache.gBatch.assignments[i].id == assignmentId)
+            state().cache.gBatch.assignments.erase(state().cache.gBatch.assignments.begin() + i);
+        else
+            ++i;
+    }
+    state().cache.gBatch.ok = !state().cache.gBatch.assignments.empty() && !state().cache.gBatch.subjects.empty();
+    state().cache.gCachedBatchCount = state().cache.gBatch.assignments.size();
+    saveCacheSnapshot();
+}
+
+bool mountSd() {
+    tgc::board::SdPins pins;
+    if (!tgc::board::sdPins(&pins)) {
+        snprintf(state().storage.gSdLine, sizeof state().storage.gSdLine, "SD: no slot");
+        return false;
+    }
+    if (pins.otherCs >= 0) {
+        pinMode(pins.otherCs, OUTPUT);
+        digitalWrite(pins.otherCs, HIGH);
+    }
+    // FSPI (SPI2): M5GFX drives the Cardputer panels through Arduino's HSPI
+    // bus (SPI3), and sharing that bus's mutex deadlocked a card read made
+    // inside a display transaction (the canvas-less "drawing directly" path).
+    static SPIClass spi(FSPI);
+    spi.begin(pins.sck, pins.miso, pins.mosi, pins.cs);
+    const size_t heapBefore = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    const uint32_t t0 = millis();
+    // Four handles: the glyph pack, one catalog/subject file, a directory and
+    // one spare for the catalog scan. The old limit of two held only the pack
+    // plus one file.
+    if (!SD.begin(pins.cs, spi, 20000000, "/sd", 4)) {
+        snprintf(state().storage.gSdLine, sizeof state().storage.gSdLine, "SD: no card / not FAT32");
+        Serial.printf("[sd] mount failed in %u ms, heap %u -> %u\n",
+                      static_cast<unsigned>(millis() - t0),
+                      static_cast<unsigned>(heapBefore),
+                      static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
+        return false;
+    }
+    const uint64_t mb = SD.cardSize() / (1024ull * 1024ull);
+    snprintf(state().storage.gSdLine, sizeof state().storage.gSdLine, "SD: %llu MB", static_cast<unsigned long long>(mb));
+    Serial.printf("[sd] mounted in %u ms, %llu MB, heap %u -> %u, largest %u\n",
+                  static_cast<unsigned>(millis() - t0), static_cast<unsigned long long>(mb),
+                  static_cast<unsigned>(heapBefore),
+                  static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+                  static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL |
+                                                                         MALLOC_CAP_8BIT)));
+    return true;
+}
+
+bool cacheIsStale() { return cacheAgeSeconds() >= 24u * 3600u; }
+
+void cacheStatusLine(char* out, size_t n) {
+    const uint32_t age = cacheAgeSeconds();
+    if (age == 0) {
+        snprintf(out, n, "Offline - cached data");
+        return;
+    }
+    if (age >= 24u * 3600u)
+        snprintf(out, n, "Stale cache - %ud old", static_cast<unsigned>(age / 86400));
+    else if (age < 60)
+        snprintf(out, n, "Offline - just synced");
+    else if (age < 3600)
+        snprintf(out, n, "Offline - %um old", static_cast<unsigned>(age / 60));
+    else
+        snprintf(out, n, "Offline - %uh old", static_cast<unsigned>(age / 3600));
+}
+
+}  // namespace kk::app
