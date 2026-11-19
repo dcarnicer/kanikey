@@ -4,6 +4,7 @@
 // window (startWrite()/present()) and passes its own GlyphPack.
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "platform/GlyphPack.h"
 #include "ui/Theme.h"
@@ -32,5 +33,13 @@ void drawMissingGlyph(lgfx::LovyanGFX& d, const kk::GlyphPack& pack, int cx, int
 bool drawJapaneseFit(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const std::string& text, int x,
                      int right, int y, int maxWidth, uint16_t fg, uint16_t bg,
                      const kk::ClipRect& clip);
+
+// Accepted reading tokens at 20 px, wrapping on token and group boundaries into
+// at most maxLines lines whose top is `y`. An empty token starts a new group
+// (drawn with a wider gap). Returns the number of lines drawn, 0 when there is
+// nothing to draw and -1 when the pack lacks a glyph.
+int drawReadingTokens(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
+                      const std::vector<std::string>& tokens, int x, int y, int maxWidth,
+                      int maxLines, uint16_t fg, uint16_t bg, const kk::ClipRect& clip);
 
 }  // namespace kk::ui

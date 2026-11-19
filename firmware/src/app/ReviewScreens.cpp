@@ -6,6 +6,7 @@
 
 #include "ui/Text.h"
 #include "ui/Widgets.h"
+#include "wk/Text.h"
 
 namespace kk::app {
 namespace {
@@ -23,6 +24,53 @@ const char* kindName(kk::SubjectType type) {
     return type == kk::SubjectType::Vocabulary ? "VOCAB"
            : type == kk::SubjectType::Radical  ? "RADICAL"
                                                 : "KANJI";
+}
+
+std::string partHint(const kk::Subject& s, kk::ReviewPart part) {
+    return part == kk::ReviewPart::Reading ? s.readingHint : s.meaningHint;
+}
+
+std::string partNote(const kk::Subject& s, kk::ReviewPart part) {
+    return part == kk::ReviewPart::Reading ? s.readingNote : s.meaningNote;
+}
+
+// REV-03: a wrong answer shows the first hint sentence, then the user's note.
+// A correct answer keeps the checker text (for example the close note).
+std::string feedbackLine(const ReviewView& view) {
+    if (!view.subject) return std::string();
+    if (view.status == kk::AnswerStatus::Incorrect) {
+        const std::string hint = kk::firstSentence(partHint(*view.subject, view.part));
+        if (!hint.empty()) return hint;
+        return partNote(*view.subject, view.part);
+    }
+    if (view.status == kk::AnswerStatus::Warning) return view.message;
+    if (view.message.empty() || view.message == "Correct") return std::string();
+    return view.message;
+}
+
+void drawFeedbackLine(lgfx::LovyanGFX& d, const ReviewView& view, int x, int y, int w) {
+    if (view.status == kk::AnswerStatus::Correct) {
+        // Keep the checker line (REV-02's close note) and the user's note on
+        // separate lines so a long close note cannot push the note away.
+        int line = 0;
+        const std::string message = feedbackLine(view);
+        if (!message.empty()) {
+            drawWrapped(d, message, x, y, w, 1, ui::kFaint, ui::kBg, true);
+            line = 1;
+        }
+        if (view.subject) {
+            const std::string note = partNote(*view.subject, view.part);
+            if (!note.empty()) {
+                const std::string prefix =
+                    view.part == kk::ReviewPart::Reading ? "Reading note: " : "Note: ";
+                drawWrapped(d, prefix + note, x, y + line * 8, w, 2 - line, ui::kFaint,
+                            ui::kBg, true);
+            }
+        }
+        return;
+    }
+    const std::string text = feedbackLine(view);
+    if (!text.empty()) drawWrapped(d, text, x, y, w, 2, ui::kFaint, ui::kBg, true);
 }
 
 }  // namespace
@@ -141,7 +189,6 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const ReviewView&
         }
         const bool japanese = part == kk::ReviewPart::Reading;
         std::string typed = view.typed;
-        std::string answer = view.answer;
         if (japanese) {
             // One-letter side labels leave the full panel width for long kana.
             d.drawString("Y", 100, 40);
@@ -160,22 +207,17 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const ReviewView&
             d.setTextSize(1);
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("A", 100, 72);
-            bool answerDrawn = drawJapaneseFit(
-                d, pack, answer, 108, 232, 86, 128,
-                ok ? ui::kOk : warn ? ui::kWarn : ui::kErr, ui::kBg,
-                kk::ClipRect{108, 68, 236, 88});
-            if (!answerDrawn) {
+            const int lines = drawReadingTokens(
+                d, pack, view.answers, 108, 68, 128, 2, ok ? ui::kOk : ui::kErr, ui::kBg,
+                kk::ClipRect{108, 66, 236, 110});
+            if (lines < 0) {
                 d.setTextFont(1);
                 d.setTextSize(1);
                 d.setTextColor(ui::kWarn, ui::kBg);
                 d.drawString("no glyph", 108, 74);
-            }
-            if (view.status == kk::AnswerStatus::Correct) {
-                if (!s->readingNote.empty())
-                    drawWrapped(d, "Reading note: " + s->readingNote, 100, 96, 136, 2,
-                                ui::kFaint, ui::kBg);
-            } else {
-                drawWrapped(d, view.message, 100, 96, 136, 2, ui::kFaint, ui::kBg);
+            } else if (lines <= 1) {
+                // A second reading line would collide with the note line.
+                drawFeedbackLine(d, view, 100, 96, 136);
             }
         } else {
             d.drawString("You typed", 100, 38);
@@ -188,20 +230,9 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const ReviewView&
             d.setTextSize(1);
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("Answer", 100, 65);
-            d.setTextFont(1);
-            d.setTextSize(1);
-            d.setTextColor(ok ? ui::kOk : warn ? ui::kWarn : ui::kErr, ui::kBg);
-            if (d.textWidth(answer.c_str()) > 136) d.setTextFont(0);
-            while (answer.size() > 1 && d.textWidth(answer.c_str()) > 136) answer.pop_back();
-            if (answer.size() < view.answer.size()) answer += "...";
-            d.drawString(answer.c_str(), 100, 74);
-            if (view.status == kk::AnswerStatus::Correct) {
-                if (!s->meaningNote.empty())
-                    drawWrapped(d, "Note: " + s->meaningNote, 100, 92, 136, 2, ui::kFaint,
-                                ui::kBg);
-            } else {
-                drawWrapped(d, view.message, 100, 92, 136, 2, ui::kFaint, ui::kBg);
-            }
+            drawAnswerTokens(d, view.answers, view.synonyms, 100, 74, 136, 2,
+                             ok ? ui::kOk : ui::kErr, ui::kFaint, ui::kBg);
+            drawFeedbackLine(d, view, 100, 92, 136);
         }
     }
 

@@ -63,6 +63,7 @@
 #include "platform/WkReviewStatistics.h"
 #include "platform/WkSrsCounts.h"
 #include "wk/AnswerChecker.h"
+#include "wk/AnswerDisplay.h"
 #include "wk/IdSample.h"
 #include "wk/LessonOrder.h"
 #include "wk/LessonQuiz.h"
@@ -525,8 +526,14 @@ void showLessonBatchQuiz() {
         view.typed = state().lesson.gLessonBatchInput;
         view.status = state().lesson.gLessonBatchCheck.status;
         view.message = state().lesson.gLessonBatchCheck.message;
-        if (view.status != kk::AnswerStatus::Warning)
-            view.answer = correctAnswer(*s, part);
+        if (view.status != kk::AnswerStatus::Warning) {
+            if (part == kk::ReviewPart::Meaning) {
+                view.answers = kk::acceptedMeaningTokens(*s);
+                view.synonyms = s->meaningSynonyms;
+            } else {
+                view.answers = kk::acceptedReadingTokens(*s);
+            }
+        }
     } else {
         const bool meaning = part == kk::ReviewPart::Meaning;
         view.typed = lessonBatchInput(meaning);
@@ -589,9 +596,14 @@ void showLessonQuiz() {
     }
     if (!view.complete) {
         view.typed = lessonQuizInput(meaning);
-        if (!view.feedback || view.status != kk::AnswerStatus::Warning)
-            view.answer = correctAnswer(s, meaning ? kk::ReviewPart::Meaning
-                                                   : kk::ReviewPart::Reading);
+        if (!view.feedback || view.status != kk::AnswerStatus::Warning) {
+            if (meaning) {
+                view.answers = kk::acceptedMeaningTokens(s);
+                view.synonyms = s.meaningSynonyms;
+            } else {
+                view.answers = kk::acceptedReadingTokens(s);
+            }
+        }
         view.romaji = state().lesson.gLessonQuizIme.raw();
     }
 
