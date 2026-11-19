@@ -18,6 +18,7 @@
 #include "platform/DeviceSettings.h"
 #include "platform/DevWifi.h"
 #include "ui/KeyInput.h"
+#include "ui/ListView.h"
 #include "ui/Theme.h"
 
 namespace kk::app {
@@ -243,8 +244,8 @@ void wifiSetupKey(const KeyEvent& e) {
         const int rowCount = static_cast<int>(wifi.gWifiNetworks.size()) + 1;
         if (e.key == Key::Up || e.key == Key::Down) {
             if (rowCount > 0) {
-                wifi.gWifiIndex =
-                    (wifi.gWifiIndex + (e.key == Key::Down ? 1 : rowCount - 1)) % rowCount;
+                wifi.gWifiIndex = listMoveSelection(wifi.gWifiIndex, rowCount,
+                                                    e.key == Key::Down ? 1 : -1, true);
             }
             wifi.gWifiFailure = kk::WifiJoinFailure::None;
             listNote(wifi);

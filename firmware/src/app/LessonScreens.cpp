@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include "ui/HintBar.h"
+#include "ui/ListView.h"
 #include "ui/Text.h"
 #include "ui/Widgets.h"
 #include "wk/Text.h"
@@ -88,13 +90,10 @@ void drawLessonListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     d.fillRect(0, 14, 240, 2, ui::kSurfaceHi);
 
     constexpr int kVisible = 5;
-    int top = static_cast<int>(view.selectedIndex) - kVisible / 2;
-    if (top < 0) top = 0;
-    if (total > static_cast<size_t>(kVisible) && top > static_cast<int>(total) - kVisible)
-        top = static_cast<int>(total) - kVisible;
-    if (total <= static_cast<size_t>(kVisible)) top = 0;
-    for (int row = 0; row < kVisible && top + row < static_cast<int>(total); ++row) {
-        const int i = top + row;
+    const ListWindow window =
+        listWindow(static_cast<int>(total), static_cast<int>(view.selectedIndex), kVisible);
+    for (int row = 0; row < window.rows; ++row) {
+        const int i = window.first + row;
         const LessonRowView& item = view.rows[static_cast<size_t>(i)];
         const kk::Subject* s = item.subject;
         const int y = 18 + row * 20;
@@ -156,7 +155,7 @@ void drawLessonListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         d.fillRect(236, kTrackY, 2, kTrackH, ui::kLine);
         const int thumbH = std::max(10, kTrackH * kVisible / static_cast<int>(total));
         const int thumbY =
-            kTrackY + (kTrackH - thumbH) * top / static_cast<int>(total - kVisible);
+            kTrackY + (kTrackH - thumbH) * window.first / static_cast<int>(total - kVisible);
         d.fillRect(236, thumbY, 2, thumbH, ui::kAccentHi);
     }
 
@@ -166,10 +165,7 @@ void drawLessonListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         d.setTextColor(ui::kWarn, ui::kBg);
         d.drawString(view.note.c_str(), 62, 5);
     }
-    d.setTextFont(0);
-    d.setTextSize(1);
-    d.setTextColor(ui::kFaint, ui::kBg);
-    d.drawString("Space: select  Enter: study", 6, 125);
+    drawHintLeft(d, "Space: select  Enter: study", ui::kFaint, 6, 125);
 }
 
 void drawLessonEmptyScreen(lgfx::LovyanGFX& d, const LessonEmptyView& view) {
@@ -194,7 +190,7 @@ void drawLessonEmptyScreen(lgfx::LovyanGFX& d, const LessonEmptyView& view) {
     d.setTextSize(1);
     d.setTextColor(ui::kFaint, ui::kBg);
     d.drawString("New lessons unlock as you level up.", 8, 102);
-    d.drawString("Esc: home", 8, 125);
+    drawHintLeft(d, "Esc: home");
 }
 
 void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
@@ -284,11 +280,8 @@ void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
             d.drawString(cardPage->lines[i].c_str(), 5, 96 + static_cast<int>(i) * 9);
     }
 
-    d.setTextColor(ui::kFaint, ui::kBg);
-    d.drawString("Q quiz", 5, 125);
-    d.setTextDatum(lgfx::top_right);
-    d.drawString("Enter/Space: next  Esc: list", 233, 125);
-    d.setTextDatum(lgfx::top_left);
+    drawHintLeft(d, "Q quiz", ui::kFaint, 5, 125);
+    drawHintRight(d, "Enter/Space: next  Esc: list", ui::kFaint, 233, 125);
 }
 
 void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
@@ -333,7 +326,7 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         d.drawString(mistakes, 86, 58);
         d.setTextColor(ui::kFaint, ui::kBg);
         d.drawString("No /start sent.", 86, 76);
-        d.drawString("Enter: lesson card  Esc: card", 5, 125);
+        drawHintLeft(d, "Enter: lesson card  Esc: card", ui::kFaint, 5, 125);
     } else if (view.feedback) {
         const bool ok = view.status == kk::AnswerStatus::Correct;
         const bool warn = view.status == kk::AnswerStatus::Warning;
@@ -346,10 +339,7 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         if (warn) {
             // Warnings keep the typed input and never show the answer.
             drawWrapped(d, view.message, 86, 40, 150, 4, ui::kFaint, ui::kBg);
-            d.setTextFont(0);
-            d.setTextSize(1);
-            d.setTextColor(ui::kFaint, ui::kBg);
-            d.drawString("Enter: edit  Esc: card", 5, 125);
+            drawHintLeft(d, "Enter: edit  Esc: card", ui::kFaint, 5, 125);
             return;
         }
         const bool japanese = !meaning;
@@ -398,10 +388,7 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
                              ok ? ui::kOk : ui::kErr, ui::kFaint, ui::kBg);
             drawFeedbackLine(d, view, 86, 92, 150);
         }
-        d.setTextFont(0);
-        d.setTextSize(1);
-        d.setTextColor(ui::kFaint, ui::kBg);
-        d.drawString("Enter: continue  Esc: card", 5, 125);
+        drawHintLeft(d, "Enter: continue  Esc: card", ui::kFaint, 5, 125);
     } else {
         drawPill(d, 86, 20, meaning ? "MEANING" : "READING",
                  meaning ? ui::kAccentHi : ui::kReading, ui::kSurfaceHi);
@@ -445,10 +432,7 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
             std::string raw = "romaji: " + view.romaji;
             d.drawString(raw.c_str(), 86, 88);
         }
-        d.setTextFont(0);
-        d.setTextSize(1);
-        d.setTextColor(ui::kFaint, ui::kBg);
-        d.drawString("Enter: check  Esc: card", 5, 125);
+        drawHintLeft(d, "Enter: check  Esc: card", ui::kFaint, 5, 125);
     }
 }
 

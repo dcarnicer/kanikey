@@ -74,6 +74,7 @@ struct ListStyle {
     int y = 42;
     int width = 228;
     int rowHeight = 11;
+    int textInset = 6;  // row content starts at x + textInset
     int trackX = 235;
     int trackHeight = 66;
     uint16_t focusBg = kSurfaceHi;

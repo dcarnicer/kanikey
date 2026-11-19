@@ -74,6 +74,7 @@
 #include "wk/Stats.h"
 #include "wk/SubjectText.h"
 #include "wk/Time.h"
+#include "ui/ListView.h"
 #include "ui/Theme.h"
 
 namespace kk::app {
@@ -355,8 +356,7 @@ void moveOutboxSelection(int delta) {
     for (size_t i = 0; i < items.size(); ++i)
         if (items[i]->seq == state().outbox.gOutboxSelectedSeq) index = static_cast<int>(i);
     if (index < 0) index = 0;
-    index = (index + delta + static_cast<int>(items.size())) %
-            static_cast<int>(items.size());
+    index = listMoveSelection(index, static_cast<int>(items.size()), delta, true);
     state().outbox.gOutboxSelectedSeq = items[static_cast<size_t>(index)]->seq;
     state().display.gDirty = true;
 }
