@@ -7,18 +7,22 @@
 > The Cardputer ADV shows a live Home from `/user` + `/summary`, fetches a
 > 20-item due batch, runs a typed meaning/reading session and submits completed
 > items with `POST /v2/reviews` (201). Review order follows the account's
-> `reviews_presentation_order` (`shuffled` or `lower_levels_first`). A
-> persistent outbox makes reviews survive a reboot and offline sessions. Home,
-> the user and the review batch are now cached too: the snapshot restores them
-> at boot, shows `Offline` and can run a cached session; the deliberate
-> offline-boot hardware run is verified (2026-11-19). Lessons show a list/picker
-> sorted by level and `lesson_position` across up to 60 summary candidates,
-> then a card with meaning/reading and mnemonic pages; only the card's Enter
-> calls `PUT /assignments/{id}/start` (200). Study materials
+> `reviews_presentation_order` (`shuffled` or `lower_levels_first`). Feedback
+> lists every accepted meaning/reading with user synonyms and shows a hint after
+> a wrong answer. Auto-advance, back-to-back parts and a minimal review header
+> are available behind settings (hardware pending). A persistent outbox makes
+> reviews survive a reboot and offline sessions. Home, the user and the review
+> batch are now cached too: the snapshot restores them at boot, shows `Offline`
+> and can run a cached session; the deliberate offline-boot hardware run is
+> verified (2026-11-19). Lessons show a list/picker
+> sorted by level and `lesson_position` across up to 60 summary candidates, a
+> card with meaning/reading and mnemonic pages, a batch quiz (`Required` by
+> default) and one confirmed start that sends `PUT /assignments/{id}/start` for
+> the batch; browsing never starts a lesson. Study materials
 > add the user's meaning synonyms and meaning/reading notes: synonyms are
 > accepted answers and the notes appear on the lesson card and review feedback.
-> `Q` on a lesson card opens an optional local meaning/reading quiz with
-> feedback, retries and a completion screen; the quiz never starts the lesson.
+> `Q` on a lesson card opens an optional local single-item quiz with feedback,
+> retries and a completion screen; neither quiz starts the lesson.
 > Vacation mode from `/user` is shown as a non-blocking Home notice. The review
 > header shows the current SRS stage and lifetime accuracy; the session summary
 > shows the stage returned by `POST /reviews` and the last item's review
@@ -38,10 +42,12 @@
 > `PRACTICE` summary and uses a persisted apprentice pool offline. Vocabulary
 > pronunciation metadata is parsed, the ES8311 is enabled (serial `n` plays a
 > test tone) and serial `a` caches clips on the SD card with a 50 MB LRU index;
-> playback waits for the audio spike measurements. Sync runs on a seven-row
-> screen (Wi-Fi, Outbox, Account, Summary, Level, SRS, Critical) with a
-> progress bar and `Esc` cancel; failures
-> stay on screen with retry or setup. `Tab` on review feedback opens the item
+> playback waits for the audio spike measurements. Automatic boot/wake syncs
+> run in the background while Home shows `sync n/m`, with a quick/full plan and
+> a prefetched review batch; manual Sync now uses a seven-row screen (Wi-Fi,
+> Outbox, Account, Summary, Level, SRS, Critical) with a progress bar and `Esc`
+> cancel. Failures stay on screen with retry or setup. `Tab` on review feedback
+> opens the item
 > detail card with meanings, readings, mnemonics, notes, components, related
 > subjects and, for vocabulary, parts of speech and context sentences.
 > Japanese prompts and readings come entirely from the microSD visual pack at
@@ -52,9 +58,11 @@
 > saves the Wi-Fi, the device joins it, and the station page validates the
 > WaniKani token with `GET /user`, sets the clock/time zone from the browser and
 > checks the visual pack. Setup makes no lesson-start calls; validation only
-> reads `/user`. `Esc` opens Pause in a review and Settings from Home, with
-> brightness/timings, Sync now, the setup portal and About; `S` on Home starts
-> the same sync. Normal boots show setup/sync states; the M0 debug screen is
+> reads `/user`. `Esc` opens Pause in a review and Settings from Home; the
+> eight-section menu (47-row registry) covers review, lesson, study, sync,
+> display, reminder and account options plus Sync now, the setup portal,
+> Firmware, About, Clear cache, Reset settings and Sign out. `S` on Home starts
+> the same manual sync. Normal boots show setup/sync states; the M0 debug screen is
 > only in the development build. Rejected and stuck reviews are kept in the
 > Outbox (`O` on Home) with their HTTP code or `gave up`, attempts and age, and
 > can be dismissed after a confirmation. A shared 429 gate shows a countdown
@@ -68,7 +76,9 @@
 > parse-retry path are verified on hardware (2026-11-19). Firmware
 > updates arrive over HTTPS from GitHub releases with a size/SHA-256 manifest,
 > install into the spare 1.75 MiB slot and roll back on a failed first boot.
-> The source is MIT-licensed.
+> Round-2 settings, accepted-answer feedback, the lesson batch flow, background
+> sync and the Home clock are in review; the remaining checks are tracked in
+> [docs/hardware.md](docs/hardware.md). The source is MIT-licensed.
 >
 > KaniKey is an **unofficial** third-party app for WaniKani. It is not
 > affiliated with, endorsed by or sponsored by WaniKani or Tofugu LLC. WaniKani
@@ -102,8 +112,9 @@ syncs with the user's account. The SRS still lives in WaniKani.
 - **Offline mode**: sessions from the local cache and a queue of pending reviews
   that syncs when the network comes back. Rejected/stuck reviews are kept for
   inspection and dismissal instead of disappearing.
-- Lessons: list/picker, meaning/reading card, mnemonic and components, an
-  optional local quiz, then `PUT /assignments/{id}/start`.
+- Lessons: list/picker, meaning/reading card, mnemonic and components, a batch
+  quiz (optional with L3 `Skip`), then one confirmed batch
+  `PUT /assignments/{id}/start`.
 - Home screen with pending reviews/lessons, next review time, the breakdown by
   SRS stage and the sync/outbox status.
 - Settings, Wi-Fi, time, a sync screen with cancel/retry, and clear

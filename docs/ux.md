@@ -1,6 +1,6 @@
 # KaniKey — UX, keyboard and screens
 
-> Design, 2026-10-25; device alignment 2026-11-19. The images in
+> Design, 2026-10-25; device alignment 2026-11-19 (DOC-02). The images in
 > `docs/screens` are **renders**, not device captures: `tools/mockups/render.py`
 > draws the firmware's layouts with the M5GFX bitmap fonts (`Font0`/`Font1`
 > 6×8, `Font2` 16 px, `Font4` 26 px) and the RGB332 palette from `Theme.h`.
@@ -8,8 +8,9 @@
 > text sizes are the 1× ones, and the upscale is nearest-neighbour.
 >
 > Statements marked **planned** are specified in [`docs/spec`](spec/README.md)
-> and are not implemented in the firmware yet. Everything else describes the
-> current device.
+> and are not implemented in the firmware yet. A **hardware pending** note
+> means the behaviour is in the firmware but its check in
+> [`docs/hardware.md`](hardware.md) has not been run.
 
 ![Screens](screens/overview.png)
 
@@ -167,18 +168,18 @@ the field is active.
 
 | Key | Action |
 |---|---|
-| `Enter` | Check answer / continue / open / advance a lesson card / start the batch / discard in Outbox |
+| `Enter` | Check answer / continue / open / advance a lesson card / open the lesson start confirmation / discard in Outbox |
 | `Esc` | Back / cancel / pause session |
 | `Tab` | Item detail on review feedback |
 | `↑` `↓` | Move focus; in text, `Fn` + arrows |
 | `←` `→` | Previous/next page in lessons, item detail and Stats |
-| `Space` | Next page in lessons and item detail; space in text |
+| `Space` | Select a lesson row; next page in lessons and item detail; space in text |
 | `L` | Lessons (home) |
 | `O` | Outbox of rejected/stuck reviews (home; ignored when none need attention) |
 | `T` | Stats (home) |
 | `P` | Extra study (home) |
 | `S` | Sync (home) |
-| `Q` | Optional single-item local quiz on a lesson card (today; LES-02 adds the batch quiz) |
+| `Q` | Optional single-item local quiz on a lesson card; the batch quiz runs after the last card |
 | `D` | Discard the selected rejected/stuck review (Outbox) |
 | `G0` | Short press wakes; long press is the future power action (not the pause menu) |
 
@@ -232,7 +233,7 @@ Boot
 ### 4.2 Daily review
 
 ```
-Home ──Enter──► Sync (if due) ──► Review
+Home ──Enter──► Review (cached batch; fetch if absent)
                                    ├─ Meaning: type, Enter
                                    ├─ Reading: romaji→kana, Enter
                                    ├─ correct: brief feedback, Enter
@@ -243,6 +244,9 @@ Home ──Enter──► Sync (if due) ──► Review
                                    ──► Summary
 ```
 
+- An automatic sync can run in the background at boot or wake (§5.11); `Enter`
+  starts the cached batch as soon as it is available and does not wait for the
+  sync. Without a cached batch it fetches one first.
 - The session freezes when it starts: items added later don't appear until the
   next one.
 - If the user exits, the position and the outbox are saved; on return, it
@@ -272,31 +276,46 @@ Home (Offline) ──► Review with cache ──► completed to outbox
 ### 4.4 Lessons
 
 ```
-Home ──L──► Lessons ──Enter──► Lesson card
-                               ├─ Space / →: next page
-                               ├─ ← / Backspace: previous page
-                               ├─ Q: optional single-item quiz
-                               └─ Enter: Start lesson
-                                     └─ PUT /assignments/{id}/start
+Home ──L──► Lessons list ──Space──► select up to N
+                              └─ Enter ──► Cards
+                                           ├─ Space / →: next page
+                                           ├─ Enter: next page, next card on the last page
+                                           ├─ ← / Backspace: previous page or card
+                                           ├─ Q: optional single-item quiz
+                                           └─ after the last card
+                                                ├─ L3 Required (default): batch quiz
+                                                └─ L3 Skip: straight to the confirmation
+                                                     └─ Enter: start the whole batch
+                                                          └─ PUT /assignments/{id}/start per item
 ```
 
-- The card shows meaning(s), reading(s), mnemonic and components. The component
-  meanings, hints and the user's notes are appended to the paged text; there is
-  no separate components page yet.
-- “Start lesson” requires a network. The card can still be studied and the
-  local quiz used offline. If `Enter` cannot reach WaniKani, the screen shows
-  `Could not start lesson` with `HTTP n` or `No connection` and
-  `Enter: retry  Esc: home`, and keeps the card.
-- After starting, the assignment moves to the review queue at stage 1; a 422
-  counts as already started and advances to the next card.
-- **Planned (D2, LES-01…LES-04).** The batch flow replaces the per-card start:
-  browse every card of the batch, `Space` selects a row on the list, `Enter`
-  opens the cards, `Enter`/`Space`/`Right` advance pages and cards, then a quiz
-  covers the batch (LES-02) and one confirmation such as
-  `Start 5 lessons? They join your reviews in about 4 hours.` starts the whole
-  batch (LES-03). Nothing is sent while browsing; offline the confirmation says
-  `Needs Wi-Fi — your batch stays here`. LES-04 adds the L2 lesson-order
-  choices. None of this is in the current firmware.
+- The list opens with the first N rows selected (N = L1 `Batch size`, clamped
+  to the account's `lessons_batch_size`). `Space` toggles a row and says
+  `batch full` when N are selected; `Enter` studies the selection; `Esc` returns
+  Home.
+- The card shows meanings, readings and a paged mnemonic. Component meanings,
+  hints and the user's notes are appended to the paged text; there is no
+  separate components page yet (LES-06, planned).
+- Nothing is sent while browsing: paging, the batch quiz and `Q` never call
+  `PUT /start`. After the last card the batch quiz runs unless L3 is `Skip`; it
+  covers every selected item, meaning first and reading where the subject has
+  one, and requeues a wrong part.
+- The confirmation reads `Start N lessons? They join your reviews in about 4
+  hours.` with `Enter: start  Esc: back`.
+- `Enter` starts the items one at a time with `Starting 2/5`. 2xx and 422
+  (already started) count as started; any other status stops the run, keeps the
+  unstarted items and shows `Could not start` with `Enter: retry  Esc: back`.
+  Started items leave the summary and Home's lesson count drops immediately,
+  without a sync.
+- Offline, browsing and the quiz still work; starting shows
+  `Needs Wi-Fi - your batch stays here` and leaves the batch intact.
+- **Planned (LES-04):** the L2 lesson-order choices. The current list always
+  uses WaniKani's level then `lesson_position` order.
+- **Hardware pending:** the full quiz with mistakes and no outbox growth, the
+  offline start, 422, L3 `Skip` and the visual checks. The list, first card,
+  batch quiz and a real 5-item start (all `PUT /start` returned 200 and Home
+  dropped from 120 to 115 lessons) are recorded in
+  [`docs/hardware.md`](hardware.md), 2026-11-19.
 
 ### 4.5 Conflicts and errors
 
@@ -362,7 +381,9 @@ Home ──L──► Lessons ──Enter──► Lesson card
 
 - Header: `KaniKey` in `Font2` (16 px, coral), `Synced 14:47` in
   `Font1` (6×8, dim) and the battery as `84%` (or `USB`) in `Font1`, both
-  right-aligned. There are no Wi-Fi or battery icons on the device.
+  right-aligned. While an automatic sync runs, the right text is `sync n/m`
+  instead of `Synced HH:MM` and returns to the clock when the job finishes
+  (SPEED-03). There are no Wi-Fi or battery icons on the device.
 - `LEVEL 12` in gold and the username next to it in the 6×8 font.
 - Due reviews (`28`) at 32 px and the `REVIEWS DUE` label at 8 px.
 - Lessons (`5`) at 32 px and `LESSONS` at 8 px.
@@ -374,6 +395,12 @@ Home ──L──► Lessons ──Enter──► Lesson card
   `M 9`, `E 4`, `B 2` and 4 px swatches below. The counts come from the last
   sync and are cached; if they are missing, the line reads
   `SRS: sync for counts`.
+- The due count and `Next review` are recomputed from the cached hourly buckets
+  once a minute while Home owns the screen, and the redraw also refreshes the
+  battery (SPEED-07). No request is made. With an untrusted clock, the
+  effective time advances with uptime from the last cache save and re-anchors
+  on the next sync. **Hardware pending:** the 60 s tick and the offline-clock
+  line (see [`docs/hardware.md`](hardware.md), 2026-11-19).
 - The single status line at y=117 shows the most urgent state after the
   auth/rate/server errors above. If the outbox is not empty it shows
   `Outbox: N pending` in amber or `Outbox: N need attention` in red at 8 px,
@@ -381,8 +408,8 @@ Home ──L──► Lessons ──Enter──► Lesson card
   count is rejected + stuck; pending does not include either. When items need
   attention, the hint becomes the `O: outbox` variant below (§5.13). Above 75%
   (96 of 128 slots, every state counted) the line appends `(nearly full)`.
-  The status line and battery are redrawn at least every 30 s while Home is
-  visible, so charging shows without a keypress.
+  The minute tick above also refreshes the battery, so charging shows without a
+  keypress.
 - Priority of the status line: auth/rate/server error, outbox, offline/stale,
   level-up notice, vacation, level line. A level-up notice keeps priority over
   vacation and level until sign-out.
@@ -397,8 +424,11 @@ Home ──L──► Lessons ──Enter──► Lesson card
   exist in the `cardputer-adv-dev` build; the shortcut is no longer advertised
   on Home.
 - States:
-  - **Sync:** `S` starts the same sync as Settings › `Sync now`; the Sync
-    screen (§5.11) replaces Home while a sync runs.
+  - **Sync:** `S` starts the same manual full sync as Settings › `Sync now`;
+    the Sync screen (§5.11) replaces Home while that manual sync runs. The
+    automatic boot/wake sync leaves Home up and shows `sync n/m` in the header;
+    `Enter` starts a cached review at the next step boundary and `Esc` opens
+    Settings.
   - **Offline:** when no outbox item is pending or needs attention, the status
     line in `warn` reads `Offline - 2h old`; after 24 h, `Stale cache - 2d old`.
   - **Empty:** the counters show `0` and `Next review` shows the next time (or
@@ -430,7 +460,14 @@ Home ──L──► Lessons ──Enter──► Lesson card
 ![Reading review](screens/review-reading.png)
 
 - Header `REVIEWS` (6×8 font), `SRS 3 86%`, `12/48`; 2 px progress bar.
-  There is no Wi-Fi or battery icon on this screen.
+  There is no Wi-Fi or battery icon on this screen. With R10 `Header info` set
+  to `Minimal`, only the `SRS 3 86%` block is hidden; the title, counter and
+  progress bar stay.
+- R5 `Back-to-back` is On by default: after one part, the other part of the
+  same item is asked immediately. Off interleaves items so parts of different
+  items alternate, but a single-item queue still asks the other part so it
+  cannot stall. These options are hardware pending (see
+  [`docs/hardware.md`](hardware.md), 2026-11-19).
 - With Settings › `Critical first` on, due critical subjects are moved ahead
   of the rest; the normal shuffle/lower-levels order is preserved inside both
   groups and the batch limit is applied after the partition.
@@ -482,13 +519,17 @@ kept inside each level.
 - Correct:
   - `CORRECT` pill in green (the current screen has no separate ✓ icon).
   - `You typed` and the answer in gray.
-  - `Answer` with the correct answer in green.
+  - `Answer` lists every accepted meaning or reading joined by ` / `; kanji
+    readings are grouped on'yomi first and kunyomi second, and user synonyms
+    follow in faint. The list fits two lines and ends in `…` when tokens are
+    dropped.
   - `Enter: next`, `Tab: details`.
 - Wrong:
   - `NOT QUITE` pill in red (no separate ✗ icon yet).
   - `You typed` and the user's answer.
-  - `Answer` with the correct answer.
-  - The checker's message, for example `Incorrect meaning`.
+  - `Answer` with the accepted list, same layout as Correct.
+  - The first sentence of the part's hint, else the user's note; never the
+    generic `Incorrect meaning` / `Incorrect reading` line.
 - Warning (`CHECK` pill in amber):
   - Only the pill and the message are shown; no typed row and no answer row, so
     the expected answer cannot leak.
@@ -496,18 +537,22 @@ kept inside each level.
   - `Enter` returns to the same question with the typed text intact (meaning
     string and IME raw buffer), ready to be corrected and resubmitted. A strict
     typo warning says `Close. Check the spelling` without naming the answer.
-- Feedback doesn't last a fixed time: it waits for `Enter`. Auto-advance on a
-  correct answer is planned (REV-06), not implemented.
+- Feedback doesn't last a fixed time by default: it waits for `Enter`. With R8
+  `Auto-advance on correct` set to 0.5 s, 1 s or 2 s, a CORRECT answer advances
+  after that delay. Typing a printable key during CORRECT feedback advances
+  immediately and feeds the key into the next field; wrong and warning
+  feedback, the detail card, pause, Settings and the blank screen never
+  advance. R8 is Off by default, so the current Enter-only behaviour stays.
+  **Hardware pending** (see [`docs/hardware.md`](hardware.md), 2026-11-19).
 - `Tab` opens the full card: meanings, readings, mnemonic and components.
 - **Implementation note (2026-10-28).** After a correct answer, the free lines
   under the answer show the user's meaning or reading note when one exists.
-  Wrong answers keep the mistake message. `Tab` opens the full detail card
-  described in §5.6.
-- **Implementation (2026-11-19, REV-01/03).** The `Answer` line lists every
-  accepted meaning/reading (kanji readings grouped by type) and the synonyms
-  in faint, with a two-line fit; a wrong answer shows the first hint sentence
-  or the user note instead of `Incorrect meaning`/`Incorrect reading`, while
-  Warning keeps the checker text. The lesson quiz uses the same layout.
+  Wrong answers show the hint sentence described above. `Tab` opens the full
+  detail card described in §5.6.
+- **Implementation (2026-11-19, REV-01/03).** The accepted-answer layout and
+  the hint fallback are live; the lesson quiz uses the same layout. **Hardware
+  pending:** multiple meanings, grouped kanji readings, the hint fallback and
+  the lesson-quiz layout (see [`docs/hardware.md`](hardware.md), 2026-11-19).
 
 ### 5.6 Item detail
 
@@ -579,13 +624,17 @@ history/accuracy side of the item line.
   Kanji → Vocab` and `Interleave types`; the current list only has the
   WaniKani order.
 
-**Implementation note (2026-11-06).** The list and picker are live: a scrolling
-list of up to the configured batch, sorted by level and `lesson_position`.
-The device reads up to 60 summary candidates, fetches their assignments and
-base subject levels in bounded pages, sorts the whole pool and only then trims
-to the batch size. Opening a card and paging does not call `PUT /start`;
-`Enter` advances the card and only the confirmed batch start sends requests. Component meanings, hints and the user's
-meaning/reading notes are appended to the paged card after the mnemonic.
+**Implementation note (2026-11-19, LES-01/02/03).** The list and picker are
+live: a scrolling list of up to the configured batch, sorted by level and
+`lesson_position`, with the first N rows selected. `Space` toggles a row up to
+the batch limit, `Enter` opens the cards, and paging never calls `PUT /start`;
+after the last card the batch quiz (L3 `Required` by default) and one
+confirmation start the whole batch. The device still reads up to 60 summary
+candidates, fetches their assignments and base subject levels in bounded pages,
+sorts the whole pool and only then trims to the batch size. Component meanings,
+hints and the user's meaning/reading notes are appended to the paged card after
+the mnemonic. **Hardware pending:** the full quiz with mistakes, offline start,
+422 and L3 `Skip` (see [`docs/hardware.md`](hardware.md), 2026-11-19).
 
 ### 5.9 Lesson card
 
@@ -602,53 +651,77 @@ meaning/reading notes are appended to the paged card after the mnemonic.
 - Mnemonic in three 6×8 lines at 9 px pitch; `Space` or `→` turns the page,
   `←` or Backspace goes back. The page count is clamped to the drawn pages.
 - `Q quiz` opens the optional single-item local quiz.
-- `Enter`/`Space`/`Right` page forward; `Enter` on the last page advances to
-  the next card. `Left`/`Backspace` page back or move to the previous card on
-  page 1; `Esc` returns to the list with the batch intact. Nothing is sent
-  while browsing.
-- Bottom hint: `Space p  Q quiz` left and `Enter/Space: next  Esc: list` right
-  at y=125, with a gap between them.
+- `Space`/`Right` page forward; `Enter` also advances to the next card when
+  already on the last page. `Left`/`Backspace` page back or move to the previous
+  card on page 1; `Esc` returns to the list with the batch intact. Nothing is
+  sent while browsing.
+- Bottom hint: `Q quiz` left and `Enter/Space: next  Esc: list` right at y=125,
+  with a gap between them.
 - After the last card, the batch quiz runs (default) or the start confirmation
   follows when L3 = Skip. The card itself only reads until the last page.
+- The start confirmation reads `Start N lessons? They join your reviews in
+  about 4 hours.`; `Enter` starts the batch and `Esc` goes back to the last
+  card. `Starting 2/5` is drawn per request; 422 counts as started and any
+  other failure keeps the unstarted items (§4.4).
 - **Implementation (2026-11-19, LES-01/02/03).** The batch flow above is live;
-  the card never sends `PUT /start`. The start confirmation and the per-item
-  progress appear after the quiz (see §5.10).
+  the card never sends `PUT /start`. The start confirmation and per-item
+  progress appear after the quiz. **Hardware pending:** the full quiz with
+  mistakes, offline start, 422, L3 `Skip` and the visual checks (see
+  [`docs/hardware.md`](hardware.md), 2026-11-19).
 
 ### 5.10 Lesson quiz
 
-- `Q` on a lesson card opens the optional single-item local quiz; the batch
-  quiz below is the required gate by default.
-- Header `LESSON QUIZ`, `1/2` (or `1/1` for radicals).
-- Meaning first, then reading when the subject has one.
+- `Q` on a lesson card opens the optional single-item local quiz. The batch
+  quiz after the last card is the gate by default (L3 `Required`); L3 `Skip`
+  goes straight to the start confirmation.
+- Both quizzes use the review answer field: header `LESSON QUIZ`, `1/2` (or
+  `1/1` for radicals), meaning first, then reading when the subject has one.
 - Typed answers use the same romaji-to-kana input and answer checker as reviews.
-- Wrong answers show `NOT QUITE`, the correct answer and are retried; a mistake
-  count is kept. Warnings show `CHECK` and retry the same part without showing
-  the typed or answer row; the hint reads `Enter: edit  Esc: card`, and the
-  typed text (meaning string and IME raw buffer) is kept for the retry.
-- Completion shows `Practice complete`, the mistake count and
-  `No /start sent.`; `Enter` returns to the card.
-- `Esc` also returns to the card. The quiz never calls `PUT /start`; starting
-  the lesson remains `Enter` on the card.
+- Wrong answers show `NOT QUITE`, the accepted answer list and are retried; a
+  mistake count is kept. Warnings show `CHECK` and retry the same part without
+  showing the typed or answer row; the hint reads `Enter: edit  Esc: card`, and
+  the typed text (meaning string and IME raw buffer) is kept for the retry.
+- In the batch quiz, a wrong part requeues until every required part is correct;
+  `Esc` returns to the last card with the batch unchanged. After the last part
+  the start confirmation follows.
+- The `Q` quiz completion shows `Practice complete`, the mistake count and
+  `No /start sent.`; `Enter` returns to the card. `Esc` also returns to the card.
+- Neither quiz calls `PUT /start`; only the confirmed batch start in §5.9
+  writes. **Hardware pending:** the full batch quiz with mistakes and the
+  lesson-quiz look (see [`docs/hardware.md`](hardware.md), 2026-11-19).
 - **Implementation (2026-11-19, LES-02).** After the last card, `Enter` starts
   a quiz over every selected item, shuffled, with meaning first and reading
-  where the subject has one. Wrong parts requeue; `CHECK` retries the same
-  part. The L3 setting (`Required` / `Skip`) is live; `Q` remains the
-  single-item practice. The quiz never writes; the start confirmation follows.
+  where the subject has one. Wrong parts requeue; `CHECK` retries the same part.
+  The L3 setting (`Required` / `Skip`) is live; `Q` remains single-item
+  practice. The quiz never writes; the start confirmation follows.
 
 ### 5.11 Sync
 
 ![Sync](screens/sync.png)
 
-- A dedicated screen replaces Home while a sync runs.
-- Seven rows: `Wi-Fi`, `Outbox`, `Account`, `Summary`, `Level`, `SRS`,
-  `Critical`. The Critical row is non-blocking: a missing permission or network
-  error shows `unavailable` and keeps the previous list.
+- Automatic sync (boot or wake) is a background job: Home stays visible, the
+  header shows `sync n/m` instead of `Synced HH:MM`, and one request runs per
+  loop pass. `Enter` starts a cached review at the next step boundary; `Esc`
+  opens Settings; the job pauses while another screen owns the display
+  (SPEED-03). It is skipped when the last successful sync is under five minutes
+  old (SPEED-02).
+- A manual sync (`S` on Home, Settings › `Sync now`, or a retry) always runs
+  Full and replaces Home with the screen below. `Esc` cancels at the next step
+  boundary.
+- The plan is Quick or Full (SPEED-02). Quick = Wi-Fi, time, outbox and
+  `/summary`; `/user` only on a cold boot or when the last `/user` is 6 h old.
+  Full = Quick plus level progress, the SRS counts and Critical. A full
+  automatic sync also prefetches the review batch when reviews are due, the
+  cached batch is shorter than R1 and the battery is not low (SPEED-04).
+- The manual screen has seven rows: `Wi-Fi`, `Outbox`, `Account`, `Summary`,
+  `Level`, `SRS`, `Critical`. The Critical row is non-blocking: a missing
+  permission or network error shows `unavailable` and keeps the previous list.
 - The `Outbox` row shows pending and attention separately (`2 attention, 4
   pending`), or `N need attention` / `N pending`; `none` before a flush and
   `sent` when both are zero afterwards.
 - Each row shows a name, a value and a status: `ok` in green, `..` while
   active, `!` for a warning, `X` for a failure and `--` while pending.
-- Progress bar `0/7` … `7/7`; the title reads `Syncing…`, `Synced` or
+- Progress bar `0/7` … `7/7`; the title reads `Syncing...`, `Synced` or
   `Sync failed`.
 - `Esc` cancels at the next step boundary. Completed requests are kept, and
   the device returns to Home (or to boot with `Sync cancelled` if there is no
@@ -661,6 +734,9 @@ meaning/reading notes are appended to the paged card after the mnemonic.
   warning; a still-valid cached Level value can remain `ok`.
 - The rows are drawn between the blocking TLS requests, so a cancel pressed
   during a request takes effect when it finishes.
+- Each request opens its own TLS connection; the SPEED-05 keep-alive session
+  was reverted after a manual-sync stall, so there is no connection reuse in
+  the sync path (see [`02-speed.md`](spec/02-speed.md)).
 - SNTP starts with the stored POSIX rule (`configTzTime`), so Home `Synced
   HH:MM`, `Next review` and the level date are local time. Changing the zone in
   Settings applies at the next sync without a reboot.
@@ -670,22 +746,31 @@ meaning/reading notes are appended to the paged card after the mnemonic.
 ![Settings](screens/settings.png)
 
 - Open with `Esc` from Home, or `Esc` in a review → Pause → Settings.
-- Settings is the eight-section menu: `Reviews` (12), `Lessons` (6), `Study`
-  (5), `Sync & data` (6), `Display & power` (6), `Reminders & sound` (7),
-  `Account` and `System`; the 7-row window and scroll bar stay. It covers
-  brightness, the dim/blank/sleep timings, review batch and order, lesson
-  batch, the three critical-item values, the three practice values, the setup
-  portal, `Sync now`, `Firmware`, `About`, `Clear cache` and `Sign out`.
-  `Brightness` cycles 64/128/192/255; the timings cycle presets and `off`;
-  review batch cycles 10/20/30 and lesson batch 3/5/10; `Critical first`
-  toggles On/Off; `Critical below` cycles 60/70/75/80/90% and `Critical min`
-  3/5/10; Order toggles meaning-first / reading-first; the practice windows
-  cycle 24 h/3 d/7 d (lessons also Apprentice) and size 10/20. All are stored
-  in NVS and applied without a reboot. WaniKani's
-  `reviews_presentation_order` is applied automatically and is not a device
-  setting.
+- Settings is the eight-section menu: `Reviews`, `Lessons`, `Study`,
+  `Sync & data`, `Display & power`, `Reminders & sound`, `Account`, `System`;
+  each section row shows a short summary (`12 settings`, the Account token
+  state). The 7-row window and scroll bar stay. The authoritative IDs, labels,
+  choices, defaults and NVS keys are the registry in
+  [`03-settings.md`](spec/03-settings.md); this file does not duplicate them.
+- `↑↓` moves, `Enter`/`Right` selects the next value, `Left` the previous, both
+  wrapping; `Esc` pops one level and never closes in one step. The bottom line
+  shows the focused row's registry help; a transient note replaces it until the
+  selection moves. A change writes NVS once and applies without a reboot;
+  nothing here calls WaniKani.
+- The registry holds 47 rows (39 keyed settings and 8 actions). R5
+  `Back-to-back` (On), R8 `Auto-advance on correct` (Off) and R10 `Header
+  info` (SRS+accuracy) are live and hardware pending. R6 `Typos`, R7, R9 and
+  R12 `Submit reviews` are visible and stored but do not change the review yet;
+  R2/R3 await REV-08, and R4's `Random` value is stored but the build only
+  distinguishes Meaning and Reading. The other open rows (L2, L4–L6, P5–P6,
+  M1–M7) are listed with their owner in `03-settings.md`. The current build
+  reads R1, R4 (Meaning/Reading), R5, R8, R10, R11, L1, L3, S1–S5, Y1–Y3,
+  P1–P4 and the actions.
+- WaniKani's `reviews_presentation_order` is applied automatically and is not
+  a device setting.
 - `Setup portal` reopens the Wi-Fi/token/time page; it is disabled during a
-  review so the session is not lost. `Sync now` starts a manual sync.
+  review so the session is not lost. `Sync now` starts a manual full sync;
+  `Outbox` opens the list even when nothing needs attention.
 - About shows the firmware version and slot, build date, an update badge when
   one is known, pack status, cached batch, last sync, Wi-Fi, whether a token is
   configured, time zone and heap.
@@ -693,19 +778,22 @@ meaning/reading notes are appended to the paged card after the mnemonic.
   and `Check now` / `Install update` rows. Install asks for a second `Enter`,
   then streams the image and restarts. A failed check stays on the screen with
   its HTTP/TLS reason; a failed install keeps the current image.
-- `↑↓` moves, `Enter` changes, `Esc` goes back.
 - `Clear cache` removes the snapshot/subjects for the next boot; `Sign out`
   confirms, then removes the token, cache and pending outbox and keeps Wi-Fi.
+- `System › Reset settings` asks for a second `Enter`, then erases only the
+  registry keys (and the legacy `order` key), redraws every default and applies
+  brightness and the timers at once. Token, Wi-Fi, time zone, cached batch and
+  outbox survive; the device does not restart.
 - Licenses and attributions are in `LICENSE` and `THIRD_PARTY_NOTICES.md`; the
   About header marks the app as unofficial.
 - **Implementation (2026-11-19, CFG-01/02/03).** The sectioned menu above is
-  live, backed by the 47-row registry (39 keyed, 8 actions); the authoritative
-  IDs, labels, choices, defaults and NVS keys are in
-  [`03-settings.md`](spec/03-settings.md). `System › Reset settings` is live;
-  CFG-04's `?` key-help overlay is still planned. The destructive rows
-  (`Setup portal`, `Firmware › Install update`, `Sign out`, `Clear cache`,
-  `Reset settings`) are faint and inert during a review. Strict-answer
-  options belong to REV-02 (planned).
+  live, backed by the 47-row registry. The destructive rows (`Setup portal`,
+  `Firmware › Install update`, `Sign out`, `Clear cache`, `Reset settings`) are
+  faint and inert during a review. CFG-04's `?` key-help overlay is still
+  planned. **Hardware pending:** the review lock, `Reset settings`, origin
+  return, scrolling/clipping and upgrade values; the 2026-11-19 log records the
+  eight sections and one `Batch size` cycle (see
+  [`docs/hardware.md`](hardware.md), 2026-11-19).
 
 ### 5.13 Outbox
 

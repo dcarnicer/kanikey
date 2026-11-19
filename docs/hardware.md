@@ -643,6 +643,15 @@ provoked), API-03 403 (read-only token), FIX-06 slow server, FIX-07 15-minute
 AP close, FIX-14 forced small cap, FIX-20 bad-first-boot/two-strike, RAD-04
 low-level account and a real level-up.
 
+### 2026-11-19 — SPEED-05 keep-alive reverted
+
+The keep-alive/chunked transport (SPEED-05) was merged and reverted after a
+manual sync stopped at `Outbox` with no `[http]` line; it only continued after
+serial input. This is a regression observation, not a timing measurement. The
+transport of record is HTTP/1.0 with `Connection: close` per request; the
+2026-10-29 Wi-Fi and API numbers above still apply. The branch
+`spec/SPEED-05-keepalive` keeps the change for a re-land.
+
 ## Round 2 hardware checks
 
 Round-2 tasks use the same device tools as the v1 passes. Record each check

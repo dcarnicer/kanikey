@@ -1,8 +1,14 @@
 # Decisions
 
-Short log of design decisions. Status: **accepted** (2026-10-25). Format:
-date, decision, why and what it implies. Cache versions named in dated entries
-are the version at that date; the current files are `KKCA`/`KKCS` v11.
+Short log of design decisions. Status: **accepted** (2026-10-25; round-2
+entries through 2026-11-19). Format: date, decision, why and what it implies.
+Cache versions named in dated entries are the version at that date; the current
+files are `KKCA` v12 and `KKCS` v11.
+
+Round-2 directions `docs/spec/README.md` §1 map to entries here: D1/D6 are the
+2026-11-01 entries below; D2 is “Lesson batch flow (LES-01/02/03)”, D3 the two
+settings entries, D4 the 2026-11-06 study/stats/audio entry and D5 the
+2026-10-25 English entry.
 
 ---
 
@@ -223,6 +229,11 @@ keystroke. A "strict" setting can count the warning as a failure.
 
 **Implications:** the answer checker returns a result with a type (`Precise`,
 `Imprecise`, `Warning`, `Incorrect`) and the UI decides.
+**Superseded in part on 2026-11-01 (`REV-02`):** every reading with
+`accepted_answer=true` is now correct (see “Readings follow WaniKani's accepted
+flag”), and a listed but non-accepted reading is a warning. The current build
+still uses the strict warning for close meanings; the R6 `Typos` row is
+registered but REV-02 has not wired it yet.
 
 ---
 
@@ -519,6 +530,10 @@ quiz must not change the WaniKani lesson flow.
 **Implications:** `LessonQuiz` is pure C++ and native-tested. The completion
 screen says the lesson was not started; the user returns to the card and
 decides.
+**Superseded on 2026-11-19 (`LES-01/02/03`):** lessons now browse the whole
+batch, run a batch quiz (L3 `Required` by default) and start the batch only
+after one confirmation. The `Q` single-item quiz remains optional local
+practice.
 
 ---
 
@@ -557,6 +572,9 @@ losing a session on a stray `Esc`, and a sync can be requested deliberately.
 the existing outbox and is a user action. Review/lesson preferences,
 clear-cache, sign-out and the auth/rate-limit screens are implemented
 (SETUP-05/07).
+**Superseded on 2026-11-19 (`CFG-01/02/03`):** Settings is the eight-section,
+47-row registry menu with `System › Reset settings`; the flat row list above is
+the v1 state.
 
 ---
 
@@ -752,6 +770,40 @@ return `Warning`.
 
 ---
 
+## 2026-11-01 — The UI keeps the built-in fonts; docs follow the device (D1)
+
+**Decision:** Latin UI text stays on M5GFX `Font0`/`Font1` (the 6×8 GLCD
+font), with `Font2` for titles and big values and `Font4` for large titles;
+Japanese prompts and readings come only from the SD pack at 64/32/20 px.
+`docs/screens` and the README show the device's RGB332 colours and these
+fonts, not a Noto UI font.
+
+**Why:** a rasterized UI font costs flash and RAM without improving a 240×135
+screen, and the mockups had drifted from the panel.
+
+**Implications:** no UI font file ships; `tools/mockups/render.py` uses the
+bitmap fonts and `Theme.h` colours, and its Noto Sans JP copy is only the
+Japanese pack stand-in. DOC-01/DOC-02 own the images and the text.
+
+---
+
+## 2026-11-01 — Round-2 tasks are delegated and reviewed (D6)
+
+**Decision:** each round-2 task runs in its own git worktree, is implemented by
+a subagent against its spec file and is reviewed before merge. A reviewer
+checks the task's acceptance boxes, runs the native tests and both device
+builds, and does the listed hardware checks.
+
+**Why:** the tasks overlap in the app controllers and the shared components;
+one branch per task group avoids conflicts, and a single review gate catches
+memory, flash and wire-format regressions.
+
+**Implications:** `review` means implemented and waiting for the reviewer;
+`done` also needs the hardware checks. The workflow and the brief template are
+in [`docs/spec/README.md`](spec/README.md) §7.
+
+---
+
 ## 2026-11-06 — Review history lives on the device
 
 **Decision:** KaniKey never calls `GET /v2/reviews` (deprecated; it returns an
@@ -912,3 +964,84 @@ spent the only free line repeating the NOT QUITE pill.
 **Implications:** the answer token helpers are pure and native-tested; the
 lesson quiz uses the same layout. REV-02 (typo policy) and the remaining review
 options stay open.
+
+---
+
+## 2026-11-19 — Quick, background sync and review prefetch (SPEED-02/03/04)
+
+**Decision:** boot and wake choose `Skip`, `Quick` or `Full` from the cached
+sync times (Y1/Y2); the automatic sync is a background job that performs at
+most one request per loop pass and keeps Home visible with `sync n/m` in the
+header. Manual `Sync now` stays modal (seven rows) and always runs `Full`. A
+full automatic sync prefetches the next review batch when reviews are due, the
+cached batch is shorter than R1 and the battery is not low.
+
+**Why:** every wake paid a 10-request, 20–25 s modal sync before Home appeared,
+and `Enter` then paid another 8–10 requests for the batch. A quick plan and a
+prefetched batch remove both waits.
+
+**Implications:** cache v12 adds `lastFullAt`, `lastQuickAt` and `lastUserAt`;
+v11 still loads with those times set to `savedAt`. Requests stay sequential.
+`Enter` during an automatic sync starts a cached review at the next boundary,
+`Esc` opens Settings, and the job pauses while another screen owns the display.
+Y1–Y3 and R1 are registry-backed. Hardware checks remain partial (see
+[`docs/hardware.md`](hardware.md), 2026-11-19).
+
+---
+
+## 2026-11-19 — TLS keep-alive is reverted; requests stay HTTP/1.0 (SPEED-05)
+
+**Decision:** keep one `WiFiClientSecure` per request and HTTP/1.0 with
+`Connection: close`; the keep-alive session and chunked decoder from SPEED-05
+are not part of the current build. The branch `spec/SPEED-05-keepalive` keeps
+the implementation for a re-land after the stall is fixed.
+
+**Why:** after the merge, a manual sync stalled at `Outbox` with no `[http]`
+line and only continued after serial input. That is worse than paying a
+handshake per request.
+
+**Implications:** no session reuse, HTTP/1.1 or chunked dependency in the sync
+path; the canvas is still restored after each request. The transport work is
+open again, so later tasks must not assume keep-alive (for example REV-08's
+option B). The HTTP/1.0 timings in `docs/hardware.md` still apply; the stall is
+recorded there under 2026-11-19.
+
+---
+
+## 2026-11-19 — Home recomputes from the cache every minute (SPEED-07)
+
+**Decision:** while Home owns the screen it ticks once a minute, recomputes the
+due count and `Next review` from the cached `/summary` buckets and redraws,
+which also refreshes the battery. With an untrusted clock, `effectiveNow()`
+advances the last cache save with uptime and re-anchors when a sync writes a
+newer `savedAt`.
+
+**Why:** a review that became due stayed invisible until the next sync, and the
+battery reading only changed when a key forced a redraw.
+
+**Implications:** no network request and no new cache field; the tick is
+skipped while Settings, Pause, Stats, Outbox, the portal, a review, a lesson or
+the manual sync screen is open. Drift on a long uptime is possible and SNTP
+corrects it at the next sync; the 60 s tick and the offline-clock line still
+need the hardware run (see [`docs/hardware.md`](hardware.md), 2026-11-19).
+
+---
+
+## 2026-11-19 — Auto-advance, back-to-back and the minimal header (REV-06/09/12)
+
+**Decision:** three review options are live behind registry rows. R8
+`Auto-advance on correct` is Off by default and offers 0.5 s, 1 s or 2 s;
+typing a printable key during CORRECT feedback advances immediately and feeds
+the key into the next field, while wrong/warning feedback, the detail card,
+pause, Settings and the blank screen never advance. R5 `Back-to-back` is On by
+default; Off interleaves correct and wrong answers, and a single-item queue
+still asks the other part. R10 `Header info` `Minimal` hides only the
+SRS+accuracy block.
+
+**Why:** the three options were already specified in the review wave, and
+their defaults keep the existing Enter-only, back-to-back and SRS-header
+behaviour for users who change nothing.
+
+**Implications:** the rows persist in NVS and apply without a reboot. Hardware
+checks are pending. R6 `Typos`, R7, R9, R12 and R2/R3 remain open, so this does
+not complete the review wave.
