@@ -11,7 +11,7 @@ The documentation still describes the design mockups rather than the device: `do
 | DOC-05 | Hardware check log template | P3 | S | none | any | review (2026-11-19: table filled from the v1 pass) |
 | ONB-01 | Split the visual pack | P2 | M | none | 2 (after ARCH-01) | review (2026-11-19: merged; hardware pending) |
 | ONB-02 | Pack from the setup portal | P2 | L | ONB-01, FIX-01 | 2 (after ONB-01) | review (2026-11-19: merged; hardware pending) |
-| ONB-03 | `setup.md` for non-developers | P3 | S | ONB-01, ONB-02, FIX-01 | any | review (pack flow documented; hardware pending) |
+| ONB-03 | `setup.md` for non-developers | P3 | S | ONB-01, ONB-02, FIX-01 | any | review (docs coherent; tagged release + hardware pending) |
 
 **Implementation (2026-11-19, ONB-01).** Pack v2 uses the reserved header word
 as `kind` (0 combined/legacy, 1 font, 2 radical) with the body and CRC
@@ -33,11 +33,14 @@ download streams to `glyphs.kgp.tmp` with progress and `Esc` cancel, checks
 exact size and SHA-256, then swaps and reopens; a failure deletes the tmp and
 keeps the old file. The upload streams the multipart part, is unlock-gated
 before the first byte, caps at 32 MB, checks free space and validates the v2
-kind-2 structure (the full CRC stays behind **Check pack again**). Six native
-manifest tests (361 on the merged main); release 1,629,633 B (88.8%), dev
-1,696,913 B (92.5%). No token is involved on either path. The empty-card
-download, cut Wi-Fi, phone upload, truncated upload, Esc cancel, heap and
-ready-font cases remain hardware checks.
+kind-2 structure. **Check pack again** now always defers a full font CRC
+re-open (also when both packs were ready). The release workflow pins Noto Sans
+JP and Pillow, builds the public v2 kind-1 pack, verifies its SHA-256s and
+publishes `glyphs.kgp` plus the `pack font` manifest row. Six native manifest
+tests (361 at the ONB-02 merge); no token is involved on either path. The
+empty-card download, cut Wi-Fi, phone upload, truncated upload, Esc cancel,
+heap and ready-font cases remain hardware checks. A real tagged workflow run is
+still needed to confirm the new release asset.
 
 ### DOC-01 — Mockups match the device
 

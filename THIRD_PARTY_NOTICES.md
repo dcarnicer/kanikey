@@ -7,8 +7,10 @@ registered trademark of Tofugu LLC.
 KaniKey's own source is released under the MIT License; see [LICENSE](LICENSE).
 The components below keep their own licenses and notices. No WaniKani subject
 content (meanings, readings, mnemonics, radical images, audio or context
-sentences) is distributed in this repository. The visual pack and the caches
-are generated locally with the user's own token and stay on the user's card.
+sentences) is distributed in this repository. The public font pack
+(`glyphs.kgp`) contains only OFL font outlines; the personal radical pack and
+the caches are generated locally with the user's own token and stay on the
+user's card. The public font pack may be published as a release asset.
 
 ## Tangocho — MIT
 
@@ -80,11 +82,14 @@ repositories.
 
 ## Noto Sans JP — SIL Open Font License 1.1
 
-The visual-pack generator can rasterize **Noto Sans JP** (SIL Open Font
-License 1.1). The font is not distributed in this repository; the generated
-glyph pack is personal and is not committed. The screen renders use Noto Sans
-JP only as a stand-in for the Japanese pack glyphs; their Latin UI text uses
-the M5GFX bitmap fonts (MIT; see above).
+The visual-pack generator rasterizes **Noto Sans JP** (SIL Open Font License
+1.1) for the public font pack. The font file is not distributed in this
+repository; the release workflow downloads a pinned Noto CJK release at build
+time and publishes the resulting `glyphs.kgp` (font outlines only, no WaniKani
+content) as a release asset under the OFL. The personal radical pack is not
+committed. The screen renders use Noto Sans JP only as a stand-in for the
+Japanese pack glyphs; their Latin UI text uses the M5GFX bitmap fonts (MIT; see
+above).
 
 - https://fonts.google.com/noto/specimen/Noto+Sans+JP
 - https://openfontlicense.org/
