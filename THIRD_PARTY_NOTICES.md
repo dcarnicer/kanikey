@@ -53,6 +53,8 @@ later, the MIT notice above applies with Pedro Ortego's copyright.
 The firmware builds against
 [M5Unified and M5GFX](https://github.com/m5stack/M5Unified), fetched by
 PlatformIO. They are MIT-licensed and are not vendored in this repository.
+`tools/mockups/render.py` embeds the Font0/Font2/Font4 bitmap tables from
+M5GFX for the screen renders; those tables keep the M5GFX MIT notice.
 
 ## Arduino-ESP32 core — LGPL-2.1
 
@@ -80,7 +82,9 @@ repositories.
 
 The visual-pack generator can rasterize **Noto Sans JP** (SIL Open Font
 License 1.1). The font is not distributed in this repository; the generated
-glyph pack is personal and is not committed. The mockups use the same font.
+glyph pack is personal and is not committed. The screen renders use Noto Sans
+JP only as a stand-in for the Japanese pack glyphs; their Latin UI text uses
+the M5GFX bitmap fonts (MIT; see above).
 
 - https://fonts.google.com/noto/specimen/Noto+Sans+JP
 - https://openfontlicense.org/

@@ -76,6 +76,8 @@
 
 ![KaniKey screens](docs/screens/overview.png)
 
+*Overview renders at 2×; individual screens are at 4×.*
+
 ## The idea
 
 WaniKani is reviewed by typing: meaning in English and reading in kana. The
@@ -152,24 +154,30 @@ already solved and tested on hardware in
 | [docs/setup.md](docs/setup.md) | Token, visual pack, first boot and troubleshooting |
 | [docs/decisions.md](docs/decisions.md) | Short log of accepted decisions |
 | [docs/hardware.md](docs/hardware.md) | Measured Cardputer ADV results (heap, SD, Wi-Fi, TLS) |
-| [docs/screens/](docs/screens/) | 240×135 mockups (individual at 4×; contact sheet at 2×) |
+| [docs/screens/](docs/screens/) | 240×135 renders (M5GFX fonts and RGB332; individual at 4×, contact sheet at 2×) |
 | `tools/shot.py` | Live canvas capture over USB (not committed; `tools/screenshots/out/`) |
 | [firmware/README.md](firmware/README.md) | Current build, flash and serial commands |
 
 The documents, code comments and UI strings are in English, as in Tangocho, so
 the project can be published.
 
-The mockups are regenerated with:
+The images in `docs/screens` are renders, not device captures. They use the
+M5GFX bitmap fonts the firmware draws with and the RGB332 palette from
+`Theme.h`; Japanese glyphs are a Noto Sans JP stand-in for the microSD pack.
+Regenerate them with:
 
 ```sh
-python3 tools/mockups/render.py
+uv run --with pillow python3 tools/mockups/render.py
+uv run --with pillow python3 tools/mockups/render.py --check
 ```
 
-By default the script reuses the Noto Sans JP font that Tangocho downloads into
-`tools/pack-builder/cache/noto/`. If it is somewhere else:
+If Pillow is already installed, `python3 tools/mockups/render.py` works too.
+The script finds Noto Sans JP in `tools/pack-builder/cache/noto/` or Tangocho's
+cache; set `KANIKEY_FONT` to use another `.otf`:
 
 ```sh
-KANIKEY_FONT=/path/NotoSansJP-Regular.otf python3 tools/mockups/render.py
+KANIKEY_FONT=/path/NotoSansJP-Regular.otf \
+  uv run --with pillow python3 tools/mockups/render.py
 ```
 
 ## CI and secret scanning

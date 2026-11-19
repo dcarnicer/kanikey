@@ -10,7 +10,9 @@ review are tracked in [docs/spec/01-fixes.md](docs/spec/01-fixes.md). 23 of 28
 are done and verified on hardware (some with the dev-only simulations in the
 wave 3 log); FIX-06, 07, 14, 20 and 24 still need the network/OTA and Wi-Fi
 upload checks listed there. FIX-07's random AP key and FIX-24 (a)/(b) have
-passed; FIX-24 (c) is partial.
+passed; FIX-24 (c) is partial. The rest of round 2 is specified in
+[docs/spec/README.md](docs/spec/README.md); the per-task status tables there
+are authoritative for that work.
 
 The review loop works on hardware. The 2026-11-19 pass closed the deliberate
 offline boot, the final OUTBOX screen, the 401 gate, the parse-retry path, the
@@ -140,14 +142,14 @@ minimum free heap above ~44 KB in the 2026-11-19 logs.
 |---:|---|---|---|---|
 | 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Done except a real low-level radical-only lesson; the synthetic radical lesson UI passed | RAD-04 |
 | 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Done: real-account online fetch, deliberate offline reboot and cached session verified (2026-11-19) | CACHE-07 |
-| 3 | Complete lesson flow | List/picker, card, components, quiz, empty state, start and ordering exist; a real low-level run remains | Code complete; radical-only UI verified synthetically | RAD-04 |
-| 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; stats and local review history are live; audio remains | Partial | EXT-06 |
+| 3 | Complete lesson flow | List/picker, card, components, quiz, empty state, start and ordering exist; the round-2 browse → quiz → batch-start flow is specified in `docs/spec` | Code complete for v1; radical-only UI verified synthetically; round 2 specified in `docs/spec` | LES-04 |
+| 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; stats and local review history are live; audio remains | Partial; round 2 specified in `docs/spec` (STATS/AUD) | AUD, STATS |
 | 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Code and docs done; OUTBOX (API-01/05), 401 (API-03) and parse retry (API-04) verified 2026-11-19; 429 (API-02) and 403 still pending | — |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done for v1; on-device Wi-Fi setup is v1.1 (SETUP-09) | SETUP-09 |
 | 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen, item detail, level progress and the Stats screen are live | Partial | UI-08 |
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal, OTA, storage and sleep done; widgets pending | TNG-03 |
 | 9 | Technical debt, CI and release | Maintainability and shipping | Done (TECH-01…06, TECH-08); TECH-07 only if needed | TECH-07 |
-| 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | EXT-01…05 done; audio, reminders and stroke order remain | EXT-06, EXT-07, EXT-09 |
+| 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | EXT-01…05 done; audio, reminders and stroke order remain; round 2 specified in `docs/spec` | STUDY |
 | 11 | Bluetooth keyboard | Optional full-size input; BLE-only, shares the 2.4 GHz radio and the no-PSRAM heap | Post-v1; needs the BT-01 host-stack spike | BT-01 |
 | 12 | M5Stack PaperDIY port | Desk e-paper companion; 960×540, no keyboard/touch, two buttons | Post-v1; read-only companion first, full reviews need BT | PD-01 |
 
@@ -176,6 +178,7 @@ real low-level lesson and a real level-up.
 | 9 | Kakehashi-inspired extras | EXT-01 → EXT-09 | Practice modes, critical items, audio and stats |
 | 10 | External input (post-v1) | BT-01 → BT-04 | Optional BLE keyboard with the built-in keyboard as fallback |
 | 11 | PaperDIY (post-v1) | PD-01 → PD-05 | Read-only e-paper companion; full reviews after BT |
+| 12 | Round 2 (spec) | Waves 0a–4 in [docs/spec/README.md](docs/spec/README.md#5-execution-waves-and-file-ownership): FIX, CFG, REV, LES, STUDY, STATS, REM, AUD | Fixes, settings, reviews, lessons, study/stats and reminders/audio; per-task status in `docs/spec` |
 
 ## 1. Radicals and remove `efontJA_16` (v1 blocker)
 
@@ -726,6 +729,29 @@ progress features, not a second SRS.
 Out of scope for KaniKey: anime clips, NHK reader, Spotify lyrics, camera OCR,
 MyAnimeList sync, home-screen widgets, Apple Watch, community/forum, push
 notifications and a local SRS.
+
+## Round 2 (specified 2026-11-01)
+
+The round-2 plan is in [docs/spec/README.md](docs/spec/README.md). Its task
+tables are the authoritative status; this roadmap keeps the product direction
+and the 2026-11-19 hardware-pass results. The remaining v1 extras map to spec
+work as follows; EXT-01 and EXT-02 stay done, and EXT-07/EXT-08 are out of
+round 2.
+
+| Roadmap item | Spec task | Scope | Spec status |
+|---|---|---|---|
+| EXT-03 | STUDY-01, STUDY-02 | Critical items and leeches | done (2026-11-06) |
+| EXT-04 | STUDY-03, STUDY-04, STUDY-05 | Extra study and the offline practice pool | done (2026-11-06) |
+| EXT-05 + WK-11 | STATS-01…STATS-04 | Forecast, history, streak and level progress | done (2026-11-06) |
+| EXT-06 | AUD-01…AUD-03 | Vocabulary audio | partial (AUD-01/02); AUD-03 todo |
+| EXT-09 | REM-01…REM-03 | Device-local reminders and sounds | todo |
+| LESSON-08 | LES-04 | Lesson ordering | partial: default order done; L2 choices open |
+
+The other spec groups are tracked only in `docs/spec`: ARCH (controllers,
+settings registry, local stores, screen state), FIX (01-fixes), SPEED
+(submission/sync), CFG (sectioned settings), REV (review options), LES (batch
+flow), STUDY, STATS, REM/AUD, ONB (pack and setup) and DOC (this documentation
+pass). No round-2 task is claimed as done here beyond the spec status above.
 
 ## 11. Bluetooth keyboard (after v1)
 

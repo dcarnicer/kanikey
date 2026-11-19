@@ -1,409 +1,591 @@
 #!/usr/bin/env python3
-"""Render the KaniKey design mockups at the Cardputer ADV's 240x135 panel.
+"""Render the KaniKey screens from the firmware's own layouts.
 
-The geometry and type sizes are the 1x design values; the individual PNGs are
-nearest-neighbour 4x upscales and the contact sheet is 2x, so the pixel grid
-stays honest. The UI font is Noto Sans JP, the same family Tangocho pre-renders
-for its firmware; the kanji/radical shapes here stand in for the device's glyph
-pack.
+The images in ``docs/screens`` are renders, not device captures. UI text is
+drawn with the M5GFX bitmap fonts the firmware uses: Font0/Font1 (the 6x8 GLCD
+font), Font2 (16 px) and Font4 (26 px). Every colour comes from the RGB565
+constants in ``firmware/src/ui/Theme.h``, quantized to the 8-bit canvas's RGB332
+palette and expanded back to RGB. Japanese prompts and readings use Noto Sans JP
+only as a stand-in for the microSD glyph pack; no Latin UI text uses it.
 
     python3 tools/mockups/render.py
+    python3 tools/mockups/render.py --check
 
-Output: docs/screens/*.png (and overview.png).
+Output: ``docs/screens/*.png`` (individual screens at 4x, contact sheet at 2x).
+``--check`` reads the committed PNGs and fails on a size or palette mismatch.
 """
 from __future__ import annotations
 
+import argparse
+import base64
 import os
+import zlib
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+try:
+    from PIL import Image, ImageDraw, ImageFont
+except ImportError:  # pragma: no cover - the README gives the uv command
+    raise SystemExit(
+        "Pillow is not installed. Run "
+        "`uv run --with pillow python3 tools/mockups/render.py`."
+    )
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "docs" / "screens"
-# Reuse Tangocho's downloaded Noto cache by default; override with KANIKEY_FONT.
-DEFAULT_FONT = Path.home() / "code/tangocho/tools/pack-builder/cache/noto/NotoSansJP-Regular.otf"
-FONT = Path(os.environ.get("KANIKEY_FONT", DEFAULT_FONT))
-FONT_MEDIUM = Path(os.environ.get(
-    "KANIKEY_FONT_MEDIUM",
-    str(FONT).replace("-Regular", "-Medium"),
-))
 
 W, H = 240, 135
 SCALE = 4
 
+# --- M5GFX bitmap fonts -------------------------------------------------------
+# The tables are copied from the M5GFX headers that the firmware links:
+#   Font0/Font1  lgfx/Fonts/glcdfont.h  (6x8 GLCD, 5 data columns)
+#   Font2        lgfx/Fonts/Font16.h    (16 px, per-character width)
+#   Font4        lgfx/Fonts/Font32rle.h (26 px, 8-bit RLE)
+# Stored as one zlib/base64 blob: Font0 95*5 bytes, then Font2 (width, bytes
+# per row, 16 rows), then Font4 (width, RLE length, RLE bytes).
+_FONT_B64 = """
+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
+"""
+
+FONT_HEIGHT = {0: 8, 1: 8, 2: 16, 4: 26}
+FONTS: dict[int, dict[str, tuple[int, list[list[bool]]]]] = {}
+
+
+def _decode_rle(width: int, data: bytes) -> list[list[bool]]:
+    rows = [[False] * width for _ in range(26)]
+    x = y = 0
+    for run in data:
+        length = (run & 0x7F) + 1
+        on = bool(run & 0x80)
+        for _ in range(length):
+            if y < 26 and x < width and on:
+                rows[y][x] = True
+            x += 1
+            if x == width:
+                x = 0
+                y += 1
+    return rows
+
+
+def _load_fonts() -> None:
+    raw = zlib.decompress(base64.b64decode("".join(_FONT_B64.split())))
+    pos = 0
+    f0: dict[str, tuple[int, list[list[bool]]]] = {}
+    for code in range(32, 127):
+        cols = raw[pos:pos + 5]
+        pos += 5
+        rows = [[bool(cols[col] & (1 << row)) for col in range(5)] for row in range(8)]
+        f0[chr(code)] = (6, rows)
+    f2: dict[str, tuple[int, list[list[bool]]]] = {}
+    for code in range(32, 127):
+        advance = raw[pos]
+        stride = raw[pos + 1]
+        pos += 2
+        glyph = raw[pos:pos + 16 * stride]
+        pos += 16 * stride
+        bits = []
+        for row in range(16):
+            line = []
+            for col in range(advance - 1):
+                line.append(bool(glyph[row * stride + (col >> 3)] & (0x80 >> (col & 7))))
+            bits.append(line)
+        f2[chr(code)] = (advance, bits)
+    f4: dict[str, tuple[int, list[list[bool]]]] = {}
+    for code in range(32, 127):
+        width = raw[pos]
+        length = raw[pos + 1]
+        pos += 2
+        f4[chr(code)] = (width, _decode_rle(width, raw[pos:pos + length]))
+        pos += length
+    if pos != len(raw):
+        raise SystemExit("font blob is malformed")
+    FONTS[0] = f0
+    FONTS[1] = f0  # M5GFX maps setTextFont(1) to Font0.
+    FONTS[2] = f2
+    FONTS[4] = f4
+
+
+_load_fonts()
+
 # --- palette -----------------------------------------------------------------
-BG = "#0B0D10"
-SURFACE = "#151A22"
-SURFACE_HI = "#202733"
-LINE = "#33404F"
-TEXT = "#F4F7FB"
-DIM = "#9BA8BA"
-FAINT = "#647184"
-ACCENT = "#6C8CFF"
-ACCENT_HI = "#9DB2FF"
-BRAND = "#FF7A59"
-READING = "#5EEAD4"
-OK = "#6EE7A8"
-OK_BG = "#123326"
-ERR = "#FF6B6B"
-ERR_BG = "#351A1C"
-WARN = "#FBBF24"
-GOLD = "#F5C451"
-
-FONTS: dict[tuple[int, bool], ImageFont.FreeTypeFont] = {}
-
-
-def font(size: int, medium: bool = False) -> ImageFont.FreeTypeFont:
-    key = (size, medium)
-    if key not in FONTS:
-        FONTS[key] = ImageFont.truetype(str(FONT_MEDIUM if medium else FONT), size)
-    return FONTS[key]
+# RGB565 constants from firmware/src/ui/Theme.h. The canvas converts each to
+# RGB332 with color_convert<rgb332_t, rgb565_t> and the panel expands it back.
+RGB565 = {
+    "bg": 0x0000,
+    "surface": 0x0108,
+    "surface_hi": 0x2128,
+    "line": 0x2208,
+    "text": 0xFFFF,
+    "dim": 0xA577,
+    "faint": 0x636F,
+    "brand": 0xE308,
+    "ok": 0x5EF1,
+    "ok_bg": 0x0183,
+    "accent": 0x2B1B,
+    "accent_hi": 0x7D5F,
+    "reading": 0x2D14,
+    "err": 0xC945,
+    "err_bg": 0x3882,
+    "warn": 0xFE26,
+}
 
 
-def text(d: ImageDraw.ImageDraw, xy: tuple[int, int], s: str, size: int, color: str,
-         anchor: str = "la", medium: bool = False) -> None:
-    d.text(xy, s, font=font(size, medium), fill=color, anchor=anchor)
+def _to332(v: int) -> int:
+    return (((((v >> 13) & 7) << 3) + ((v >> 8) & 7)) << 2) + ((v >> 3) & 3)
 
 
-def tw(d: ImageDraw.ImageDraw, s: str, size: int, medium: bool = False) -> int:
-    return int(round(d.textlength(s, font=font(size, medium))))
+def _expand332(v: int) -> tuple[int, int, int]:
+    r = (v >> 5) & 7
+    g = (v >> 2) & 7
+    b = v & 3
+    return (36 * r + r // 2, 36 * g + g // 2, 85 * b)
 
 
-def fit_size(d: ImageDraw.ImageDraw, s: str, max_w: int, sizes: list[int],
-             medium: bool = False) -> int:
-    for size in sizes:
-        if tw(d, s, size, medium) <= max_w:
-            return size
-    return sizes[-1]
+PALETTE = {name: _expand332(_to332(v)) for name, v in RGB565.items()}
+ALLOWED = set(PALETTE.values())
+# GOLD is M5GFX's TFT_GOLD (0xFEA0) in HomeScreen/StatsScreen, not a Theme.h
+# token. It quantizes to the same #FFDB00 as kWarn, so kWarn is used here.
+BG = PALETTE["bg"]
+SURFACE = PALETTE["surface"]
+SURFACE_HI = PALETTE["surface_hi"]
+LINE = PALETTE["line"]
+TEXT = PALETTE["text"]
+DIM = PALETTE["dim"]
+FAINT = PALETTE["faint"]
+BRAND = PALETTE["brand"]
+OK = PALETTE["ok"]
+OK_BG = PALETTE["ok_bg"]
+ACCENT = PALETTE["accent"]
+ACCENT_HI = PALETTE["accent_hi"]
+READING = PALETTE["reading"]
+ERR = PALETTE["err"]
+ERR_BG = PALETTE["err_bg"]
+WARN = PALETTE["warn"]
 
 
-def rect(d: ImageDraw.ImageDraw, x: int, y: int, w: int, h: int, fill: str | None = None,
-         outline: str | None = None) -> None:
-    d.rectangle((x, y, x + w - 1, y + h - 1), fill=fill, outline=outline)
+def nearest_palette(rgb: tuple[int, int, int]) -> tuple[int, int, int]:
+    return min(ALLOWED, key=lambda p: (p[0] - rgb[0]) ** 2 + (p[1] - rgb[1]) ** 2 +
+                                      (p[2] - rgb[2]) ** 2)
 
 
-def pill(d: ImageDraw.ImageDraw, x: int, y: int, label: str, fg: str, bg: str,
-         size: int = 9, pad: int = 5) -> int:
-    w = tw(d, label, size) + 2 * pad
-    rect(d, x, y, w, 13, bg)
-    text(d, (x + pad, y + 2), label, size, fg)
-    return w
+_QUANT_CACHE: dict[tuple[int, int, int], tuple[int, int, int]] = {}
 
 
-def keycap(d: ImageDraw.ImageDraw, x: int, y: int, label: str, size: int = 8) -> int:
-    w = max(12, tw(d, label, size) + 6)
-    rect(d, x, y, w, 11, SURFACE_HI, LINE)
-    text(d, (x + w // 2, y + 1), label, size, TEXT, anchor="ma")
-    return w
+def _pixels(im: Image.Image) -> list[tuple[int, int, int]]:
+    getter = getattr(im, "get_flattened_data", None)
+    return list(getter() if getter is not None else im.getdata())
 
 
-def hints(d: ImageDraw.ImageDraw, left: list[tuple[str, str]], right: list[tuple[str, str]]) -> None:
-    y = 124
-    x = 5
-    for key, word in left:
-        x += keycap(d, x, y, key) + 3
-        text(d, (x, y + 1), word, 9, DIM)
-        x += tw(d, word, 9) + 9
-    x = W - 5
-    for key, word in reversed(right):
-        w = tw(d, word, 9)
-        text(d, (x - w, y + 1), word, 9, DIM)
-        x -= w + 3
-        kw = max(12, tw(d, key, 8) + 6)
-        keycap(d, x - kw, y, key)
-        x -= kw + 9
+def quantize(im: Image.Image) -> Image.Image:
+    """Map antialiased pack stand-in pixels to the nearest RGB332 colour."""
+    data = _pixels(im)
+    for i, px in enumerate(data):
+        if px not in _QUANT_CACHE:
+            _QUANT_CACHE[px] = nearest_palette(px)
+        data[i] = _QUANT_CACHE[px]
+    im.putdata(data)
+    return im
 
 
-def battery(d: ImageDraw.ImageDraw, x: int, y: int, pct: int) -> None:
-    rect(d, x, y, 13, 7, None, DIM)
-    rect(d, x + 13, y + 2, 2, 3, DIM)
-    fill_w = max(1, round(10 * pct / 100))
-    color = ERR if pct < 10 else WARN if pct < 20 else OK
-    rect(d, x + 2, y + 2, fill_w, 3, color)
+# --- drawing helpers ----------------------------------------------------------
+def text_width(s: str, font: int = 0, size: int = 1) -> int:
+    table = FONTS[font]
+    space = table[" "][0]
+    return sum(table.get(ch, (space, []))[0] for ch in s) * size
 
 
-def wifi(d: ImageDraw.ImageDraw, x: int, y: int, color: str = DIM) -> None:
-    d.arc((x, y, x + 11, y + 11), 225, 315, fill=color, width=1)
-    d.arc((x + 2, y + 3, x + 9, y + 10), 225, 315, fill=color, width=1)
-    d.ellipse((x + 4, y + 7, x + 6, y + 9), fill=color)
+def text(im: Image.Image, x: int, y: int, s: str, font: int = 0, size: int = 1,
+         color: tuple[int, int, int] = TEXT, anchor: str = "lt") -> None:
+    d = ImageDraw.Draw(im)
+    width = text_width(s, font, size)
+    height = FONT_HEIGHT[font] * size
+    if anchor == "rt":
+        x -= width
+    elif anchor == "mt":
+        x -= width // 2
+    elif anchor == "mm":
+        x -= width // 2
+        y -= height // 2
+    elif anchor == "rm":
+        x -= width
+        y -= height // 2
+    table = FONTS[font]
+    space = table[" "]
+    for ch in s:
+        advance, rows = table.get(ch, space)
+        for row, line in enumerate(rows):
+            for col, on in enumerate(line):
+                if on:
+                    rect(im, x + col * size, y + row * size, size, size, color)
+        x += advance * size
 
 
-def check(d: ImageDraw.ImageDraw, x: int, y: int, color: str = OK) -> None:
-    d.line((x, y + 4, x + 3, y + 7), fill=color, width=2)
-    d.line((x + 3, y + 7, x + 9, y + 1), fill=color, width=2)
+def rect(im: Image.Image, x: int, y: int, w: int, h: int,
+         fill: tuple[int, int, int] | None = None,
+         outline: tuple[int, int, int] | None = None) -> None:
+    if w <= 0 or h <= 0:
+        return
+    ImageDraw.Draw(im).rectangle((x, y, x + w - 1, y + h - 1), fill=fill, outline=outline)
 
 
-def cross(d: ImageDraw.ImageDraw, x: int, y: int, color: str = ERR) -> None:
-    d.line((x, y, x + 8, y + 8), fill=color, width=2)
-    d.line((x + 8, y, x, y + 8), fill=color, width=2)
+def line(im: Image.Image, x0: int, y0: int, x1: int, y1: int,
+         color: tuple[int, int, int]) -> None:
+    ImageDraw.Draw(im).line((x0, y0, x1, y1), fill=color)
 
 
-def chevron(d: ImageDraw.ImageDraw, x: int, y: int, color: str = FAINT) -> None:
-    d.line((x, y, x + 3, y + 3), fill=color, width=1)
-    d.line((x + 3, y + 3, x, y + 6), fill=color, width=1)
+def pill(im: Image.Image, x: int, y: int, label: str,
+         fg: tuple[int, int, int], bg: tuple[int, int, int]) -> None:
+    w = text_width(label, 0) + 8
+    rect(im, x, y, w, 13, bg)
+    text(im, x + 4, y + 2, label, 0, 1, fg)
 
 
-def progress(d: ImageDraw.ImageDraw, x: int, y: int, w: int, h: int, done: int, total: int,
-             fill: str = ACCENT, track: str = SURFACE_HI) -> None:
-    rect(d, x, y, w, h, track)
+def progress(im: Image.Image, x: int, y: int, w: int, h: int, done: int, total: int,
+             fill: tuple[int, int, int] = ACCENT_HI,
+             track: tuple[int, int, int] = SURFACE_HI) -> None:
+    rect(im, x, y, w, h, track)
     if total > 0:
-        rect(d, x, y, max(1, round(w * done / total)), h, fill)
+        rect(im, x, y, max(1, w * done // total), h, fill)
 
 
-def header(d: ImageDraw.ImageDraw, title: str, right: str | None = None,
-           pct: int = 84, done: int = 0, total: int = 0, brand: bool = False) -> None:
-    if brand:
-        text(d, (6, 2), "KaniKey", 15, BRAND, medium=True)
-    else:
-        text(d, (6, 3), title, 11, DIM, medium=True)
-    if right:
-        text(d, (W - 50, 4), right, 9, DIM, anchor="ra")
-    wifi(d, W - 43, 5)
-    battery(d, W - 20, 5, pct)
-    if total > 0:
-        progress(d, 0, 14, W, 2, done, total)
-    else:
-        rect(d, 0, 15, W, 1, LINE)
+# --- Japanese pack stand-in ---------------------------------------------------
+def find_font() -> Path | None:
+    candidates = [
+        os.environ.get("KANIKEY_FONT"),
+        str(ROOT / "tools/pack-builder/cache/noto/NotoSansJP-Regular.otf"),
+        str(Path.home() / "code/tangocho/tools/pack-builder/cache/noto/NotoSansJP-Regular.otf"),
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).is_file():
+            return Path(candidate)
+    return None
 
 
-def wrap(d: ImageDraw.ImageDraw, s: str, size: int, max_w: int) -> list[str]:
-    words = s.split(" ")
-    lines: list[str] = []
-    cur = ""
-    for word in words:
-        cand = (cur + " " + word).strip()
-        if tw(d, cand, size) <= max_w or not cur:
-            cur = cand
-        else:
-            lines.append(cur)
-            cur = word
-    if cur:
-        lines.append(cur)
-    return lines
+JP_FONT: Path | None = find_font()
+_JP_CACHE: dict[int, ImageFont.FreeTypeFont] = {}
 
 
-def panel(d: ImageDraw.ImageDraw, x: int, y: int, w: int, h: int) -> None:
-    rect(d, x, y, w, h, SURFACE, LINE)
+def jp_font(size: int) -> ImageFont.FreeTypeFont:
+    if JP_FONT is None:
+        raise SystemExit("Noto Sans JP not found. Set KANIKEY_FONT to the .otf path.")
+    if size not in _JP_CACHE:
+        _JP_CACHE[size] = ImageFont.truetype(str(JP_FONT), size)
+    return _JP_CACHE[size]
 
 
-# --- screens -----------------------------------------------------------------
+def jp_width(s: str, size: int) -> int:
+    return int(round(jp_font(size).getlength(s)))
+
+
+def jp(im: Image.Image, x: int, y: int, s: str, size: int,
+       color: tuple[int, int, int] = TEXT, anchor: str = "ls") -> None:
+    ImageDraw.Draw(im).text((x, y), s, font=jp_font(size), fill=color, anchor=anchor)
+
+
+def jp_fit(im: Image.Image, x: int, y: int, s: str, prefer: int, max_width: int,
+           color: tuple[int, int, int], anchor: str = "ls") -> None:
+    for size in (prefer, 32, 20):
+        if size <= prefer and jp_width(s, size) <= max_width:
+            jp(im, x, y, s, size, color, anchor)
+            return
+    jp(im, x, y, s, 20, WARN, anchor)
+
+
+# --- screens ------------------------------------------------------------------
 def screen_home() -> Image.Image:
     im = Image.new("RGB", (W, H), BG)
-    d = ImageDraw.Draw(im)
-    header(d, "", pct=84, brand=True)
+    text(im, 6, 2, "KaniKey", 2, 1, BRAND)
+    text(im, 198, 5, "Synced 14:47", 1, 1, DIM, "rt")
+    text(im, 233, 5, "84%", 1, 1, DIM, "rt")
 
-    text(d, (8, 22), "LEVEL 12", 9, GOLD, medium=True)
-    text(d, (66, 21), "you", 10, DIM)
-    text(d, (8, 35), "28", 40, TEXT, medium=True)
-    text(d, (54, 55), "REVIEWS DUE", 8, DIM)
-    text(d, (150, 35), "5", 32, TEXT, medium=True)
-    text(d, (168, 55), "LESSONS", 8, DIM)
+    text(im, 7, 21, "LEVEL 12", 1, 1, WARN)
+    text(im, 80, 21, "you", 1, 1, DIM)
+    text(im, 8, 36, "28", 2, 2, TEXT)
+    text(im, 164, 36, "5", 2, 2, TEXT)
+    text(im, 8, 73, "REVIEWS DUE", 0, 1, DIM)
+    text(im, 164, 73, "LESSONS", 0, 1, DIM)
 
-    text(d, (8, 80), "Next review", 9, FAINT)
-    text(d, (70, 79), "18:00", 12, TEXT, medium=True)
-    text(d, (105, 80), "· in 42 min", 9, DIM)
+    text(im, 8, 86, "Next review", 1, 1, DIM)
+    text(im, 232, 86, "18:00 (+12)", 1, 1, TEXT, "rt")
 
-    # SRS stage distribution: apprentice, guru, master, enlightened, burned
     counts = [42, 18, 9, 4, 2]
-    colors = [ERR, WARN, ACCENT, READING, FAINT]
-    x = 8
+    colors = [ERR, WARN, ACCENT_HI, READING, FAINT]
     total = sum(counts)
-    for n, c in zip(counts, colors):
-        w = max(3, round(224 * n / total))
-        rect(d, x, 101, w - 1, 3, c)
+    x = 8
+    for i, (n, color) in enumerate(zip(counts, colors)):
+        w = 232 - x if i == 4 else max(3, (224 * n + total // 2) // total)
+        w = min(w, 232 - x)
+        if w > 0:
+            rect(im, x, 100, w - 1, 3, color)
         x += w
     labels = ["A 42", "G 18", "M 9", "E 4", "B 2"]
-    x = 8
-    for label, c in zip(labels, colors):
-        rect(d, x, 110, 3, 3, c)
-        text(d, (x + 5, 108), label, 8, DIM)
-        x += 43
+    for i, (label, color) in enumerate(zip(labels, colors)):
+        x = 8 + i * 43
+        rect(im, x, 107, 4, 4, color)
+        text(im, x + 5, 106, label, 0, 1, DIM)
 
-    hints(d, [("Enter", "reviews"), ("L", "lessons"), ("S", "sync")], [])
+    text(im, 8, 117, "L12 42% since 03 Feb", 0, 1, FAINT)
+    text(im, 8, 125, "Enter  L  T  P  S", 0, 1, FAINT)
     return im
 
 
-def prompt_panel(d: ImageDraw.ImageDraw, char_text: str, kind: str, level: int,
-                 size: int = 64) -> None:
-    panel(d, 4, 20, 88, 88)
-    # Centre the prompt in the upper part of the box, leaving room for its pill.
-    cy = 57
-    text(d, (48, cy), char_text, size, TEXT, anchor="mm")
-    label = f"{kind} · L{level}"
-    w = tw(d, label, 8) + 10
-    pill(d, 48 - w // 2, 92, label, DIM, SURFACE_HI, size=8)
+def review_header(im: Image.Image, position: int = 12, total: int = 48) -> None:
+    text(im, 6, 3, "REVIEWS", 1, 1, DIM)
+    text(im, 62, 5, "SRS 3  86%", 0, 1, FAINT)
+    text(im, 233, 5, f"{position}/{total}", 0, 1, FAINT, "rt")
+    progress(im, 0, 14, 240, 2, position - 1, total, ACCENT_HI, SURFACE_HI)
 
 
-def screen_review(kind: str = "MEANING", answer: str = "eat", romaji: str | None = None) -> Image.Image:
+def review_subject(im: Image.Image) -> None:
+    rect(im, 4, 20, 88, 88, SURFACE, LINE)
+    jp(im, 48, 56, "食", 64, TEXT, "mm")
+    label = "KANJI L5"
+    pill(im, 48 - (text_width(label, 0) + 8) // 2, 92, label, DIM, SURFACE_HI)
+
+
+def screen_review_meaning() -> Image.Image:
     im = Image.new("RGB", (W, H), BG)
-    d = ImageDraw.Draw(im)
-    header(d, "REVIEWS", "12/48", done=12, total=48)
-    prompt_panel(d, "食", "KANJI", 5)
+    review_header(im)
+    review_subject(im)
+    pill(im, 100, 20, "MEANING", ACCENT_HI, SURFACE_HI)
+    text(im, 100, 38, "Type the meaning", 0, 1, DIM)
+    rect(im, 100, 52, 136, 32, SURFACE_HI, LINE)
+    text(im, 106, 60, "eat", 1, 1, TEXT)
+    rect(im, 106 + text_width("eat", 1), 58, 2, 16, ACCENT)
+    text(im, 6, 125, "Enter: check", 0, 1, FAINT)
+    text(im, 233, 125, "Esc: quit", 0, 1, FAINT, "rt")
+    return im
 
-    pill(d, 100, 20, kind, ACCENT if kind == "MEANING" else READING, SURFACE_HI, size=9)
 
-    text(d, (100, 39), "Type the meaning" if kind == "MEANING" else "Type the reading",
-         9, DIM)
-    rect(d, 100, 52, 136, 32, SURFACE_HI, LINE)
-    text(d, (106, 58), answer, 20, TEXT)
-    caret_x = 106 + tw(d, answer, 20) + 2
-    rect(d, caret_x, 57, 2, 21, ACCENT)
-    if romaji:
-        text(d, (100, 88), f"romaji: {romaji}", 9, FAINT)
+def screen_review_reading() -> Image.Image:
+    im = Image.new("RGB", (W, H), BG)
+    review_header(im)
+    review_subject(im)
+    pill(im, 100, 20, "READING", READING, SURFACE_HI)
+    text(im, 100, 38, "Type the reading", 0, 1, DIM)
+    rect(im, 100, 52, 136, 32, SURFACE_HI, LINE)
+    jp(im, 230, 80, "たべ", 32, TEXT, "rs")
+    rect(im, 230, 58, 2, 16, ACCENT)
+    text(im, 100, 88, "romaji: tabe", 0, 1, FAINT)
+    text(im, 6, 125, "Enter: check", 0, 1, FAINT)
+    text(im, 233, 125, "Esc: quit", 0, 1, FAINT, "rt")
+    return im
+
+
+def screen_review_feedback(correct: bool) -> Image.Image:
+    im = Image.new("RGB", (W, H), BG)
+    review_header(im)
+    review_subject(im)
+    if correct:
+        pill(im, 100, 20, "CORRECT", OK, OK_BG)
+        text(im, 100, 38, "You typed", 0, 1, FAINT)
+        text(im, 100, 47, "eat", 1, 1, DIM)
+        text(im, 100, 65, "Answer", 0, 1, FAINT)
+        text(im, 100, 74, "eat", 1, 1, OK)
     else:
-        text(d, (100, 88), "Enter to check", 9, FAINT)
-    text(d, (100, 104), "Tab: details", 8, FAINT)
-
-    hints(d, [("Enter", "check")], [("Esc", "pause")])
-    return im
-
-
-def screen_feedback(correct: bool) -> Image.Image:
-    im = Image.new("RGB", (W, H), BG)
-    d = ImageDraw.Draw(im)
-    header(d, "REVIEWS", "12/48", done=12, total=48)
-    prompt_panel(d, "食", "KANJI", 5)
-
-    color, bg = (OK, OK_BG) if correct else (ERR, ERR_BG)
-    label = "CORRECT" if correct else "NOT QUITE"
-    pill(d, 100, 20, label, color, bg, size=9)
-    (check if correct else cross)(d, 100 + tw(d, label, 9) + 11, 23, color)
-
-    text(d, (100, 38), "You typed", 8, FAINT)
-    text(d, (100, 48), "eat" if correct else "eta", 14, DIM)
-
-    text(d, (100, 68), "Meaning", 8, FAINT)
-    text(d, (100, 78), "eat", 18, color, medium=True)
-    text(d, (100, 100), "Reading  たべる", 9, READING)
-
-    hints(d, [("Enter", "next"), ("Tab", "details")], [])
+        pill(im, 100, 20, "NOT QUITE", ERR, ERR_BG)
+        text(im, 100, 38, "You typed", 0, 1, FAINT)
+        text(im, 100, 47, "eta", 1, 1, DIM)
+        text(im, 100, 65, "Answer", 0, 1, FAINT)
+        text(im, 100, 74, "eat", 1, 1, ERR)
+        text(im, 100, 92, "Incorrect meaning", 0, 1, FAINT)
+    text(im, 6, 125, "Enter: next  Tab: details", 0, 1, FAINT)
+    text(im, 233, 125, "Esc: quit", 0, 1, FAINT, "rt")
     return im
 
 
 def screen_lesson() -> Image.Image:
     im = Image.new("RGB", (W, H), BG)
-    d = ImageDraw.Draw(im)
-    text(d, (6, 3), "LESSON", 11, DIM, medium=True)
-    page = "p1/3"
-    text(d, (W - 7, 3), page, 8, FAINT, anchor="rt")
-    text(d, (W - 7 - tw(d, page, 8) - 8, 3), "2/5", 8, DIM, anchor="rt")
-    # Item 2/5 means one completed item, so the bar is 1/5 wide.
-    rect(d, 0, 14, W, 2, SURFACE_HI)
-    rect(d, 0, 14, round(W / 5), 2, ACCENT_HI)
+    text(im, 6, 3, "LESSON", 1, 1, DIM)
+    text(im, 233, 5, "p1/3", 0, 1, FAINT, "rt")
+    text(im, 233 - text_width("p1/3", 0) - 8, 5, "2/5", 0, 1, DIM, "rt")
+    progress(im, 0, 14, 240, 2, 1, 5, ACCENT_HI, SURFACE_HI)
 
-    panel(d, 4, 20, 74, 60)
-    text(d, (41, 50), "休", 48, TEXT, anchor="mm")
-    pill(d, 84, 20, "KANJI · L5", DIM, SURFACE_HI, size=8)
-    text(d, (84, 36), "rest", 20, TEXT, medium=True)
-    text(d, (84, 58), "きゅう · やす.む", 12, READING)
-    text(d, (84, 72), "person + tree", 8, FAINT)
+    rect(im, 4, 20, 74, 64, SURFACE, LINE)
+    jp(im, 41, 52, "休", 60, TEXT, "mm")
+    pill(im, 86, 20, "KANJI L5", DIM, SURFACE_HI)
+    text(im, 86, 38, "rest", 1, 1, TEXT)
+    jp(im, 86, 80, "きゅう", 32, READING, "ls")
 
-    rect(d, 4, 86, 232, 34, SURFACE, LINE)
-    mnemonic = ("A person leans against a tree in the shade. That is rest. "
-                "Picture yourself stopping there for a moment.")
-    lines = wrap(d, mnemonic, 9, 224)[:3]
-    for i, line in enumerate(lines):
-        text(d, (10, 90 + i * 10), line, 9, DIM)
+    lines = [
+        "A person leans against a tree",
+        "in the shade. That is rest.",
+        "Picture yourself stopping there.",
+    ]
+    for i, line_text in enumerate(lines):
+        text(im, 5, 92 + i * 9, line_text, 0, 1, DIM)
 
-    text(d, (5, 125), "Space p  Q quiz", 8, FAINT, anchor="lt")
-    text(d, (W - 7, 125), "Enter start  Esc list", 8, FAINT, anchor="rt")
+    text(im, 5, 125, "Space p  Q quiz", 0, 1, FAINT)
+    text(im, 233, 125, "Enter start  Esc list", 0, 1, FAINT, "rt")
     return im
 
 
 def screen_summary() -> Image.Image:
     im = Image.new("RGB", (W, H), BG)
-    d = ImageDraw.Draw(im)
-    header(d, "SESSION", pct=84)
+    text(im, 6, 3, "SESSION", 1, 1, DIM)
+    text(im, 8, 30, "24", 2, 2, TEXT)
+    text(im, 84, 30, "92%", 2, 2, TEXT)
+    text(im, 164, 30, "12m", 2, 2, TEXT)
+    text(im, 8, 66, "REVIEWS", 0, 1, DIM)
+    text(im, 84, 66, "ACCURACY", 0, 1, DIM)
+    text(im, 164, 66, "TIME", 0, 1, DIM)
+    line(im, 8, 77, 231, 77, LINE)
 
-    cols = [("24", "REVIEWS"), ("92%", "ACCURACY"), ("12m", "TIME")]
-    xs = [8, 84, 164]
-    for (value, label), x in zip(cols, xs):
-        text(d, (x, 28), value, 32, TEXT, medium=True)
-        text(d, (x, 66), label, 8, DIM)
-    rect(d, 8, 77, 224, 1, LINE)
-
-    text(d, (8, 84), "8 items moved up", 11, OK)
-    text(d, (8, 98), "3 mistakes", 10, DIM)
-    text(d, (232, 98), "4 pending", 10, WARN, anchor="ra")
-    text(d, (8, 112), "SRS 3 -> 4  86%", 10, OK)
-
-    hints(d, [("Enter", "home")], [])
+    text(im, 8, 84, "8 items moved up", 0, 1, OK)
+    text(im, 8, 98, "3 mistakes", 0, 1, DIM)
+    text(im, 232, 98, "All reviews sent", 0, 1, FAINT, "rt")
+    text(im, 8, 112, "SRS 3 -> 4  86%", 0, 1, OK)
+    text(im, 8, 125, "Enter: home", 0, 1, FAINT)
     return im
 
 
 def screen_sync() -> Image.Image:
     im = Image.new("RGB", (W, H), BG)
-    d = ImageDraw.Draw(im)
-    header(d, "SYNC", pct=84)
+    text(im, 6, 2, "KaniKey", 2, 1, BRAND)
+    text(im, 233, 5, "84%", 1, 1, DIM, "rt")
+    text(im, 8, 24, "Syncing...", 2, 1, TEXT)
+    text(im, 233, 32, "5/7", 0, 1, FAINT, "rt")
 
     rows = [
-        ("Wi-Fi", "192.168.1.42", "ok"),
-        ("Outbox", "sent", "ok"),
-        ("Account", "you L12", "ok"),
-        ("Summary", "28 due, 5 lessons", "ok"),
-        ("Level", "L12 since 03 Feb", "ok"),
-        ("SRS", "fetching", "busy"),
+        ("Wi-Fi", "192.168.1.42", "ok", OK, TEXT),
+        ("Outbox", "sent", "ok", OK, TEXT),
+        ("Account", "you L12", "ok", OK, TEXT),
+        ("Summary", "28 due, 5 lessons", "ok", OK, TEXT),
+        ("Level", "L12 since 03 Feb", "ok", OK, TEXT),
+        ("SRS", "fetching", "..", ACCENT_HI, TEXT),
+        ("Critical", "", "--", FAINT, FAINT),
     ]
-    y = 22
-    for label, value, state in rows:
-        text(d, (10, y), label, 10, TEXT)
-        text(d, (70, y), value, 9, DIM)
-        if state == "ok":
-            check(d, 220, y + 1, OK)
-        else:
-            d.arc((220, y, 230, y + 10), 30, 300, fill=ACCENT, width=2)
-        y += 13
+    for i, (label, value, state, status_color, value_color) in enumerate(rows):
+        y = 42 + i * 10
+        text(im, 8, y, label, 0, 1, DIM)
+        if value:
+            text(im, 64, y, value, 0, 1, value_color)
+        text(im, 233, y, state, 0, 1, status_color, "rt")
 
-    progress(d, 10, 114, 220, 3, 5, 6)
-    hints(d, [], [("Esc", "cancel")])
+    progress(im, 8, 113, 224, 3, 5, 7, ACCENT_HI, SURFACE_HI)
+    text(im, 8, 125, "Esc: cancel", 0, 1, FAINT)
     return im
 
 
 def screen_settings() -> Image.Image:
     im = Image.new("RGB", (W, H), BG)
-    d = ImageDraw.Draw(im)
-    header(d, "SETTINGS", pct=84)
+    text(im, 6, 2, "KaniKey", 2, 1, BRAND)
+    text(im, 7, 22, "settings", 1, 1, DIM)
+    text(im, 232, 5, "Esc: back", 0, 1, FAINT, "rt")
+    line(im, 4, 36, 235, 36, LINE)
 
     rows = [
-        ("Account", "you · L12"),
-        ("Study", "Meaning first"),
-        ("Sync", "2 min ago"),
-        ("Device", "Wi-Fi · 84%"),
-        ("About", "v0.1 design"),
+        ("Brightness", "128"),
+        ("Dim after", "30s"),
+        ("Blank after", "60s"),
+        ("Sleep after", "2m"),
+        ("Review batch", "20"),
+        ("Order", "Meaning"),
+        ("Lesson batch", "5"),
     ]
-    y = 22
     for i, (label, value) in enumerate(rows):
-        rect(d, 4, y, 232, 18, SURFACE if i else ACCENT, None if i else None)
-        text(d, (10, y + 4), label, 10, TEXT if i else "#0B0D10", medium=True)
-        text(d, (224, y + 5), value, 9, DIM if i else "#0B0D10", anchor="ra")
-        chevron(d, 230, y + 6, FAINT if i else "#0B0D10")
-        y += 20
+        y = 42 + i * 11
+        focus = i == 0
+        if focus:
+            rect(im, 4, y - 2, 228, 11, SURFACE_HI)
+            rect(im, 4, y - 2, 2, 11, ACCENT)
+        text(im, 10, y, label, 0, 1, TEXT if focus else DIM)
+        text(im, 228, y, value, 0, 1, ACCENT_HI if focus else FAINT, "rt")
 
-    hints(d, [("↑↓", "move"), ("Enter", "open")], [("Esc", "back")])
+    # 19 rows total; the seven-row window sits at the top.
+    rect(im, 235, 42, 2, 66, LINE)
+    rect(im, 235, 42, 2, max(10, 66 * 7 // 19), ACCENT_HI)
+    text(im, 8, 123, "Enter: change  Esc: back", 0, 1, FAINT)
     return im
 
 
 def screen_setup() -> Image.Image:
     im = Image.new("RGB", (W, H), BG)
-    d = ImageDraw.Draw(im)
-    header(d, "WELCOME", pct=84)
+    text(im, 6, 2, "KaniKey", 2, 1, BRAND)
+    text(im, 7, 22, "setup", 1, 1, DIM)
+    text(im, 233, 5, "84%", 1, 1, DIM, "rt")
 
-    text(d, (8, 26), "KaniKey", 26, BRAND, medium=True)
-    text(d, (8, 54), "an unofficial WaniKani companion", 9, DIM)
-    text(d, (8, 68), "for the M5Stack Cardputer ADV", 9, FAINT)
-
-    steps = ["Wi-Fi", "API token", "Clock", "First sync"]
-    x = 8
-    for i, step in enumerate(steps):
-        rect(d, x, 90, 7, 7, None, ACCENT if i == 0 else LINE)
-        if i == 0:
-            rect(d, x + 2, 92, 3, 3, ACCENT)
-        text(d, (x + 11, 88), step, 8, TEXT if i == 0 else DIM)
-        x += 57
-
-    text(d, (8, 108), "Step 1: choose your Wi-Fi network", 9, DIM)
-    hints(d, [("Enter", "start")], [("Esc", "later")])
+    text(im, 8, 38, "Join this Wi-Fi", 1, 1, DIM)
+    text(im, 8, 52, "KaniKey-4F2C", 2, 1, TEXT)
+    text(im, 8, 74, "Password", 1, 1, DIM)
+    text(im, 8, 86, "mango-tide", 1, 1, TEXT)
+    text(im, 8, 100, "Open", 1, 1, DIM)
+    text(im, 8, 110, "http://192.168.4.1/", 1, 1, ACCENT_HI)
+    text(im, 8, 125, "Esc: cancel", 0, 1, FAINT)
     return im
+
+
+SCREENS = [
+    ("home", screen_home),
+    ("review-meaning", screen_review_meaning),
+    ("review-reading", screen_review_reading),
+    ("review-correct", lambda: screen_review_feedback(True)),
+    ("review-wrong", lambda: screen_review_feedback(False)),
+    ("lesson", screen_lesson),
+    ("summary", screen_summary),
+    ("sync", screen_sync),
+    ("settings", screen_settings),
+    ("setup", screen_setup),
+]
+
+
+def build() -> list[tuple[str, Image.Image]]:
+    if JP_FONT is None:
+        raise SystemExit("Noto Sans JP not found. Set KANIKEY_FONT to the .otf path.")
+    return [(name, quantize(fn())) for name, fn in SCREENS]
 
 
 def save(name: str, im: Image.Image) -> Path:
@@ -413,47 +595,65 @@ def save(name: str, im: Image.Image) -> Path:
 
 
 def overview(paths: list[tuple[str, Path]]) -> Path:
-    cols, rows = 2, 4
-    cell_w, cell_h = 480, 300
+    cols, rows = 2, 5
+    cell_w, cell_h = W * 2, H * 2
     gap = 16
-    top = 38
+    top = 44
     sheet = Image.new("RGB", (cols * cell_w + (cols + 1) * gap,
-                             rows * cell_h + (rows + 1) * gap + top), "#07080A")
-    d = ImageDraw.Draw(sheet)
-    d.text((gap, 10), "KaniKey · screen directions (240×135, 2× here)", font=font(18),
-           fill="#F4F7FB")
+                             top + rows * cell_h + (rows + 1) * gap), BG)
+    text(sheet, gap, 8, "KaniKey - screen renders (240x135, 2x here)", 2, 2, TEXT)
     for i, (label, path) in enumerate(paths):
-        im = Image.open(path).resize((cell_w, cell_h), Image.Resampling.LANCZOS)
+        im = Image.open(path).resize((cell_w, cell_h), Image.Resampling.NEAREST)
         cx = gap + (i % cols) * (cell_w + gap)
         cy = top + gap + (i // cols) * (cell_h + gap)
         sheet.paste(im, (cx, cy))
-        d.text((cx, cy + cell_h + 2), label, font=font(13), fill="#9BA8BA")
+        text(sheet, cx, cy + cell_h + 3, label, 0, 1, DIM)
     out = OUT / "overview.png"
     sheet.save(out)
     return out
 
 
+def check_palette(path: Path) -> None:
+    im = Image.open(path).convert("RGB")
+    bad = set(_pixels(im)) - ALLOWED
+    if bad:
+        raise SystemExit(f"{path}: {len(bad)} colours outside the RGB332 Theme set: "
+                         f"{sorted(bad)[:4]}")
+
+
 def main() -> None:
-    if not FONT.exists():
-        raise SystemExit(
-            f"Noto Sans JP not found at {FONT}. Set KANIKEY_FONT to the .otf path."
-        )
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--check", action="store_true",
+                        help="verify the committed PNGs use only Theme colours")
+    args = parser.parse_args()
+
+    if args.check:
+        expected = {f"{name}.png" for name, _ in SCREENS} | {"overview.png"}
+        missing = expected - {p.name for p in OUT.glob("*.png")}
+        if missing:
+            raise SystemExit(f"missing images: {', '.join(sorted(missing))}")
+        if JP_FONT is not None:
+            for name, im in build():
+                bad = set(_pixels(im)) - ALLOWED
+                if bad:
+                    raise SystemExit(f"{name}: generated colours outside the Theme set")
+        for path in sorted(OUT.glob("*.png")):
+            check_palette(path)
+            if path.name != "overview.png":
+                with Image.open(path) as im:
+                    if im.size != (W * SCALE, H * SCALE):
+                        raise SystemExit(f"{path}: expected {W * SCALE}x{H * SCALE}")
+        print(f"ok: {len(expected)} renders use the Theme RGB332 palette "
+              f"(surface #{PALETTE['surface'][0]:02X}{PALETTE['surface'][1]:02X}"
+              f"{PALETTE['surface'][2]:02X}, surface-hi "
+              f"#{PALETTE['surface_hi'][0]:02X}{PALETTE['surface_hi'][1]:02X}"
+              f"{PALETTE['surface_hi'][2]:02X})")
+        return
+
     OUT.mkdir(parents=True, exist_ok=True)
-    screens = [
-        ("home", screen_home),
-        ("review-meaning", lambda: screen_review("MEANING", "eat")),
-        ("review-reading", lambda: screen_review("READING", "たべ", "tabe")),
-        ("review-correct", lambda: screen_feedback(True)),
-        ("review-wrong", lambda: screen_feedback(False)),
-        ("lesson", screen_lesson),
-        ("summary", screen_summary),
-        ("sync", screen_sync),
-        ("settings", screen_settings),
-        ("setup", screen_setup),
-    ]
     paths: list[tuple[str, Path]] = []
-    for name, fn in screens:
-        path = save(name, fn())
+    for name, im in build():
+        path = save(name, im)
         paths.append((name.replace("-", " "), path))
         print(path)
     print(overview(paths))

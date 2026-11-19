@@ -1,8 +1,15 @@
 # KaniKey — UX, keyboard and screens
 
-> Design, 2026-10-25. Mockups are at 240×135: individual ones are shown at 4×
-> and the contact sheet at 2×. Geometry and text sizes are the 1× ones; the
-> upscale is nearest-neighbour so as not to misrepresent the pixel grid.
+> Design, 2026-10-25; device alignment 2026-11-19. The images in
+> `docs/screens` are **renders**, not device captures: `tools/mockups/render.py`
+> draws the firmware's layouts with the M5GFX bitmap fonts (`Font0`/`Font1`
+> 6×8, `Font2` 16 px, `Font4` 26 px) and the RGB332 palette from `Theme.h`.
+> Individual images are shown at 4× and the contact sheet at 2×; geometry and
+> text sizes are the 1× ones, and the upscale is nearest-neighbour.
+>
+> Statements marked **planned** are specified in [`docs/spec`](spec/README.md)
+> and are not implemented in the firmware yet. Everything else describes the
+> current device.
 
 ![Screens](screens/overview.png)
 
@@ -16,8 +23,9 @@
    the reviews. In the lesson, the mnemonic. Nothing competes.
 3. **The bottom bar always says what the keys do.** There are no invisible
    shortcuts. If a key changes meaning, the bar changes.
-4. **Color + shape + word.** Correct isn't just green; it has ✓ and the word
-   `CORRECT`. Incorrect isn't just red; it has ✗ and `NOT QUITE`.
+4. **Color + shape + word.** Correct isn't just green; it has the `CORRECT`
+   pill and word. Incorrect isn't just red; it has the `NOT QUITE` pill and
+   word. The current build does not draw separate ✓/✗ icons.
 5. **Offline is stated.** One status line carries the most urgent state, such
    as `Offline - 2h old` or `Outbox: 4 pending`; outbox pending/attention
    replaces the offline/stale/vacation/level line. A level-up notice is shown
@@ -52,24 +60,38 @@
 | `warn` | `#FBBF24` | Warnings, offline, low battery |
 | `gold` | `#F5C451` | Level |
 
+The hex column is the design value. The firmware stores each token as an
+RGB565 constant in `firmware/src/ui/Theme.h` (for example `kSurface` `0x0108`);
+the 8-bit canvas converts it to RGB332 and the panel expands that back. The
+panel therefore shows `surface` as `#002455` and `surface-hi` as `#242455`, not
+as the design hex. Do not add a colour outside `Theme.h` without changing the
+header too. (The Home/Stats level label uses M5GFX's `TFT_GOLD`, which
+quantizes to the same `#FFDB00` as `warn`.)
+
 The palette is its own: warm black, indigo and coral. WaniKani's colors,
 illustrations and components are not copied.
 
 ### 2.2 Typography
 
-| Role | Size | Use |
-|---|---|---|
-| Display | 32 px | Big numbers: reviews, accuracy, time |
-| Prompt | 64 / 48 / 32 px | Kanji, radical, vocabulary word |
-| Answer | 20 px | Written answer, meaning/reading |
-| Title | 18 px | Lesson title, main meaning |
-| Body | 14 px | Sentences, mnemonics, values |
-| Caption | 10 px | Labels, header, pills |
-| Micro | 9 px | Metadata that isn't essential |
+| Role | Font | Size | Use |
+|---|---|---|---|
+| Body, labels, hints | M5GFX `Font0` / `Font1` (GLCD) | 6×8 | Labels, hints, body text, rows, meters |
+| Brand, titles | M5GFX `Font2` | 16 px | `KaniKey`, `Syncing...`, section titles |
+| Big value | M5GFX `Font2` at size 2 | 32 px | Home counters, summary values |
+| Large title | M5GFX `Font4` | 26 px | Boot, error and empty-state titles |
+| Japanese prompt | Pack glyphs | 64 / 32 / 20 px | Kanji, radicals, vocabulary |
+| Japanese reading | Pack glyphs | 32 / 20 px | Kana readings |
 
-The UI uses **Noto Sans JP** (OFL) for Latin and kana; kanji/vocabulary come
-from the visual pack. In the firmware, the UI font is pre-rendered as in
-Tangocho (`UiFont.h`), so there's no rasterization on the device.
+`Font0` and `Font1` are the same 6×8 GLCD font; M5GFX maps `setTextFont(1)` to
+`Font0` (`HomeScreen.cpp:14,21,44,54,60`; `Widgets.cpp:12`). Body text and every
+label and hint use it, including the pills (`Widgets.cpp:12`). `Font2` is
+16 px and draws the brand and titles (`HomeScreen.cpp:14`); Home's counters
+use it at size 2, which is 32 px (`HomeScreen.cpp:44`). `Font4` is 26 px and
+draws boot/error titles (`BootScreen.cpp:45`, `LessonScreens.cpp:127`).
+Japanese prompts and readings are never drawn with a UI font: the visual pack
+supplies 64/32/20 px glyphs (`Widgets.cpp:47`, `platform/GlyphPack.cpp`), and a
+missing glyph shows the explicit `no glyph` state. There is no separate UI
+font file; Latin text is not rasterized on the device.
 
 ### 2.3 Grid
 
@@ -145,7 +167,7 @@ the field is active.
 
 | Key | Action |
 |---|---|
-| `Enter` | Check answer / continue / open / start lesson / discard in Outbox |
+| `Enter` | Check answer / continue / open / start lesson / discard in Outbox (today; LES-01 makes it advance a lesson card instead) |
 | `Esc` | Back / cancel / pause session |
 | `Tab` | Item detail on review feedback |
 | `↑` `↓` | Move focus; in text, `Fn` + arrows |
@@ -156,7 +178,7 @@ the field is active.
 | `T` | Stats (home) |
 | `P` | Extra study (home) |
 | `S` | Sync (home) |
-| `Q` | Optional local quiz on a lesson card |
+| `Q` | Optional single-item local quiz on a lesson card (today; LES-02 adds the batch quiz) |
 | `D` | Discard the selected rejected/stuck review (Outbox) |
 | `G0` | Short press wakes; long press is the future power action (not the pause menu) |
 
@@ -166,7 +188,9 @@ on Home.
 
 ### 3.4 Repeat and modifiers
 
-- Only Backspace and the arrows repeat (400 ms delay, 120 ms rate).
+- The arrows repeat today (`keyRepeats()`, `KeyInput.h:42-44`): 400 ms delay,
+  then 120 ms per step (`KeyInput.h:147-148`). Backspace does **not** repeat;
+  REV-10 adds it to the repeat set (planned). Enter and Esc never repeat.
 - Letters don't repeat: this avoids accidental answers from holding a key down.
 - Shift, Ctrl, Opt and Alt are tracked as state; on their own they don't
   produce a character (Shift changes the layer of the next one).
@@ -182,10 +206,10 @@ on Home.
 ```
 Boot
  └─ Wi-Fi saved? ──no──► Setup
-                          ├─ 1. Temporary WPA2 network + QR/URL
-                          ├─ 2. Portal: Wi-Fi + token
-                          ├─ 3. GET /user: user/level
-                          ├─ 4. Time (NTP or browser)
+                          ├─ 1. WPA2 AP KaniKey-XXXX; key and URL on screen
+                          ├─ 2. Portal: save the home Wi-Fi
+                          ├─ 3. Device joins; station page with page code
+                          ├─ 4. Token: GET /user, then time from the browser
                           ├─ 5. Visual pack? ──no──► SD instructions
                           └─ 6. First sync (user/summary/level/SRS counts)
 ```
@@ -249,18 +273,30 @@ Home (Offline) ──► Review with cache ──► completed to outbox
 
 ```
 Home ──L──► Lessons ──Enter──► Lesson card
-                               ├─ Space: next page
-                               ├─ ←→: pages
-                               ├─ Tab: components/notes
+                               ├─ Space / →: next page
+                               ├─ ← / Backspace: previous page
+                               ├─ Q: optional single-item quiz
                                └─ Enter: Start lesson
                                      └─ PUT /assignments/{id}/start
 ```
 
-- The card shows meaning(s), reading(s), mnemonic and components.
-- “Start lesson” requires a network in v1. The card can still be studied and
-  the local quiz used offline; `Enter` attempts `PUT /start` and fails without
-  a connection (the current screen does not yet show `Needs connection`).
-- After starting, the assignment moves to the review queue at stage 1.
+- The card shows meaning(s), reading(s), mnemonic and components. The component
+  meanings, hints and the user's notes are appended to the paged text; there is
+  no separate components page yet.
+- “Start lesson” requires a network. The card can still be studied and the
+  local quiz used offline. If `Enter` cannot reach WaniKani, the screen shows
+  `Could not start lesson` with `HTTP n` or `No connection` and
+  `Enter: retry  Esc: home`, and keeps the card.
+- After starting, the assignment moves to the review queue at stage 1; a 422
+  counts as already started and advances to the next card.
+- **Planned (D2, LES-01…LES-04).** The batch flow replaces the per-card start:
+  browse every card of the batch, `Space` selects a row on the list, `Enter`
+  opens the cards, `Enter`/`Space`/`Right` advance pages and cards, then a quiz
+  covers the batch (LES-02) and one confirmation such as
+  `Start 5 lessons? They join your reviews in about 4 hours.` starts the whole
+  batch (LES-03). Nothing is sent while browsing; offline the confirmation says
+  `Needs Wi-Fi — your batch stays here`. LES-04 adds the L2 lesson-order
+  choices. None of this is in the current firmware.
 
 ### 4.5 Conflicts and errors
 
@@ -283,36 +319,51 @@ Home ──L──► Lessons ──Enter──► Lesson card
 
 ### 5.1 Boot
 
-- Black background, `KaniKey` in coral, thin progress bar.
+- Black background, `KaniKey` in coral, a 26 px `Font4` title and one or two
+  6×8 lines; the current boot screen has no progress bar.
 - States: `Mounting SD…`, `Reading cache…`, `Wi-Fi…`. Sync progress has its
   own screen (§5.11).
 - If something critical fails, a single sentence and an action:
-  - `No SD card · Insert a FAT32 card` / `Enter retry`.
-  - `Visual pack missing · See docs/setup.md`.
+  - `No SD card` / `Insert a FAT32 card` / `Enter: retry`.
+  - `Pack missing` / `Copy glyphs.kgp to /kanikey/ on the SD card` /
+    `Enter: check again`.
 - It doesn't show technical logs.
 
 ### 5.2 Setup
 
-- Header `WELCOME`.
-- Large `KaniKey`, subtitle `an unofficial WaniKani companion`.
-- Steps: `Wi-Fi`, `API token`, `Clock`, `First sync`, with the current one
-  marked.
-- In step 1: list of networks, `Enter` to choose, text for the password.
-- In step 2: portal URL and temporary network key; the phone does the rest.
-  The token can also be pasted with the keyboard.
-- On the station page the screen reads `Page code 123456`; the page asks for
-  that code before it shows the Wi-Fi, token, clock or Finish forms. A locked
-  page shows the device name, the address and the unlock field only.
-- In step 4: progress bar and `Cancel`.
-- In step 5: if the visual pack is missing, a screen with:
-  `Copy glyphs.kgp to /kanikey/ on the SD card` and `Enter: check again`.
+- Header `KaniKey` in coral, `setup` (or `setup · Wi-Fi` once connected) in
+  the 6×8 font and the battery on the right. The screen has two states.
+- **Access-point state** (no saved Wi-Fi):
+  - `Join this Wi-Fi`, the SSID `KaniKey-XXXX` in `Font2` (16 px).
+  - `Password` and the random 10-character WPA2 key.
+  - `Open` and `http://192.168.4.1/`. The page carries the Wi-Fi form.
+  - `Esc: cancel` returns to “Setup pending”.
+- **Station state** (the device has joined the home network):
+  - `Connected` and the SSID.
+  - `Open on this network` and the station URL.
+  - `Page code 123456` in `Font2`; the page asks for that code before it shows
+    the Wi-Fi, token, clock or Finish forms. The code is never in the served
+    page or the URL. Five wrong codes issue a new code.
+  - Token status (`Token OK: you L12`, `Token stored: validate on the page` or
+    `Token needed: enter it on the page`) and the pack status.
+  - `Enter code on page  Esc: cancel`.
+- The portal is reachable from the whole home network and closes when setup
+  finishes or after 15 minutes without a request. A locked page shows the
+  device name, the address and the unlock field only.
+- Selecting a Wi-Fi network and typing its password on the Cardputer itself is
+  **planned** (SETUP-09), not in the current setup screen.
+- If the visual pack is missing, the station page shows the
+  `Pack missing` status and the device keeps the `/kanikey/glyphs.kgp` boot
+  instruction; `Enter: check again` re-checks it.
 
 ### 5.3 Home
 
 ![Home](screens/home.png)
 
-- Header: `KaniKey` (16 px brand), `Synced 14:47` (8 px, dim), battery.
-- `LEVEL 12` in gold and the username next to it (12 px).
+- Header: `KaniKey` in `Font2` (16 px, coral), `Synced 14:47` in
+  `Font1` (6×8, dim) and the battery as `84%` (or `USB`) in `Font1`, both
+  right-aligned. There are no Wi-Fi or battery icons on the device.
+- `LEVEL 12` in gold and the username next to it in the 6×8 font.
 - Due reviews (`28`) at 32 px and the `REVIEWS DUE` label at 8 px.
 - Lessons (`5`) at 32 px and `LESSONS` at 8 px.
 - `Next review` at 8 px, with a right-aligned value. With reviews due and a
@@ -328,7 +379,7 @@ Home ──L──► Lessons ──Enter──► Lesson card
   `Outbox: N pending` in amber or `Outbox: N need attention` in red at 8 px,
   replacing the offline/stale/vacation/level line. The attention
   count is rejected + stuck; pending does not include either. When items need
-  attention, the hint swaps `L: lessons` for `O: outbox` (§5.13). Above 75%
+  attention, the hint becomes the `O: outbox` variant below (§5.13). Above 75%
   (96 of 128 slots, every state counted) the line appends `(nearly full)`.
   The status line and battery are redrawn at least every 30 s while Home is
   visible, so charging shows without a keypress.
@@ -340,14 +391,11 @@ Home ──L──► Lessons ──Enter──► Lesson card
   level (0 when the total is unknown); passed means Guru or later (SRS stages
   5-9). When the counts could not be fetched, the existing `L8 since 03 Feb`
   line is kept.
-- Hint: `Enter: reviews  L: lessons  T: stats  P: practice  S: sync` (8 px),
-  falling back to `Enter  L  T  P  S` when it would not fit. With rejected or
-  stuck items the hint becomes
-  `O: outbox  Enter: reviews  P: practice  S: sync`, dropping entries from the
-  middle when it would not fit; `O: outbox` is kept. `Esc` still opens
-  Settings; the hint bar only shows the three primary actions. The M0 debug
-  screen and the `Tab: debug` shortcut only exist in the `cardputer-adv-dev`
-  build; the shortcut is no longer advertised on Home.
+- Hint: the 6×8 font has room for `Enter  L  T  P  S`. With rejected or stuck
+  items it becomes `O: outbox  Enter  T  P  S`; `O: outbox` is kept. `Esc`
+  still opens Settings. The M0 debug screen and the `Tab: debug` shortcut only
+  exist in the `cardputer-adv-dev` build; the shortcut is no longer advertised
+  on Home.
 - States:
   - **Sync:** `S` starts the same sync as Settings › `Sync now`; the Sync
     screen (§5.11) replaces Home while a sync runs.
@@ -381,26 +429,28 @@ Home ──L──► Lessons ──Enter──► Lesson card
 ![Meaning review](screens/review-meaning.png)
 ![Reading review](screens/review-reading.png)
 
-- Header `REVIEWS`, `SRS 3 86%`, `12/48`, battery; 2 px progress bar.
+- Header `REVIEWS` (6×8 font), `SRS 3 86%`, `12/48`; 2 px progress bar.
+  There is no Wi-Fi or battery icon on this screen.
 - With Settings › `Critical first` on, due critical subjects are moved ahead
   of the rest; the normal shuffle/lower-levels order is preserved inside both
   groups and the batch limit is applied after the partition.
 - Left panel 88×88:
   - 64 px kanji/radical, centered.
-  - Pill `KANJI · L5` or `RADICAL · L3` below.
+  - Pill `KANJI L5` or `RADICAL L3` below.
   - Vocabulary: the word scales to 64/32/20 px to fit the 78×80 panel; if none
     fits, the prompt shows the missing-glyph state.
   - Radical without Unicode: bitmap from the visual pack.
 - Right panel:
   - Pill `MEANING` (indigo) or `READING` (teal).
   - Instruction: `Type the meaning` / `Type the reading`.
-  - 32 px field with the answer; caret.
+  - 32 px field with the answer; caret. A meaning answer is 6×8 text; reading
+    kana uses the pack at 32 px with a 20 px fallback.
   - In reading, below: `romaji: tabe` in gray; the field shows `たべ`.
   - Romaji follows WanaKana: `n` before a vowel or `y` is a syllable
     (`konya` → こにゃ). Type `n'` for ん (`kon'ya` → こんや); `konya` shows
     `Use n' before a vowel or y` and can be retried without a mistake.
   - `Tab: details` is shown on feedback; the question bar only has check/pause.
-- Bar: `Enter check`, `Esc quit` (which opens Pause).
+- Bar: `Enter: check`, `Esc: quit` (which opens Pause).
 - The field is active as soon as the question appears. Nothing needs to be
   pressed.
 - If the answer is long, the text scrolls horizontally; the caret stays
@@ -416,7 +466,7 @@ reading and 20 px feedback from the SD visual pack. Vocabulary words composed
 of several characters are laid out from individual glyphs. Radicals use their
 96 px bitmap when the subject has no Unicode character; a missing glyph shows
 an explicit `no glyph` state. The bottom bar says
-`Enter check` / `Esc quit`; `Esc` opens the Pause menu (Continue / End session /
+`Enter: check` / `Esc: quit`; `Esc` opens the Pause menu (Continue / End session /
 Settings), so quitting is deliberate. `Tab` on feedback opens the detail card
 (§5.6). The screen is driven by the same review queue and answer checker as the
 final design. The session order follows the account's
@@ -430,15 +480,15 @@ kept inside each level.
 
 - The left panel doesn't change; the right one turns into feedback.
 - Correct:
-  - `CORRECT` pill in green + ✓.
+  - `CORRECT` pill in green (the current screen has no separate ✓ icon).
   - `You typed` and the answer in gray.
-  - `Meaning` / `Reading` with the correct answer in green/teal.
-  - `Enter next`, `Tab details`.
+  - `Answer` with the correct answer in green.
+  - `Enter: next`, `Tab: details`.
 - Wrong:
-  - `NOT QUITE` pill in red + ✗.
+  - `NOT QUITE` pill in red (no separate ✗ icon yet).
   - `You typed` and the user's answer.
-  - `Correct` with the correct answer.
-  - `Comes back later in this session`.
+  - `Answer` with the correct answer.
+  - The checker's message, for example `Incorrect meaning`.
 - Warning (`CHECK` pill in amber):
   - Only the pill and the message are shown; no typed row and no answer row, so
     the expected answer cannot leak.
@@ -446,8 +496,8 @@ kept inside each level.
   - `Enter` returns to the same question with the typed text intact (meaning
     string and IME raw buffer), ready to be corrected and resubmitted. A strict
     typo warning says `Close. Check the spelling` without naming the answer.
-- Feedback doesn't last a fixed time: it waits for `Enter` (or for the user to
-  start typing the next one, if auto-advance is enabled).
+- Feedback doesn't last a fixed time: it waits for `Enter`. Auto-advance on a
+  correct answer is planned (REV-06), not implemented.
 - `Tab` opens the full card: meanings, readings, mnemonic and components.
 - **Implementation note (2026-10-28).** After a correct answer, the free lines
   under the answer show the user's meaning or reading note when one exists.
@@ -518,6 +568,10 @@ history/accuracy side of the item line.
 - If there are no lessons: `No lessons now` + the next review time from
   `/summary`; the next unlock is not known to v1.
 - The list is sorted by level and `lesson_position`.
+- **Planned (LES-04):** the L2 setting adds `WaniKani` (default), `Radicals →
+  Kanji → Vocab` and `Interleave types`; the current list only has the
+  WaniKani order. LES-01 also adds `Space` row selection and changes the hint
+  to `Space: select  Enter: study`; neither is implemented yet.
 
 **Implementation note (2026-11-06).** The list and picker are live: a scrolling
 list of up to the configured batch, sorted by level and `lesson_position`.
@@ -537,21 +591,27 @@ meaning/reading notes are appended to the paged card after the mnemonic.
 - A live 2 px progress bar at y=14 shows the completed lesson items; the card
   starts at y=20.
 - Left panel: character/radical scaled to fit the 74×64 panel (64 px preferred).
-- Right: pill `KANJI · L5`, main meaning in the title font, readings in teal at
-  32 px (20 px fallback), `person + tree` in gray.
-- Mnemonic in a 3-line, 10 px panel; `Space` turns the page. The page counter
-  stays in the header so it never covers the third line.
-- `Q quiz` opens the optional local quiz. `Enter start` always attempts the
-  `PUT`; a start that cannot reach WaniKani (or gets a 5xx/other 4xx) shows
-  `Could not start lesson` with `HTTP n` or `No connection` and
-  `Enter: retry  Esc: home`, and keeps the card so `Enter` retries it. A 422
-  counts as already started and advances the card like a 2xx.
+- Right: pill `KANJI L5`, the main meaning in the 6×8 font, readings in teal at
+  32 px (20 px fallback); component meanings are part of the paged text.
+- Mnemonic in three 6×8 lines at 9 px pitch; `Space` or `→` turns the page,
+  `←` or Backspace goes back. The page count is clamped to the drawn pages.
+- `Q quiz` opens the optional single-item local quiz.
+- `Enter start` attempts the `PUT` for this one item; a start that cannot reach
+  WaniKani (or gets a 5xx/other 4xx) shows `Could not start lesson` with
+  `HTTP n` or `No connection` and `Enter: retry  Esc: home`, and keeps the
+  card so `Enter` retries it. A 422 counts as already started and advances the
+  card like a 2xx.
 - Bottom hint: `Space p  Q quiz` left and `Enter start  Esc list` right at
   y=125, with a gap between them.
 - On start, `drawLoading` shows the English main meaning as its subtitle; the
   built-in font has no Japanese glyphs, so the character is not used there.
   Then a brief progress animation and the next card; `Esc` returns to the
   list. The card itself only reads until `Enter`.
+- **Planned (LES-01…LES-04, D2).** `Enter`/`Space`/`Right` will advance to the
+  next page and then the next card; `Enter` will no longer send `PUT /start`.
+  After the last card a batch quiz (LES-02) or the start confirmation (LES-03)
+  follows, and one confirmed action starts the selected batch. The single-card
+  `Enter start` behaviour above is what the current firmware does.
 
 ### 5.10 Lesson quiz
 
@@ -568,6 +628,11 @@ meaning/reading notes are appended to the paged card after the mnemonic.
   `No /start sent.`; `Enter` returns to the card.
 - `Esc` also returns to the card. The quiz never calls `PUT /start`; starting
   the lesson remains `Enter` on the card.
+- **Planned (LES-02, D2).** After the last card, `Enter` starts a quiz over
+  every selected item, shuffled, with meaning first and reading where the
+  subject has one. Wrong parts requeue; `CHECK` retries the same part. The L3
+  setting (`Required` / `Skip`) is added in `03-settings.md`. `Q` stays as the
+  single-item practice. This is not implemented yet.
 
 ### 5.11 Sync
 
@@ -604,19 +669,18 @@ meaning/reading notes are appended to the paged card after the mnemonic.
 ![Settings](screens/settings.png)
 
 - Open with `Esc` from Home, or `Esc` in a review → Pause → Settings.
-- Implemented rows: `Brightness`, `Dim after`, `Blank after`, `Sleep after`,
-  `Review batch`, `Order`, `Lesson batch`, `Critical first`, `Critical below`,
-  `Critical min`, `Practice mistakes`, `Practice lessons`, `Practice size`,
-  `Setup portal`, `Sync now`, `Firmware`, `About`, `Clear cache`, `Sign out`.
-- `Brightness` cycles 64/128/192/255; the timings cycle presets and `off`.
-  Review batch cycles 10/20/30, lesson batch 3/5/10, `Critical first` toggles
-  On/Off, `Critical below` cycles 60/70/75/80/90% and `Critical min` 3/5/10.
-  Order toggles meaning-first / reading-first. Practice mistakes
-  cycles 24 h/3 d/7 d, Practice lessons Apprentice/24 h/3 d/7 d and Practice
-  size 10/20. All are stored in NVS and applied without a reboot. WaniKani's
+- Today Settings is one flat list of 19 rows (7 visible, scroll bar). It covers
+  brightness, the dim/blank/sleep timings, review batch and order, lesson
+  batch, the three critical-item values, the three practice values, the setup
+  portal, `Sync now`, `Firmware`, `About`, `Clear cache` and `Sign out`.
+  `Brightness` cycles 64/128/192/255; the timings cycle presets and `off`;
+  review batch cycles 10/20/30 and lesson batch 3/5/10; `Critical first`
+  toggles On/Off; `Critical below` cycles 60/70/75/80/90% and `Critical min`
+  3/5/10; Order toggles meaning-first / reading-first; the practice windows
+  cycle 24 h/3 d/7 d (lessons also Apprentice) and size 10/20. All are stored
+  in NVS and applied without a reboot. WaniKani's
   `reviews_presentation_order` is applied automatically and is not a device
   setting.
-- The list scrolls when there are more rows than fit (7 visible, scroll bar).
 - `Setup portal` reopens the Wi-Fi/token/time page; it is disabled during a
   review so the session is not lost. `Sync now` starts a manual sync.
 - About shows the firmware version and slot, build date, an update badge when
@@ -630,7 +694,16 @@ meaning/reading notes are appended to the paged card after the mnemonic.
 - `Clear cache` removes the snapshot/subjects for the next boot; `Sign out`
   confirms, then removes the token, cache and pending outbox and keeps Wi-Fi.
 - Licenses and attributions are in `LICENSE` and `THIRD_PARTY_NOTICES.md`; the
-  About header marks the app as unofficial. Not yet: strict-answer options.
+  About header marks the app as unofficial.
+- **Planned (CFG-01…CFG-04, D3).** Settings becomes a sectioned menu with the
+  eight top-level sections `Reviews`, `Lessons`, `Study`, `Sync & data`,
+  `Display & power`, `Reminders & sound`, `Account` and `System`, backed by
+  the registry. The authoritative IDs, labels, choices, defaults and NVS keys
+  are in [`03-settings.md`](spec/03-settings.md); this file does not duplicate
+  them. CFG-03 adds `System › Reset settings` and CFG-04 a `?` key-help
+  overlay. None of the sectioned menu or the new settings is implemented yet;
+  the flat list above is current. Strict-answer options belong to REV-02
+  (planned).
 
 ### 5.13 Outbox
 
@@ -751,16 +824,19 @@ Error screens never show stack traces, URLs with a token, or JSON.
 ## 6. Accessibility
 
 - **Contrast:** main text on background > 15:1; secondary text > 7:1;
-  semantic colors are accompanied by ✓/✗ and a word.
-- **Color blindness:** green and red aren't the only signal; the shape (pill +
-  icon) and the text change.
-- **Size:** minimum 9 px for non-essential metadata; 10 px for anything that
-  has to be read; 20 px for the answer.
+  semantic colors are accompanied by the pill and a word (the current screens
+  do not draw separate ✓/✗ icons).
+- **Color blindness:** green and red aren't the only signal; the pill and the
+  text change.
+- **Size:** the UI text is the 6×8 GLCD font (8 px cell); 32 px counters and
+  summary values, and 32/20 px Japanese readings. Long text is wrapped or
+  paged, never shrunk below the 6×8 cell.
 - **Keyboard:** everything can be done without touching the screen; there are
   no gestures.
 - **Movement:** only the caret and progress; no animations that block.
 - **Language:** English. Meanings/readings are always WaniKani's (English).
-- **Long text:** it paginates; the font is never reduced below 9 px.
+- **Long text:** it paginates; Latin text stays at the 6×8 font and Japanese
+  text uses the pack's 20 px fallback.
 
 ---
 
@@ -779,22 +855,33 @@ Error screens never show stack traces, URLs with a token, or JSON.
 
 ## 8. Mockups
 
-| File | Screen |
-|---|---|
-| `screens/home.png` | Home with reviews, lessons and SRS distribution |
-| `screens/review-meaning.png` | Meaning question |
-| `screens/review-reading.png` | Reading question with romaji |
-| `screens/review-correct.png` | Correct feedback |
-| `screens/review-wrong.png` | Incorrect feedback |
-| `screens/lesson.png` | Lesson card |
-| `screens/summary.png` | Session summary |
-| `screens/sync.png` | Synchronization |
-| `screens/settings.png` | Settings |
-| `screens/setup.png` | First boot |
-| `screens/overview.png` | Contact sheet of all |
+All images in `docs/screens` are **renders**, not device captures. They are
+generated from the firmware's screen layouts with the M5GFX bitmap fonts and
+the RGB332 palette; Japanese glyphs are a Noto Sans JP stand-in for the pack.
+
+| File | Screen | Source |
+|---|---|---|
+| `screens/home.png` | Home with reviews, lessons and SRS distribution | render |
+| `screens/review-meaning.png` | Meaning question | render |
+| `screens/review-reading.png` | Reading question with romaji | render |
+| `screens/review-correct.png` | Correct feedback | render |
+| `screens/review-wrong.png` | Incorrect feedback | render |
+| `screens/lesson.png` | Lesson card | render |
+| `screens/summary.png` | Session summary | render |
+| `screens/sync.png` | Synchronization | render |
+| `screens/settings.png` | Settings | render |
+| `screens/setup.png` | First boot | render |
+| `screens/overview.png` | Contact sheet of all | render |
 
 To regenerate them:
 
 ```sh
-python3 tools/mockups/render.py
+uv run --with pillow python3 tools/mockups/render.py
+uv run --with pillow python3 tools/mockups/render.py --check
 ```
+
+The script uses Noto Sans JP only for the Japanese pack stand-in. It looks for
+the font in `tools/pack-builder/cache/noto/` or Tangocho's cache, or at
+`KANIKEY_FONT`. The setup render uses a placeholder `KaniKey-XXXX` SSID and
+key, not real credentials. Device captures are made separately with
+`tools/shot.py` and are not committed when they contain user content.

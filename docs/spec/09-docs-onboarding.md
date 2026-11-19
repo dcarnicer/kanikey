@@ -4,14 +4,14 @@ The documentation still describes the design mockups rather than the device: `do
 
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
-| DOC-01 | Mockups match the device | P2 | M | none | any | todo |
-| DOC-02 | `ux.md` alignment | P2 | S | DOC-01, REV-10, LES-01…LES-04, CFG | any | todo |
+| DOC-01 | Mockups match the device | P2 | M | none | any | review |
+| DOC-02 | `ux.md` alignment | P2 | S | DOC-01, REV-10, LES-01…LES-04, CFG | any | review |
 | DOC-03 | `decisions.md` entries | P2 | S | REV-02, LES-01…LES-03, SPEED-06 | any | todo |
-| DOC-04 | ROADMAP round 2 | P2 | S | none | any | todo |
-| DOC-05 | Hardware check log template | P3 | S | none | any | todo |
+| DOC-04 | ROADMAP round 2 | P2 | S | none | any | review |
+| DOC-05 | Hardware check log template | P3 | S | none | any | review |
 | ONB-01 | Split the visual pack | P2 | M | none | 2 (after ARCH-01) | todo |
 | ONB-02 | Pack from the setup portal | P2 | L | ONB-01, FIX-01 | 2 (after ONB-01) | todo |
-| ONB-03 | `setup.md` for non-developers | P3 | S | ONB-01, ONB-02, FIX-01 | any | todo |
+| ONB-03 | `setup.md` for non-developers | P3 | S | ONB-01, ONB-02, FIX-01 | any | review (current pack flow; ONB-01/02 pending) |
 
 ### DOC-01 — Mockups match the device
 

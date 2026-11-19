@@ -331,6 +331,9 @@ Details are in [ux.md](ux.md). Map:
 ![Meaning review](screens/review-meaning.png)
 ![Correct feedback](screens/review-correct.png)
 
+These are renders from `tools/mockups/render.py` using the M5GFX bitmap fonts
+and the RGB332 palette, not device captures.
+
 ---
 
 ## 9. Architecture
@@ -695,7 +698,7 @@ request. After 20 subjects the free heap is ~134 KB and the largest block
 |---|---|---|
 | Tangocho (code) | MIT | Fork base; keep the notice |
 | Kakehashi (inspiration) | MIT | Flow/answer checker ideas; attribute if code is copied |
-| Noto Sans JP | OFL 1.1 | UI glyphs and visual pack |
+| Noto Sans JP | OFL 1.1 | Pack glyphs (Japanese); screen-render stand-in only |
 | KanjiVG (phase 2) | CC BY-SA 3.0 | Stroke order; attribute |
 | WaniKani API/content | Tofugu Terms | User token only, personal use |
 
@@ -772,7 +775,7 @@ request. After 20 subjects the free heap is ~134 KB and the largest block
 
 ### M0 — Design and bring-up (done 2026-10-25)
 
-- This document, UX, API, reuse, and mockups.
+- This document, UX, API, reuse, and screen renders.
 - Decisions accepted.
 - M0 firmware on the Cardputer: display, keyboard controller, microSD, Wi-Fi,
   TLS and an authenticated `GET /user` (200).
@@ -857,7 +860,7 @@ account; Enter fetches the batch.
 | Keyboard/IME edge cases | Medium | Exhaustive native tests, visible feedback, allow editing |
 | No reliable RTC | Medium | SNTP/portal, last known time, warning and optional `created_at` |
 | SD slow, full, or removed | Medium | Cache, atomic writes, pause and clear message |
-| Readability on 1.14" | Medium | Life-size mockups, sunlight tests, 9–20 px type |
+| Readability on 1.14" | Medium | Life-size screen checks, sunlight tests, 6×8 UI text and 32 px counters |
 | Battery with Wi-Fi | Low | Radio only during sync, deep sleep, minimal sync |
 | Huge scope | High | Phases; lessons out of the MVP; no WaniKani parity |
 | Brand/content | Medium | No art or content in the repo; name without “WaniKani”; review terms |

@@ -616,3 +616,36 @@ provoked), API-03 403 (read-only token), FIX-06 slow server, FIX-07 15-minute
 AP close, FIX-14 forced small cap, FIX-20 bad-first-boot/two-strike, RAD-04
 low-level account and a real level-up.
 
+## Round 2 hardware checks
+
+Round-2 tasks use the same device tools as the v1 passes. Record each check
+from a P0/P1 task's **Tests** line here instead of only in prose; a task stays
+in `review` until all of its P0/P1 rows are `pass` (or the owner accepts a
+`blocked` row with the reason). Rows start as `todo`; a run fills the date and
+result and may add a short dated subsection below the table with the serial
+log. Do not rewrite the dated sections above; link to them by date instead.
+
+| Task | Check | Build | Date | Result | Evidence |
+|---|---|---|---|---|---|
+| `<ID>` | `<check from Tests>` | `cardputer-adv-dev` | — | `todo` | — |
+
+- **Result:** `todo` (not run), `pass`, `fail` or `blocked` (state the missing
+  hardware/account/permission). Status names follow
+  [docs/spec/README.md](spec/README.md) §6: a task stays `review` until its
+  P0/P1 checks are done.
+- **Evidence:** a serial line (`[pack]`, `[cache]`, `[ota]`, `[sync]`, …), a
+  `tools/shot.py` image under `tools/screenshots/out` (not committed), or a
+  committed `docs/screens` render/capture. Say which.
+- **Run it with:** `tools/device.py monitor` (serial), `tools/device.py cmd`
+  (one command) and `tools/device.py upload` (asset upload). Capture a canvas
+  with `tools/shot.py --out /tmp/kk.png`.
+- **Sources:** P0/P1 task **Tests** lines in [docs/spec/01-fixes.md](spec/01-fixes.md),
+  [02-speed.md](spec/02-speed.md), [03-settings.md](spec/03-settings.md),
+  [04-reviews.md](spec/04-reviews.md), [05-lessons.md](spec/05-lessons.md),
+  [06-study.md](spec/06-study.md), [07-stats.md](spec/07-stats.md),
+  [08-reminders-audio.md](spec/08-reminders-audio.md) and
+  [09-docs-onboarding.md](spec/09-docs-onboarding.md). Add the row when the
+  task's Tests line is final.
+- **Historical sections:** the 2026-10-25 … 2026-11-19 sections above remain
+  the record of those runs; this table only indexes round-2 checks.
+
