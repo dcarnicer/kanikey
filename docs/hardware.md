@@ -711,11 +711,14 @@ A150 G143 M81 E147 B586).
   `Rad:` lines, and the status is now split by role so a combined pack does not
   repeat the other table. The split font/radical files, missing-radical boot
   and both upload paths remain.
-- **ONB-02.** Six native manifest tests cover the optional `pack font` record,
-  absolute URLs, a missing/duplicate record and bad size/hash; the release
-  builder now emits it with `--pack`. The empty-card download, cut Wi-Fi,
-  phone upload, truncated/wrong-kind upload, `Esc` cancel and heap checks still
-  need the portal on hardware.
+- **ONB-02.** The station page (code 915461) showed `Font: 7269 glyphs,
+  64/32/20 px`, `Radicals: 498 radicals`, `Check pack again`, `Upload radical
+  pack` and `Card free: 29.5 GB`; `Download pack` was correctly absent with a
+  ready font. Uploading the 56-byte `glyphs-bad-small.kgp` returned
+  `Not a radical pack: pack: no radicals.`, kept the old 498 radicals and left
+  serial `i` at `[pack] radicals: 498 radicals`. Six native manifest tests and
+  the release `--pack` record cover the parsing side. The empty-card download,
+  cut Wi-Fi, valid phone upload, `Esc` cancel and heap checks remain.
 - **REV-05.** Pause showed the four rows `Continue / Wrap up / End session /
   Settings`. On the synthetic cache, after completing 今夜's meaning and
   opening Wrap up, the reading question stayed with `WRAP UP 1` and `1/1`. The
