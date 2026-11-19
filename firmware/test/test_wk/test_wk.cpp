@@ -2707,6 +2707,7 @@ static void test_ota_url_resolution() {
 }
 
 void run_queue_tests();
+void run_les_tests();
 void run_ota_tests();
 void run_answer_tests();
 void run_store_tests();
@@ -2849,6 +2850,7 @@ int main(int, char**) {
     RUN_TEST(test_ota_offer);
     RUN_TEST(test_ota_url_resolution);
     run_queue_tests();
+    run_les_tests();
     run_ota_tests();
     run_answer_tests();
     run_store_tests();

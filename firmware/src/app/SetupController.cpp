@@ -174,7 +174,10 @@ void portalFinish() {
 
 bool startSetupPortal() {
     if (state().setup.gPortalActive) return true;
-    if (state().review.gReviewActive || state().lesson.gLessonActive || state().lesson.gLessonListActive || state().lesson.gLessonEmptyActive) return false;
+    if (state().review.gReviewActive || state().lesson.gLessonActive || state().lesson.gLessonListActive ||
+        state().lesson.gLessonEmptyActive || state().lesson.gLessonQuizActive ||
+        state().lesson.gLessonBatchQuizActive || state().lesson.gLessonStartActive)
+        return false;
     kk::wkClearAuthBlock();
     tgc::board::setDisplayOn(true);
     tgc::board::setBrightness(kk::settingsBrightness());

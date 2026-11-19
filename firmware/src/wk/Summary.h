@@ -34,6 +34,9 @@ struct Summary {
     // Drops `id` from every lesson bucket and decrements the bucket counts.
     // Returns true when at least one bucket changed; used after a lesson start.
     bool removeLessonSubject(uint32_t id);
+    // Same for a started batch. Counts are clamped to the remaining ids and a
+    // bucket that ran empty is dropped, so totalLessons() drops immediately.
+    bool removeLessonSubjects(const std::vector<uint32_t>& ids);
 };
 
 bool parseSummary(const JsonValue& root, Summary* out);

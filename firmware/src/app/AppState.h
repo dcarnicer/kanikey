@@ -20,6 +20,7 @@
 #include "wk/AnswerChecker.h"
 #include "wk/CriticalItems.h"
 #include "wk/LessonQuiz.h"
+#include "wk/LessonSession.h"
 #include "wk/LevelProgress.h"
 #include "wk/Outbox.h"
 #include "wk/ReviewQueue.h"
@@ -138,6 +139,8 @@ struct OutboxState {
 struct LessonState {
     kk::LessonBatch gLessonBatch;
     std::vector<kk::Subject> gLessonComponents;
+    kk::LessonBrowse gLessonBrowse;
+    size_t gLessonBatchLimit = 0;  // N for this list, clamped by the user setting
     kk::LessonQuiz gLessonQuiz;
     std::string gLessonQuizInput;
 #ifdef KANIKEY_DEV
@@ -146,12 +149,28 @@ struct LessonState {
     bool gDevKeyTest = false;      // log the order of the injected key events
 #endif
     kk::RomajiIme gLessonQuizIme;
+    // Batch quiz: the same queue as reviews, but every completion is local.
+    kk::ReviewQueue gLessonBatchQueue;
+    kk::AnswerCheck gLessonBatchCheck;
+    kk::ReviewPart gLessonBatchPart = kk::ReviewPart::None;
+    uint32_t gLessonBatchSubjectId = 0;
+    std::string gLessonBatchInput;
+    kk::RomajiIme gLessonBatchIme;
+    bool gLessonBatchFeedback = false;
+#ifdef KANIKEY_DEV
+    std::string gLessonBatchDirectReading;
+#endif
+    // Confirmation, offline message and failed-items frame before/after start.
+    kk::LessonStartPlan gLessonStartPlan;
+    bool gLessonStartActive = false;
+    bool gLessonStartFailed = false;
+    bool gLessonStartOffline = false;
     bool gLessonActive = false;
     bool gLessonListActive = false;
     bool gLessonEmptyActive = false;
-    bool gLessonQuizActive = false;
-    size_t gLessonIndex = 0;
-    size_t gLessonPage = 0;
+    bool gLessonQuizActive = false;       // single-item Q practice
+    bool gLessonBatchQuizActive = false;  // quiz over the whole selected batch
+    char gLessonNote[40] = "";
 };
 
 struct StatsState {

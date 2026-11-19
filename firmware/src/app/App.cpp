@@ -183,8 +183,16 @@ void onKeyImpl(const KeyEvent& e) {
         }
         return;
     }
+    if (state().lesson.gLessonStartActive) {
+        lessonStartKey(e);
+        return;
+    }
     if (state().lesson.gLessonListActive) {
         lessonListKey(e);
+        return;
+    }
+    if (state().lesson.gLessonBatchQuizActive) {
+        lessonBatchQuizKey(e);
         return;
     }
     if (state().lesson.gLessonQuizActive) {
@@ -578,8 +586,16 @@ void draw() {
         showLessonEmpty();
         return;
     }
+    if (state().lesson.gLessonStartActive) {
+        drawLessonStart();
+        return;
+    }
     if (state().lesson.gLessonListActive) {
         showLessonList();
+        return;
+    }
+    if (state().lesson.gLessonBatchQuizActive) {
+        showLessonBatchQuiz();
         return;
     }
     if (state().lesson.gLessonQuizActive) {

@@ -316,8 +316,8 @@ void noticeKey(const KeyEvent& e) {
     } else if (action == NoticeAction::LessonError) {
         startLessons();
     } else if (action == NoticeAction::LessonStart) {
-        // state().lesson.gLessonActive and state().lesson.gLessonIndex were kept, so this retries the same
-        // card; the failure branch can raise the notice again.
+        // The batch is still in RAM, so the retry opens the start confirmation
+        // again; it never sends a start without Enter on that screen.
         state().ui.gNoticeAction = NoticeAction::None;
         startCurrentLesson();
     } else if (action == NoticeAction::OutboxFull || action == NoticeAction::ReviewEmpty) {
