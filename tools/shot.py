@@ -91,8 +91,15 @@ def capture(port: str, timeout: float = 60.0, before: str | None = None,
                         if before:
                             # Several UI steps can be needed to reach a screen
                             # (`L;e` opens the lesson card, `L;e;Q` the quiz).
+                            # A `sleep <seconds>` step waits for a slow fetch.
                             for command in before.split(";"):
-                                s.write((command.strip() + "\n").encode())
+                                command = command.strip()
+                                if not command:
+                                    continue
+                                if command.lower().startswith("sleep "):
+                                    time.sleep(float(command.split(None, 1)[1]))
+                                    continue
+                                s.write((command + "\n").encode())
                                 s.flush()
                                 time.sleep(0.6)
                         time.sleep(delay)
