@@ -97,7 +97,8 @@ void drawStatus() {
     if (!state().display.gDisp || state().setup.gPortalActive || state().ui.gLowBatteryPrompt || state().ui.gSignOutConfirm || state().ui.gAboutActive ||
         state().ota.gFirmwareActive || state().ui.gSettingsActive || state().ui.gPauseActive || state().sync.gSyncScreen || state().session.gShowHome ||
         state().review.gReviewActive || state().review.gReviewSummary || state().lesson.gLessonListActive || state().lesson.gLessonEmptyActive ||
-        state().lesson.gLessonActive || state().ui.gOutboxScreen || state().stats.gStatsActive || state().study.gStudyMenuActive ||
+        state().lesson.gLessonActive || state().lesson.gLessonBatchQuizActive || state().lesson.gLessonStartActive ||
+        state().ui.gOutboxScreen || state().stats.gStatsActive || state().study.gStudyMenuActive ||
         state().study.gCriticalListActive)
         return;
 #ifdef KANIKEY_DEV
@@ -164,7 +165,8 @@ bool powerTick(uint32_t now) {
         !state().review.gReviewActive && !state().review.gReviewSummary &&
         !state().review.gFeedback && !state().lesson.gLessonActive &&
         !state().lesson.gLessonListActive && !state().lesson.gLessonEmptyActive &&
-        !state().lesson.gLessonQuizActive && !state().ui.gPauseActive &&
+        !state().lesson.gLessonQuizActive && !state().lesson.gLessonBatchQuizActive &&
+        !state().lesson.gLessonStartActive && !state().ui.gPauseActive &&
         !state().ui.gSettingsActive && !state().ui.gAboutActive &&
         !state().ui.gOutboxScreen && !state().stats.gStatsActive &&
         !state().study.gStudyMenuActive && !state().study.gCriticalListActive &&

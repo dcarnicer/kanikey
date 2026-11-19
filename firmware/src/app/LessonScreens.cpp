@@ -92,11 +92,10 @@ void drawLessonListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
         char* end = label + strlen(label);
         while (end > label + 1 && d.textWidth(label) > 194) *--end = '\0';
         d.drawString(label, 34, y + 1);
-        d.setTextColor(
-            i == static_cast<int>(view.selectedIndex) ? ui::kAccentHi : ui::kFaint,
-            i == static_cast<int>(view.selectedIndex) ? ui::kSurfaceHi : ui::kBg);
+        d.setTextColor(item.selected ? ui::kAccentHi : ui::kFaint,
+                       i == static_cast<int>(view.selectedIndex) ? ui::kSurfaceHi : ui::kBg);
         d.setTextDatum(lgfx::top_right);
-        d.drawString(">", 230, y + 1);
+        d.drawString(item.selected ? "*" : ">", 230, y + 1);
         d.setTextDatum(lgfx::top_left);
     }
 
@@ -110,10 +109,16 @@ void drawLessonListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
         d.fillRect(236, thumbY, 2, thumbH, ui::kAccentHi);
     }
 
+    if (!view.note.empty()) {
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(ui::kWarn, ui::kBg);
+        d.drawString(view.note.c_str(), 62, 5);
+    }
     d.setTextFont(0);
     d.setTextSize(1);
     d.setTextColor(ui::kFaint, ui::kBg);
-    d.drawString("Enter: open  Esc: home", 6, 125);
+    d.drawString("Space: select  Enter: study", 6, 125);
 }
 
 void drawLessonEmptyScreen(lgfx::LovyanGFX& d, const LessonEmptyView& view) {
@@ -154,24 +159,23 @@ void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
     d.setTextSize(1);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString("LESSON", 6, 3);
-    char pos[20];
-    snprintf(pos, sizeof pos, "%u/%u", static_cast<unsigned>(view.index + 1),
-             static_cast<unsigned>(view.total));
-    char page[20];
-    snprintf(page, sizeof page, "p%u/%u", static_cast<unsigned>(view.page + 1),
-             static_cast<unsigned>(view.pages));
-    // Keep both counters in the header row: the page is right-aligned and the
-    // item position sits to its left. In the 6 px font, "p12/12" plus "10/10"
-    // and the 8 px gap still leave the header's left side free.
-    constexpr int kHeaderRight = 233;
-    constexpr int kHeaderGap = 8;
+    // The browser owns both counters, so the drawn page count is the number of
+    // pages it actually made for this card.
+    char fallback[24];
+    const char* header = view.header.c_str();
+    if (view.header.empty()) {
+        snprintf(fallback, sizeof fallback, "%u/%u p%u/%u",
+                 static_cast<unsigned>(view.index + 1),
+                 static_cast<unsigned>(view.total),
+                 static_cast<unsigned>(view.page + 1),
+                 static_cast<unsigned>(view.pages));
+        header = fallback;
+    }
     d.setTextFont(0);
     d.setTextSize(1);
     d.setTextDatum(lgfx::top_right);
-    d.setTextColor(ui::kFaint, ui::kBg);
-    d.drawString(page, kHeaderRight, 5);
     d.setTextColor(ui::kDim, ui::kBg);
-    d.drawString(pos, kHeaderRight - d.textWidth(page) - kHeaderGap, 5);
+    d.drawString(header, 233, 5);
     d.setTextDatum(lgfx::top_left);
 
     d.fillRect(0, 14, 240, 2, ui::kSurfaceHi);
@@ -225,9 +229,9 @@ void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
     }
 
     d.setTextColor(ui::kFaint, ui::kBg);
-    d.drawString("Space p  Q quiz", 5, 125);
+    d.drawString("Q quiz", 5, 125);
     d.setTextDatum(lgfx::top_right);
-    d.drawString("Enter start  Esc list", 233, 125);
+    d.drawString("Enter/Space: next  Esc: list", 233, 125);
     d.setTextDatum(lgfx::top_left);
 }
 

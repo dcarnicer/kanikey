@@ -17,8 +17,11 @@ namespace kk::app {
 
 struct ReviewView {
     const kk::Subject* subject = nullptr;
+    const char* header = "REVIEWS";
     kk::ReviewPart part = kk::ReviewPart::Meaning;
     bool feedback = false;
+    bool showDetailHint = true;
+    const char* escHint = "Esc: quit";
     uint8_t srsStage = 0;
     int position = 1;
     int total = 0;

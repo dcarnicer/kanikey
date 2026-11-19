@@ -64,6 +64,45 @@ void ReviewQueue::build(const std::vector<Assignment>& assignments,
     if (!queue_.empty()) prepareItem(queue_.front());
 }
 
+void ReviewQueue::buildPractice(const std::vector<Subject>& subjects, size_t limit,
+                                uint32_t seed) {
+    std::vector<const Subject*> pointers;
+    pointers.reserve(subjects.size());
+    for (const Subject& s : subjects) pointers.push_back(&s);
+    buildPractice(pointers, limit, seed);
+}
+
+void ReviewQueue::buildPractice(const std::vector<const Subject*>& subjects, size_t limit,
+                                uint32_t seed) {
+    queue_.clear();
+    completed_.clear();
+    part_ = ReviewPart::None;
+    meaningFirst_ = true;
+    criticalSubjectIds_.clear();
+
+    std::vector<SessionItem> items;
+    items.reserve(subjects.size());
+    for (const Subject* s : subjects) {
+        if (!s) continue;
+        SessionItem it;
+        it.assignmentId = 0;
+        it.subjectId = s->id;
+        it.type = s->type;
+        it.level = s->level;
+        it.srsStage = 0;
+        it.needsMeaning = true;
+        it.needsReading = s->needsReading();
+        items.push_back(it);
+    }
+
+    std::mt19937 rng(seed);
+    std::shuffle(items.begin(), items.end(), rng);
+    if (limit > 0 && items.size() > limit) items.resize(limit);
+
+    for (const SessionItem& it : items) queue_.push_back(it);
+    if (!queue_.empty()) prepareItem(queue_.front());
+}
+
 void ReviewQueue::setPart(SessionItem& item) {
     if (meaningFirst_) {
         if (item.needsMeaning && !item.meaningDone) {

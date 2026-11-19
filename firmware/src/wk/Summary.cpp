@@ -105,6 +105,30 @@ bool Summary::removeLessonSubject(uint32_t id) {
     return changed;
 }
 
+bool Summary::removeLessonSubjects(const std::vector<uint32_t>& ids) {
+    if (ids.empty()) return false;
+    bool changed = false;
+    std::vector<SummaryBucket> kept;
+    kept.reserve(lessons.size());
+    for (SummaryBucket& b : lessons) {
+        const auto end = std::remove_if(b.subjectIds.begin(), b.subjectIds.end(),
+                                        [&ids](uint32_t id) {
+                                            return std::find(ids.begin(), ids.end(), id) !=
+                                                   ids.end();
+                                        });
+        const size_t removed = static_cast<size_t>(b.subjectIds.end() - end);
+        if (removed) {
+            b.subjectIds.erase(end, b.subjectIds.end());
+            b.count = b.count > removed ? static_cast<uint16_t>(b.count - removed) : 0;
+            changed = true;
+        }
+        if (b.subjectIds.empty()) continue;
+        kept.push_back(std::move(b));
+    }
+    lessons = std::move(kept);
+    return changed;
+}
+
 void formatNextReview(const Summary& summary, uint32_t now, const char* hhmm, char* out,
                       size_t n) {
     if (!out || n == 0) return;

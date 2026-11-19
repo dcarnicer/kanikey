@@ -1,4 +1,4 @@
-// Lesson list, card, local quiz and PUT /start.
+// Lesson list, card browser, batch quiz and the one confirmed PUT /start run.
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <SD.h>
@@ -66,6 +66,7 @@
 #include "wk/IdSample.h"
 #include "wk/LessonOrder.h"
 #include "wk/LessonQuiz.h"
+#include "wk/LessonSession.h"
 #include "wk/Outbox.h"
 #include "wk/ReviewQueue.h"
 #include "wk/ReviewResponse.h"
@@ -85,11 +86,19 @@ using namespace kk::ui;
 
 const kk::Subject* lessonSubjectById(uint32_t id);
 const kk::Subject* lessonComponentById(uint32_t id);
+const kk::Assignment* currentLessonAssignment();
 const kk::Subject* currentLessonSubject();
 std::vector<std::string> wrapLines(lgfx::LovyanGFX& d, const std::string& text, int width);
 void clearLessonQuizInputImpl();
 std::string lessonQuizInput(bool meaning);
+void clearLessonBatchInput();
+std::string lessonBatchInput(bool meaning);
 void showLessonFetchError(int httpCode, const String& error);
+void afterLastLessonCard();
+void startLessonBatchQuiz();
+void openLessonStartConfirm();
+void runLessonStart();
+void journalLessonStarted(const kk::LessonStartItem& item, bool offline);
 
 const kk::Subject* lessonSubjectById(uint32_t id) {
     for (const kk::Subject& s : state().lesson.gLessonBatch.subjects)
@@ -103,9 +112,17 @@ const kk::Subject* lessonComponentById(uint32_t id) {
     return nullptr;
 }
 
+const kk::Assignment* currentLessonAssignment() {
+    const size_t index = state().lesson.gLessonBrowse.batchIndex(
+        state().lesson.gLessonBrowse.card());
+    if (index >= state().lesson.gLessonBatch.assignments.size()) return nullptr;
+    return &state().lesson.gLessonBatch.assignments[index];
+}
+
 const kk::Subject* currentLessonSubject() {
-    if (!state().lesson.gLessonActive || state().lesson.gLessonIndex >= state().lesson.gLessonBatch.assignments.size()) return nullptr;
-    return lessonSubjectById(state().lesson.gLessonBatch.assignments[state().lesson.gLessonIndex].subjectId);
+    if (!state().lesson.gLessonActive) return nullptr;
+    const kk::Assignment* a = currentLessonAssignment();
+    return a ? lessonSubjectById(a->subjectId) : nullptr;
 }
 
 std::vector<std::string> wrapLines(lgfx::LovyanGFX& d, const std::string& text, int width) {
@@ -150,6 +167,23 @@ std::string lessonQuizInput(bool meaning) {
     return state().lesson.gLessonQuizIme.text();
 }
 
+void clearLessonBatchInput() {
+    state().lesson.gLessonBatchInput.clear();
+#ifdef KANIKEY_DEV
+    state().lesson.gLessonBatchDirectReading.clear();
+#endif
+    state().lesson.gLessonBatchIme.clear();
+}
+
+std::string lessonBatchInput(bool meaning) {
+    if (meaning) return state().lesson.gLessonBatchInput;
+#ifdef KANIKEY_DEV
+    if (!state().lesson.gLessonBatchDirectReading.empty())
+        return state().lesson.gLessonBatchDirectReading;
+#endif
+    return state().lesson.gLessonBatchIme.text();
+}
+
 void showLessonFetchError(int httpCode, const String& error) {
     Serial.printf("[lesson] failed: %s\n", error.c_str());
     if (error == "no due lessons" || error == "no lessons") {
@@ -177,6 +211,170 @@ void showLessonFetchError(int httpCode, const String& error) {
     state().display.gDirty = true;
 }
 
+// After the last page of the last card: the batch quiz (L3 Required) or the
+// start confirmation (L3 Skip).
+void afterLastLessonCard() {
+    if (lessonNextStep(kk::settingsLessonQuizRequired()) == LessonNextStep::Quiz)
+        startLessonBatchQuiz();
+    else
+        openLessonStartConfirm();
+}
+
+void startLessonBatchQuiz() {
+    std::vector<const kk::Subject*> subjects;
+    subjects.reserve(state().lesson.gLessonBrowse.selectedCount());
+    for (size_t pos = 0; pos < state().lesson.gLessonBrowse.selectedCount(); ++pos) {
+        const size_t index = state().lesson.gLessonBrowse.batchIndex(pos);
+        if (index >= state().lesson.gLessonBatch.assignments.size()) continue;
+        const kk::Subject* s =
+            lessonSubjectById(state().lesson.gLessonBatch.assignments[index].subjectId);
+        if (s) subjects.push_back(s);
+    }
+    clearLessonBatchInput();
+    state().lesson.gLessonBatchFeedback = false;
+    state().lesson.gLessonBatchPart = kk::ReviewPart::None;
+    state().lesson.gLessonBatchSubjectId = 0;
+    state().lesson.gLessonBatchQueue.buildPractice(
+        subjects, 0, static_cast<uint32_t>(millis()) ^ effectiveNow());
+    if (state().lesson.gLessonBatchQueue.empty()) {
+        openLessonStartConfirm();
+        return;
+    }
+    state().lesson.gLessonQuizActive = false;
+    state().lesson.gLessonBatchQuizActive = true;
+    state().lesson.gLessonActive = false;
+    state().lesson.gLessonListActive = false;
+    state().session.gShowHome = false;
+    Serial.printf("[lesson] quiz %u items\n",
+                  static_cast<unsigned>(state().lesson.gLessonBatchQueue.remaining()));
+    state().display.gDirty = true;
+}
+
+void openLessonStartConfirm() {
+    LessonState& l = state().lesson;
+    l.gLessonStartPlan.build(l.gLessonBatch.assignments, l.gLessonBrowse.selected());
+    if (l.gLessonStartPlan.empty()) {
+        l.gLessonBatchQuizActive = false;
+        l.gLessonActive = false;
+        l.gLessonListActive = true;
+        snprintf(l.gLessonNote, sizeof l.gLessonNote, "Nothing to start");
+        state().display.gDirty = true;
+        return;
+    }
+    l.gLessonStartActive = true;
+    l.gLessonStartFailed = false;
+    l.gLessonStartOffline = false;
+    l.gLessonBatchQuizActive = false;
+    l.gLessonQuizActive = false;
+    l.gLessonActive = false;
+    l.gLessonListActive = false;
+    l.gLessonNote[0] = 0;
+    clearLessonBatchInput();
+    state().session.gShowHome = false;
+    Serial.printf("[lesson] start confirm %u\n",
+                  static_cast<unsigned>(l.gLessonStartPlan.size()));
+    state().display.gDirty = true;
+}
+
+// ARCH-03: one journal record per item started on this device. No SRS fields
+// are set; the lessonStarted flag is what the journal and later stats read.
+void journalLessonStarted(const kk::LessonStartItem& item, bool offline) {
+    if (!state().storage.gFsOk || !kk::journalOpen(currentAccountKey())) return;
+    kk::JournalRecord record;
+    const uint32_t now = static_cast<uint32_t>(time(nullptr));
+    record.completedAt = now >= 1700000000u ? now : 0;
+    record.subjectId = item.subjectId;
+    record.assignmentId = item.assignmentId;
+    record.lessonStarted = true;
+    record.offline = offline;
+    kk::journalAppend(record);
+}
+
+void runLessonStart() {
+    LessonState& l = state().lesson;
+    if (l.gLessonStartPlan.empty()) return;
+
+    bool canStart = kk::DevWifi::connected();
+#ifdef KANIKEY_DEV
+    if (l.gDevLessonStartCode >= 0) canStart = true;
+#endif
+    if (!canStart) {
+        l.gLessonStartFailed = false;
+        l.gLessonStartOffline = true;
+        l.gLessonStartActive = true;
+        state().display.gDirty = true;
+        return;
+    }
+
+    l.gLessonStartOffline = false;
+    l.gLessonStartFailed = false;
+    std::vector<uint32_t> startedSubjects;
+    bool stopped = false;
+    const uint32_t now = static_cast<uint32_t>(time(nullptr));
+    const uint32_t startedAt = now >= 1700000000u ? now : 0;
+
+    state().ui.gFreeCanvasForRequest = true;
+    while (const kk::LessonStartItem* item = l.gLessonStartPlan.nextPending()) {
+        const auto& items = l.gLessonStartPlan.items();
+        const size_t position = static_cast<size_t>(item - items.data());
+        char subtitle[32];
+        snprintf(subtitle, sizeof subtitle, "Starting %u/%u",
+                 static_cast<unsigned>(l.gLessonStartPlan.startedCount() + 1),
+                 static_cast<unsigned>(l.gLessonStartPlan.size()));
+        drawLoading("Starting lessons...", subtitle);
+        int httpCode;
+#ifdef KANIKEY_DEV
+        if (l.gDevLessonStartCode >= 0) {
+            httpCode = l.gDevLessonStartCode;
+            Serial.printf("[lesson] dev start code %d\n", httpCode);
+        } else
+#endif
+        {
+            httpCode = kk::startAssignment(kk::DevToken::load(), item->assignmentId,
+                                           startedAt);
+        }
+        const kk::LessonStartResult result = kk::classifyStartResult(httpCode);
+        if (result == kk::LessonStartResult::Started ||
+            result == kk::LessonStartResult::AlreadyStarted) {
+            // 422 already-started counts as a started item, so it journals the
+            // same lessonStarted record; no SRS fields are written either way.
+            journalLessonStarted(*item, !kk::DevWifi::connected());
+            l.gLessonStartPlan.markStarted(position);
+            startedSubjects.push_back(item->subjectId);
+            continue;
+        }
+        l.gLessonStartPlan.markFailed(position);
+        if (result == kk::LessonStartResult::Auth)
+            setSyncIssue(httpCode, true, 0, "Lesson");
+        stopped = true;
+        break;
+    }
+    state().ui.gFreeCanvasForRequest = false;
+
+    // The summary is what Home reads. Remove every item that actually started
+    // (2xx or already-started 422) and persist once for the whole run.
+    if (!startedSubjects.empty()) {
+        state().session.gSummary.removeLessonSubjects(startedSubjects);
+        applySummary(effectiveNow());
+        saveCacheSnapshot();
+    }
+
+    if (l.gLessonStartPlan.allStarted()) {
+        Serial.printf("[lesson] batch started %u\n",
+                      static_cast<unsigned>(l.gLessonStartPlan.size()));
+        l.gLessonStartActive = false;
+        l.gLessonStartFailed = false;
+        l.gLessonStartOffline = false;
+        state().session.gShowHome = true;
+        releaseLessonData();
+    } else {
+        l.gLessonStartActive = true;
+        l.gLessonStartFailed = stopped;
+        l.gLessonStartOffline = false;
+    }
+    state().display.gDirty = true;
+}
+
 }  // namespace
 
 void clearLessonQuizInput() { clearLessonQuizInputImpl(); }
@@ -184,13 +382,19 @@ void clearLessonQuizInput() { clearLessonQuizInputImpl(); }
 void showLessonList() {
     if (!state().display.gDisp) return;
     LessonListView view;
-    view.selectedIndex = state().lesson.gLessonIndex;
+    view.selectedIndex = state().lesson.gLessonBrowse.cursor();
+    view.note = state().lesson.gLessonNote;
     view.rows.reserve(state().lesson.gLessonBatch.assignments.size());
     for (const kk::Assignment& a : state().lesson.gLessonBatch.assignments) {
         const kk::Subject* s = lessonSubjectById(a.subjectId);
         LessonRowView row;
         row.subject = s;
         if (s) row.meaning = subjectMainMeaning(*s);
+        row.selected =
+            std::find(state().lesson.gLessonBrowse.selected().begin(),
+                      state().lesson.gLessonBrowse.selected().end(),
+                      static_cast<size_t>(view.rows.size())) !=
+            state().lesson.gLessonBrowse.selected().end();
         view.rows.push_back(std::move(row));
     }
 
@@ -261,21 +465,77 @@ void showLesson() {
     if (!s->readingNote.empty()) extra += "Reading note: " + s->readingNote + ". ";
     if (!extra.empty()) mnemonic += " " + extra;
     std::vector<std::string> lines = wrapLines(d, mnemonic, 232);
-    const size_t pages = (lines.size() + 2) / 3;
-    if (state().lesson.gLessonPage >= pages) state().lesson.gLessonPage = pages - 1;
+    const size_t pages = std::max<size_t>(1, (lines.size() + 2) / 3);
+    // The browser owns the page count so Left/Enter ask the same number the
+    // card draws, not the value from before the text was wrapped.
+    state().lesson.gLessonBrowse.setPageCount(pages);
+
+    char header[24];
+    state().lesson.gLessonBrowse.header(header, sizeof header);
 
     LessonCardView view;
     view.subject = s;
     view.meaning = meaning;
     view.reading = reading;
+    view.header = header;
     view.lines = std::move(lines);
-    view.page = state().lesson.gLessonPage;
-    view.pages = pages;
-    view.index = state().lesson.gLessonIndex;
-    view.total = state().lesson.gLessonBatch.assignments.size();
+    view.page = state().lesson.gLessonBrowse.page();
+    view.pages = state().lesson.gLessonBrowse.pageCount();
+    view.index = state().lesson.gLessonBrowse.card();
+    view.total = state().lesson.gLessonBrowse.selectedCount();
 
     d.startWrite();
     drawLessonCardScreen(d, state().storage.gPack, view);
+    d.endWrite();
+    present();
+}
+
+void showLessonBatchQuiz() {
+    if (!state().display.gDisp) return;
+    const kk::SessionItem* item = state().lesson.gLessonBatchQueue.current();
+    const kk::Subject* s =
+        state().lesson.gLessonBatchFeedback
+            ? lessonSubjectById(state().lesson.gLessonBatchSubjectId)
+            : (item ? lessonSubjectById(item->subjectId) : nullptr);
+    if (!s) return;
+    const kk::ReviewPart part =
+        state().lesson.gLessonBatchFeedback ? state().lesson.gLessonBatchPart
+                                            : state().lesson.gLessonBatchQueue.part();
+
+    const int completed = static_cast<int>(state().lesson.gLessonBatchQueue.completedCount());
+    const int total =
+        completed + static_cast<int>(state().lesson.gLessonBatchQueue.remaining());
+    int position = completed + 1;
+    if (state().lesson.gLessonBatchFeedback &&
+        state().lesson.gLessonBatchQueue.remaining() == 0)
+        position = completed;
+    position = std::max(1, std::min(position, std::max(1, total)));
+
+    ReviewView view;
+    view.subject = s;
+    view.header = "LESSON QUIZ";
+    view.part = part;
+    view.feedback = state().lesson.gLessonBatchFeedback;
+    view.showDetailHint = false;
+    view.escHint = "Esc: card";
+    view.srsStage = 0;
+    view.position = position;
+    view.total = std::max(1, total);
+    if (view.feedback) {
+        view.typed = state().lesson.gLessonBatchInput;
+        view.status = state().lesson.gLessonBatchCheck.status;
+        view.message = state().lesson.gLessonBatchCheck.message;
+        if (view.status != kk::AnswerStatus::Warning)
+            view.answer = correctAnswer(*s, part);
+    } else {
+        const bool meaning = part == kk::ReviewPart::Meaning;
+        view.typed = lessonBatchInput(meaning);
+        view.romaji = state().lesson.gLessonBatchIme.raw();
+    }
+
+    auto& d = target();
+    d.startWrite();
+    drawReviewScreen(d, state().storage.gPack, view);
     d.endWrite();
     present();
 }
@@ -299,7 +559,7 @@ void checkLessonQuiz() {
     state().lesson.gLessonQuiz.submit(input, true);
     const char* status = state().lesson.gLessonQuiz.result().status == kk::AnswerStatus::Correct ? "correct"
                          : state().lesson.gLessonQuiz.result().status == kk::AnswerStatus::Warning ? "warning"
-                                                                                   : "incorrect";
+                                                                                    : "incorrect";
     Serial.printf("[lesson] quiz %s %s\n", meaning ? "meaning" : "reading", status);
     state().display.gDirty = true;
 }
@@ -403,16 +663,182 @@ void lessonQuizKey(const KeyEvent& e) {
     }
 }
 
+void checkLessonBatchQuiz() {
+    LessonState& l = state().lesson;
+    if (l.gLessonBatchFeedback || l.gLessonBatchQueue.empty()) return;
+    const kk::SessionItem* item = l.gLessonBatchQueue.current();
+    if (!item) return;
+    const kk::Subject* s = lessonSubjectById(item->subjectId);
+    if (!s) return;
+    const bool meaning = l.gLessonBatchQueue.part() == kk::ReviewPart::Meaning;
+    const std::string input = lessonBatchInput(meaning);
+    if (input.empty()) return;
+    l.gLessonBatchSubjectId = item->subjectId;
+    l.gLessonBatchPart = l.gLessonBatchQueue.part();
+    l.gLessonBatchInput = input;
+    l.gLessonBatchCheck =
+        kk::checkAnswer(*s, meaning ? kk::AnswerKind::Meaning : kk::AnswerKind::Reading,
+                        input, true);
+    l.gLessonBatchFeedback = true;
+    if (l.gLessonBatchCheck.status != kk::AnswerStatus::Warning) {
+        // Lesson completions are local: no outbox record, no POST /reviews and
+        // no cache write.
+        l.gLessonBatchQueue.answer(l.gLessonBatchCheck.status);
+    }
+    Serial.printf("[lesson] quiz %s %s\n", meaning ? "meaning" : "reading",
+                  l.gLessonBatchCheck.status == kk::AnswerStatus::Correct ? "correct"
+                  : l.gLessonBatchCheck.status == kk::AnswerStatus::Warning ? "warning"
+                                                                            : "incorrect");
+    state().display.gDirty = true;
+}
+
+void lessonBatchQuizKey(const KeyEvent& e) {
+    if (!e.down) return;
+    LessonState& l = state().lesson;
+    if (e.key == Key::Esc) {
+        // Back to the last card, batch unchanged.
+        l.gLessonBatchQuizActive = false;
+        l.gLessonBatchFeedback = false;
+        l.gLessonBatchPart = kk::ReviewPart::None;
+        l.gLessonBatchSubjectId = 0;
+        clearLessonBatchInput();
+        l.gLessonActive = true;
+        state().display.gDirty = true;
+        return;
+    }
+    if (l.gLessonBatchFeedback) {
+        if (e.key == Key::Enter) {
+            if (l.gLessonBatchCheck.status == kk::AnswerStatus::Warning) {
+                // Warning: retry the same part with the typed text kept.
+                l.gLessonBatchFeedback = false;
+            } else {
+                l.gLessonBatchFeedback = false;
+                clearLessonBatchInput();
+                if (l.gLessonBatchQueue.empty()) {
+                    openLessonStartConfirm();
+                }
+            }
+            state().display.gDirty = true;
+        }
+        return;
+    }
+    if (l.gLessonBatchQueue.empty()) {
+        openLessonStartConfirm();
+        return;
+    }
+    if (e.key == Key::Enter) {
+        checkLessonBatchQuiz();
+        return;
+    }
+    if (e.key == Key::Backspace) {
+        if (l.gLessonBatchQueue.part() == kk::ReviewPart::Meaning) {
+            if (!l.gLessonBatchInput.empty()) l.gLessonBatchInput.pop_back();
+        }
+#ifdef KANIKEY_DEV
+        else if (!l.gLessonBatchDirectReading.empty()) {
+            l.gLessonBatchDirectReading.pop_back();
+        }
+#endif
+        else {
+            l.gLessonBatchIme.backspace();
+        }
+        state().display.gDirty = true;
+        return;
+    }
+    const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
+    if (c) {
+        if (l.gLessonBatchQueue.part() == kk::ReviewPart::Meaning) {
+            l.gLessonBatchInput.push_back(c);
+        } else {
+#ifdef KANIKEY_DEV
+            l.gLessonBatchDirectReading.clear();
+#endif
+            l.gLessonBatchIme.feed(c);
+        }
+        state().display.gDirty = true;
+    }
+}
+
+void drawLessonStart() {
+    if (!state().display.gDisp) return;
+    LessonStartView view;
+    view.total = static_cast<unsigned>(state().lesson.gLessonStartPlan.size());
+    view.started = static_cast<unsigned>(state().lesson.gLessonStartPlan.startedCount());
+    view.failed = state().lesson.gLessonStartFailed;
+    view.offline = state().lesson.gLessonStartOffline;
+    if (view.failed) {
+        for (const kk::LessonStartItem& item : state().lesson.gLessonStartPlan.items()) {
+            if (item.state != kk::LessonStartItem::State::Failed) continue;
+            if (item.batchIndex >= state().lesson.gLessonBatch.assignments.size()) continue;
+            const kk::Assignment& a = state().lesson.gLessonBatch.assignments[item.batchIndex];
+            const kk::Subject* s = lessonSubjectById(a.subjectId);
+            if (s) {
+                view.failedItems.push_back(subjectMainMeaning(*s));
+            } else {
+                char label[24];
+                snprintf(label, sizeof label, "Lesson %u", static_cast<unsigned>(a.subjectId));
+                view.failedItems.emplace_back(label);
+            }
+        }
+    }
+
+    auto& d = target();
+    d.startWrite();
+    drawLessonStartScreen(d, view);
+    d.endWrite();
+    present();
+}
+
+void lessonStartKey(const KeyEvent& e) {
+    if (!e.down) return;
+    if (e.key == Key::Esc) {
+        state().lesson.gLessonStartActive = false;
+        state().lesson.gLessonStartFailed = false;
+        state().lesson.gLessonStartOffline = false;
+        state().lesson.gLessonActive = true;
+        state().display.gDirty = true;
+        return;
+    }
+    if (e.key != Key::Enter) return;
+    if (state().lesson.gLessonStartFailed) state().lesson.gLessonStartPlan.resetFailed();
+    state().lesson.gLessonStartFailed = false;
+    state().lesson.gLessonStartOffline = false;
+    startLessonBatch();
+}
+
+void startLessonBatch() { runLessonStart(); }
+
+// Kept for the notice retry path. It never sends anything: the confirmation
+// owns every PUT /assignments/{id}/start.
+void startCurrentLesson() { openLessonStartConfirm(); }
+
 void releaseLessonData() {
-    state().lesson.gLessonBatch = kk::LessonBatch{};
-    state().lesson.gLessonComponents.clear();
-    state().lesson.gLessonIndex = 0;
-    state().lesson.gLessonPage = 0;
+    LessonState& l = state().lesson;
+    l.gLessonBatch = kk::LessonBatch{};
+    l.gLessonComponents.clear();
+    l.gLessonBrowse = kk::LessonBrowse{};
+    l.gLessonBatchLimit = 0;
+    l.gLessonStartPlan = kk::LessonStartPlan{};
+    l.gLessonStartActive = false;
+    l.gLessonStartFailed = false;
+    l.gLessonStartOffline = false;
+    l.gLessonBatchQueue = kk::ReviewQueue{};
+    l.gLessonBatchCheck = kk::AnswerCheck{};
+    l.gLessonBatchPart = kk::ReviewPart::None;
+    l.gLessonBatchSubjectId = 0;
+    l.gLessonBatchFeedback = false;
+    l.gLessonBatchQuizActive = false;
+    l.gLessonQuizActive = false;
+    clearLessonBatchInput();
+    clearLessonQuizInputImpl();
+    l.gLessonNote[0] = 0;
 }
 
 void startLessons() {
     if (!state().session.gHaveSummary) return;
     state().lesson.gLessonQuizActive = false;
+    state().lesson.gLessonBatchQuizActive = false;
+    state().lesson.gLessonStartActive = false;
     if (state().session.gSummary.totalLessons() == 0) {
         state().lesson.gLessonEmptyActive = true;
         state().lesson.gLessonListActive = false;
@@ -431,6 +857,11 @@ void startLessons() {
     evictCachedBatch(true);
     state().lesson.gLessonComponents.clear();
     state().lesson.gLessonBatch = kk::LessonBatch{};
+    state().lesson.gLessonBrowse = kk::LessonBrowse{};
+    state().lesson.gLessonBatchLimit = 0;
+    state().lesson.gLessonStartPlan = kk::LessonStartPlan{};
+    state().lesson.gLessonStartFailed = false;
+    state().lesson.gLessonStartOffline = false;
     state().lesson.gLessonEmptyActive = false;
     size_t lessonLimit = static_cast<size_t>(kk::settingsLessonBatchSize());
     if (state().session.gHaveUser && state().session.gUser.lessonsBatchSize > 0)
@@ -539,110 +970,81 @@ void startLessons() {
         state().display.gDirty = true;
         return;
     }
+    state().lesson.gLessonBatchLimit = lessonLimit;
+    state().lesson.gLessonBrowse.begin(state().lesson.gLessonBatch.assignments.size(),
+                                       lessonLimit);
+    state().lesson.gLessonStartActive = false;
+    state().lesson.gLessonStartFailed = false;
+    state().lesson.gLessonStartOffline = false;
+    state().lesson.gLessonNote[0] = 0;
     state().lesson.gLessonListActive = true;
     state().lesson.gLessonActive = false;
+    state().lesson.gLessonBatchQuizActive = false;
     state().session.gShowHome = false;
-    state().lesson.gLessonIndex = 0;
-    state().lesson.gLessonPage = 0;
-    Serial.printf("[lesson] list %u assignments, %u subjects\n",
+    Serial.printf("[lesson] list %u assignments, %u subjects, batch %u\n",
                   static_cast<unsigned>(state().lesson.gLessonBatch.assignments.size()),
-                  static_cast<unsigned>(state().lesson.gLessonBatch.subjects.size()));
-    state().display.gDirty = true;
-}
-
-void startCurrentLesson() {
-    if (!state().lesson.gLessonActive || state().lesson.gLessonIndex >= state().lesson.gLessonBatch.assignments.size()) return;
-    const kk::Assignment& a = state().lesson.gLessonBatch.assignments[state().lesson.gLessonIndex];
-    const kk::Subject* s = lessonSubjectById(a.subjectId);
-    const std::string subtitle = s ? subjectMainMeaning(*s) : std::string();
-    drawLoading("Starting lesson...", subtitle.c_str());
-    const uint32_t now = static_cast<uint32_t>(time(nullptr));
-    int httpCode;
-#ifdef KANIKEY_DEV
-    if (state().lesson.gDevLessonStartCode >= 0) {
-        httpCode = state().lesson.gDevLessonStartCode;
-        Serial.printf("[lesson] dev start code %d\n", httpCode);
-    } else
-#endif
-    {
-        state().ui.gFreeCanvasForRequest = true;
-        httpCode = kk::startAssignment(kk::DevToken::load(), a.id,
-                                       now >= 1700000000u ? now : 0);
-        state().ui.gFreeCanvasForRequest = false;
-    }
-    if ((httpCode >= 200 && httpCode < 300) || httpCode == 422) {
-        // 422 means the item was already started on WaniKani; either way the
-        // card is done and the summary's lesson bucket is stale.
-        state().session.gSummary.removeLessonSubject(a.subjectId);
-        if (state().session.gLessons > 0) --state().session.gLessons;
-        saveCacheSnapshot();
-        ++state().lesson.gLessonIndex;
-        state().lesson.gLessonPage = 0;
-        if (state().lesson.gLessonIndex >= state().lesson.gLessonBatch.assignments.size()) {
-            state().lesson.gLessonActive = false;
-            state().session.gShowHome = true;
-            releaseLessonData();
-        }
-    } else if (httpCode == 401 || httpCode == 403) {
-        setSyncIssue(httpCode, true, 0, "Lesson");
-        drawLoading("Could not start lesson", state().ui.gNetLine);
-        state().lesson.gLessonActive = false;
-        state().lesson.gLessonListActive = false;
-        state().session.gShowHome = true;
-        releaseLessonData();
-    } else {
-        // Keep the card (state().lesson.gLessonActive, state().lesson.gLessonIndex) so Enter can retry.
-        if (httpCode == 0)
-            snprintf(state().ui.gNoticeLine, sizeof state().ui.gNoticeLine, "No connection");
-        else
-            snprintf(state().ui.gNoticeLine, sizeof state().ui.gNoticeLine, "HTTP %d", httpCode);
-        state().ui.gNoticeLine2[0] = 0;
-        state().ui.gNoticeAction = NoticeAction::LessonStart;
-        state().ui.gNoticeActive = true;
-        state().session.gShowHome = false;
-    }
+                  static_cast<unsigned>(state().lesson.gLessonBatch.subjects.size()),
+                  static_cast<unsigned>(state().lesson.gLessonBrowse.selectedCount()));
     state().display.gDirty = true;
 }
 
 void lessonListKey(const KeyEvent& e) {
     if (!e.down) return;
-    const size_t total = state().lesson.gLessonBatch.assignments.size();
+    LessonState& l = state().lesson;
+    const size_t total = l.gLessonBatch.assignments.size();
     if (total == 0) {
-        state().lesson.gLessonListActive = false;
+        l.gLessonListActive = false;
         state().session.gShowHome = true;
         releaseLessonData();
         state().display.gDirty = true;
         return;
     }
     if (e.key == Key::Esc) {
-        state().lesson.gLessonListActive = false;
+        l.gLessonListActive = false;
         state().session.gShowHome = true;
         releaseLessonData();
         state().display.gDirty = true;
         return;
     }
     if (e.key == Key::Up) {
-        state().lesson.gLessonIndex = state().lesson.gLessonIndex == 0 ? total - 1 : state().lesson.gLessonIndex - 1;
+        l.gLessonBrowse.setCursor(l.gLessonBrowse.cursor() == 0
+                                      ? total - 1
+                                      : l.gLessonBrowse.cursor() - 1);
+        l.gLessonNote[0] = 0;
         state().display.gDirty = true;
     } else if (e.key == Key::Down) {
-        state().lesson.gLessonIndex = (state().lesson.gLessonIndex + 1) % total;
+        l.gLessonBrowse.setCursor((l.gLessonBrowse.cursor() + 1) % total);
+        l.gLessonNote[0] = 0;
+        state().display.gDirty = true;
+    } else if (e.key == Key::Other &&
+               tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == ' ') {
+        const size_t limit = l.gLessonBatchLimit ? l.gLessonBatchLimit : total;
+        if (l.gLessonBrowse.toggle(l.gLessonBrowse.cursor(), limit)) {
+            l.gLessonNote[0] = 0;
+        } else {
+            snprintf(l.gLessonNote, sizeof l.gLessonNote, "batch full");
+        }
         state().display.gDirty = true;
     } else if (e.key == Key::Enter) {
-        if (state().lesson.gLessonIndex >= total) state().lesson.gLessonIndex = 0;
-        state().lesson.gLessonQuizActive = false;
-        state().lesson.gLessonListActive = false;
-        state().lesson.gLessonActive = true;
-        state().lesson.gLessonPage = 0;
+        if (l.gLessonBrowse.selectedCount() == 0) {
+            snprintf(l.gLessonNote, sizeof l.gLessonNote, "select one first");
+            state().display.gDirty = true;
+            return;
+        }
+        l.gLessonBrowse.setCard(0);
+        l.gLessonBrowse.setPageCount(1);
+        l.gLessonNote[0] = 0;
+        l.gLessonQuizActive = false;
+        l.gLessonBatchQuizActive = false;
+        l.gLessonListActive = false;
+        l.gLessonActive = true;
         state().display.gDirty = true;
     }
 }
 
 void lessonKey(const KeyEvent& e) {
     if (!e.down) return;
-    if (e.key == Key::Enter) {
-        startCurrentLesson();
-        return;
-    }
+    LessonState& l = state().lesson;
     if (e.key == Key::Other) {
         const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
         if (c == 'q' || c == 'Q') {
@@ -651,22 +1053,40 @@ void lessonKey(const KeyEvent& e) {
         }
     }
     if (e.key == Key::Esc) {
-        state().lesson.gLessonActive = false;
-        if (!state().lesson.gLessonBatch.assignments.empty() && state().lesson.gLessonIndex < state().lesson.gLessonBatch.assignments.size())
-            state().lesson.gLessonListActive = true;
-        else {
+        l.gLessonActive = false;
+        if (l.gLessonBrowse.selectedCount() > 0) {
+            l.gLessonListActive = true;
+        } else {
             state().session.gShowHome = true;
             releaseLessonData();
         }
         state().display.gDirty = true;
         return;
     }
-    if (e.key == Key::Right || (e.key == Key::Other && tgc::cardputerCharAt(e.x, e.y, false) == ' ')) {
-        ++state().lesson.gLessonPage;
+    if (e.key == Key::Left || e.key == Key::Backspace) {
+        l.gLessonBrowse.previous();
         state().display.gDirty = true;
-    } else if (e.key == Key::Left || e.key == Key::Backspace) {
-        if (state().lesson.gLessonPage > 0) --state().lesson.gLessonPage;
+        return;
+    }
+    if (e.key == Key::Right ||
+        (e.key == Key::Other && tgc::cardputerCharAt(e.x, e.y, false) == ' ')) {
+        // Space and Right turn pages only; Enter on the last page moves on.
+        if (!l.gLessonBrowse.onLastPage()) l.gLessonBrowse.nextPageOrCard();
         state().display.gDirty = true;
+        return;
+    }
+    if (e.key == Key::Enter) {
+        if (!l.gLessonBrowse.onLastPage()) {
+            l.gLessonBrowse.nextPageOrCard();
+            state().display.gDirty = true;
+            return;
+        }
+        if (l.gLessonBrowse.card() + 1 < l.gLessonBrowse.selectedCount()) {
+            l.gLessonBrowse.nextPageOrCard();
+            state().display.gDirty = true;
+            return;
+        }
+        afterLastLessonCard();
     }
 }
 

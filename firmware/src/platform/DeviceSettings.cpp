@@ -20,6 +20,7 @@ constexpr const char* kKeyBlank = "blank";
 constexpr const char* kKeySleep = "sleep";
 constexpr const char* kKeyReviewSize = "revsize";
 constexpr const char* kKeyLessonSize = "lessonsz";
+constexpr const char* kKeyLessonQuiz = "ls.quiz";
 constexpr const char* kKeyMeaningFirst = "order";
 constexpr const char* kKeyCriticalFirst = "rv.critical";
 constexpr const char* kKeyCriticalPercent = "st.critpct";
@@ -30,6 +31,7 @@ constexpr const char* kKeyPracticeSize = "st.practice";
 
 struct DisplaySettings {
     SettingsCache cache;
+    bool lessonQuiz = true;
     bool criticalFirst = false;
     int criticalPercent = 75;
     int criticalMin = 5;
@@ -60,6 +62,7 @@ DisplaySettings& displaySettings() {
         values.cache.load();
     } else {
         values.cache.load(readPreference, &p);
+        values.lessonQuiz = p.getInt(kKeyLessonQuiz, values.lessonQuiz ? 1 : 0) != 0;
         values.criticalFirst = p.getInt(kKeyCriticalFirst, values.criticalFirst ? 1 : 0) != 0;
         values.criticalPercent = p.getInt(kKeyCriticalPercent, values.criticalPercent);
         values.criticalMin = p.getInt(kKeyCriticalMin, values.criticalMin);
@@ -217,6 +220,14 @@ bool settingsSetLessonBatchSize(int count) {
     if (count < 1) count = 1;
     if (count > 10) count = 10;
     return settingsSetInt(kKeyLessonSize, count);
+}
+
+bool settingsLessonQuizRequired() { return displaySettings().lessonQuiz; }
+bool settingsSetLessonQuizRequired(bool required) {
+    DisplaySettings& v = displaySettings();
+    if (v.lessonQuiz == required) return true;
+    v.lessonQuiz = required;
+    return saveInt(kKeyLessonQuiz, required ? 1 : 0);
 }
 
 bool settingsMeaningFirst() { return cachedSetting(kKeyMeaningFirst, 1) != 0; }

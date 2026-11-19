@@ -18,11 +18,13 @@ namespace kk::app {
 struct LessonRowView {
     const kk::Subject* subject = nullptr;  // null draws the missing row
     std::string meaning;
+    bool selected = true;  // selected into the batch
 };
 
 struct LessonListView {
     std::vector<LessonRowView> rows;
     size_t selectedIndex = 0;
+    std::string note;  // transient hint, e.g. "batch full"
 };
 
 // Draws the lesson list into d.
@@ -39,6 +41,7 @@ struct LessonCardView {
     const kk::Subject* subject = nullptr;
     std::string meaning;
     std::string reading;
+    std::string header;  // "2/5 p1/3" from the lesson browser
     std::vector<std::string> lines;  // pre-wrapped mnemonic and notes
     size_t page = 0;
     size_t pages = 1;

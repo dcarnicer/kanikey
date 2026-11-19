@@ -39,16 +39,18 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const ReviewView&
     d.setTextFont(1);
     d.setTextSize(1);
     d.setTextColor(ui::kDim, ui::kBg);
-    d.drawString("REVIEWS", 6, 3);
-    char srs[24];
-    if (s->hasReviewStats)
-        snprintf(srs, sizeof srs, "SRS %u  %u%%", static_cast<unsigned>(view.srsStage),
-                 static_cast<unsigned>(s->percentageCorrect));
-    else
-        snprintf(srs, sizeof srs, "SRS %u", static_cast<unsigned>(view.srsStage));
-    d.setTextFont(0);
-    d.setTextColor(ui::kFaint, ui::kBg);
-    d.drawString(srs, 62, 5);
+    d.drawString(view.header ? view.header : "REVIEWS", 6, 3);
+    if (view.srsStage > 0) {
+        char srs[24];
+        if (s->hasReviewStats)
+            snprintf(srs, sizeof srs, "SRS %u  %u%%", static_cast<unsigned>(view.srsStage),
+                     static_cast<unsigned>(s->percentageCorrect));
+        else
+            snprintf(srs, sizeof srs, "SRS %u", static_cast<unsigned>(view.srsStage));
+        d.setTextFont(0);
+        d.setTextColor(ui::kFaint, ui::kBg);
+        d.drawString(srs, 62, 5);
+    }
     char right[24];
     snprintf(right, sizeof right, "%d/%d", view.position, view.total);
     d.setTextFont(0);
@@ -206,9 +208,12 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const ReviewView&
     d.setTextFont(0);
     d.setTextSize(1);
     d.setTextColor(ui::kFaint, ui::kBg);
-    d.drawString(view.feedback ? "Enter: next  Tab: details" : "Enter: check", 6, 125);
+    if (view.feedback)
+        d.drawString(view.showDetailHint ? "Enter: next  Tab: details" : "Enter: next", 6, 125);
+    else
+        d.drawString("Enter: check", 6, 125);
     d.setTextDatum(lgfx::top_right);
-    d.drawString("Esc: quit", 233, 125);
+    d.drawString(view.escHint ? view.escHint : "Esc: quit", 233, 125);
     d.setTextDatum(lgfx::top_left);
 }
 

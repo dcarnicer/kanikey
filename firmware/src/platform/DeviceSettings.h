@@ -39,6 +39,9 @@ int settingsReviewBatchSize();
 bool settingsSetReviewBatchSize(int count);
 int settingsLessonBatchSize();
 bool settingsSetLessonBatchSize(int count);
+// L3: the batch quiz is required before starting (default) or skipped.
+bool settingsLessonQuizRequired();
+bool settingsSetLessonQuizRequired(bool required);
 bool settingsMeaningFirst();
 bool settingsSetMeaningFirst(bool meaningFirst);
 bool settingsCriticalFirst();

@@ -78,6 +78,71 @@ void drawLowBatteryScreen(lgfx::LovyanGFX& d, const LowBatteryView& view) {
     d.drawString("Enter: continue  Esc: cancel", 8, 125);
 }
 
+void drawLessonStartScreen(lgfx::LovyanGFX& d, const LessonStartView& view) {
+    d.fillScreen(ui::kBg);
+    d.setTextDatum(lgfx::top_left);
+    d.setTextWrap(false);
+    d.setTextFont(2);
+    d.setTextSize(1);
+    d.setTextColor(ui::kBrand, ui::kBg);
+    d.drawString("KaniKey", 6, 2);
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(ui::kDim, ui::kBg);
+    d.drawString("lessons", 7, 22);
+
+    if (view.offline) {
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(ui::kWarn, ui::kBg);
+        d.drawString("Needs Wi-Fi - your batch stays here", 8, 46);
+        d.setTextColor(ui::kFaint, ui::kBg);
+        d.drawString("Enter: retry  Esc: back", 8, 125);
+        return;
+    }
+
+    if (view.failed) {
+        d.setTextFont(1);
+        d.setTextColor(ui::kWarn, ui::kBg);
+        d.drawString("Could not start", 8, 42);
+        d.setTextFont(0);
+        d.setTextSize(1);
+        d.setTextColor(ui::kText, ui::kBg);
+        char kept[40];
+        snprintf(kept, sizeof kept, "%u item%s kept", view.total - view.started,
+                 view.total - view.started == 1 ? "" : "s");
+        d.drawString(kept, 8, 56);
+        int y = 70;
+        for (size_t i = 0; i < view.failedItems.size() && i < 3; ++i) {
+            std::string line = view.failedItems[i];
+            while (line.size() > 1 && d.textWidth(line.c_str()) > 224) line.pop_back();
+            d.setTextColor(ui::kDim, ui::kBg);
+            d.drawString(line.c_str(), 8, y);
+            y += 10;
+        }
+        d.setTextColor(ui::kFaint, ui::kBg);
+        d.drawString("Enter: retry  Esc: back", 8, 125);
+        return;
+    }
+
+    char title[32];
+    snprintf(title, sizeof title, "Start %u lesson%s?", view.total,
+             view.total == 1 ? "" : "s");
+    d.setTextFont(2);
+    d.setTextSize(1);
+    d.setTextColor(ui::kText, ui::kBg);
+    d.drawString(title, 8, 46);
+    d.setTextFont(1);
+    d.setTextSize(1);
+    d.setTextColor(ui::kDim, ui::kBg);
+    d.drawString("They join your reviews", 8, 70);
+    d.drawString("in about 4 hours.", 8, 84);
+    d.setTextFont(0);
+    d.setTextSize(1);
+    d.setTextColor(ui::kFaint, ui::kBg);
+    d.drawString("Enter: start  Esc: back", 8, 125);
+}
+
 void drawSignOutScreen(lgfx::LovyanGFX& d) {
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);

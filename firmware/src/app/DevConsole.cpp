@@ -279,9 +279,12 @@ void seedDevLesson() {
     state().lesson.gLessonListActive = true;
     state().lesson.gLessonEmptyActive = false;
     state().lesson.gLessonQuizActive = false;
+    state().lesson.gLessonBatchQuizActive = false;
+    state().lesson.gLessonStartActive = false;
     state().session.gShowHome = false;
-    state().lesson.gLessonIndex = 0;
-    state().lesson.gLessonPage = 0;
+    state().lesson.gLessonBatchLimit = kk::settingsLessonBatchSize();
+    state().lesson.gLessonBrowse.begin(1, state().lesson.gLessonBatchLimit);
+    state().lesson.gLessonNote[0] = 0;
     state().display.gDirty = true;
     Serial.println("[lesson] dev radical-only lesson seeded");
 }
@@ -355,7 +358,8 @@ void seedDevRejectedOutbox() {
     }
     saveOutbox();
     if (!state().review.gReviewActive && !state().review.gReviewSummary && !state().lesson.gLessonActive && !state().lesson.gLessonListActive &&
-        !state().lesson.gLessonQuizActive && !state().sync.gSyncScreen && !state().ui.gSettingsActive && !state().ui.gPauseActive &&
+        !state().lesson.gLessonQuizActive && !state().lesson.gLessonBatchQuizActive && !state().lesson.gLessonStartActive &&
+        !state().sync.gSyncScreen && !state().ui.gSettingsActive && !state().ui.gPauseActive &&
         !state().setup.gPortalActive) {
         state().ui.gOutboxScreen = false;
         state().ui.gOutboxConfirm = false;
@@ -414,7 +418,9 @@ void stopAssetServer() {
 }
 
 void startAssetServer() {
-    if (state().review.gReviewActive || state().lesson.gLessonActive || state().lesson.gLessonListActive || state().lesson.gLessonEmptyActive) {
+    if (state().review.gReviewActive || state().lesson.gLessonActive || state().lesson.gLessonListActive ||
+        state().lesson.gLessonEmptyActive || state().lesson.gLessonBatchQuizActive ||
+        state().lesson.gLessonStartActive) {
         Serial.println("[asset] finish the review/lesson first");
         return;
     }
@@ -935,10 +941,32 @@ void handleSerial() {
             }
         } else if (state().ui.gSerialLine == "g") {
             if (state().lesson.gLessonActive) {
-                ++state().lesson.gLessonPage;
+                KeyEvent ev;
+                ev.down = true;
+                ev.key = Key::Right;
+                lessonKey(ev);
                 state().display.gDirty = true;
             } else if (state().review.gReviewDetail) {
                 if (state().review.gReviewDetailPage + 1 < state().review.gReviewDetailPages) ++state().review.gReviewDetailPage;
+                state().display.gDirty = true;
+            }
+        } else if (state().ui.gSerialLine == "<") {
+            if (state().lesson.gLessonActive) {
+                KeyEvent ev;
+                ev.down = true;
+                ev.key = Key::Left;
+                lessonKey(ev);
+                state().display.gDirty = true;
+            }
+        } else if (state().ui.gSerialLine == "j") {
+            // Mirror Space on the lesson list: toggle the current row.
+            if (state().lesson.gLessonListActive) {
+                KeyEvent ev;
+                ev.down = true;
+                ev.key = Key::Other;
+                ev.x = 13;
+                ev.y = 3;
+                lessonListKey(ev);
                 state().display.gDirty = true;
             }
         } else if (state().ui.gSerialLine == "D") {
@@ -963,15 +991,15 @@ void handleSerial() {
                 startReview();
             }
         } else if (state().ui.gSerialLine == "e") {
-            if (state().lesson.gLessonListActive) {
-                if (!state().lesson.gLessonBatch.assignments.empty()) {
-                    if (state().lesson.gLessonIndex >= state().lesson.gLessonBatch.assignments.size()) state().lesson.gLessonIndex = 0;
-                    state().lesson.gLessonQuizActive = false;
-                    state().lesson.gLessonListActive = false;
-                    state().lesson.gLessonActive = true;
-                    state().lesson.gLessonPage = 0;
-                    state().display.gDirty = true;
-                }
+            KeyEvent ev;
+            ev.down = true;
+            ev.key = Key::Enter;
+            if (state().lesson.gLessonStartActive) {
+                lessonStartKey(ev);
+            } else if (state().lesson.gLessonListActive) {
+                lessonListKey(ev);
+            } else if (state().lesson.gLessonBatchQuizActive) {
+                lessonBatchQuizKey(ev);
             } else if (state().lesson.gLessonQuizActive) {
                 if (state().lesson.gLessonQuiz.complete()) {
                     state().lesson.gLessonQuizActive = false;
@@ -984,7 +1012,7 @@ void handleSerial() {
                 }
                 state().display.gDirty = true;
             } else if (state().lesson.gLessonActive) {
-                startCurrentLesson();
+                lessonKey(ev);
             } else if (state().review.gReviewActive) {
                 if (state().review.gFeedback) advanceFeedback();
                 else checkCurrent();
@@ -993,7 +1021,7 @@ void handleSerial() {
             if (state().ota.gFirmwareActive) {
                 state().ota.gFirmwareActive = false;
                 state().ui.gSettingsActive = true;
-                state().ui.gSettingsIndex = 15;
+                state().ui.gSettingsIndex = 16;
                 state().ota.gFirmwareConfirm = false;
                 state().display.gDirty = true;
             } else if (state().ui.gSettingsActive) {
@@ -1008,26 +1036,37 @@ void handleSerial() {
                 state().session.gShowHome = true;
                 releaseLessonData();
                 state().display.gDirty = true;
+            } else if (state().lesson.gLessonStartActive) {
+                KeyEvent ev;
+                ev.down = true;
+                ev.key = Key::Esc;
+                lessonStartKey(ev);
+            } else if (state().lesson.gLessonBatchQuizActive) {
+                KeyEvent ev;
+                ev.down = true;
+                ev.key = Key::Esc;
+                lessonBatchQuizKey(ev);
             } else if (state().lesson.gLessonQuizActive) {
                 state().lesson.gLessonQuizActive = false;
                 state().lesson.gLessonActive = true;
                 state().display.gDirty = true;
             } else if (state().lesson.gLessonActive) {
-                state().lesson.gLessonActive = false;
-                if (!state().lesson.gLessonBatch.assignments.empty() &&
-                    state().lesson.gLessonIndex < state().lesson.gLessonBatch.assignments.size())
-                    state().lesson.gLessonListActive = true;
-                else {
-                    state().session.gShowHome = true;
-                    releaseLessonData();
-                }
-                state().display.gDirty = true;
+                KeyEvent ev;
+                ev.down = true;
+                ev.key = Key::Esc;
+                lessonKey(ev);
             } else if (state().review.gReviewActive) {
                 endReview();
             }
         } else if (state().ui.gSerialLine.startsWith("y ")) {
             const String text = state().ui.gSerialLine.substring(2);
-            if (state().lesson.gLessonQuizActive && !state().lesson.gLessonQuiz.feedback()) {
+            if (state().lesson.gLessonBatchQuizActive && !state().lesson.gLessonBatchFeedback) {
+                if (state().lesson.gLessonBatchQueue.part() == kk::ReviewPart::Meaning)
+                    state().lesson.gLessonBatchInput += text.c_str();
+                else
+                    state().lesson.gLessonBatchDirectReading += text.c_str();
+                state().display.gDirty = true;
+            } else if (state().lesson.gLessonQuizActive && !state().lesson.gLessonQuiz.feedback()) {
                 if (state().lesson.gLessonQuiz.part() == kk::AnswerKind::Meaning)
                     state().lesson.gLessonQuizInput += text.c_str();
                 else
@@ -1206,7 +1245,7 @@ void handleSerial() {
 #endif
         } else if (!state().ui.gSerialLine.isEmpty()) {
 #ifdef KANIKEY_DEV
-            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear J=attention-outbox Y=clear-rollback C=dev-cache X=clear-cache K <keys>=type R<id>=radical U <url>=manifest F=firmware-check I=firmware-install V=firmware-screen k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload T=dev-token L=radical-lesson E=zero-due H=drop-batch A<code>=fake-start B=bad-pack-crc O=force-battery Z<s>=sleep G<n>=key-storm n=test-tone a=audio-cache\n");
+            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page-right <=page-left j=lesson-select D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear J=attention-outbox Y=clear-rollback C=dev-cache X=clear-cache K <keys>=type R<id>=radical U <url>=manifest F=firmware-check I=firmware-install V=firmware-screen k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload T=dev-token L=radical-lesson E=zero-due H=drop-batch A<code>=fake-start B=bad-pack-crc O=force-battery Z<s>=sleep G<n>=key-storm n=test-tone a=audio-cache\n");
 #else
             Serial.printf("[kk] commands: h=heap i=pack S=asset-server p=picture r=restart n=test-tone a=audio-cache up <bytes> <path>=sd-upload\n");
 #endif

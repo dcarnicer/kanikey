@@ -44,6 +44,15 @@ public:
     void build(const std::vector<Assignment>& assignments, const std::vector<Subject>& subjects,
                uint32_t now, size_t limit = 20, uint32_t seed = 0x9E3779B9u);
 
+    // Local practice over lesson subjects: no due filter, assignmentId 0 and
+    // meaning first. Wrong parts requeue exactly like a review. `limit` 0 means
+    // every subject.
+    void buildPractice(const std::vector<Subject>& subjects, size_t limit = 0,
+                       uint32_t seed = 0x9E3779B9u);
+    // Same without copying the lesson batch's subjects.
+    void buildPractice(const std::vector<const Subject*>& subjects, size_t limit = 0,
+                       uint32_t seed = 0x9E3779B9u);
+
     bool empty() const { return queue_.empty(); }
     size_t remaining() const { return queue_.size(); }
     size_t completedCount() const { return completed_.size(); }
