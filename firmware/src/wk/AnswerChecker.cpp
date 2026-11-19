@@ -250,7 +250,7 @@ AnswerCheck checkAnswer(const Subject& subject, AnswerKind kind, std::string_vie
         if (closeMeaning(subject, normalized, &closest)) {
             if (strict)
                 return warning("Close. Check the spelling");
-            return correct("Correct, with a small typo");
+            return correct("Close: " + closest);
         }
 
         // A reading where a meaning is expected.

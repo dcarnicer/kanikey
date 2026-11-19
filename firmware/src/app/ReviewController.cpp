@@ -297,8 +297,11 @@ void checkCurrent() {
     state().review.gFeedbackSubjectId = item->subjectId;
     state().review.gFeedbackPart = state().review.gQueue.part();
     state().review.gFeedbackInput = input;
+    // R6: WaniKani (the default) accepts a close meaning, Strict retries it.
+    int typos = 0;
+    const bool typosStrict = kk::settingsGetInt("rv.typos", &typos) && typos == 1;
     state().review.gCheck = kk::checkAnswer(*s, meaning ? kk::AnswerKind::Meaning : kk::AnswerKind::Reading,
-                             input, true);
+                             input, typosStrict);
     state().review.gFeedbackCorrectAt =
         state().review.gCheck.status == kk::AnswerStatus::Correct ? millis() : 0;
     state().review.gFeedback = true;

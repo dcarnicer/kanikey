@@ -595,7 +595,10 @@ void checkLessonQuiz() {
     const bool meaning = state().lesson.gLessonQuiz.part() == kk::AnswerKind::Meaning;
     const std::string input = lessonQuizInput(meaning);
     if (input.empty()) return;
-    state().lesson.gLessonQuiz.submit(input, true);
+    // R6: the lesson quiz follows the same typo policy as reviews.
+    int typos = 0;
+    const bool typosStrict = kk::settingsGetInt("rv.typos", &typos) && typos == 1;
+    state().lesson.gLessonQuiz.submit(input, typosStrict);
     const char* status = state().lesson.gLessonQuiz.result().status == kk::AnswerStatus::Correct ? "correct"
                          : state().lesson.gLessonQuiz.result().status == kk::AnswerStatus::Warning ? "warning"
                                                                                     : "incorrect";
@@ -720,9 +723,12 @@ void checkLessonBatchQuiz() {
     l.gLessonBatchSubjectId = item->subjectId;
     l.gLessonBatchPart = l.gLessonBatchQueue.part();
     l.gLessonBatchInput = input;
+    // R6: the batch quiz follows the same typo policy as reviews.
+    int typos = 0;
+    const bool typosStrict = kk::settingsGetInt("rv.typos", &typos) && typos == 1;
     l.gLessonBatchCheck =
         kk::checkAnswer(*s, meaning ? kk::AnswerKind::Meaning : kk::AnswerKind::Reading,
-                        input, true);
+                        input, typosStrict);
     l.gLessonBatchFeedback = true;
     if (l.gLessonBatchCheck.status != kk::AnswerStatus::Warning) {
         // Lesson completions are local: no outbox record, no POST /reviews and

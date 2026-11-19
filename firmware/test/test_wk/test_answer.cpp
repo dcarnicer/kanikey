@@ -180,6 +180,58 @@ static void test_n_hint_message_text() {
     TEST_ASSERT_EQUAL_STRING("Use n' before a vowel or y", c.message.c_str());
 }
 
+// ------------------------------------------------------- REV-02 typo policy
+
+static void test_close_meaning_is_correct_when_lenient() {
+    const Subject s = meaningVocab("作文", "Composition");
+    const AnswerCheck c = checkAnswer(s, AnswerKind::Meaning, "compositon", false);
+    TEST_ASSERT_EQUAL(AnswerStatus::Correct, c.status);
+}
+
+static void test_close_meaning_names_the_answer() {
+    const Subject s = meaningVocab("作文", "Composition");
+    const AnswerCheck c = checkAnswer(s, AnswerKind::Meaning, "compositon", false);
+    TEST_ASSERT_EQUAL(AnswerStatus::Correct, c.status);
+    TEST_ASSERT_EQUAL_STRING("Close: Composition", c.message.c_str());
+}
+
+static void test_close_meaning_warns_when_strict() {
+    const Subject s = meaningVocab("作文", "Composition");
+    const AnswerCheck c = checkAnswer(s, AnswerKind::Meaning, "compositon", true);
+    TEST_ASSERT_EQUAL(AnswerStatus::Warning, c.status);
+    TEST_ASSERT_TRUE(c.close);
+}
+
+static void test_strict_warning_hides_the_answer() {
+    const Subject s = meaningVocab("作文", "Composition");
+    const AnswerCheck c = checkAnswer(s, AnswerKind::Meaning, "compositon", true);
+    TEST_ASSERT_EQUAL(AnswerStatus::Warning, c.status);
+    // Neither the expected answer nor the typed misspelling may appear.
+    TEST_ASSERT_TRUE(c.message.find("Composition") == std::string::npos);
+    TEST_ASSERT_TRUE(c.message.find("composition") == std::string::npos);
+    TEST_ASSERT_TRUE(c.message.find("compositon") == std::string::npos);
+}
+
+static void test_short_word_typo_is_not_close() {
+    // Three characters allow no typo at all, so this is wrong, not close.
+    const Subject one = meaningVocab("一", "one");
+    TEST_ASSERT_EQUAL(AnswerStatus::Incorrect,
+                      checkAnswer(one, AnswerKind::Meaning, "ones", false).status);
+    const Subject eat = meaningVocab("食", "eat");
+    TEST_ASSERT_EQUAL(AnswerStatus::Incorrect,
+                      checkAnswer(eat, AnswerKind::Meaning, "eats", false).status);
+}
+
+static void test_synonym_typo_is_close() {
+    Subject s = meaningVocab("作文", "Composition");
+    s.meaningSynonyms = {"Writing"};
+    const AnswerCheck lenient = checkAnswer(s, AnswerKind::Meaning, "writting", false);
+    TEST_ASSERT_EQUAL(AnswerStatus::Correct, lenient.status);
+    TEST_ASSERT_EQUAL_STRING("Close: Writing", lenient.message.c_str());
+    const AnswerCheck strict = checkAnswer(s, AnswerKind::Meaning, "writting", true);
+    TEST_ASSERT_EQUAL(AnswerStatus::Warning, strict.status);
+}
+
 // ------------------------------------------------------- FIX-15 typo policy
 
 static void test_typo_tolerance_boundaries() {
@@ -337,6 +389,13 @@ void run_answer_tests() {
     RUN_TEST(test_long_answer_small_typo_close);
     RUN_TEST(test_two_typos_in_three_letters_not_close);
     RUN_TEST(test_exact_match_unaffected);
+
+    RUN_TEST(test_close_meaning_is_correct_when_lenient);
+    RUN_TEST(test_close_meaning_names_the_answer);
+    RUN_TEST(test_close_meaning_warns_when_strict);
+    RUN_TEST(test_strict_warning_hides_the_answer);
+    RUN_TEST(test_short_word_typo_is_not_close);
+    RUN_TEST(test_synonym_typo_is_close);
 
     RUN_TEST(test_meaning_field_capitalised_romaji_is_reading_warning);
     RUN_TEST(test_reading_field_capitalised_romaji_is_correct);
