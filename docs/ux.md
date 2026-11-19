@@ -629,6 +629,12 @@ Warning and the empty-mnemonic state (see [`docs/hardware.md`](hardware.md)).
     that item's POST is still pending. Examples: `SRS 3 -> 4  86%`,
     `SRS 3  86%`, or `History 18 reviews, 89%`.
 - `Enter: home`.
+- **SPEED-01 submission (2026-11-19).** With R12 `At session end` (default) or
+  `Every 5`, the summary may run a send loop: the outbox line becomes
+  `Sending 3/12`, a 3 px bar at y=121 fills, and `N items moved up` plus the
+  outbox count update after each item. `Esc: stop` leaves the rest pending for
+  the next sync. `Every 5` shows `Sending n/5` on the review hint bar after the
+  5th/10th completion; `Immediately` keeps one POST per completion.
 
 **Implementation note (2026-10-28).** The values use the built-in 32 px font
 and fall back to 16 px if one would cross its column. Accuracy and duration
@@ -799,13 +805,14 @@ the mnemonic. **Hardware pending:** the full quiz with mistakes, offline start,
 - The registry holds 48 rows (40 keyed settings and 8 actions) after the
   Account › Wi-Fi action. R5 `Back-to-back` (On), R8 `Auto-advance on correct`
   (Off) and R10 `Header info` (SRS+accuracy) are live and hardware pending;
-  R6 `Typos` now selects WaniKani/Strict in reviews and both lesson quizzes.
-  R7, R9 and R12 `Submit reviews` are visible and stored but do not change the
-  review yet; R2/R3 await REV-08, and R4's `Random` value is stored but the
+  R6 `Typos` now selects WaniKani/Strict in reviews and both lesson quizzes;
+  R7 `Wrong answer actions` (Off) adds C/A, R9 `Details on wrong` (Off) opens
+  the failed mnemonic and R12 `Submit reviews` chooses when completed reviews
+  are POSTed. R2/R3 await REV-08, and R4's `Random` value is stored but the
   build only distinguishes Meaning and Reading. L2 `Order`, L4–L6 and the
   other keyed rows are live where `03-settings.md` says so; P5–P6 and M1–M7
   still await their owners. The current build reads R1, R4 (Meaning/Reading),
-  R5, R6, R8, R10, R11, L1–L6, S1–S5, Y1–Y3, P1–P4 and the actions.
+  R5–R12, L1–L6, S1–S5, Y1–Y3, P1–P4 and the actions.
 - WaniKani's `reviews_presentation_order` is applied automatically and is not
   a device setting.
 - `Setup portal` reopens the Wi-Fi/token/time page; it is disabled during a

@@ -738,6 +738,10 @@ A150 G143 M81 E147 B586).
   今夜's meaning opened `ITEM DETAIL 2/6`, `MEANING MNEMONIC`, with `Tab/Esc:
   back`; the synthetic cache was cleared and the real full sync restored. The
   reading page, return path and empty-mnemonic state remain.
+- **SPEED-01.** Six native tests cover the policy values, the Every-5 boundary,
+  the summary decision and the bounded StageTracker. The summary send loop,
+  Esc-stop, offline failure, Every-5/Immediately and heap/canvas checks remain
+  on hardware.
 
 ## Round 2 hardware checks
 

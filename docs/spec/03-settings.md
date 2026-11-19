@@ -103,7 +103,7 @@ The tables below are the registry (one per section; `When` is `live`, or `live (
 | R9 | Details on wrong | Off / On | Off | `rv.details` | live (next session) | REV-07 |
 | R10 | Header info | SRS+accuracy / Minimal | SRS+accuracy | `rv.header` | live | REV-12 |
 | R11 | Prioritize critical | Off / On | Off | `rv.critical` | live (next session) | STUDY-02 |
-| R12 | Submit reviews | At session end / Every 5 / Immediately | At session end | `rv.submit` | live (next session) | SPEED-01 |
+| R12 | Submit reviews | At session end / Every 5 / Immediately | At session end | `rv.submit` | live (next session) | SPEED-01 (done) |
 
 **Lessons**
 

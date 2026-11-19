@@ -4,7 +4,7 @@ The README promise is "open it, the pending review appears, type, close". Today 
 
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
-| SPEED-01 | Submission policy | P1 | M | FIX-10 | 2 | todo |
+| SPEED-01 | Submission policy | P1 | M | FIX-10 | 2 | review (2026-11-19: merged; hardware pending) |
 | SPEED-02 | Quick and full sync | P1 | M | none | 2 | review (2026-11-19: merged; auto sync + on-demand Wi-Fi; smoke partial) |
 | SPEED-03 | Background (non-modal) sync | P1 | L | SPEED-02 | 2 (after 02) | review (2026-11-19: merged; auto sync + on-demand Wi-Fi; smoke partial) |
 | SPEED-04 | Prefetch the review batch | P2 | M | SPEED-02, SPEED-03 | 2 (after 02/03) | review (2026-11-19: merged; auto sync + on-demand Wi-Fi; smoke partial) |
@@ -49,6 +49,17 @@ a newer savedAt. Two new Summary tests (285 on the merged main); release
 1,586,677 B (86.5%), dev 1,654,337 B (90.2%). The hardware check (leave Home
 across a due bucket with no network/keys and watch the offline-clock line)
 remains.
+
+**Implementation (2026-11-19, SPEED-01).** R12 selects At session end
+(default), Every 5 or Immediately. Completed items are queued locally; the
+summary runs a one-session send loop with `Sending n/m`, a 3 px bar, live stage
+moves and outbox counts, and `Esc` leaves the rest Pending. Every 5 sends the
+batch after the 5th/10th completion (Esc stops it and the session continues);
+Immediately keeps one POST per completion. A bounded `StageTracker` replaces
+the last-pair globals so each POST reports its own pre-review stage. Six new
+native tests (374 on the merged main); release 1,632,941 B (89.0%), dev
+1,700,325 B (92.7%), RAM 32.0%. The summary loop, Esc-stop, offline failure,
+Every 5/Immediately and heap/canvas checks remain on hardware.
 
 ### SPEED-01 — Submission policy
 
