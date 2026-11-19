@@ -633,6 +633,32 @@ void draw() {
     drawBoot();
 }
 
+// True only when draw() would actually show Home. The SPEED-07 minute tick
+// must not repaint a review, a modal, the portal, the dev asset server or the
+// manual sync screen; several of those keep gShowHome set.
+bool homeOwnsScreen() {
+    if (!state().session.gShowHome) return false;
+    if (state().setup.gPortalActive || state().storage.gAssetServerActive) return false;
+    if (state().ui.gNoticeActive || state().ui.gLowBatteryPrompt ||
+        state().ui.gSignOutConfirm || state().ui.gAboutActive ||
+        state().ui.gOutboxScreen || state().stats.gStatsActive ||
+        state().study.gStudyMenuActive || state().study.gCriticalListActive ||
+        state().ota.gFirmwareActive || state().ui.gSettingsActive ||
+        state().ui.gPauseActive || state().sync.gSyncScreen ||
+        (state().sync.gSyncJob.active && state().sync.gSyncJob.modal) ||
+        state().review.gReviewDetail || state().review.gReviewActive ||
+        state().review.gReviewSummary)
+        return false;
+    if (state().lesson.gLessonEmptyActive || state().lesson.gLessonStartActive ||
+        state().lesson.gLessonListActive || state().lesson.gLessonBatchQuizActive ||
+        state().lesson.gLessonQuizActive || state().lesson.gLessonActive)
+        return false;
+#ifdef KANIKEY_DEV
+    if (state().dev.gShowDebug || state().dev.gShowRadicalTest) return false;
+#endif
+    return true;
+}
+
 }
 
 void onKey(const KeyEvent& e) { onKeyImpl(e); }
@@ -797,9 +823,13 @@ void loop() {
             state().display.gDirty = true;
         lastRateWait = rateWait;
     }
-    // Home's battery and clock otherwise freeze until the next keypress.
-    if (state().session.gShowHome && now - state().display.gLastHomeRefreshMs >= 30000) {
+    // SPEED-07: once a minute, recompute Home from the cached buckets so a
+    // review that became due shows up without a sync, and force a redraw so
+    // the battery percentage is re-read too. No network; skipped while another
+    // screen owns the display.
+    if (now - state().display.gLastHomeRefreshMs >= 60000 && homeOwnsScreen()) {
         state().display.gLastHomeRefreshMs = now;
+        applySummary(effectiveNow());
         state().display.gDirty = true;
     }
 

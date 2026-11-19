@@ -166,13 +166,40 @@ uint32_t currentAccountKey() {
 }
 
 // Without SNTP there is no battery-backed clock. Use the last cache save as
-// the reference so cached due counts and available_at checks stay meaningful.
+// the reference and advance it with uptime so a trusted-clock cache can cross
+// a due time while Home stays open (SPEED-07). gBootMs is anchored when the
+// cache is loaded during setup(); a later sync that writes a newer savedAt
+// re-anchors it so the elapsed interval is not counted twice.
+uint32_t gBootMs = 0;
+uint32_t gOfflineBaseSec = 0;
+bool gOfflineClockReady = false;
+
+uint32_t offlineBase() {
+    return state().cache.gCacheSavedAt ? state().cache.gCacheSavedAt
+                                       : state().cache.gBatch.fetchedAt;
+}
+
+void anchorOfflineClock() {
+    const uint32_t base = offlineBase();
+    if (gOfflineClockReady && base == gOfflineBaseSec) return;
+    gOfflineBaseSec = base;
+    gBootMs = millis();
+    gOfflineClockReady = base != 0;
+    if (gOfflineClockReady)
+        Serial.printf("[time] offline clock %u + uptime\n",
+                      static_cast<unsigned>(gOfflineBaseSec));
+}
+
 uint32_t effectiveNow() {
     const uint32_t now = static_cast<uint32_t>(time(nullptr));
     if (now >= 1700000000u) return now;
-    if (state().cache.gCacheSavedAt) return state().cache.gCacheSavedAt;
-    if (state().cache.gBatch.fetchedAt) return state().cache.gBatch.fetchedAt;
-    return now;
+    const uint32_t base = offlineBase();
+    if (!base) {
+        gOfflineClockReady = false;
+        return now;
+    }
+    anchorOfflineClock();
+    return gOfflineBaseSec + (millis() - gBootMs) / 1000u;
 }
 
 void applySummary(uint32_t now) {
@@ -254,6 +281,7 @@ bool loadCache() {
     state().cache.gCacheSavedAt = snapshot.meta.savedAt;
     state().session.gSyncedAt = snapshot.meta.savedAt;
     if (state().session.gSyncedAt) localHm(state().session.gSyncedAt, state().session.gSyncClock, sizeof state().session.gSyncClock);
+    anchorOfflineClock();
     pruneCacheOutbox();
     applySummary(effectiveNow());
     state().cache.gOffline = true;
