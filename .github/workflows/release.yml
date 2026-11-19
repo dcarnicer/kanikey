@@ -35,6 +35,52 @@ jobs:
         working-directory: firmware
       - name: Test the release manifest builder
         run: python3 tools/release/test_firmware_manifest.py
+      - name: Install Pillow for the font pack
+        run: python3 -m pip install --disable-pip-version-check pillow==13.0.0
+      - name: Fetch pinned Noto Sans JP
+        env:
+          NOTO_RELEASE: Sans2.004
+          NOTO_ASSET: 16_NotoSansJP.zip
+          NOTO_ASSET_SHA256: 2bbdd2c20f30670b39ca735c96d75f1fdabdb348103e43b820cf17701fd22b18
+          NOTO_OTF_SHA256: dff723ba59d57d136764a04b9b2d03205544f7cd785a711442d6d2d085ac5073
+        run: |
+          set -euo pipefail
+          font_dir="$RUNNER_TEMP/noto-sans-jp"
+          mkdir -p "$font_dir"
+          curl --fail --location --retry 3 --silent --show-error \
+            --output "$font_dir/$NOTO_ASSET" \
+            "https://github.com/notofonts/noto-cjk/releases/download/$NOTO_RELEASE/$NOTO_ASSET"
+          echo "$NOTO_ASSET_SHA256  $font_dir/$NOTO_ASSET" | sha256sum --check --strict
+          python3 -m zipfile -e "$font_dir/$NOTO_ASSET" "$font_dir"
+          echo "$NOTO_OTF_SHA256  $font_dir/NotoSansJP-Regular.otf" | sha256sum --check --strict
+      - name: Test the glyph-pack builder
+        env:
+          KANIKEY_TEST_FONT: ${{ runner.temp }}/noto-sans-jp/NotoSansJP-Regular.otf
+        run: python3 tools/glyph-pack/test_build.py
+      - name: Build and verify the public font pack
+        run: |
+          set -euo pipefail
+          python3 tools/glyph-pack/build.py --split dist \
+            --font "$RUNNER_TEMP/noto-sans-jp/NotoSansJP-Regular.otf" \
+            --token ""
+          test -s dist/glyphs.kgp
+          if [ -e dist/radicals.kgp ]; then
+            echo "error: public font-pack build wrote dist/radicals.kgp" >&2
+            exit 1
+          fi
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, "tools/glyph-pack")
+          import build
+
+          pack = Path("dist/glyphs.kgp")
+          info = build.verify(pack, build.KIND_FONT)
+          if info.version != 2 or info.glyphs < 19000 or info.radicals != 0:
+              raise SystemExit(f"error: unexpected public font pack: {info}")
+          print(f"public font pack: {info.glyphs} glyphs, {pack.stat().st_size} bytes")
+          PY
       - name: Build release firmware
         run: pio run -e cardputer-adv
         working-directory: firmware
@@ -42,24 +88,32 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
+          test -s dist/glyphs.kgp
           cp firmware/.pio/build/cardputer-adv/firmware.bin \
              dist/kanikey-cardputer-adv.bin
           cp LICENSE THIRD_PARTY_NOTICES.md dist/
           python3 tools/release/firmware_manifest.py \
             --version "${GITHUB_REF_NAME}" \
             --image dist/kanikey-cardputer-adv.bin \
+            --pack dist/glyphs.kgp \
             --out dist/kanikey-firmware.txt \
             --check-version firmware/src/Version.h
-          (cd dist && sha256sum kanikey-cardputer-adv.bin \
+          grep -Fq "$(printf 'pack\tfont\tglyphs.kgp\t')" dist/kanikey-firmware.txt
+          (cd dist && sha256sum kanikey-cardputer-adv.bin glyphs.kgp \
              kanikey-firmware.txt > SHA256SUMS)
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/kanikey-cardputer-adv.bin
+            dist/glyphs.kgp
             dist/kanikey-firmware.txt
             dist/SHA256SUMS
             dist/LICENSE
             dist/THIRD_PARTY_NOTICES.md
           generate_release_notes: true
+          body: >-
+            This release includes the public font pack `glyphs.kgp` (Noto Sans
+            JP, OFL) for **Download pack** on the setup page. The pack contains
+            no WaniKani content.
           fail_on_unmatched_files: true

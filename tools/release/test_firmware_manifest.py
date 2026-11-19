@@ -5,12 +5,14 @@
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import io
 import tempfile
 import unittest
 from pathlib import Path
 
-from firmware_manifest import ManifestError, build_manifest, parse_slot_size
+from firmware_manifest import ManifestError, build_manifest, main, parse_slot_size
 
 ROOT = Path(__file__).resolve().parents[2]
 PARTITIONS = ROOT / "firmware" / "partitions" / "kanikey_8MB.csv"
@@ -62,6 +64,57 @@ class FirmwareManifestTest(unittest.TestCase):
             text,
         )
         self.assertNotIn("pack\tfont\tglyphs.kgp\t0\t", text)
+
+    def test_cli_writes_the_pack_from_the_release_workflow(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "firmware.bin"
+            image.write_bytes(app_image(2048))
+            pack = Path(tmp) / "glyphs.kgp"
+            pack_data = b"KKGP" + bytes(64)
+            pack.write_bytes(pack_data)
+            out = Path(tmp) / "kanikey-firmware.txt"
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = main(
+                    [
+                        "--version",
+                        "v0.1.0",
+                        "--image",
+                        str(image),
+                        "--partitions",
+                        str(PARTITIONS),
+                        "--pack",
+                        str(pack),
+                        "--out",
+                        str(out),
+                    ]
+                )
+            self.assertEqual(code, 0)
+            text = out.read_text(encoding="utf-8")
+        self.assertIn("pack\tfont\tglyphs.kgp\t", text)
+        self.assertIn(hashlib.sha256(pack_data).hexdigest(), text)
+
+    def test_cli_refuses_a_missing_pack(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "firmware.bin"
+            image.write_bytes(app_image())
+            out = Path(tmp) / "kanikey-firmware.txt"
+            with contextlib.redirect_stderr(io.StringIO()):
+                code = main(
+                    [
+                        "--version",
+                        "v0.1.0",
+                        "--image",
+                        str(image),
+                        "--partitions",
+                        str(PARTITIONS),
+                        "--pack",
+                        str(Path(tmp) / "missing.kgp"),
+                        "--out",
+                        str(out),
+                    ]
+                )
+            self.assertEqual(code, 1)
+            self.assertFalse(out.exists())
 
     def test_version_must_match_header(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

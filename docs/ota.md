@@ -12,10 +12,14 @@ A release contains:
 | Asset | Purpose |
 |---|---|
 | `kanikey-cardputer-adv.bin` | app-only ESP image (magic `0xE9`) |
-| `glyphs.kgp` (optional) | public font pack for the setup page (no WaniKani content) |
+| `glyphs.kgp` | public font pack for the setup page (Noto Sans JP, OFL; no WaniKani content) |
 | `kanikey-firmware.txt` | manifest read by the device |
 | `SHA256SUMS` | host-side checks |
 | `LICENSE`, `THIRD_PARTY_NOTICES.md` | notices |
+
+The release workflow builds `glyphs.kgp` from the pinned Noto Sans JP release
+and the fixed kana + JIS X 0208 set. It is a v2 font-only pack with no WaniKani
+data.
 
 The manifest is a tab-separated UTF-8 text file, at most 8 KiB:
 
@@ -23,7 +27,7 @@ The manifest is a tab-separated UTF-8 text file, at most 8 KiB:
 #kanikey-firmware	1
 version	v0.1.0
 app	cardputer-adv	kanikey-cardputer-adv.bin	1461584	<sha256 hex>
-pack	font	glyphs.kgp	9360216	<sha256 hex>
+pack	font	glyphs.kgp	9358845	<sha256 hex>
 ```
 
 - Line 1 is the header and format version. A reader of version 1 refuses any
@@ -142,15 +146,21 @@ NVS under `fwfailver` / `fwfailcnt`.
 
 1. Bump `firmware/src/Version.h` and commit.
 2. Tag the commit `vX.Y.Z` and push the tag.
-3. `.github/workflows/release.yml` runs the native tests, builds
-   `cardputer-adv`, writes the manifest with
-   `tools/release/firmware_manifest.py` (which checks the tag against
-   `Version.h` and refuses an image larger than its slot) and publishes the
-   release. The workflow above does not build the public font pack. To include
-   it, build `dist/glyphs.kgp`, run `tools/release/firmware_manifest.py` with
-   `--pack dist/glyphs.kgp`, and attach the file to the release. Without a
-   `pack font` record, **Download pack** reports that the release has no font
-   pack, so the pack must be copied to the card.
+3. `.github/workflows/release.yml` runs the native tests, the manifest tests,
+   and the glyph-pack tests, builds `cardputer-adv`, and publishes the release.
+   It installs the pinned Pillow, downloads the pinned Noto Sans JP release
+   (`Sans2.004`, SHA-256 checked), and builds the public font pack with
+   `tools/glyph-pack/build.py --split dist` (no token, no radical images). The
+   workflow verifies `dist/glyphs.kgp` as a v2 font-only pack, writes the
+   manifest with `--pack dist/glyphs.kgp` (which checks the tag against
+   `Version.h` and refuses an image larger than its slot), includes the pack
+   in `SHA256SUMS`, and attaches the image, pack, and manifest. The job fails
+   before publishing if the pack is missing or invalid, so the workflow does
+   not publish a manifest without a `pack font` row.
+
+   To reproduce the pack locally, use the pinned download and command in
+   [tools/glyph-pack/README.md](../tools/glyph-pack/README.md). A `--split`
+   build without a token writes only the public font pack.
 
 The first OTA-capable image must be installed over USB. Every later release
 can arrive over the air. The partition table already has the two slots, so no
