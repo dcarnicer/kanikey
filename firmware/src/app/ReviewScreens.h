@@ -31,6 +31,11 @@ struct ReviewView {
     uint8_t srsStage = 0;
     int position = 1;
     int total = 0;
+    // SPEED-01: while a blocking send loop runs, the left hint (y=125) shows
+    // `Sending n/total` in place of the normal key hint.
+    bool sending = false;
+    unsigned sent = 0;
+    unsigned sendTotal = 0;
     std::string typed;   // meaning input or the reading shown in the field
     std::string romaji;  // IME raw text, reading prompt only
     kk::AnswerStatus status = kk::AnswerStatus::Incorrect;
@@ -76,6 +81,11 @@ struct ReviewSummaryView {
     unsigned lastPercentage = 0;
     bool practice = false;
     unsigned skipped = 0;
+    // SPEED-01: `Sending n/total` replaces the outbox state at y=98 and a 3 px
+    // bar at y=121 fills as the loop progresses.
+    bool sending = false;
+    unsigned sent = 0;
+    unsigned sendTotal = 0;
 };
 
 // Draws the session summary into d.

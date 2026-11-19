@@ -117,11 +117,19 @@ bool reconcileOutboxItem(kk::OutboxItem& item) {
     for (const kk::Assignment& a : as) {
         if (a.id != item.assignmentId) continue;
         if (a.dataUpdatedAt > item.createdAt && a.availableAt > item.createdAt) {
-            kk::outboxRemove(state().outbox.gOutbox, item.seq);
+            const uint32_t seq = item.seq;
+            const uint32_t assignmentId = item.assignmentId;
+            const uint32_t subjectId = item.subjectId;
+            kk::outboxRemove(state().outbox.gOutbox, seq);
             saveOutbox();
-            markCacheCompleted(item.subjectId, item.assignmentId);
+            state().review.gStageTracker.forget(assignmentId);
+            if (seq == state().review.gPendingSeq) {
+                state().review.gPendingSeq = 0;
+                state().review.gNeedsSubmit = false;
+            }
+            markCacheCompleted(subjectId, assignmentId);
             Serial.printf("[outbox] %u was already accepted\n",
-                          static_cast<unsigned>(item.assignmentId));
+                          static_cast<unsigned>(assignmentId));
             return true;
         }
         break;
@@ -194,7 +202,7 @@ bool sendOutboxItem(uint32_t seq) {
         if (rp.parse(r.body, &rv)) {
             kk::ReviewUpdate update;
             if (kk::parseReviewUpdate(rv, &update)) {
-                applyReviewUpdate(update, state().review.gPendingStageAssignment);
+                applyReviewUpdate(update);
                 if (ownJournal)
                     kk::journalPatchSrsAfter(state().review.gPendingJournalHandle, update.srsStage);
                 Serial.printf("[review] assignment %u SRS %u -> %u\n",
@@ -206,6 +214,11 @@ bool sendOutboxItem(uint32_t seq) {
         if (ownJournal) state().review.gPendingJournalHandle = 0;
         kk::outboxRemove(state().outbox.gOutbox, seq);
         saveOutbox();
+        state().review.gStageTracker.forget(assignmentId);
+        if (seq == state().review.gPendingSeq) {
+            state().review.gPendingSeq = 0;
+            state().review.gNeedsSubmit = false;
+        }
         markCacheCompleted(subjectId, assignmentId);
         Serial.printf("[outbox] sent assignment %u (%d)\n",
                       static_cast<unsigned>(assignmentId), r.httpCode);
@@ -411,8 +424,6 @@ void saveOutbox() {
 }
 
 bool queueReviewLocal(const kk::SessionItem& item) {
-    state().review.gPendingStageAssignment = item.assignmentId;
-    state().review.gPendingStageFrom = item.srsStage;
     uint32_t created = static_cast<uint32_t>(time(nullptr));
     if (created < 1700000000u) created = 0;  // clock not trusted; let the server stamp it
     const uint32_t seq = kk::outboxAdd(state().outbox.gOutbox, item.assignmentId, item.subjectId,
@@ -426,6 +437,9 @@ bool queueReviewLocal(const kk::SessionItem& item) {
         return false;
     }
     state().review.gPendingSeq = seq;
+    // SPEED-01: remember this record's pre-review stage for every item, not
+    // only the last one, so the summary can count each move.
+    state().review.gStageTracker.record(seq, item.assignmentId, item.srsStage);
     state().review.gPendingJournalHandle = 0;
     if (state().storage.gFsOk && kk::journalOpen(currentAccountKey())) {
         kk::JournalRecord record;
@@ -447,8 +461,8 @@ bool queueReviewLocal(const kk::SessionItem& item) {
     return true;
 }
 
-void sendQueuedReview(uint32_t seq) {
-    if (seq) sendOutboxItem(seq);
+bool sendQueuedReview(uint32_t seq) {
+    return seq ? sendOutboxItem(seq) : true;
 }
 
 void flushOutbox() {

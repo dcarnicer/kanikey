@@ -41,6 +41,7 @@
 #include "wk/SrsCounts.h"
 #include "wk/Stats.h"
 #include "wk/SubjectCodec.h"
+#include "wk/SubmitPolicy.h"
 #include "wk/SyncPlan.h"
 #include "wk/SyncSteps.h"
 #include "wk/Text.h"
@@ -2154,6 +2155,103 @@ static void test_outbox_stuck_remove() {
     TEST_ASSERT_EQUAL(0, outboxAttentionCount(box));
 }
 
+// ---------------------------------------------------------------- SPEED-01
+static void test_submit_policy_values() {
+    TEST_ASSERT_EQUAL(0, static_cast<int>(SubmitPolicy::AtSessionEnd));
+    TEST_ASSERT_EQUAL(5, static_cast<int>(SubmitPolicy::EveryFive));
+    TEST_ASSERT_EQUAL(1, static_cast<int>(SubmitPolicy::Immediately));
+
+    TEST_ASSERT_TRUE(submitPolicyFromValue(0) == SubmitPolicy::AtSessionEnd);
+    TEST_ASSERT_TRUE(submitPolicyFromValue(5) == SubmitPolicy::EveryFive);
+    TEST_ASSERT_TRUE(submitPolicyFromValue(1) == SubmitPolicy::Immediately);
+    // An invalid stored value shows the default.
+    TEST_ASSERT_TRUE(submitPolicyFromValue(-1) == SubmitPolicy::AtSessionEnd);
+    TEST_ASSERT_TRUE(submitPolicyFromValue(3) == SubmitPolicy::AtSessionEnd);
+    TEST_ASSERT_TRUE(submitPolicyFromValue(99) == SubmitPolicy::AtSessionEnd);
+}
+
+static void test_submit_policy_every_five_counts() {
+    const SubmitPolicy every = SubmitPolicy::EveryFive;
+    TEST_ASSERT_FALSE(submitAfterItem(every, 0));
+    for (uint32_t count = 1; count < 5; ++count)
+        TEST_ASSERT_FALSE(submitAfterItem(every, count));
+    TEST_ASSERT_TRUE(submitAfterItem(every, 5));
+    for (uint32_t count = 6; count < 10; ++count)
+        TEST_ASSERT_FALSE(submitAfterItem(every, count));
+    TEST_ASSERT_TRUE(submitAfterItem(every, 10));
+    TEST_ASSERT_TRUE(submitAfterItem(every, 15));
+    TEST_ASSERT_TRUE(submitAfterItem(every, 20));
+    TEST_ASSERT_FALSE(submitAfterItem(every, 21));
+
+    TEST_ASSERT_FALSE(submitAfterItem(SubmitPolicy::AtSessionEnd, 5));
+    TEST_ASSERT_FALSE(submitAfterItem(SubmitPolicy::AtSessionEnd, 50));
+    TEST_ASSERT_FALSE(submitAfterItem(SubmitPolicy::Immediately, 0));
+    TEST_ASSERT_TRUE(submitAfterItem(SubmitPolicy::Immediately, 1));
+    TEST_ASSERT_TRUE(submitAfterItem(SubmitPolicy::Immediately, 7));
+}
+
+static void test_submit_policy_session_end() {
+    TEST_ASSERT_TRUE(submitAtSessionEnd(SubmitPolicy::AtSessionEnd));
+    // The tail of an Every 5 session is sent when the summary opens too.
+    TEST_ASSERT_TRUE(submitAtSessionEnd(SubmitPolicy::EveryFive));
+    TEST_ASSERT_FALSE(submitAtSessionEnd(SubmitPolicy::Immediately));
+}
+
+static void test_stage_tracker_per_assignment() {
+    StageTracker tracker;
+    tracker.record(11, 1001, 3);
+    tracker.record(12, 1002, 5);
+    TEST_ASSERT_EQUAL(2, tracker.size());
+    TEST_ASSERT_EQUAL_UINT32(11, tracker.seqAt(0));
+    TEST_ASSERT_EQUAL_UINT32(1001, tracker.assignmentAt(0));
+    TEST_ASSERT_EQUAL_UINT32(12, tracker.seqAt(1));
+    TEST_ASSERT_EQUAL_UINT32(1002, tracker.assignmentAt(1));
+    TEST_ASSERT_EQUAL(3, tracker.fromStage(1001));
+    TEST_ASSERT_EQUAL(5, tracker.fromStage(1002));
+
+    // Re-queuing the same assignment updates its stage and keeps one slot.
+    tracker.record(13, 1001, 4);
+    TEST_ASSERT_EQUAL(2, tracker.size());
+    TEST_ASSERT_EQUAL(4, tracker.fromStage(1001));
+    TEST_ASSERT_EQUAL_UINT32(13, tracker.seqAt(0));
+
+    TEST_ASSERT_TRUE(tracker.forget(1001));
+    TEST_ASSERT_EQUAL(0, tracker.fromStage(1001));
+    TEST_ASSERT_EQUAL(1, tracker.size());
+    TEST_ASSERT_EQUAL(5, tracker.fromStage(1002));
+    TEST_ASSERT_FALSE(tracker.forget(1001));
+    TEST_ASSERT_TRUE(tracker.forget(1002));
+    TEST_ASSERT_EQUAL(0, tracker.size());
+}
+
+static void test_stage_tracker_unknown_is_zero() {
+    StageTracker tracker;
+    TEST_ASSERT_EQUAL(0, tracker.fromStage(1));
+    tracker.record(1, 10, 7);
+    TEST_ASSERT_EQUAL(0, tracker.fromStage(11));
+    TEST_ASSERT_EQUAL_UINT32(0, tracker.seqAt(1));
+    TEST_ASSERT_EQUAL_UINT32(0, tracker.assignmentAt(1));
+    tracker.clear();
+    TEST_ASSERT_EQUAL(0, tracker.fromStage(10));
+    TEST_ASSERT_EQUAL(0, tracker.size());
+}
+
+static void test_stage_tracker_bounded() {
+    StageTracker tracker;
+    for (size_t i = 0; i < StageTracker::kCapacity + 10; ++i)
+        tracker.record(static_cast<uint32_t>(i + 1),
+                       static_cast<uint32_t>(1000 + i), static_cast<uint8_t>(i % 9));
+    TEST_ASSERT_EQUAL(StageTracker::kCapacity, tracker.size());
+    TEST_ASSERT_EQUAL(kOutboxMax, StageTracker::kCapacity);
+    // The newest record is kept and the oldest ones were evicted.
+    const uint32_t newest = 1000 + static_cast<uint32_t>(StageTracker::kCapacity + 9);
+    TEST_ASSERT_EQUAL(static_cast<uint8_t>((StageTracker::kCapacity + 9) % 9),
+                      tracker.fromStage(newest));
+    TEST_ASSERT_EQUAL(0, tracker.fromStage(1000));
+    tracker.clear();
+    TEST_ASSERT_EQUAL(0, tracker.size());
+}
+
 // ---------------------------------------------------------------- http retry
 static void test_http_retry_policy() {
     struct RetryCase {
@@ -3784,6 +3882,12 @@ int main(int, char**) {
     RUN_TEST(test_outbox_capacity_and_next_seq);
     RUN_TEST(test_outbox_stuck_counts);
     RUN_TEST(test_outbox_stuck_remove);
+    RUN_TEST(test_submit_policy_values);
+    RUN_TEST(test_submit_policy_every_five_counts);
+    RUN_TEST(test_submit_policy_session_end);
+    RUN_TEST(test_stage_tracker_per_assignment);
+    RUN_TEST(test_stage_tracker_unknown_is_zero);
+    RUN_TEST(test_stage_tracker_bounded);
     RUN_TEST(test_http_retry_policy);
     RUN_TEST(test_cache_account_key);
     RUN_TEST(test_cache_snapshot_round_trip);

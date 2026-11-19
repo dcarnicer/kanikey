@@ -74,6 +74,7 @@
 #include "wk/SessionStats.h"
 #include "wk/Stats.h"
 #include "wk/SubjectText.h"
+#include "wk/SubmitPolicy.h"
 #include "wk/Text.h"
 #include "wk/Time.h"
 #include "ui/Theme.h"
@@ -97,6 +98,8 @@ int detailPageKind(int index, const kk::Subject& s);
 bool reviewWrongActionsEnabled();
 // REV-07: R9 opens the mnemonic page on a wrong answer.
 bool reviewDetailsOnWrongEnabled();
+// SPEED-01: R12 selects when completed reviews are POSTed.
+kk::SubmitPolicy reviewSubmitPolicy();
 // Queue, persist and count one completed item (normal answers and C).
 void applyCompletion();
 
@@ -136,6 +139,29 @@ bool reviewWrongActionsEnabled() {
 bool reviewDetailsOnWrongEnabled() {
     int value = 0;
     return kk::settingsGetInt("rv.details", &value) && value != 0;
+}
+
+kk::SubmitPolicy reviewSubmitPolicy() {
+    int value = 0;
+    if (!kk::settingsGetInt("rv.submit", &value)) return kk::SubmitPolicy::AtSessionEnd;
+    return kk::submitPolicyFromValue(value);
+}
+
+// The blocking send loop still owns input: Esc stops it between items, just
+// like the old sync stop path. Other keys are swallowed so they cannot leak
+// into the answer field of the next prompt.
+bool sendStopRequested() {
+    tgc::board::update();
+    bool any = false;
+    bool stop = false;
+    KeyEvent e;
+    while (tgc::board::nextKeyEvent(&e)) {
+        if (e.key == Key::None) continue;
+        any = true;
+        if (e.down && e.key == Key::Esc) stop = true;
+    }
+    if (any) state().ui.gLastInputAt = millis();
+    return stop;
 }
 
 // The serial test helper can inject a reading directly; release builds only
@@ -233,6 +259,10 @@ void showReview() {
     if (state().review.gFeedback && state().review.gFeedbackCompleted)
         view.position = static_cast<int>(state().review.gQueue.completedCount());
     if (view.position > view.total) view.position = view.total;
+    view.sending = state().review.gSending;
+    view.sent = static_cast<unsigned>(state().review.gSendSent);
+    view.sendTotal = static_cast<unsigned>(state().review.gSendTotal);
+    if (view.sending) view.escHint = "Esc: stop";
     if (!state().review.gFeedback) {
         view.typed = reviewInput(part == kk::ReviewPart::Meaning);
         view.romaji = state().review.gIme.raw();
@@ -329,6 +359,9 @@ void showReviewSummary() {
     view.lastHasStats = lastSubject && lastSubject->hasReviewStats;
     view.practice = state().study.gPracticeActive;
     view.skipped = static_cast<unsigned>(state().study.gPracticeSkipped);
+    view.sending = state().review.gSending;
+    view.sent = static_cast<unsigned>(state().review.gSendSent);
+    view.sendTotal = static_cast<unsigned>(state().review.gSendTotal);
     if (lastSubject) {
         view.lastReviewCount = static_cast<unsigned>(lastSubject->reviewCount());
         view.lastPercentage = lastSubject->percentageCorrect;
@@ -339,6 +372,57 @@ void showReviewSummary() {
     drawReviewSummaryScreen(d, view);
     d.endWrite();
     present();
+}
+
+// SPEED-01: sends the records queued by this session one at a time. Called
+// from the summary (At session end / the Every 5 tail) and from feedback when
+// the policy is due. One keep-alive session for the batch; the canvas is
+// released for the requests and restored after the loop. A failed send, an
+// armed auth/rate gate or Esc stops the loop; unsent records stay Pending.
+void sendPendingSession(bool onlyLatest = false) {
+    auto& r = state().review;
+    if (r.gSending) return;
+    std::vector<uint32_t> seqs;
+    if (onlyLatest) {
+        // Immediately keeps today's one-POST-per-completion behaviour: only
+        // the record just queued, never an older failed item.
+        if (r.gStageTracker.size())
+            seqs.push_back(r.gStageTracker.seqAt(r.gStageTracker.size() - 1));
+    } else {
+        seqs.reserve(r.gStageTracker.size());
+        for (size_t i = 0; i < r.gStageTracker.size(); ++i) {
+            const uint32_t seq = r.gStageTracker.seqAt(i);
+            if (seq) seqs.push_back(seq);
+        }
+    }
+    if (seqs.empty() || seqs.front() == 0) return;
+
+    r.gSending = true;
+    r.gSendTotal = static_cast<uint32_t>(seqs.size());
+    r.gSendSent = 0;
+    auto redraw = []() {
+        if (state().review.gReviewSummary)
+            showReviewSummary();
+        else
+            showReview();
+    };
+    redraw();
+    {
+        kk::WkSessionGuard session;
+        for (uint32_t seq : seqs) {
+            if (sendStopRequested()) break;
+            ++r.gSendSent;
+            redraw();
+            if (!sendQueuedReview(seq)) break;
+            // Redraw between items so stage moves and the outbox count are live.
+            redraw();
+            if (kk::wkAuthBlocked() || kk::wkRateLimitWaitSeconds() > 0) break;
+        }
+    }
+    r.gSending = false;
+    r.gSendSent = 0;
+    r.gSendTotal = 0;
+    redraw();
 }
 
 void checkCurrent() {
@@ -390,11 +474,15 @@ void advanceFeedback() {
         state().display.gDirty = true;
         return;
     }
-    if (state().review.gNeedsSubmit) {
-        sendQueuedReview(state().review.gPendingSeq);
-        state().review.gPendingSeq = 0;
-        state().review.gNeedsSubmit = false;
-    }
+    // SPEED-01: Immediately sends this item, Every 5 sends the batch after the
+    // 5th/10th completion; the default leaves everything for the summary. Only
+    // a feedback frame that completed an item may trigger a send, so A/later
+    // on a wrong part never retries.
+    const kk::SubmitPolicy policy = reviewSubmitPolicy();
+    const uint32_t completed = static_cast<uint32_t>(state().review.gQueue.completedCount());
+    if (state().review.gFeedbackCompleted && kk::submitAfterItem(policy, completed) &&
+        state().review.gStageTracker.size())
+        sendPendingSession(policy == kk::SubmitPolicy::Immediately);
     state().review.gReviewDetail = false;
     state().review.gFeedback = false;
     state().review.gFeedbackCompleted = false;
@@ -403,6 +491,10 @@ void advanceFeedback() {
         state().review.gReviewElapsedMs = millis() - state().review.gReviewStartMs;
         state().review.gReviewActive = false;
         state().review.gReviewSummary = true;
+        // The tail of an Every 5 session and every At session end session goes
+        // out on the summary. Esc in this loop leaves the rest pending.
+        if (kk::submitAtSessionEnd(policy) && state().review.gStageTracker.size())
+            sendPendingSession();
     }
     state().display.gDirty = true;
 }
@@ -424,12 +516,18 @@ bool reviewAutoAdvance(uint32_t now) {
     return true;
 }
 
-void endReview() {
-    if (state().review.gNeedsSubmit) {
-        sendQueuedReview(state().review.gPendingSeq);
-        state().review.gPendingSeq = 0;
-        state().review.gNeedsSubmit = false;
-    }
+void endReview(bool send) {
+    // The summary's own loop already ran; do not retry what Esc left pending
+    // when Enter/Esc closes the session. Pause/End submits the session tail
+    // unless the caller (SPEED-06 sleep) asks to send nothing.
+    if (send && !state().review.gReviewSummary && state().review.gStageTracker.size())
+        sendPendingSession();
+    state().review.gNeedsSubmit = false;
+    state().review.gPendingSeq = 0;
+    state().review.gSending = false;
+    state().review.gSendSent = 0;
+    state().review.gSendTotal = 0;
+    state().review.gStageTracker.clear();
     state().ui.gPauseActive = false;
     state().ui.gSettingsActive = false;
     state().ui.gAboutActive = false;
@@ -474,8 +572,10 @@ void startReview() {
     state().review.gReviewDetail = false;
     state().review.gReviewDetailPage = 0;
     state().review.gStageChange = StageChange{};
-    state().review.gPendingStageAssignment = 0;
-    state().review.gPendingStageFrom = 0;
+    state().review.gStageTracker.clear();
+    state().review.gSending = false;
+    state().review.gSendSent = 0;
+    state().review.gSendTotal = 0;
     state().review.gStageUps = 0;
     state().review.gReviewElapsedMs = 0;
     state().review.gFeedbackCorrectAt = 0;
@@ -687,11 +787,13 @@ bool reviewKey(const KeyEvent& e) {
 // Applies the SRS stage change parsed from a successful POST /reviews. The
 // outbox calls this; the journal patch stays there because only the sender
 // knows which record it queued.
-void applyReviewUpdate(const kk::ReviewUpdate& update, uint32_t pendingAssignment) {
+void applyReviewUpdate(const kk::ReviewUpdate& update) {
     state().review.gStageChange.valid = true;
     state().review.gStageChange.to = update.srsStage;
+    // SPEED-01: the tracker holds every session record's pre-review stage, so
+    // each successful POST can report its own move.
     state().review.gStageChange.from =
-        update.assignmentId == pendingAssignment ? state().review.gPendingStageFrom : 0;
+        state().review.gStageTracker.fromStage(update.assignmentId);
     if (state().review.gStageChange.from &&
         state().review.gStageChange.to > state().review.gStageChange.from)
         ++state().review.gStageUps;
