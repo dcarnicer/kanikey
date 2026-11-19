@@ -611,15 +611,20 @@ the dev image: 1,622,625 B / 1,835,008 B flash (88.4%), 96,336 B RAM (29.4%);
   then reflashed with the dev 0.1.0 image. The bad-first-boot/two-strike
   rollback was not run.
 
-- **SPEED auto-sync (not merged).** The non-modal SPEED-02/03/04 job from
-  `spec/SPEED-sync` joins Wi-Fi, draws Home, and then stops at
-  `SyncStep::Time` after the first pass (`sub 0`, trusted clock, no pause
-  screen; the loop stops reaching its end log). A first fix replaced the
-  blocking `configTzTime()` with the ESP-IDF SNTP task and made Time a pure
-  poll; the second smoke reaches `[time] synced` but still stops before the
-  next request. The merge was reverted from `main`; the branch is under a
-  second investigation. The manual modal Sync now path is the stable
-  behaviour.
+- **SPEED auto-sync (merged 2026-11-19).** The first smoke stopped at
+  `SyncStep::Time`; the blocking `configTzTime()` was replaced by the ESP-IDF
+  SNTP task with progress recorded first. The second smoke reached
+  `[time] synced` but the loop returned on a blank panel before
+  `syncAdvance()`; a background job now advances while blank and the idle
+  timer is refreshed after each step. The automatic quick sync then logs the
+  step transitions, `/v2/summary` and `[sync] complete`; a recent cache skips
+  the sync (expected) and the first on-demand lesson/review fetch joins Wi-Fi.
+  The lesson list/card/quiz smoke below runs with that path.
+- **Lesson batch smoke (LES-01/02/03).** With the automatic sync skipped, `L`
+  joined Wi-Fi on demand, fetched 5 lessons and showed the `1/5` list; Enter
+  opened the `1/5 p1/4` card and the batch quiz showed `LESSON QUIZ 1/5`. No
+  `[lesson] start` was sent. The real start, full quiz with mistakes, offline
+  start and 422 remain.
 
 Remaining hardware checks: API-02 429 (native-tested; a real 429 was not
 provoked), API-03 403 (read-only token), FIX-06 slow server, FIX-07 15-minute

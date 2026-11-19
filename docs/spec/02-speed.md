@@ -5,26 +5,27 @@ The README promise is "open it, the pending review appears, type, close". Today 
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
 | SPEED-01 | Submission policy | P1 | M | FIX-10 | 2 | todo |
-| SPEED-02 | Quick and full sync | P1 | M | none | 2 | review (branch; hardware hang) |
-| SPEED-03 | Background (non-modal) sync | P1 | L | SPEED-02 | 2 (after 02) | review (branch; hardware hang) |
-| SPEED-04 | Prefetch the review batch | P2 | M | SPEED-02, SPEED-03 | 2 (after 02/03) | review (branch; hardware hang) |
+| SPEED-02 | Quick and full sync | P1 | M | none | 2 | review (2026-11-19: merged; auto sync + on-demand Wi-Fi; smoke partial) |
+| SPEED-03 | Background (non-modal) sync | P1 | L | SPEED-02 | 2 (after 02) | review (2026-11-19: merged; auto sync + on-demand Wi-Fi; smoke partial) |
+| SPEED-04 | Prefetch the review batch | P2 | M | SPEED-02, SPEED-03 | 2 (after 02/03) | review (2026-11-19: merged; auto sync + on-demand Wi-Fi; smoke partial) |
 | SPEED-05 | TLS keep-alive (spike, then implement) | P2 | L | none | 2 | todo |
 | SPEED-06 | Light sleep before deep sleep (spike first) | P2 | M | SPEED-01 (for `endReview(send)`) | 2 | todo |
 | SPEED-07 | Home updates over time | P2 | S | none | 2 | todo |
 
-**Implementation (2026-11-19).** SPEED-02/03/04 are implemented on
-`spec/SPEED-sync`: pure `SyncPlan`/`SyncSteps`, a non-modal job with at most
-one request per loop pass, quick/full boot planning from cache times, an
-automatic prefetch, cache v12 (`lastFullAt`/`lastQuickAt`/`lastUserAt`, v11
-still loads), and the Y1/Y2/Y3 accessors (not yet in the Settings menu). 17 new
-native tests (233 on the branch). A hardware smoke found the automatic job
-stops at `SyncStep::Time` after the first pass (`sub 0`, trusted clock, no
-pause screen, no further loop passes), so the merge was reverted from `main`
-and the branch is being fixed. A first fix replaced the blocking
-`configTzTime()` with the ESP-IDF SNTP task and made the Time step a pure poll:
-the hardware smoke now reaches `[time] synced`, but the job still stops before
-the next request, so a second fix is in progress. The manual modal Sync now
-path remains the current stable behaviour.
+**Implementation (2026-11-19).** SPEED-02/03/04 are merged: pure
+`SyncPlan`/`SyncSteps`, a non-modal job with at most one request per loop pass,
+quick/full boot planning from cache times, an automatic prefetch, cache v12
+(`lastFullAt`/`lastQuickAt`/`lastUserAt`, v11 still loads), and the Y1/Y2/Y3
+accessors (not yet in the Settings menu). 17 + 3 + 1 native tests; 260 on the
+merged main. Two hardware stalls were found and fixed: the first replaced the
+blocking `configTzTime()` with the ESP-IDF SNTP task and recorded progress
+before the call; the second stopped the loop from advancing a background job
+while the panel was blank and now refreshes the idle timer after each step.
+The automatic quick sync reaches `[time] synced` and the later steps; a recent
+cache skips the sync (expected), and the first on-demand lesson/review fetch
+joins Wi-Fi. Still to check on hardware: the untrusted-clock/SNTP path, a full
+auto sync with prefetch, the manual modal screen with Enter/Esc, a short blank
+timeout, and 429/auth. Y1–Y3 stay out of the Settings menu until CFG.
 
 ### SPEED-01 — Submission policy
 

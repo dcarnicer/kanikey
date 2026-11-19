@@ -97,10 +97,12 @@ writes a journal record with `lessonStarted`. The pure parts are
 `wk/LessonSession`, `wk/ReviewQueue::buildPractice` and
 `Summary::removeLessonSubjects`; 15 new native tests (231 on the branch, 239 on
 the merged main). Builds: release 1,573,037 B (85.7%), dev 1,640,489 B
-(89.4%). Hardware checks still pending: browse with no `[lesson] start` log, a
-5-item quiz with two mistakes and no outbox growth, a real 5-item start with
-the Home count dropping without a sync, offline start, 422, L3 = Skip and the
-visual checks.
+(89.4%). Hardware smoke 2026-11-19: the 5-item list (`1/5`), the first card
+(`1/5 p1/4`) and the batch quiz (`LESSON QUIZ 1/5`) were captured; the list
+fetch, card and quiz sent no `[lesson] start`. Still pending: a real 5-item
+start with the Home count dropping without a sync, a full quiz with two
+mistakes and no outbox growth, offline start, 422, L3 = Skip and the visual
+checks.
 
 ### LES-04 — Ordering
 
