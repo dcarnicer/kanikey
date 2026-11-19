@@ -9,13 +9,13 @@ These twelve tasks turn the review session into a configurable, WaniKani-faithfu
 | REV-03 | Useful wrong-answer line | P2 | S | ARCH-01 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-04 | Wrong-answer actions | P2 | M | ARCH-01, ARCH-02, ARCH-03 | 2 | todo |
 | REV-05 | Wrap up | P2 | M | ARCH-01 | 2 | todo |
-| REV-06 | Auto-advance on correct | P2 | S | ARCH-01, ARCH-02 | 2 | todo |
+| REV-06 | Auto-advance on correct | P2 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-07 | Details on wrong | P3 | S | ARCH-01, ARCH-02 | 2 | todo |
 | REV-08 | More review orders | P2 | L | ARCH-01, ARCH-02, ARCH-03; SPEED-05 for option B | 2 | todo |
-| REV-09 | Back-to-back | P2 | S | ARCH-01, ARCH-02 | 2 | todo |
+| REV-09 | Back-to-back | P2 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-10 | Input editing | P2 | M | ARCH-01 | 2 | todo |
 | REV-11 | Richer session summary | P2 | M | ARCH-01, SPEED-01 | 2 | todo |
-| REV-12 | Minimal header | P3 | S | ARCH-01, ARCH-02 | 2 | todo |
+| REV-12 | Minimal header | P3 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
 
 **Implementation (2026-11-19).** REV-01/03 are merged: feedback lists every
 accepted meaning/reading (kanji readings grouped by type) with synonyms faint
@@ -25,6 +25,14 @@ shows the first hint sentence or the user note instead of the generic
 merge; 285 with CFG/SPEED-07). Release at merge 1,584,233 B (86.3%), dev
 1,651,793 B (90.0%). Hardware feedback checks (multiple meanings, grouped
 readings, hint fallback, lesson quiz) remain.
+
+**Implementation (2026-11-19, REV-06/09/12).** Auto-advance is live behind R8
+`rv.advance` (Off by default; 0.5/1/2 s; a printable key advances early and
+feeds the next field; wrong/warning/detail/pause/blank never advance).
+Back-to-back is live behind R5 `rv.b2b` (On default; Off interleaves correct and
+wrong answers; a single-item queue still asks the other part). R10 `rv.header`
+`Minimal` hides only the SRS block. 293 native tests on the merged main; the
+hardware checks are pending.
 
 ### REV-01 — Show all accepted answers on feedback
 

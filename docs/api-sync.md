@@ -1,6 +1,6 @@
 # KaniKey — API, cache and synchronization
 
-> Design, 2026-10-25; implementation notes through 2026-10-29. This document is
+> Design, 2026-10-25; implementation notes through 2026-11-19. This document is
 > the contract between the firmware and the WaniKani API, and between the
 > firmware and local storage.
 
@@ -31,6 +31,7 @@
 | Auth | `Authorization: Bearer <token>` |
 | Format | JSON; collections with `data`, `pages`, `total_count` |
 | Pagination | `page_after_id` / `page_before_id`; 500 per page (1,000 for subjects/reviews) |
+| Transport | HTTP/1.0 with `Connection: close`; one TLS connection per request |
 | Filters | `updated_after`, `ids`, `levels`, `subject_ids`, `immediately_available_for_*` |
 | Rate limit | 60 requests/minute; `RateLimit-*` headers |
 | Conditional | `If-None-Match` / `If-Modified-Since`; 304 with no body |
@@ -65,13 +66,13 @@ ISO 8601 in UTC, with microseconds and `Z`. KaniKey only needs seconds.
 
 | Method | Endpoint | What for | Frequency |
 |---|---|---|---|
-| GET | `/user` | User, level, subscription, preferences | Every sync (boot or manual) |
-| GET | `/summary` | Reviews/lessons per hour, `next_reviews_at` | Every sync (boot or manual) |
-| GET | `/assignments` | Stages, `available_at`, assignment IDs | Per review/lesson batch; five SRS count requests, plus one of the two level count requests (passed kanji) per sync |
-| GET | `/subjects` | Meanings, readings, components, mnemonics | When the batch IDs need data; plus one of the two level count requests (kanji total) per sync |
+| GET | `/user` | User, level, subscription, preferences | Every full sync; a quick sync only on a cold boot or when the last `/user` is 6 h old |
+| GET | `/summary` | Reviews/lessons per hour, `next_reviews_at` | Every quick or full sync |
+| GET | `/assignments` | Stages, `available_at`, assignment IDs | Per review/lesson batch; five SRS count requests, plus one of the two level count requests (passed kanji) per full sync |
+| GET | `/subjects` | Meanings, readings, components, mnemonics | When the batch IDs need data; plus one of the two level count requests (kanji total) per full sync |
 | GET | `/study_materials` | User synonyms and notes | Per review/lesson batch |
-| GET | `/review_statistics` | Per-subject accuracy and streaks | Per review batch |
-| GET | `/level_progressions` | Current level and level-up timestamps | Every sync |
+| GET | `/review_statistics` | Per-subject accuracy and streaks | Per review batch; the Critical step on a full sync |
+| GET | `/level_progressions` | Current level and level-up timestamps | Every full sync |
 | POST | `/reviews` | Send a completed review | Per item |
 | PUT | `/assignments/{id}/start` | Start a lesson | Per lesson |
 
@@ -326,6 +327,13 @@ Body:
   failed-items retry screen. Browsing and the local quiz never send a start;
   only the confirmation does.
 
+**Implementation (2026-11-19, LES-03).** The start plan is the L1 selection
+(at most the account's `lessons_batch_size`). The batch quiz runs first unless
+L3 `Skip`; the confirmation then sends one `PUT` per item and draws
+`Starting n/m`. A started item writes a journal record with `lessonStarted`
+and leaves the summary buckets and the cached snapshot, so Home drops the count
+without a sync. The lesson controller keeps the unstarted items for a retry.
+
 ### 3.8 `/review_statistics`
 
 Fields used: `subject_id`, `meaning_correct`, `meaning_incorrect`,
@@ -366,7 +374,8 @@ for the kanji total, and
 `/assignments?levels=<level>&subject_types=kanji&srs_stages=5,6,7,8,9&hidden=false&page_after_id=999999999`
 for the kanji passed (Guru or later). If either count fails, both are stored as
 0 and the timestamps remain valid; the counts never fail the Level step on
-their own. The snapshot stores the timestamps and counts in `KKCA` v11. Home
+their own. The snapshot stores the timestamps and counts in `KKCA` v11 (v12
+with the sync times since SPEED-02). Home
 shows the low-priority status line `L8 42% since 03 Feb` (rounded
 `passed * 100 / total`, 0 when the total is unknown) when no
 sync/outbox/offline/level-up message is more urgent; without counts it keeps
@@ -431,35 +440,64 @@ previous cached value.
 
 - Boot draws the cached Home before Wi-Fi work, so a saved cache is usable
   offline.
+- With a token and saved Wi-Fi, the boot plan chooses `Skip`, `Quick` or `Full`
+  from the cache times and Y1/Y2 (§5.3). A wake runs `Quick`; a cold boot runs
+  `Full` when the interval is due. A cache younger than 5 min skips the
+  automatic sync entirely.
 - A missing or unreadable cache with a configured token goes to sync; an
   unconfigured device goes to setup. Neither is a hard error.
 
-### 5.3 Sync (boot or manual)
+### 5.3 Sync (automatic boot/wake or manual)
 
 ```
+plan: Skip | Quick | Full
+  Skip  = the last successful sync is younger than 5 min
+  Quick = Wi-Fi, SNTP, outbox, /summary; /user on a cold boot or after 6 h
+  Full  = Quick + level progress + SRS counts + Critical
+          (+ review prefetch on an automatic full)
+
 1. Join Wi-Fi; wait up to 5 s for SNTP
 2. Flush the outbox (see §6)
-3. GET /user                     → user, level, max_level_granted
+3. GET /user                     → when the plan needs it
 4. GET /summary                  → counters (streaming parser)
-5. GET /level_progressions       → current level timestamps
-   GET /subjects + /assignments  → level kanji total and passed counts
-6. Five GET /assignments count requests for the SRS bar
-7. The summary/level/SRS steps save the snapshot as they succeed
+5. Full only: GET /level_progressions, the two level counts,
+   five SRS counts and the Critical list
+6. Full automatic only: prefetch the review batch
+7. The separate steps save the snapshot as they succeed
 ```
 
+- The automatic job is non-modal: Home stays up with `sync n/m` in the header
+  and the job performs one request per loop pass. `Enter` starts a cached
+  review at the next step boundary, `Esc` opens Settings, and the job pauses
+  while another screen owns the display (SPEED-03). Y1/Y2 choose the plan and
+  Y3 gates the prefetch. Settings › `Sync now` always runs Full and uses the
+  modal seven-row screen; `Esc` cancels it at a step boundary.
 - Order matters: the outbox first, so a later `/summary` reflects the reviews
   that were sent.
-- Account and Summary are blocking steps: an error stops the sync and leaves
-  the sync screen on `Sync failed`. Level and SRS are non-critical; a failure
-  is a warning (or a still-valid cached value) and keeps the previous data.
+- Account and Summary are blocking steps: an error stops the job. The manual
+  screen shows `Sync failed`; the automatic job shows the issue on Home under
+  the normal status priority. Level, SRS and Critical are non-critical; a
+  failure is a warning (or a still-valid cached value) and keeps the previous
+  data. The prefetch predicate is due reviews > 0, a cached batch below R1 and
+  a battery above 20%; a failed prefetch keeps the previous batch.
 - If the outbox flush fails due to network, the sync continues with the
-  remaining steps. No assignment list is fetched by the sync itself in any case.
+  remaining steps. A full automatic sync may fetch the due review batch as its
+  last step; the planning steps themselves never fetch that batch.
 - If the flush hits 422/409, that item is marked `rejected` with its HTTP code
   and kept for the Outbox screen; the flush continues with the next pending
   item. A 401 arms the session gate and a 403 is reported for the endpoint;
   both leave the item `Pending` (see §6).
 - A 429 arms the shared rate-limit gate; later requests are answered locally
   until the reset and the sync reports the countdown.
+- `KKCA` v12 stores `lastFullAt`, `lastQuickAt` and `lastUserAt` for the plan;
+  a v11 snapshot loads with all three set to its `savedAt`.
+- **Transport (SPEED-05 reverted, 2026-11-19):** every request opens its own
+  `WiFiClientSecure` and sends HTTP/1.0 with `Connection: close`. The
+  keep-alive/chunked implementation was merged and reverted after a manual sync
+  stalled at `Outbox` with no `[http]` line and only continued after serial
+  input; the branch `spec/SPEED-05-keepalive` keeps it for a re-land. The
+  HTTP/1.0 timings in `docs/hardware.md` still apply; the stall is recorded
+  there under 2026-11-19.
 
 **Not implemented yet:** the global `assignments`/`subjects` delta, ETag/304 and
 `updated_after` warm sync. Review and lesson batches fetch their own
@@ -500,8 +538,12 @@ item_complete:
 
 **Implementation (2026-10-28).** `ReviewQueue` shuffles the frozen batch and
 then stable-sorts by subject level when the cached `User` says
-`lower_levels_first`; the shuffle stays inside each level. The local `Order`
-setting is separate and only selects meaning-first or reading-first.
+`lower_levels_first`; the shuffle stays inside each level. The local R4 `First
+question` setting is separate and selects meaning-first or reading-first; its
+`Random` choice is stored but has no queue effect yet. R2/R3 (review order and
+type order) are not wired yet either. R5 `Back-to-back` (On by default) changes
+only when the other part is asked; R8 auto-advance is UI-only. Neither changes
+the queue contents or the `POST /reviews` body.
 
 The shuffled batch is a sample of the whole due set: `runBatch()` reads all due
 IDs (up to 1000 per bucket), `sampleIds()` picks the configured batch size with
@@ -518,6 +560,10 @@ unchanged.
 
 - `summary` is refreshed; Home recalculates the due/lesson counters and the
   next review time from it.
+- While Home stays open, the due count and `Next review` are recomputed from the
+  cached hourly buckets once a minute without a request (SPEED-07); with an
+  untrusted clock the effective time advances with uptime from the cache save.
+  A newly due item is counted even if it is not in the cached batch.
 - There is no separate “N new reviews” banner; the Home counters are the
   authoritative display.
 - If an outbox item was rejected (422/409) or reached the attempt cap, it is
@@ -686,9 +732,10 @@ confirmation.
   the old file is copied to `.bak`, then `.tmp` replaces `main` in one rename.
   FAT (the SD card, where the subject cache lives) refuses to rename onto an
   existing file, so there `main` is renamed to `.bak` and `.tmp` to `main`,
-  without a copy (the card is mounted with two file slots and the glyph pack
-  holds one); a power cut in between leaves `.bak`, which the loader falls
-  back to. The save opens `.tmp` with `w`, which truncates a leftover from a crashed
+  without a copy (the card is mounted with four file slots, so the pack, a
+  catalog file and a directory scan can coexist); a power cut in between leaves
+  `.bak`, which the loader falls back to. The save opens `.tmp` with `w`, which
+  truncates a leftover from a crashed
   save; on this framework `exists()` and `remove()` both log an error when the
   file is absent, so the happy path calls neither. The first save on an empty
   device still logs one line for the missing `main` before it is copied; every
@@ -708,24 +755,25 @@ confirmation.
   continue`). `Esc` continues without storage: outbox and cache writes become
   no-ops and Home shows `Storage unavailable`.
 
-**Implementation (2026-10-29).** The Home/user/batch snapshot is
-`/state/cache.bin` (`KKCA`, version 11); the batch subjects are
+**Implementation (2026-10-29; version 12 2026-11-19).** The Home/user/batch
+snapshot is `/state/cache.bin` (`KKCA`, version 12); the batch subjects are
 `/kanikey/cache/subjects.bin` (`KKCS`, version 11) on SD. Version 3 added the
 study-material notes to each cached subject, version 4 added the review
 presentation order, version 5 added the vacation timestamp, version 6 added the
 per-subject review statistics, version 7 added the level progression, version 8
 added vocabulary parts of speech/context sentences, version 9 added the
-related-subject IDs, version 10 added the Home SRS distribution counts and
-version 11 adds the level kanji total/passed counts;
-older files are discarded. Both carry the save time, an
-FNV-1a fingerprint of the API token, the payload length and CRC32.
-The snapshot also stores the summary's `data_updated_at`; assignments keep
-their own `data_updated_at` for outbox reconciliation. Loading a snapshot
-written for another token or an older version discards both files. The cached
-batch is started offline and completed items are removed from the snapshot;
-the outbox is pruned from the cache on boot and after a successful send.
-Settings › `Sync now` refreshes the snapshot, `Clear cache` invalidates it, and
-a cache older than 24 h is shown as stale.
+related-subject IDs, version 10 added the Home SRS distribution counts,
+version 11 added the level kanji total/passed counts and version 12 adds
+`lastFullAt`, `lastQuickAt` and `lastUserAt` for the sync plan. A v11 snapshot
+still loads; the three times default to its `savedAt`. Both files carry the
+save time, an FNV-1a fingerprint of the API token, the payload length and
+CRC32. The snapshot also stores the summary's `data_updated_at`; assignments
+keep their own `data_updated_at` for outbox reconciliation. Loading a snapshot
+written for another token or a version outside the accepted range discards both
+files. The cached batch is started offline and completed items are removed from
+the snapshot; the outbox is pruned from the cache on boot and after a successful
+send. Settings › `Sync now` refreshes the snapshot, `Clear cache` invalidates
+it, and a cache older than 24 h is shown as stale.
 
 ---
 
@@ -772,6 +820,11 @@ use details=false, so mnemonics, parts of speech and context sentences are not
 copied. The DOM parsers remain for small payloads (`/user`, study materials,
 statistics, level/SRS) and tests. `/summary` keeps its own streaming parser.
 
+**SPEED-05 reverted (2026-11-19).** The chunked decoder and the keep-alive
+session are not in the current build. A body is read by `Content-Length` or
+until close in the same 32 KB `WkClient` buffer; the branch
+`spec/SPEED-05-keepalive` keeps the in-place decoder for a re-land.
+
 Rejected alternative: download the JSON to the SD card and parse it afterwards
 with a DOM. It still needs a DOM and duplicates temporary storage.
 
@@ -786,6 +839,9 @@ with a DOM. It still needs a DOM and duplicates temporary storage.
   3. Last known time stored in NVS.
 - `clock_trusted` is only true if the time was synchronized in this boot or if
   there is a stored time less than X hours old and there has been no power cut.
+- When the clock is untrusted, `effectiveNow()` advances the last cache save
+  with uptime for Home and the due/queue display (SPEED-07). `created_at` still
+  uses the real `time()` and is omitted when that is untrusted.
 - Offline review:
   - If `clock_trusted`: `created_at` = completion time.
   - If not: `created_at = 0`, it is omitted; the server will use the send time.
@@ -927,7 +983,7 @@ Both `KKCA` (LittleFS) and `KKCS` (SD) start with the same 24-byte header:
 
 ```
 0   magic         4 B   "KKCA" or "KKCS"
-4   version       u16   currently 11
+4   version       u16   `KKCA` 12 / `KKCS` 11 (11 loads)
 6   reserved      u16   0
 8   saved_at      u32   UTC epoch; 0 when the clock was not trusted
 12  account_key   u32   FNV-1a of the API token
@@ -975,6 +1031,8 @@ Tests (current native coverage):
   summary.
 - Outbox model counts, HTTP code default, attempt cap and stuck add/remove.
 - Rate limit: respects `Reset` (42 s, fallback, untrusted clock, 120 s cap).
+- Sync plan: Skip/Quick/Full, `/user` freshness, prefetch predicate and step
+  counts.
 
 Not covered natively (host/device checks or planned): HTTP/TLS requests, outbox
 append/compaction/retries/reconciliation, outbox 429/timeout/422/cut-mid-write/

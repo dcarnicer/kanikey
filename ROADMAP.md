@@ -12,7 +12,9 @@ wave 3 log); FIX-06, 07, 14, 20 and 24 still need the network/OTA and Wi-Fi
 upload checks listed there. FIX-07's random AP key and FIX-24 (a)/(b) have
 passed; FIX-24 (c) is partial. The rest of round 2 is specified in
 [docs/spec/README.md](docs/spec/README.md); the per-task status tables there
-are authoritative for that work.
+are authoritative. ARCH, CFG, REV-01/03, REV-06/09/12, LES-01/02/03,
+SPEED-02/03/04 and SPEED-07 have landed and are in review; SPEED-05 was merged
+and reverted.
 
 The review loop works on hardware. The 2026-11-19 pass closed the deliberate
 offline boot, the final OUTBOX screen, the 401 gate, the parse-retry path, the
@@ -49,16 +51,18 @@ Working on hardware:
   their attempt/age detail and dismissal are native-tested and were verified on
   the final OUTBOX screen on 2026-11-19.
 - Lessons: a list/picker with character, type, level and main meaning, sorted
-  by level and `lesson_position`; the card shows meaning/reading, paged
-  mnemonic, component meanings and hints, and `PUT /assignments/{id}/start`
-  returns 200. The list, card and quiz were hardware-verified with GETs; the
-  card's `PUT /start` returned 200 in an earlier card run, not in that
-  list/picker pass.
-- Lesson quiz: `Q` on a lesson card opens an optional local meaning/reading
-  quiz with typed answers, incorrect-answer feedback, retries and a completion
-  screen. It is read-only: the quiz itself never calls `/start`; Enter on the
-  card still starts the lesson. Hardware-verified; the completion screen says
-  `No /start sent.`
+  by level and `lesson_position`. `Space` selects the batch, the card shows
+  meaning/reading, paged mnemonic, component meanings and hints, and the batch
+  quiz (`Required` by default) is followed by one confirmation that sends
+  `PUT /assignments/{id}/start` per item. A real 5-item batch returned 200 for
+  every start and Home dropped from 120 to 115 lessons; the list, card and quiz
+  smoke and the remaining checks are in
+  [docs/hardware.md](docs/hardware.md).
+- Lesson quiz: `Q` on a lesson card opens an optional local single-item quiz
+  with typed answers, incorrect-answer feedback, retries and a completion
+  screen. The batch quiz runs after the last card. Neither quiz calls `/start`;
+  only the batch confirmation does. Hardware-verified; the single-item
+  completion screen says `No /start sent.`
 - Study materials: `GET /study_materials` is fetched for review and lesson
   subjects, user synonyms are accepted by the answer checker, and meaning/
   reading notes appear on the lesson card and review feedback. They are part of
@@ -85,10 +89,13 @@ Working on hardware:
   Enlightened/Burned bar with counts. The counts are cached, so the bar works
   offline. The five requests add ~350 B each to a sync and are skipped after a
   sync error.
-- Sync screen: a dedicated six-row screen (`Wi-Fi`, `Outbox`, `Account`,
-  `Summary`, `Level`, `SRS`) shows values and `ok` / active / warn / fail
-  states with a progress bar. `Esc` cancels at the next step boundary; failure
-  stays on screen with retry (or setup for auth) and the completed data is kept.
+- Sync: an automatic boot/wake sync is a background job that keeps Home up and
+  shows `sync n/m` in the header; it plans Quick/Full from the cache and can
+  prefetch the review batch. A manual Sync now uses a dedicated seven-row screen
+  (`Wi-Fi`, `Outbox`, `Account`, `Summary`, `Level`, `SRS`, `Critical`) with
+  `ok` / active / warn / fail states and a progress bar. `Esc` cancels at the
+  next step boundary; failure stays on screen with retry (or setup for auth) and
+  the completed data is kept.
 - Item detail: review batches now keep mnemonics/hints and fetch their
   component subjects; `Tab` on feedback opens a detail card (meanings/readings/
   synonyms, meaning mnemonic, reading mnemonic, notes, components). Vocabulary
@@ -116,25 +123,27 @@ Working on hardware:
   The normal first sync afterwards may flush the existing outbox.
 - Pause and settings: `Esc` in a review opens Continue / End session /
   Settings; `Esc` from Home opens Settings and `S` starts the same manual sync
-  as Settings › `Sync now`. Brightness, dim/blank/sleep timings, Setup portal,
-  Sync now and About are live; values persist in NVS.
-  About shows version, build, pack, cache, last sync, Wi-Fi, token state, zone
-  and heap.
+  as Settings › `Sync now`. Settings is the eight-section, 47-row registry menu
+  (review, lesson, study, sync, display, reminder and account options plus
+  `Reset settings`); values persist in NVS. About shows version, build, pack,
+  cache, last sync, Wi-Fi, token state, zone and heap.
 - User-facing boot states for missing SD/pack, token or Wi-Fi and sync
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 77 native tests and the `cardputer-adv` build run in GitHub Actions alongside
+- 293 native tests and the `cardputer-adv` build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests; the release workflow adds
   the manifest tests and a tag-driven GitHub release.
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Current build: **1,556,989 B / 1,835,008 B flash (84.8%)**, **96,248 B /
-327,680 B static RAM (29.4%)**. The dev image is 1,622,625 B (88.4%), 96,336 B
-RAM. Removing `efontJA_16` freed ~468 KB and leaves ~272 KB of flash headroom.
-The loop task uses a 24 KiB stack; the lazy review batch keeps the lesson-fetch
-minimum free heap above ~44 KB in the 2026-11-19 logs.
+Last recorded round-2 build (CFG/SPEED-07 merges): **release 1,586,677 B /
+1,835,008 B flash (86.5%)**, **dev 1,654,337 B (90.2%)**; static RAM at the v1
+pass was 96,248 B (29.4%). The later REV-06/09/12 merge (293 native tests) has
+not been re-measured. At the recorded build, removing `efontJA_16` freed
+~468 KB and left ~248 KB of flash headroom. The loop task uses a 24 KiB stack;
+the lazy review batch keeps the lesson-fetch minimum free heap above ~44 KB in
+the 2026-11-19 logs.
 
 ## Priority summary
 
@@ -143,7 +152,7 @@ minimum free heap above ~44 KB in the 2026-11-19 logs.
 | 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Done except a real low-level radical-only lesson; the synthetic radical lesson UI passed | RAD-04 |
 | 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Done: real-account online fetch, deliberate offline reboot and cached session verified (2026-11-19) | CACHE-07 |
 | 3 | Complete lesson flow | List/picker, card, components, quiz, empty state, start and ordering exist; the round-2 browse → quiz → batch-start flow is in review | v1 flow complete; LES-01/02/03 in review 2026-11-19 (hardware pending); LES-04/05/06 and the real low-level run open | LES-04 |
-| 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; stats and local review history are live; audio remains | Partial; round 2 specified in `docs/spec` (STATS/AUD) | AUD, STATS |
+| 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; stats and local review history are live; audio remains | Stats/local history done; AUD-03 remains; round 2 tracked in `docs/spec` | AUD |
 | 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Code and docs done; OUTBOX (API-01/05), 401 (API-03) and parse retry (API-04) verified 2026-11-19; 429 (API-02) and 403 still pending | — |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done for v1; on-device Wi-Fi setup is v1.1 (SETUP-09) | SETUP-09 |
 | 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen, item detail, level progress and the Stats screen are live | Partial | UI-08 |
@@ -749,14 +758,18 @@ round 2.
 | LESSON-08 | LES-04 | Lesson ordering | partial: default order done; L2 choices open |
 | Settings menu | CFG-01, CFG-02, CFG-03 | Eight sections, 47-row registry, reset | review (2026-11-19; hardware partial) |
 | Review feedback | REV-01, REV-03 | All accepted answers, synonyms, hint line | review (2026-11-19; hardware pending) |
+| Review options | REV-06, REV-09, REV-12 | Auto-advance, back-to-back, minimal header | review (2026-11-19; hardware pending) |
+| Background sync and prefetch | SPEED-02, SPEED-03, SPEED-04 | Quick/full plan, non-modal sync, review prefetch | review (2026-11-19; hardware partial) |
+| TLS transport | SPEED-05 | Keep-alive session, chunked bodies | reverted (2026-11-19): manual sync stalled at `Outbox`; branch kept for a re-land |
 | Home clock | SPEED-07 | 60 s Home refresh, offline uptime | review (2026-11-19; hardware pending) |
 
 The other spec groups are tracked in `docs/spec`: ARCH (controllers, settings
 registry, local stores, screen state), FIX (01-fixes), SPEED (submission/sync),
 CFG (sectioned settings), REV (review options), LES (batch flow), STUDY, STATS,
-REM/AUD, ONB (pack and setup) and DOC (this documentation pass). ARCH-01 merged
-on 2026-11-19 and ARCH-02 is in review with 224 native tests; the current flat
-Settings menu stays until CFG-01/CFG-02. No round-2 task is claimed as done here
+REM/AUD, ONB (pack and setup) and DOC (this documentation pass). ARCH-01/02 are
+merged and CFG-01/02/03, REV-01/03, REV-06/09/12, LES-01/02/03 and
+SPEED-02/03/04/07 are in review; SPEED-05 was reverted. The eight-section
+Settings menu replaces the flat list. No round-2 task is claimed as done here
 beyond the spec status above.
 
 ## 11. Bluetooth keyboard (after v1)
