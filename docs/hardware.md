@@ -746,6 +746,11 @@ A150 G143 M81 E147 B586).
   empty list, stage text, selection wrap and next-batch availability. The
   three-row list, `R`, stage updates during the send loop and the 240×135
   layout remain.
+- **REV-08.** Eleven native tests cover every order, type grouping, the limit,
+  unknown levels and `availableAt`. R2 `Oldest available` started a real review
+  (`RADICAL L5`, `1/20`) without an answer and was returned to Account; the
+  request/page/byte/heap log and visible SRS/level/type order still need the
+  dedicated run.
 
 ## Round 2 hardware checks
 

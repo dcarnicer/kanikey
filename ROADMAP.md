@@ -12,7 +12,7 @@ wave 3 log); FIX-06, 07, 14, 20 and 24 still need the network/OTA and Wi-Fi
 upload checks listed there. FIX-07's random AP key and FIX-24 (a)/(b) have
 passed; FIX-24 (c) is partial. The rest of round 2 is specified in
 [docs/spec/README.md](docs/spec/README.md); the per-task status tables there
-are authoritative. ARCH, CFG, REV-01/02/03/04/05/06/07/09/10/11/12,
+are authoritative. ARCH, CFG, REV-01/02/03/04/05/06/07/08/09/10/11/12,
 LES-01…LES-06, SETUP-09, ONB-01/02, SPEED-01/02/03/04/05 and SPEED-07 have
 landed and are in review.
 
@@ -131,15 +131,15 @@ Working on hardware:
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 380 native tests and the `cardputer-adv` build run in GitHub Actions alongside
+- 391 native tests and the `cardputer-adv` build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests; the release workflow adds
   the manifest tests and a tag-driven GitHub release.
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Last recorded build (REV-11): **release 1,638,529 B / 1,835,008 B flash
-(89.3%)**, **dev 1,706,041 B (93.0%)**, static RAM 104,872/105,000 B (32.0%).
-Removing `efontJA_16` freed ~468 KB; the dev image now has ~129 KB of headroom.
+Last recorded build (REV-08): **release 1,655,861 B / 1,835,008 B flash
+(90.2%)**, **dev 1,723,681 B (93.9%)**, static RAM 105,392/105,528 B (32.2%).
+Removing `efontJA_16` freed ~468 KB; the dev image now has ~111 KB of headroom.
 The loop task uses a 24 KiB stack;
 the lazy review batch keeps the lesson-fetch minimum free heap above ~44 KB in
 the 2026-11-19 logs.
@@ -763,7 +763,7 @@ round 2.
 | On-device Wi-Fi | SETUP-09 | 2.4 GHz scan, manual SSID, masked password | review (2026-11-19; scan/password mask smoke) |
 | Review feedback | REV-01, REV-03 | All accepted answers, synonyms, hint line | review (2026-11-19; hardware pending) |
 | Typo policy | REV-02 | WaniKani close-answer acceptance / Strict | review (2026-11-19; hardware pending) |
-| Review options | REV-04, REV-05, REV-06, REV-07, REV-09, REV-10, REV-11, REV-12 | Wrong C/A, wrap up, auto-advance, details on wrong, back-to-back, input editing, summary list, minimal header | review (2026-11-19; auto-advance/wrap-up/C/A smokes passed) |
+| Review options | REV-04, REV-05, REV-06, REV-07, REV-08, REV-09, REV-10, REV-11, REV-12 | Orders, wrong C/A, wrap up, auto-advance, details on wrong, back-to-back, input editing, summary list, minimal header | review (2026-11-19; auto-advance/wrap-up/C/A smokes passed) |
 | Visual pack split | ONB-01, ONB-02 | Font/radical v2 packs, portal download/upload | review (2026-11-19; portal hardware pending) |
 | Submission policy | SPEED-01 | At session end / Every 5 / Immediately, summary send loop | review (2026-11-19; hardware pending) |
 | Background sync and prefetch | SPEED-02, SPEED-03, SPEED-04 | Quick/full plan, non-modal sync, review prefetch | review (2026-11-19; hardware partial) |
@@ -774,11 +774,11 @@ The other spec groups are tracked in `docs/spec`: ARCH (controllers, settings
 registry, local stores, screen state), FIX (01-fixes), SPEED (submission/sync),
 CFG (sectioned settings), REV (review options), LES (batch flow), STUDY, STATS,
 REM/AUD, ONB (pack and setup) and DOC (this documentation pass). ARCH-01/02 are
-merged and CFG-01/02/03/04, REV-01/02/03/04/05/06/07/09/10/11/12,
+merged and CFG-01/02/03/04, REV-01/02/03/04/05/06/07/08/09/10/11/12,
 LES-01…LES-06, SETUP-09, ONB-01/02 and SPEED-01/02/03/04/05/07 are in review. The
 eight-section Settings menu replaces the flat list; the registry now has 48
-rows after the Account › Wi-Fi action. Main has 380 native tests and builds at
-1,638,529 B (89.3%) release / 1,706,041 B (93.0%) dev. No round-2 task is
+rows after the Account › Wi-Fi action. Main has 391 native tests and builds at
+1,655,861 B (90.2%) release / 1,723,681 B (93.9%) dev. No round-2 task is
 claimed as done
 here beyond the spec status above.
 

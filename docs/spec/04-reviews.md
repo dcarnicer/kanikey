@@ -11,7 +11,7 @@ These twelve tasks turn the review session into a configurable, WaniKani-faithfu
 | REV-05 | Wrap up | P2 | M | ARCH-01 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-06 | Auto-advance on correct | P2 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-07 | Details on wrong | P3 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
-| REV-08 | More review orders | P2 | L | ARCH-01, ARCH-02, ARCH-03; SPEED-05 for option B | 2 | todo |
+| REV-08 | More review orders | P2 | L | ARCH-01, ARCH-02, ARCH-03; SPEED-05 for option B | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-09 | Back-to-back | P2 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-10 | Input editing | P2 | M | ARCH-01 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-11 | Richer session summary | P2 | M | ARCH-01, SPEED-01 | 2 | review (2026-11-19: merged; hardware pending) |
@@ -82,6 +82,18 @@ vector, and a bounded map records each item's stage from the SPEED-01 tracker
 before it is forgotten. Six new native tests (380 on the merged main); release
 1,638,529 B (89.3%), dev 1,706,041 B (93.0%). The hardware list/navigation,
 `R`, stage updates during the send loop and 240×135 layout remain.
+
+**Implementation (2026-11-19, REV-08).** R2 supports Account (default),
+Random, lowest level, current level first, SRS ascending/descending and oldest
+available; R3 groups radicals, then kanji, then vocabulary/kanji-vocabulary
+inside the chosen order. Account keeps the existing shuffle/lower-levels path
+with no extra request. Other orders fetch all summary due assignments in 60-id
+pages over one session (`fetchDueAssignments`), select IDs purely, then
+`build()` re-applies the same comparator; a failed fetch falls back to Account
+with a log, and cached/offline batches use the same strategy. Eleven new native
+tests (391 on the merged main); release 1,655,861 B (90.2%), dev 1,723,681 B
+(93.9%), +17 KB flash. The request/page/byte/heap log, visible order, level
+catalog, R3 grouping, fallback and cached checks remain on hardware.
 
 ### REV-01 — Show all accepted answers on feedback
 

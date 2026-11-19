@@ -470,6 +470,14 @@ Home ──L──► Lessons list ──Space──► select up to N
 ![Meaning review](screens/review-meaning.png)
 ![Reading review](screens/review-reading.png)
 
+- **REV-08 orders (2026-11-19).** R2 chooses Account (default), Random, lowest
+  level, current level first, SRS ascending/descending or oldest available; R3
+  groups radicals then kanji then vocabulary inside that order. Account keeps
+  today's shuffle/lower-levels path and adds no request; other orders fetch the
+  summary's due assignment metadata in 60-id pages, select the batch, then
+  re-apply the comparator. A failed fetch falls back to Account with a log;
+  cached/offline sessions use the same order. A real review starts at `1/20`
+  after the fetch; no answer is sent while browsing.
 - Header `REVIEWS` (6×8 font), `SRS 3 86%`, `12/48`; 2 px progress bar.
   There is no Wi-Fi or battery icon on this screen. With R10 `Header info` set
   to `Minimal`, only the `SRS 3 86%` block is hidden; the title, counter and
