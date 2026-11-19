@@ -4,7 +4,7 @@ The documentation still describes the design mockups rather than the device: `do
 
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
-| DOC-01 | Mockups match the device | P2 | M | none | any | review |
+| DOC-01 | Mockups match the device | P2 | M | none | any | review (2026-11-19: renders refreshed; device side-by-side pending) |
 | DOC-02 | `ux.md` alignment | P2 | S | DOC-01, REV-10, LES-01…LES-04, CFG | any | review |
 | DOC-03 | `decisions.md` entries | P2 | S | REV-02, LES-01…LES-03, SPEED-06 | any | review |
 | DOC-04 | ROADMAP round 2 | P2 | S | none | any | review |
@@ -72,6 +72,15 @@ still needed to confirm the new release asset.
 - [ ] `README.md:62` and `docs/ux.md:7` show the new images and label them accurately (capture vs render).
 - [ ] Captures contain only seeded `dev` data and 192.168.1.x addresses; no token, SSID or AP password.
 - [ ] The documented regeneration path still works, or the obsolete instructions are removed.
+
+**Implementation (2026-11-19, follow-up).** Renders now cover both Home hints,
+the eight Settings sections and Reviews options, Wi-Fi scan/password, the split
+`Font:`/`Rad:` About and setup statuses, and accepted-answer and warning
+feedback. `render.py --check` accepts all 18 files (240×135 geometry, RGB332
+Theme palette); they remain renders and a device side-by-side is pending.
+About's `Zone`/`Heap` lines overlap at y=122/126 in the current firmware, and
+the setup station's `Font:` row is the message-empty branch (a portal notice
+takes that row on a live screen), so both need a device check.
 
 ### DOC-02 — `ux.md` alignment
 

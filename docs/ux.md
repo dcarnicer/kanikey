@@ -368,11 +368,19 @@ Home ──L──► Lessons list ──Space──► select up to N
     the Wi-Fi, token, clock or Finish forms. The code is never in the served
     page or the URL. Five wrong codes issue a new code.
   - Token status (`Token OK: you L12`, `Token stored: validate on the page` or
-    `Token needed: enter it on the page`) and the pack status.
+    `Token needed: enter it on the page`) and the pack status row
+    (`Rad: 498 radicals`). The line above it is the latest portal message;
+    with no message it shows `Font: 7269 glyphs, 64/32/20 px`.
   - `Enter code on page  Esc: cancel`.
 - The portal is reachable from the whole home network and closes when setup
   finishes or after 15 minutes without a request. A locked page shows the
   device name, the address and the unlock field only.
+
+![Setup access point](screens/setup.png)
+![Setup station](screens/setup-station.png)
+![Wi-Fi scan](screens/wifi-scan.png)
+![Wi-Fi password](screens/wifi-password.png)
+
 - **On-device Wi-Fi (SETUP-09, 2026-11-19).** Settings › Account › Wi-Fi opens
   a 2.4 GHz scan: SSID left, signal bars and `WPA2`/`WPA2/3` right, plus a
   `+ Enter network name` row for hidden networks. `↑↓` moves, `Enter` chooses,
@@ -389,6 +397,7 @@ Home ──L──► Lessons list ──Space──► select up to N
 ### 5.3 Home
 
 ![Home](screens/home.png)
+![Home with outbox attention](screens/home-outbox.png)
 
 - Header: `KaniKey` in `Font2` (16 px, coral), `Synced 14:47` in
   `Font1` (6×8, dim) and the battery as `84%` (or `USB`) in `Font1`, both
@@ -533,6 +542,7 @@ kept inside each level.
 
 ![Correct feedback](screens/review-correct.png)
 ![Incorrect feedback](screens/review-wrong.png)
+![Typo warning](screens/review-check.png)
 
 - The left panel doesn't change; the right one turns into feedback.
 - Correct:
@@ -804,6 +814,8 @@ the mnemonic. **Hardware pending:** the full quiz with mistakes, offline start,
 ### 5.12 Settings
 
 ![Settings](screens/settings.png)
+![Settings > Reviews](screens/settings-reviews.png)
+![About](screens/about.png)
 
 - Open with `Esc` from Home, or `Esc` in a review → Pause → Settings.
 - Settings is the eight-section menu: `Reviews`, `Lessons`, `Study`,
@@ -835,8 +847,8 @@ the mnemonic. **Hardware pending:** the full quiz with mistakes, offline start,
   review so the session is not lost. `Sync now` starts a manual full sync;
   `Outbox` opens the list even when nothing needs attention.
 - About shows the firmware version and slot, build date, an update badge when
-  one is known, pack status, cached batch, last sync, Wi-Fi, whether a token is
-  configured, time zone and heap.
+  one is known, the font and radical pack status, cached batch, last sync,
+  Wi-Fi, whether a token is configured, time zone and heap.
 - `Firmware` shows the running version/slot, the last check or install result
   and `Check now` / `Install update` rows. Install asks for a second `Enter`,
   then streams the image and restarts. A failed check stays on the screen with
@@ -1020,15 +1032,22 @@ the RGB332 palette; Japanese glyphs are a Noto Sans JP stand-in for the pack.
 | File | Screen | Source |
 |---|---|---|
 | `screens/home.png` | Home with reviews, lessons and SRS distribution | render |
+| `screens/home-outbox.png` | Home with outbox attention and its hint variant | render |
 | `screens/review-meaning.png` | Meaning question | render |
 | `screens/review-reading.png` | Reading question with romaji | render |
-| `screens/review-correct.png` | Correct feedback | render |
-| `screens/review-wrong.png` | Incorrect feedback | render |
-| `screens/lesson.png` | Lesson card | render |
+| `screens/review-correct.png` | Correct feedback with accepted answers | render |
+| `screens/review-wrong.png` | Incorrect feedback with the hint sentence | render |
+| `screens/review-check.png` | Typo warning (`CHECK`) | render |
+| `screens/lesson.png` | Lesson card with the topic title | render |
 | `screens/summary.png` | Session summary | render |
 | `screens/sync.png` | Synchronization | render |
-| `screens/settings.png` | Settings | render |
-| `screens/setup.png` | First boot | render |
+| `screens/settings.png` | Settings, eight sections | render |
+| `screens/settings-reviews.png` | Settings › Reviews options | render |
+| `screens/setup.png` | Setup access point | render |
+| `screens/setup-station.png` | Setup station with font and radical status | render |
+| `screens/wifi-scan.png` | On-device Wi-Fi scan | render |
+| `screens/wifi-password.png` | On-device Wi-Fi password | render |
+| `screens/about.png` | About with split pack status | render |
 | `screens/overview.png` | Contact sheet of all | render |
 
 To regenerate them:
@@ -1040,6 +1059,7 @@ uv run --with pillow python3 tools/mockups/render.py --check
 
 The script uses Noto Sans JP only for the Japanese pack stand-in. It looks for
 the font in `tools/pack-builder/cache/noto/` or Tangocho's cache, or at
-`KANIKEY_FONT`. The setup render uses a placeholder `KaniKey-XXXX` SSID and
-key, not real credentials. Device captures are made separately with
-`tools/shot.py` and are not committed when they contain user content.
+`KANIKEY_FONT`. The setup renders use a placeholder `KaniKey-4F2C` AP and a
+synthetic `dev-net` station, not real credentials. Device captures are made
+separately with `tools/shot.py` and are not committed when they contain user
+content.
