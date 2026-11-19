@@ -43,6 +43,7 @@
 #include "wk/SyncPlan.h"
 #include "wk/SyncSteps.h"
 #include "wk/Text.h"
+#include "wk/WifiSetup.h"
 
 using namespace kk;
 using namespace kk::ota;
@@ -2974,7 +2975,7 @@ static void test_settings_registry_ids() {
     size_t count = 0;
     const SettingDef* all = settingsAll(&count);
     TEST_ASSERT_NOT_NULL(all);
-    TEST_ASSERT_EQUAL(47, static_cast<int>(count));
+    TEST_ASSERT_EQUAL(48, static_cast<int>(count));
     for (size_t i = 0; i < count; ++i) {
         const SettingDef& def = all[i];
         TEST_ASSERT_NOT_NULL(def.id);
@@ -3098,7 +3099,7 @@ static void test_settings_sections() {
         {"Reviews", 12},          {"Lessons", 6},
         {"Study", 5},             {"Sync & data", 6},
         {"Display & power", 6},   {"Reminders & sound", 7},
-        {"Account", 2},           {"System", 3},
+        {"Account", 3},           {"System", 3},
     };
     size_t total = 0;
     for (const auto& section : kSections) {
@@ -3106,7 +3107,7 @@ static void test_settings_sections() {
         TEST_ASSERT_EQUAL_INT(section.expected, static_cast<int>(found));
         total += found;
     }
-    TEST_ASSERT_EQUAL(47, static_cast<int>(total));
+    TEST_ASSERT_EQUAL(48, static_cast<int>(total));
     TEST_ASSERT_EQUAL(2, static_cast<int>(settingsInSection("Display & power", out, 2)));
     TEST_ASSERT_EQUAL_STRING("P1", out[0]->id);
     TEST_ASSERT_EQUAL_STRING("P2", out[1]->id);
@@ -3272,7 +3273,7 @@ static void test_settings_sections_cover_every_entry() {
         TEST_ASSERT_GREATER_THAN(0, static_cast<int>(found));
         total += found;
     }
-    TEST_ASSERT_EQUAL(47, static_cast<int>(total));
+    TEST_ASSERT_EQUAL(48, static_cast<int>(total));
     TEST_ASSERT_EQUAL(12, static_cast<int>(settingsInSection("Reviews", out, 16)));
 }
 
@@ -3387,8 +3388,9 @@ static void test_settings_help_fits_one_line() {
 
 static void test_settings_actions_have_no_key() {
     static const char* const kActions[] = {
-        "setup.portal", "account.signOut", "system.firmware", "system.about",
-        "system.reset", "sync.now",       "sync.outbox",    "sync.clearCache",
+        "setup.portal", "account.wifi",  "account.signOut", "system.firmware",
+        "system.about", "system.reset",  "sync.now",        "sync.outbox",
+        "sync.clearCache",
     };
     for (const char* id : kActions) {
         const SettingDef* def = settingById(id);
@@ -3401,6 +3403,195 @@ static void test_settings_actions_have_no_key() {
         TEST_ASSERT_EQUAL(0, def->choiceCount);
         TEST_ASSERT_NOT_NULL(def->valueText);
     }
+    const SettingDef* wifi = settingById("account.wifi");
+    TEST_ASSERT_NOT_NULL(wifi);
+    TEST_ASSERT_EQUAL_STRING("Account", wifi->section);
+    TEST_ASSERT_EQUAL_STRING("Wi-Fi", wifi->label);
+}
+
+// ------------------------------------------------------------------ wifi
+static kk::WifiNetwork wifiEntry(const char* ssid, int rssi, int channel,
+                                 kk::WifiSecurity security) {
+    kk::WifiNetwork network{};
+    std::strncpy(network.ssid, ssid, kk::kWifiSsidMax);
+    network.ssid[kk::kWifiSsidMax] = '\0';
+    network.rssi = static_cast<int16_t>(rssi);
+    network.channel = static_cast<uint8_t>(channel);
+    network.security = security;
+    return network;
+}
+
+static void test_wifi_scan_list_filters_24ghz_and_dedupes() {
+    using namespace kk;
+    const WifiNetwork raw[] = {
+        wifiEntry("Home", -60, 6, WifiSecurity::Wpa2),
+        wifiEntry("Home", -45, 1, WifiSecurity::Wpa2),
+        wifiEntry("Cafe", -72, 11, WifiSecurity::Open),
+        wifiEntry("Five", -40, 36, WifiSecurity::Wpa2),
+        wifiEntry("", -50, 1, WifiSecurity::Wpa2),
+        wifiEntry("Unknown", -55, 0, WifiSecurity::Wpa2),
+    };
+    WifiNetwork out[8];
+    const size_t count = wifiBuildScanList(raw, sizeof raw / sizeof raw[0], out, 8);
+    TEST_ASSERT_EQUAL(2, static_cast<int>(count));
+    TEST_ASSERT_EQUAL_STRING("Home", out[0].ssid);
+    TEST_ASSERT_EQUAL_INT(-45, out[0].rssi);
+    TEST_ASSERT_EQUAL_STRING("Cafe", out[1].ssid);
+}
+
+static void test_wifi_scan_list_sorts_and_caps() {
+    using namespace kk;
+    const WifiNetwork raw[] = {
+        wifiEntry("Bravo", -70, 6, WifiSecurity::Wpa2),
+        wifiEntry("Charlie", -50, 11, WifiSecurity::Wpa2),
+        wifiEntry("Alpha", -50, 1, WifiSecurity::Wpa2),
+    };
+    WifiNetwork out[8];
+    size_t count = wifiBuildScanList(raw, 3, out, 8);
+    TEST_ASSERT_EQUAL(3, static_cast<int>(count));
+    TEST_ASSERT_EQUAL_STRING("Alpha", out[0].ssid);
+    TEST_ASSERT_EQUAL_STRING("Charlie", out[1].ssid);
+    TEST_ASSERT_EQUAL_STRING("Bravo", out[2].ssid);
+
+    count = wifiBuildScanList(raw, 3, out, 2);
+    TEST_ASSERT_EQUAL(2, static_cast<int>(count));
+    TEST_ASSERT_EQUAL_STRING("Alpha", out[0].ssid);
+    TEST_ASSERT_EQUAL_STRING("Charlie", out[1].ssid);
+
+    // In-place compaction is what the controller does on its scan buffer.
+    WifiNetwork inPlace[] = {
+        wifiEntry("Five", -40, 36, WifiSecurity::Wpa2),
+        wifiEntry("Home", -55, 6, WifiSecurity::Wpa2),
+        wifiEntry("Home", -48, 1, WifiSecurity::Wpa2),
+    };
+    count = wifiBuildScanList(inPlace, 3, inPlace, 3);
+    TEST_ASSERT_EQUAL(1, static_cast<int>(count));
+    TEST_ASSERT_EQUAL_STRING("Home", inPlace[0].ssid);
+    TEST_ASSERT_EQUAL_INT(-48, inPlace[0].rssi);
+}
+
+static void test_wifi_labels_and_security_rules() {
+    using namespace kk;
+    TEST_ASSERT_TRUE(wifiChannelIs24(1));
+    TEST_ASSERT_TRUE(wifiChannelIs24(6));
+    TEST_ASSERT_TRUE(wifiChannelIs24(11));
+    TEST_ASSERT_TRUE(wifiChannelIs24(14));
+    TEST_ASSERT_FALSE(wifiChannelIs24(0));
+    TEST_ASSERT_FALSE(wifiChannelIs24(32));
+    TEST_ASSERT_FALSE(wifiChannelIs24(36));
+    TEST_ASSERT_FALSE(wifiChannelIs24(149));
+
+    TEST_ASSERT_EQUAL_STRING("open", wifiSecurityLabel(WifiSecurity::Open));
+    TEST_ASSERT_EQUAL_STRING("WEP", wifiSecurityLabel(WifiSecurity::Wep));
+    TEST_ASSERT_EQUAL_STRING("WPA", wifiSecurityLabel(WifiSecurity::Wpa));
+    TEST_ASSERT_EQUAL_STRING("WPA2", wifiSecurityLabel(WifiSecurity::Wpa2));
+    TEST_ASSERT_EQUAL_STRING("WPA2/3", wifiSecurityLabel(WifiSecurity::Wpa2Wpa3));
+    TEST_ASSERT_EQUAL_STRING("WPA3", wifiSecurityLabel(WifiSecurity::Wpa3));
+    TEST_ASSERT_EQUAL_STRING("802.1X", wifiSecurityLabel(WifiSecurity::Enterprise));
+    TEST_ASSERT_EQUAL_STRING("?", wifiSecurityLabel(WifiSecurity::Unknown));
+
+    TEST_ASSERT_TRUE(wifiSecuritySupported(WifiSecurity::Open));
+    TEST_ASSERT_TRUE(wifiSecuritySupported(WifiSecurity::Wpa2));
+    TEST_ASSERT_TRUE(wifiSecuritySupported(WifiSecurity::Wpa2Wpa3));
+    TEST_ASSERT_TRUE(wifiSecuritySupported(WifiSecurity::Wpa3));
+    TEST_ASSERT_TRUE(wifiSecuritySupported(WifiSecurity::Unknown));
+    TEST_ASSERT_FALSE(wifiSecuritySupported(WifiSecurity::Wep));
+    TEST_ASSERT_FALSE(wifiSecuritySupported(WifiSecurity::Enterprise));
+    TEST_ASSERT_FALSE(wifiSecuritySupported(WifiSecurity::Wapi));
+
+    TEST_ASSERT_FALSE(wifiSecurityNeedsPassword(WifiSecurity::Open));
+    TEST_ASSERT_TRUE(wifiSecurityNeedsPassword(WifiSecurity::Wpa2));
+    TEST_ASSERT_TRUE(wifiSecurityNeedsPassword(WifiSecurity::Unknown));
+
+    TEST_ASSERT_EQUAL_STRING("||||", wifiSignalLabel(-50));
+    TEST_ASSERT_EQUAL_STRING("||||", wifiSignalLabel(-55));
+    TEST_ASSERT_EQUAL_STRING("|||", wifiSignalLabel(-56));
+    TEST_ASSERT_EQUAL_STRING("|||", wifiSignalLabel(-67));
+    TEST_ASSERT_EQUAL_STRING("||", wifiSignalLabel(-68));
+    TEST_ASSERT_EQUAL_STRING("||", wifiSignalLabel(-78));
+    TEST_ASSERT_EQUAL_STRING("|", wifiSignalLabel(-79));
+}
+
+static void test_wifi_ssid_and_password_validation() {
+    using namespace kk;
+    TEST_ASSERT_TRUE(wifiSsidValid("Home"));
+    char ssid32[33];
+    std::memset(ssid32, 'a', 32);
+    ssid32[32] = '\0';
+    TEST_ASSERT_TRUE(wifiSsidValid(ssid32));
+    char ssid33[34];
+    std::memset(ssid33, 'a', 33);
+    ssid33[33] = '\0';
+    TEST_ASSERT_FALSE(wifiSsidValid(ssid33));
+    TEST_ASSERT_FALSE(wifiSsidValid(""));
+    TEST_ASSERT_FALSE(wifiSsidValid("bad\nname"));
+    TEST_ASSERT_FALSE(wifiSsidValid("bad\x7fname"));
+
+    TEST_ASSERT_TRUE(wifiCheckPassword("", true) == WifiPasswordStatus::Ok);
+    TEST_ASSERT_TRUE(wifiCheckPassword("", false) == WifiPasswordStatus::Empty);
+    TEST_ASSERT_TRUE(wifiCheckPassword("short", false) == WifiPasswordStatus::TooShort);
+    TEST_ASSERT_TRUE(wifiCheckPassword("12345678", false) == WifiPasswordStatus::Ok);
+    char pass63[64];
+    std::memset(pass63, 'p', 63);
+    pass63[63] = '\0';
+    TEST_ASSERT_TRUE(wifiCheckPassword(pass63, false) == WifiPasswordStatus::Ok);
+    char pass64[65];
+    std::memset(pass64, 'p', 64);
+    pass64[64] = '\0';
+    TEST_ASSERT_TRUE(wifiCheckPassword(pass64, false) == WifiPasswordStatus::TooLong);
+    TEST_ASSERT_TRUE(wifiCheckPassword("bad\npassword", false) ==
+                     WifiPasswordStatus::BadChar);
+    TEST_ASSERT_EQUAL_STRING("At least 8 characters",
+                             wifiPasswordError(WifiPasswordStatus::TooShort));
+    TEST_ASSERT_EQUAL_STRING("At most 63 characters",
+                             wifiPasswordError(WifiPasswordStatus::TooLong));
+}
+
+static void test_wifi_failure_reasons() {
+    using namespace kk;
+    TEST_ASSERT_TRUE(wifiClassifyFailure(WifiLinkStatus::NoSsid, true,
+                                         WifiSecurity::Wpa2) ==
+                     WifiJoinFailure::NotFound);
+    TEST_ASSERT_TRUE(wifiClassifyFailure(WifiLinkStatus::ConnectFailed, true,
+                                         WifiSecurity::Wpa2) ==
+                     WifiJoinFailure::WrongPassword);
+    TEST_ASSERT_TRUE(wifiClassifyFailure(WifiLinkStatus::Disconnected, true,
+                                         WifiSecurity::Wpa2) ==
+                     WifiJoinFailure::WrongPassword);
+    TEST_ASSERT_TRUE(wifiClassifyFailure(WifiLinkStatus::Idle, true,
+                                         WifiSecurity::Wpa2) ==
+                     WifiJoinFailure::Timeout);
+    TEST_ASSERT_TRUE(wifiClassifyFailure(WifiLinkStatus::Other, true,
+                                         WifiSecurity::Unknown) ==
+                     WifiJoinFailure::Timeout);
+    TEST_ASSERT_TRUE(wifiClassifyFailure(WifiLinkStatus::NoSsid, true,
+                                         WifiSecurity::Enterprise) ==
+                     WifiJoinFailure::Unsupported);
+    TEST_ASSERT_TRUE(wifiClassifyFailure(WifiLinkStatus::NoSsid, true,
+                                         WifiSecurity::Wep) ==
+                     WifiJoinFailure::Unsupported);
+
+    TEST_ASSERT_EQUAL_STRING("not found", wifiFailureLabel(WifiJoinFailure::NotFound));
+    TEST_ASSERT_EQUAL_STRING("wrong password",
+                             wifiFailureLabel(WifiJoinFailure::WrongPassword));
+    TEST_ASSERT_EQUAL_STRING("timeout", wifiFailureLabel(WifiJoinFailure::Timeout));
+    TEST_ASSERT_EQUAL_STRING("unsupported",
+                             wifiFailureLabel(WifiJoinFailure::Unsupported));
+    TEST_ASSERT_EQUAL_STRING("save failed",
+                             wifiFailureLabel(WifiJoinFailure::SaveFailed));
+}
+
+static void test_wifi_mask_text() {
+    using namespace kk;
+    char out[16];
+    TEST_ASSERT_EQUAL(6, static_cast<int>(wifiMaskText("secret", false, out, sizeof out)));
+    TEST_ASSERT_EQUAL_STRING("******", out);
+    TEST_ASSERT_EQUAL(6, static_cast<int>(wifiMaskText("secret", true, out, sizeof out)));
+    TEST_ASSERT_EQUAL_STRING("secret", out);
+    TEST_ASSERT_EQUAL(3, static_cast<int>(wifiMaskText("secret", false, out, 4)));
+    TEST_ASSERT_EQUAL_STRING("***", out);
+    TEST_ASSERT_EQUAL(0, static_cast<int>(wifiMaskText("", false, out, sizeof out)));
+    TEST_ASSERT_EQUAL_STRING("", out);
 }
 
 void run_queue_tests();
@@ -3588,6 +3779,12 @@ int main(int, char**) {
     RUN_TEST(test_settings_meaning_first_migration);
     RUN_TEST(test_settings_help_fits_one_line);
     RUN_TEST(test_settings_actions_have_no_key);
+    RUN_TEST(test_wifi_scan_list_filters_24ghz_and_dedupes);
+    RUN_TEST(test_wifi_scan_list_sorts_and_caps);
+    RUN_TEST(test_wifi_labels_and_security_rules);
+    RUN_TEST(test_wifi_ssid_and_password_validation);
+    RUN_TEST(test_wifi_failure_reasons);
+    RUN_TEST(test_wifi_mask_text);
     run_queue_tests();
     run_les_tests();
     run_ota_tests();

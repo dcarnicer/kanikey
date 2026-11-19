@@ -30,6 +30,7 @@
 #include "wk/SyncSteps.h"
 #include "wk/Types.h"
 #include "wk/User.h"
+#include "wk/WifiSetup.h"
 
 namespace kk::app {
 
@@ -264,6 +265,11 @@ struct SyncState {
 
 enum class SettingsOrigin : uint8_t { Home, Pause };
 
+// SETUP-09: the on-device Wi-Fi flow can replace the phone portal from Settings
+// or from the boot "Wi-Fi needed" state.
+enum class WifiSetupOrigin : uint8_t { Settings, Boot };
+enum class WifiSetupStep : uint8_t { List, ManualSsid, Password, Joining };
+
 // One blocking notice frame for the review empty/error states, a full outbox
 // and the storage prompt. Drawing lives in drawNotice().
 enum class NoticeAction : uint8_t {
@@ -343,6 +349,24 @@ struct SetupState {
     bool gPortalActive = false;
 };
 
+// SETUP-09: the Cardputer's own scan list and password field. The password
+// lives only in RAM and is cleared on success, cancel and leaving Settings.
+struct WifiState {
+    bool gWifiActive = false;
+    WifiSetupOrigin gWifiOrigin = WifiSetupOrigin::Settings;
+    WifiSetupStep gWifiStep = WifiSetupStep::List;
+    std::vector<kk::WifiNetwork> gWifiNetworks;
+    int gWifiIndex = 0;
+    std::string gWifiSsid;
+    std::string gWifiPassword;
+    std::string gWifiManual;
+    kk::WifiSecurity gWifiSecurity = kk::WifiSecurity::Unknown;
+    bool gWifiShowPassword = false;
+    kk::WifiJoinFailure gWifiFailure = kk::WifiJoinFailure::None;
+    char gWifiNote[64] = "";
+    uint16_t gWifiNoteColor = kk::ui::kFaint;
+};
+
 struct DevState {
 #ifdef KANIKEY_DEV
     bool gShowDebug = false;
@@ -365,6 +389,7 @@ struct AppState {
     UiState ui;
     OtaState ota;
     SetupState setup;
+    WifiState wifi;
     DevState dev;
 };
 
