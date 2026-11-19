@@ -9,7 +9,7 @@ The README promise is "open it, the pending review appears, type, close". Today 
 | SPEED-03 | Background (non-modal) sync | P1 | L | SPEED-02 | 2 (after 02) | review (2026-11-19: merged; auto sync + on-demand Wi-Fi; smoke partial) |
 | SPEED-04 | Prefetch the review batch | P2 | M | SPEED-02, SPEED-03 | 2 (after 02/03) | review (2026-11-19: merged; auto sync + on-demand Wi-Fi; smoke partial) |
 | SPEED-05 | TLS keep-alive (spike, then implement) | P2 | L | none | 2 | review (2026-11-19: re-landed with the idle-age fix; manual sync passed) |
-| SPEED-06 | Light sleep before deep sleep (spike first) | P2 | M | SPEED-01 (for `endReview(send)`) | 2 | todo |
+| SPEED-06 | Light sleep before deep sleep (spike first) | P2 | M | SPEED-01 (for `endReview(send)`) | 2 | review (2026-11-19: merged; hardware spike pending) |
 | SPEED-07 | Home updates over time | P2 | S | none | 2 | review (2026-11-19: merged; hardware check pending) |
 
 **Re-landed (2026-11-19, SPEED-05).** The keep-alive/chunked implementation
@@ -60,6 +60,19 @@ the last-pair globals so each POST reports its own pre-review stage. Six new
 native tests (374 on the merged main); release 1,632,941 B (89.0%), dev
 1,700,325 B (92.7%), RAM 32.0%. The summary loop, Esc-stop, offline failure,
 Every 5/Immediately and heap/canvas checks remain on hardware.
+
+**Implementation (2026-11-19, SPEED-06).** `board::lightSleep(maxMs)` blanks
+the panel, turns Wi-Fi off, waits for keys up, arms the keyboard INT, G0 and an
+optional timer, restores the panel and reports key vs timer wake;
+`wokeFromTimer()` is separate from the EXT1 `wokeFromSleep()`. Pure
+`SleepPolicy` maps P5/P6 to the light-sleep slice and deep-sleep decision. A
+key wake restores the screen; a timer wake falls through to the P4 deep-sleep
+deadline; P6 After 10 min ends a review with `endReview(false)`, saves the
+cache and deep-sleeps. A bare dev `Z` enters a 10 s light sleep for the spike.
+Five new native tests (437 on the merged main); release 1,664,221 B (90.7%),
+dev 1,732,741 B (94.4%). The timer path woke the device on hardware, but the
+current draw, key/G0 latency, first-key, Wi-Fi rejoin, panel recovery, P4/P6
+deadlines and USB checks remain.
 
 ### SPEED-01 — Submission policy
 

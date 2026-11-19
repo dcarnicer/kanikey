@@ -768,6 +768,11 @@ A150 G143 M81 E147 B586).
   normally. The full `Pause → Settings → System → About → Esc ×3` chain returned
   to Pause with Settings selected. Sleep/dim, firmware install, low battery and
   debug routes remain.
+- **SPEED-06.** Five native tests cover the P5/P6 policy and sleep slices. A
+  bare dev `Z` entered the 10 s light-sleep test; the device was alive and
+  syncing after the timer wake (`cmd h` answered, no boot). The post-wake
+  serial line was lost on the USB CDC. Current draw, key/G0 wake latency,
+  first-key, Wi-Fi rejoin, panel recovery, P4/P6 deadlines and USB remain.
 - **TNG-03.** Fifteen native tests cover the list-window math and hint
   fallbacks. Phase 2 migrated Home hints, Settings, the Wi-Fi scan list, Outbox,
   the lesson list window and Study/critical windows to the shared primitives;

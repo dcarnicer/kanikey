@@ -131,15 +131,14 @@ Working on hardware:
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 432 native tests and the `cardputer-adv` build run in GitHub Actions alongside
+- 437 native tests and the `cardputer-adv` build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests; the release workflow adds
   the manifest tests and a tag-driven GitHub release.
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Last recorded build (TNG-03 UiFont): **release 1,660,285 B / 1,835,008 B
-flash (90.5%)**, **dev 1,728,333 B (94.2%)**, static RAM 105,384/105,520 B
-(32.2%).
+Last recorded build (SPEED-06): **release 1,664,221 B / 1,835,008 B flash
+(90.7%)**, **dev 1,732,741 B (94.4%)**, static RAM 105,400/105,520 B (32.2%).
 Removing `efontJA_16` freed ~468 KB; the dev image now has ~111 KB of headroom.
 The loop task uses a 24 KiB stack;
 the lazy review batch keeps the lesson-fetch minimum free heap above ~44 KB in
@@ -772,6 +771,7 @@ round 2.
 | Review options | REV-04, REV-05, REV-06, REV-07, REV-08, REV-09, REV-10, REV-11, REV-12 | Orders, wrong C/A, wrap up, auto-advance, details on wrong, back-to-back, input editing, summary list, minimal header | review (2026-11-19; auto-advance/wrap-up/C/A smokes passed) |
 | Visual pack split | ONB-01, ONB-02 | Font/radical v2 packs, portal download/upload | review (2026-11-19; portal hardware pending) |
 | Submission policy | SPEED-01 | At session end / Every 5 / Immediately, summary send loop | review (2026-11-19; hardware pending) |
+| Light sleep | SPEED-06 | P5/P6 light sleep, timer/key wake, review deadline | review (2026-11-19; timer wake smoke, measurements pending) |
 | Background sync and prefetch | SPEED-02, SPEED-03, SPEED-04 | Quick/full plan, non-modal sync, review prefetch | review (2026-11-19; hardware partial) |
 | TLS transport | SPEED-05 | Keep-alive session, chunked bodies | review (2026-11-19: re-landed with the idle-age fix; manual sync completed with 35 reused requests) |
 | Home clock | SPEED-07 | 60 s Home refresh, offline uptime | review (2026-11-19; hardware pending) |
@@ -783,8 +783,8 @@ REM/AUD, ONB (pack and setup) and DOC (this documentation pass). ARCH-01/02 are
 merged and CFG-01/02/03/04, REV-01/02/03/04/05/06/07/08/09/10/11/12,
 LES-01…LES-06, SETUP-09, ONB-01/02 and SPEED-01/02/03/04/05/07 are in review. The
 eight-section Settings menu replaces the flat list; the registry now has 48
-rows after the Account › Wi-Fi action. Main has 432 native tests and builds at
-1,660,285 B (90.5%) release / 1,728,333 B (94.2%) dev. No round-2 task is
+rows after the Account › Wi-Fi action. Main has 437 native tests and builds at
+1,664,221 B (90.7%) release / 1,732,741 B (94.4%) dev. No round-2 task is
 claimed as done
 here beyond the spec status above.
 
