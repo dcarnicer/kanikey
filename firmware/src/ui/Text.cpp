@@ -2,8 +2,15 @@
 // caller-owned transfer window already open.
 #include "ui/Text.h"
 
+#include "ui/TextLayout.h"
+
 namespace kk::ui {
 namespace {
+
+int measureFont0(void* ctx, std::string_view text) {
+    auto* d = static_cast<lgfx::LovyanGFX*>(ctx);
+    return d->textWidth(std::string(text).c_str());
+}
 
 struct Piece {
     std::string text;
@@ -42,15 +49,8 @@ size_t addWords(std::vector<Piece>* pieces, const std::string& text, uint16_t co
 
 // Removes whole UTF-8 code points from the end until the text fits maxWidth.
 void trimBackToWidth(lgfx::LovyanGFX& d, std::string& text, int maxWidth) {
-    if (maxWidth <= 0) {
-        text.clear();
-        return;
-    }
-    while (!text.empty() && d.textWidth(text.c_str()) > maxWidth) {
-        text.pop_back();
-        while (!text.empty() && (static_cast<unsigned char>(text.back()) & 0xC0) == 0x80)
-            text.pop_back();
-    }
+    const TextMeasure measure{&measureFont0, &d};
+    text.resize(fitPrefix(text, 0, text.size(), maxWidth, measure));
 }
 
 }  // namespace
@@ -60,39 +60,22 @@ void drawWrapped(lgfx::LovyanGFX& d, const std::string& text, int x, int y, int 
     d.setTextFont(0);
     d.setTextSize(1);
     d.setTextColor(fg, bg);
-    size_t start = 0;
-    size_t lastStart = 0;
-    size_t lastEnd = 0;
-    int lines = 0;
-    for (int line = 0; line < maxLines && start < text.size(); ++line) {
-        size_t end = text.size();
-        while (end > start && d.textWidth(text.substr(start, end - start).c_str()) > w) --end;
-        if (end < text.size()) {
-            const size_t sp = text.rfind(' ', end);
-            if (sp != std::string::npos && sp > start) end = sp;
-        }
-        d.drawString(text.substr(start, end - start).c_str(), x, y + line * 8);
-        lastStart = start;
-        lastEnd = end;
-        ++lines;
-        start = end;
-        while (start < text.size() && text[start] == ' ') ++start;
+    if (maxLines < 1) return;
+
+    const TextMeasure measure{&measureFont0, &d};
+    std::vector<TextLine> lines(static_cast<size_t>(maxLines));
+    const WrapResult wrapped = wrapLines(text, w, measure, lines.data(), maxLines);
+    for (int line = 0; line < wrapped.lineCount; ++line) {
+        const TextLine& span = lines[static_cast<size_t>(line)];
+        d.drawString(text.substr(span.begin, span.length()).c_str(), x, y + line * 8);
     }
-    if (ellipsis && lines > 0 && start < text.size()) {
+    if (ellipsis && wrapped.truncated && wrapped.lineCount > 0) {
         // Replace the last drawn line with a shortened one ending in "...".
-        const int lastY = y + (lines - 1) * 8;
+        const int lastY = y + (wrapped.lineCount - 1) * 8;
         d.fillRect(x, lastY, w, 8, bg);
-        std::string shown = text.substr(lastStart, lastEnd - lastStart);
-        const std::string dots = "...";
-        const int reserve = d.textWidth(dots.c_str()) + d.textWidth(" ");
-        while (!shown.empty() && d.textWidth(shown.c_str()) > w - reserve) {
-            shown.pop_back();
-            while (!shown.empty() && (static_cast<unsigned char>(shown.back()) & 0xC0) == 0x80)
-                shown.pop_back();
-        }
-        while (!shown.empty() && shown.back() == ' ') shown.pop_back();
-        if (!shown.empty()) shown += " ";
-        shown += dots;
+        const TextLine& span = lines[static_cast<size_t>(wrapped.lineCount - 1)];
+        const std::string shown = ellipsize(text.substr(span.begin, span.length()), w,
+                                            measure, "...", true);
         d.setTextColor(fg, bg);
         d.drawString(shown.c_str(), x, lastY);
     }

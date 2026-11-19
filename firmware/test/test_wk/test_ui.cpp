@@ -1,12 +1,43 @@
-// TNG-03: pure list-window math and hint-bar fallback selection.
+// TNG-03: pure list-window math, hint-bar fallback, text layout and icons.
 #include <unity.h>
 
+#include <cstring>
+#include <string>
+#include <string_view>
+
 #include "ui/HintBar.h"
+#include "ui/Icons.h"
 #include "ui/ListView.h"
+#include "ui/TextLayout.h"
 
 using namespace kk::ui;
 
 namespace {
+
+int codePointCount(std::string_view text) {
+    int count = 0;
+    for (size_t i = 0; i < text.size();) {
+        const unsigned char lead = static_cast<unsigned char>(text[i]);
+        size_t step = 1;
+        if ((lead & 0xE0) == 0xC0) step = 2;
+        else if ((lead & 0xF0) == 0xE0) step = 3;
+        else if ((lead & 0xF8) == 0xF0) step = 4;
+        if (i + step > text.size()) step = 1;
+        i += step;
+        ++count;
+    }
+    return count;
+}
+
+// Monospaced stub: every code point is `per` pixels wide.
+int measureFixed(void* ctx, std::string_view text) {
+    return codePointCount(text) * *static_cast<int*>(ctx);
+}
+
+void assertLine(const TextLine& line, size_t begin, size_t end) {
+    TEST_ASSERT_EQUAL_UINT(begin, line.begin);
+    TEST_ASSERT_EQUAL_UINT(end, line.end);
+}
 
 // ------------------------------------------------------------- ListWindow
 
@@ -147,6 +178,276 @@ static void test_hint_bar_geometry() {
     TEST_ASSERT_EQUAL(224, kHintWidth);
 }
 
+// ----------------------------------------------------------- text layout
+
+static void test_layout_wrap_words_breaks_at_spaces() {
+    int per = 6;
+    const TextMeasure measure{&measureFixed, &per};
+    TextLine lines[4];
+    const WrapResult r = wrapLines("hello world", 36, measure, lines, 4);
+    TEST_ASSERT_EQUAL(2, r.lineCount);
+    TEST_ASSERT_FALSE(r.truncated);
+    assertLine(lines[0], 0, 5);
+    assertLine(lines[1], 6, 11);
+    TEST_ASSERT_EQUAL(2, wrapLineCount("hello world", 36, measure));
+}
+
+static void test_layout_wrap_words_splits_long_word() {
+    int per = 6;
+    const TextMeasure measure{&measureFixed, &per};
+    TextLine lines[8];
+    const WrapResult r = wrapLines("abcdefgh ij", 18, measure, lines, 8);
+    TEST_ASSERT_EQUAL(4, r.lineCount);
+    TEST_ASSERT_FALSE(r.truncated);
+    assertLine(lines[0], 0, 3);
+    assertLine(lines[1], 3, 6);
+    assertLine(lines[2], 6, 8);
+    assertLine(lines[3], 9, 11);
+}
+
+static void test_layout_wrap_characters_mode() {
+    int per = 6;
+    const TextMeasure measure{&measureFixed, &per};
+    TextLine lines[5];
+    const WrapResult r =
+        wrapLines("abc de", 12, measure, lines, 5, WrapMode::Characters);
+    TEST_ASSERT_EQUAL(3, r.lineCount);
+    TEST_ASSERT_FALSE(r.truncated);
+    assertLine(lines[0], 0, 2);
+    assertLine(lines[1], 2, 4);  // the space stays in character mode
+    assertLine(lines[2], 4, 6);
+}
+
+static void test_layout_wrap_drops_spaces_at_breaks() {
+    int per = 6;
+    const TextMeasure measure{&measureFixed, &per};
+    TextLine lines[4];
+    const WrapResult r = wrapLines("ab   cd", 12, measure, lines, 4);
+    TEST_ASSERT_EQUAL(2, r.lineCount);
+    assertLine(lines[0], 0, 2);
+    assertLine(lines[1], 5, 7);
+
+    const WrapResult leading = wrapLines("  ab", 12, measure, lines, 4);
+    TEST_ASSERT_EQUAL(1, leading.lineCount);
+    assertLine(lines[0], 2, 4);
+
+    const WrapResult blank = wrapLines("   ", 12, measure, lines, 4);
+    TEST_ASSERT_EQUAL(0, blank.lineCount);
+    TEST_ASSERT_FALSE(blank.truncated);
+}
+
+static void test_layout_wrap_max_lines_and_truncated() {
+    int per = 6;
+    const TextMeasure measure{&measureFixed, &per};
+    const char* text = "one two three four";
+    TextLine lines[8];
+
+    const WrapResult two = wrapLines(text, 24, measure, lines, 2);
+    TEST_ASSERT_EQUAL(2, two.lineCount);
+    TEST_ASSERT_TRUE(two.truncated);
+    assertLine(lines[0], 0, 3);
+    assertLine(lines[1], 4, 7);
+
+    const WrapResult one = wrapLines(text, 24, measure, lines, 1);
+    TEST_ASSERT_EQUAL(1, one.lineCount);
+    TEST_ASSERT_TRUE(one.truncated);
+
+    const WrapResult all = wrapLines(text, 24, measure, lines, 8);
+    TEST_ASSERT_EQUAL(5, all.lineCount);
+    TEST_ASSERT_FALSE(all.truncated);
+    TEST_ASSERT_EQUAL(5, wrapLineCount(text, 24, measure));
+}
+
+static void test_layout_wrap_empty_and_zero_width() {
+    int per = 6;
+    const TextMeasure measure{&measureFixed, &per};
+    TextLine lines[4];
+
+    const WrapResult empty = wrapLines("", 30, measure, lines, 4);
+    TEST_ASSERT_EQUAL(0, empty.lineCount);
+    TEST_ASSERT_FALSE(empty.truncated);
+
+    const WrapResult zero = wrapLines("abc", 0, measure, lines, 2);
+    TEST_ASSERT_EQUAL(2, zero.lineCount);
+    TEST_ASSERT_TRUE(zero.truncated);
+    TEST_ASSERT_EQUAL(3, wrapLineCount("abc", 0, measure));
+
+    const WrapResult none = wrapLines("abc", 30, measure, nullptr, 0);
+    TEST_ASSERT_EQUAL(0, none.lineCount);
+    TEST_ASSERT_TRUE(none.truncated);
+
+    const WrapResult counted = wrapLines("hello world", 36, measure, nullptr, 4);
+    TEST_ASSERT_EQUAL(2, counted.lineCount);
+    TEST_ASSERT_FALSE(counted.truncated);
+}
+
+static void test_layout_wrap_line_count_matches_limits() {
+    int per = 6;
+    const TextMeasure measure{&measureFixed, &per};
+    const char* text = "alpha beta gamma";
+    const int widths[] = {6, 12, 18, 24, 30, 36};
+    for (int width : widths) {
+        TextLine lines[16];
+        const WrapResult r = wrapLines(text, width, measure, lines, 16);
+        TEST_ASSERT_EQUAL(wrapLineCount(text, width, measure), r.lineCount);
+        TEST_ASSERT_FALSE(r.truncated);
+    }
+    TEST_ASSERT_EQUAL(3, wrapLineCount(text, 30, measure));
+
+    TextLine lines[8];
+    const WrapResult limited = wrapLines(text, 30, measure, lines, 2);
+    TEST_ASSERT_EQUAL(2, limited.lineCount);
+    TEST_ASSERT_TRUE(limited.truncated);
+
+    const std::string japanese = "日本語";
+    TEST_ASSERT_EQUAL(2, wrapLineCount(japanese, 12, measure, WrapMode::Characters));
+    TEST_ASSERT_EQUAL(3, wrapLineCount(japanese, 6, measure, WrapMode::Characters));
+}
+
+static void test_layout_ellipsize_short_text_and_force() {
+    int per = 6;
+    const TextMeasure measure{&measureFixed, &per};
+
+    TEST_ASSERT_EQUAL_STRING("abc", ellipsize("abc", 42, measure).c_str());
+    TEST_ASSERT_EQUAL_STRING("abc ...", ellipsize("abc", 42, measure, "...", true).c_str());
+    TEST_ASSERT_EQUAL_STRING("abcdef", ellipsize("abcdef", 48, measure).c_str());
+    TEST_ASSERT_EQUAL_STRING("abcd ...",
+                             ellipsize("abcdef", 48, measure, "...", true).c_str());
+    TEST_ASSERT_EQUAL_STRING("...", ellipsize("abcdef", 0, measure, "...", true).c_str());
+    TEST_ASSERT_EQUAL_STRING("...", ellipsize("", 30, measure, "...", true).c_str());
+}
+
+static void test_layout_ellipsize_keeps_utf8_together() {
+    int per = 6;
+    const TextMeasure measure{&measureFixed, &per};
+    const std::string japanese = "日本語です";
+    TEST_ASSERT_EQUAL_STRING("日本 ...",
+                             ellipsize(japanese, 36, measure, "...", true).c_str());
+    TEST_ASSERT_EQUAL_STRING("日 ...",
+                             ellipsize(japanese, 30, measure, "...", true).c_str());
+}
+
+static void test_layout_prefix_and_suffix_by_code_point() {
+    int per = 6;
+    const TextMeasure measure{&measureFixed, &per};
+    const std::string text = "a日本b";
+    TEST_ASSERT_EQUAL_UINT64(4, fitPrefix(text, 0, text.size(), 12, measure));
+    TEST_ASSERT_EQUAL_UINT64(1, fitPrefix(text, 0, text.size(), 6, measure));
+    TEST_ASSERT_EQUAL_UINT64(0, fitPrefix(text, 0, text.size(), 0, measure));
+    TEST_ASSERT_EQUAL_UINT64(4, fitSuffix(text, 0, text.size(), 12, measure));
+    TEST_ASSERT_EQUAL_UINT64(7, fitSuffix(text, 0, text.size(), 6, measure));
+    TEST_ASSERT_EQUAL_UINT64(text.size(), fitSuffix(text, 0, text.size(), 0, measure));
+    TEST_ASSERT_EQUAL_UINT64(0, fitSuffix(text, 0, text.size(), 100, measure));
+
+    // Reversed and out-of-range spans are clamped, not read.
+    TEST_ASSERT_EQUAL_UINT64(3, fitPrefix(text, 5, 3, 100, measure));
+    TEST_ASSERT_EQUAL_UINT64(3, fitSuffix(text, 5, 3, 100, measure));
+    TEST_ASSERT_EQUAL_UINT64(0, fitPrefix(text, 0, text.size(), -1, measure));
+    TEST_ASSERT_EQUAL_UINT64(text.size(), fitSuffix(text, 0, text.size(), -1, measure));
+}
+
+// ---------------------------------------------------------------- icons
+
+static int iconInk(const Icon& icon) {
+    int ink = 0;
+    for (int y = 0; y < icon.height; ++y)
+        for (int x = 0; x < icon.width; ++x)
+            if (iconPixel(icon, x, y)) ++ink;
+    return ink;
+}
+
+static int iconRowsWithInk(const Icon& icon) {
+    int rows = 0;
+    for (int y = 0; y < icon.height; ++y) {
+        bool any = false;
+        for (int x = 0; x < icon.width; ++x) any = any || iconPixel(icon, x, y);
+        if (any) ++rows;
+    }
+    return rows;
+}
+
+static int iconColsWithInk(const Icon& icon) {
+    int cols = 0;
+    for (int x = 0; x < icon.width; ++x) {
+        bool any = false;
+        for (int y = 0; y < icon.height; ++y) any = any || iconPixel(icon, x, y);
+        if (any) ++cols;
+    }
+    return cols;
+}
+
+static void test_icon_tables_dimensions() {
+    TEST_ASSERT_EQUAL(7, kIconCount);
+    TEST_ASSERT_EQUAL_UINT8(11, kIconWidth);
+    TEST_ASSERT_EQUAL_UINT8(11, kIconHeight);
+    for (int i = 0; i < kIconCount; ++i) {
+        const Icon& icon = *kIcons[i];
+        TEST_ASSERT_NOT_NULL(icon.bits);
+        TEST_ASSERT_EQUAL_UINT8(kIconWidth, icon.width);
+        TEST_ASSERT_EQUAL_UINT8(kIconHeight, icon.height);
+        TEST_ASSERT_EQUAL_UINT8((icon.width + 7) / 8, icon.stride);
+        TEST_ASSERT_TRUE(icon.width <= 16);
+        TEST_ASSERT_TRUE(icon.height <= 16);
+    }
+}
+
+static void test_icon_tables_have_ink() {
+    for (int i = 0; i < kIconCount; ++i) {
+        const Icon& icon = *kIcons[i];
+        const int ink = iconInk(icon);
+        TEST_ASSERT_TRUE(ink >= 20);
+        TEST_ASSERT_TRUE(ink < icon.width * icon.height);
+        TEST_ASSERT_TRUE(iconRowsWithInk(icon) >= 8);
+        TEST_ASSERT_TRUE(iconColsWithInk(icon) >= 5);
+    }
+}
+
+static void test_icon_padding_bits_are_clear() {
+    for (int i = 0; i < kIconCount; ++i) {
+        const Icon& icon = *kIcons[i];
+        const int used = icon.width % 8;
+        if (used == 0) continue;
+        const uint8_t mask = static_cast<uint8_t>((1u << (8 - used)) - 1);
+        for (int y = 0; y < icon.height; ++y) {
+            const int last = y * icon.stride + icon.stride - 1;
+            TEST_ASSERT_EQUAL_HEX8(0, icon.bits[last] & mask);
+        }
+    }
+}
+
+static void test_icon_pixel_bounds_and_known_bits() {
+    // Out-of-range reads are clear for every icon, so a caller can clip safely.
+    for (int i = 0; i < kIconCount; ++i) {
+        const Icon& icon = *kIcons[i];
+        TEST_ASSERT_FALSE(iconPixel(icon, -1, 0));
+        TEST_ASSERT_FALSE(iconPixel(icon, 0, -1));
+        TEST_ASSERT_FALSE(iconPixel(icon, icon.width, 0));
+        TEST_ASSERT_FALSE(iconPixel(icon, 0, icon.height));
+    }
+    TEST_ASSERT_FALSE(iconPixel(kIconCheck, 0, 0));
+    TEST_ASSERT_TRUE(iconPixel(kIconCheck, 3, 8));
+    TEST_ASSERT_TRUE(iconPixel(kIconCross, 5, 5));
+    TEST_ASSERT_FALSE(iconPixel(kIconCross, 5, 0));
+    TEST_ASSERT_TRUE(iconPixel(kIconOutbox, 0, 9));
+    TEST_ASSERT_TRUE(iconPixel(kIconOutbox, 10, 9));
+    TEST_ASSERT_FALSE(iconPixel(kIconOutbox, 5, 5));
+
+    const Icon empty;
+    TEST_ASSERT_FALSE(iconPixel(empty, 0, 0));
+}
+
+static void test_icons_are_distinct() {
+    for (int i = 0; i < kIconCount; ++i) {
+        for (int j = i + 1; j < kIconCount; ++j) {
+            const Icon& a = *kIcons[i];
+            const Icon& b = *kIcons[j];
+            TEST_ASSERT_TRUE(a.bits != b.bits);
+            TEST_ASSERT_TRUE(std::memcmp(a.bits, b.bits,
+                                         static_cast<size_t>(a.height) * a.stride) != 0);
+        }
+    }
+}
+
 }  // namespace
 
 void run_ui_tests() {
@@ -165,4 +466,19 @@ void run_ui_tests() {
     RUN_TEST(test_hint_fit_index_falls_back_to_last);
     RUN_TEST(test_hint_fit_index_empty);
     RUN_TEST(test_hint_bar_geometry);
+    RUN_TEST(test_layout_wrap_words_breaks_at_spaces);
+    RUN_TEST(test_layout_wrap_words_splits_long_word);
+    RUN_TEST(test_layout_wrap_characters_mode);
+    RUN_TEST(test_layout_wrap_drops_spaces_at_breaks);
+    RUN_TEST(test_layout_wrap_max_lines_and_truncated);
+    RUN_TEST(test_layout_wrap_empty_and_zero_width);
+    RUN_TEST(test_layout_wrap_line_count_matches_limits);
+    RUN_TEST(test_layout_ellipsize_short_text_and_force);
+    RUN_TEST(test_layout_ellipsize_keeps_utf8_together);
+    RUN_TEST(test_layout_prefix_and_suffix_by_code_point);
+    RUN_TEST(test_icon_tables_dimensions);
+    RUN_TEST(test_icon_tables_have_ink);
+    RUN_TEST(test_icon_padding_bits_are_clear);
+    RUN_TEST(test_icon_pixel_bounds_and_known_bits);
+    RUN_TEST(test_icons_are_distinct);
 }
