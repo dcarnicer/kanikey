@@ -711,6 +711,11 @@ A150 G143 M81 E147 B586).
   `Rad:` lines, and the status is now split by role so a combined pack does not
   repeat the other table. The split font/radical files, missing-radical boot
   and both upload paths remain.
+- **ONB-02.** Six native manifest tests cover the optional `pack font` record,
+  absolute URLs, a missing/duplicate record and bad size/hash; the release
+  builder now emits it with `--pack`. The empty-card download, cut Wi-Fi,
+  phone upload, truncated/wrong-kind upload, `Esc` cancel and heap checks still
+  need the portal on hardware.
 - **REV-05.** Pause showed the four rows `Continue / Wrap up / End session /
   Settings`. On the synthetic cache, after completing 今夜's meaning and
   opening Wrap up, the reading question stayed with `WRAP UP 1` and `1/1`. The
