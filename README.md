@@ -50,9 +50,11 @@
 > opens the item
 > detail card with meanings, readings, mnemonics, notes, components, related
 > subjects and, for vocabulary, parts of speech and context sentences.
-> Japanese prompts and readings come entirely from the microSD visual pack at
-> 64/32/20 px: 7,269 glyphs + 498 radical bitmaps in 3.7 MB, generated locally
-> with the user's token. No WaniKani content is in the repository.
+> Japanese prompts and readings come entirely from microSD visual packs at
+> 64/32/20 px: a font pack (`glyphs.kgp`, no WaniKani content, buildable
+> without a token) and a personal radical pack (`radicals.kgp`, 498 bitmaps,
+> generated locally with the user's token). A v1 combined pack from an older
+> build still works. No WaniKani content is in the repository.
 > `efontJA_16` has been removed; missing glyphs show an explicit state. First
 > boot brings up a WPA2 setup portal (`KaniKey-XXXX`, key on screen): the phone
 > saves the Wi-Fi, the device joins it, and the station page validates the

@@ -513,9 +513,8 @@ These are future plans, not features you can use today:
 - **Phone-only pack setup.** The station page would offer **Download pack** when
   the font pack is missing, and an upload form for the personal radical pack.
   The current firmware neither downloads nor uploads packs on the setup page;
-  use the card reader or `device.py push` in §3.
-- **Split packs.** A publishable font pack (`glyphs.kgp`) and a personal radical
-  pack (`radicals.kgp`). The current firmware uses one combined file.
+  use the card reader or `device.py push` in §3. The split packs themselves are
+  current; only the portal transfer is pending.
 - A pack generator in the phone's browser, without a computer.
 - On-device rendering of characters that are not in the pack.
 - Vocabulary pronunciation playback and stroke order. The firmware can parse
