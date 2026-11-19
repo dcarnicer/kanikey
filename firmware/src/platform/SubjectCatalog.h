@@ -16,6 +16,11 @@ bool catalogReady();
 size_t catalogCount();
 uint32_t catalogBytes();
 bool catalogHas(fs::FS& sd, uint32_t subjectId);
+// REV-08: reads only the id/type/level prefix of a catalog file. One 26-byte
+// read, no LRU touch and no CRC, so a level order can resolve hundreds of due
+// subjects without writing to the card. False when the file is missing,
+// belongs to another account or is too short.
+bool catalogLevel(fs::FS& sd, uint32_t subjectId, uint8_t* level);
 bool catalogLoad(fs::FS& sd, uint32_t subjectId, Subject* out);
 bool catalogStore(fs::FS& sd, uint32_t subjectId, const Subject& subject);
 bool catalogPruneToCap(fs::FS& sd);

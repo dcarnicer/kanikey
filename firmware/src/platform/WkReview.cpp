@@ -23,6 +23,61 @@ String idList(const std::vector<uint32_t>& ids, size_t begin, size_t end) {
 
 }  // namespace
 
+DueAssignments fetchDueAssignments(const String& token,
+                                   const std::vector<uint32_t>& dueSubjectIds, uint32_t now) {
+    DueAssignments result;
+    if (dueSubjectIds.empty()) {
+        result.error = "no due subject ids";
+        return result;
+    }
+    result.assignments.reserve(dueSubjectIds.size());
+    WkSessionGuard session;
+    // One page is ~450-600 B per assignment; 60 stays under the 32 KB body
+    // buffer on a real account. A truncated page retries smaller and keeps the
+    // smaller size for the following pages.
+    size_t pageSize = 60;
+    for (size_t begin = 0; begin < dueSubjectIds.size();) {
+        const size_t count = std::min(pageSize, dueSubjectIds.size() - begin);
+        const size_t end = begin + count;
+        const String path =
+            "/v2/assignments?subject_ids=" + idList(dueSubjectIds, begin, end);
+        ++result.requests;
+        WkAssignmentsResult ar = wkGetAssignmentsRetry(path, token, 32768, count);
+        result.bytes += ar.http.bytes;
+        if (ar.http.httpCode != 200) {
+            result.httpCode = ar.http.httpCode;
+            result.error = "due assignments HTTP " + String(ar.http.httpCode);
+            return result;
+        }
+        if (!ar.parsed) {
+            if (ar.http.truncated && count > 1) {
+                const size_t smaller = count > 20 ? 20 : (count > 5 ? 5 : 1);
+                Serial.printf("[review] due page %u-%u truncated, retrying with %u\n",
+                              static_cast<unsigned>(begin), static_cast<unsigned>(end),
+                              static_cast<unsigned>(smaller));
+                pageSize = smaller;
+                continue;
+            }
+            result.error = "due assignments JSON";
+            return result;
+        }
+        for (const Assignment& a : ar.assignments) {
+            if (a.hidden || a.srsStage < 1 || a.srsStage > 8) continue;
+            if (a.availableAt != 0 && a.availableAt > now) continue;
+            result.assignments.push_back(a);
+        }
+        Serial.printf("[review] due page %u-%u: %u bytes, %u assignments\n",
+                      static_cast<unsigned>(begin), static_cast<unsigned>(end),
+                      static_cast<unsigned>(ar.http.bytes),
+                      static_cast<unsigned>(ar.assignments.size()));
+        begin = end;
+    }
+    result.pageSize = pageSize;
+    result.ok = !result.assignments.empty();
+    if (!result.ok) result.error = "no due assignments";
+    return result;
+}
+
 ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& dueSubjectIds,
                              uint32_t now, size_t limit) {
     // Assignments, subject pages, study materials, statistics and components

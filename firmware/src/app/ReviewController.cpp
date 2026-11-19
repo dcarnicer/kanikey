@@ -253,6 +253,26 @@ void applyCompletion() {
 
 }  // namespace
 
+kk::ReviewOrderStrategy reviewOrderStrategy() {
+    int value = 0;
+    if (!kk::settingsGetInt("rv.order", &value))
+        return kk::ReviewOrderStrategy::Account;
+    return kk::reviewOrderStrategyFromValue(value);
+}
+
+bool reviewTypeOrderEnabled() {
+    int value = 0;
+    return kk::settingsGetInt("rv.types", &value) && value != 0;
+}
+
+uint8_t currentReviewLevel() {
+    if (state().session.gLevelProgress.valid && state().session.gLevelProgress.level)
+        return state().session.gLevelProgress.level;
+    if (state().session.gHaveUser && state().session.gUser.level > 0)
+        return static_cast<uint8_t>(state().session.gUser.level);
+    return 0;
+}
+
 const kk::Subject* subjectById(uint32_t id) {
     for (const kk::Subject& s : state().cache.gBatch.subjects)
         if (s.id == id) return &s;
@@ -723,8 +743,17 @@ void startReview() {
     int backToBack = 1;
     kk::settingsGetInt("rv.b2b", &backToBack);
     state().review.gQueue.setBackToBack(backToBack != 0);
-    state().review.gQueue.setLowerLevelsFirst(state().session.gHaveUser &&
-                               state().session.gUser.reviewsOrder == kk::ReviewOrder::LowerLevelsFirst);
+    const kk::ReviewOrderStrategy orderStrategy = reviewOrderStrategy();
+    const bool typeOrder = reviewTypeOrderEnabled();
+    const uint8_t currentLevel = currentReviewLevel();
+    state().review.gQueue.setOrderStrategy(orderStrategy);
+    state().review.gQueue.setCurrentLevel(currentLevel);
+    state().review.gQueue.setTypeOrder(typeOrder);
+    // Only the account preference reads reviews_presentation_order; the other
+    // strategies order the frozen due set themselves.
+    state().review.gQueue.setLowerLevelsFirst(
+        orderStrategy == kk::ReviewOrderStrategy::Account && state().session.gHaveUser &&
+        state().session.gUser.reviewsOrder == kk::ReviewOrder::LowerLevelsFirst);
     if (kk::settingsCriticalFirst()) {
         loadCritical();
         std::vector<uint32_t> ids;
@@ -732,9 +761,16 @@ void startReview() {
         for (const kk::CriticalItem& item : state().study.gCritical) ids.push_back(item.subjectId);
         state().review.gQueue.setCriticalSubjectIds(ids);
     }
-    state().review.gQueue.build(due, state().cache.gBatch.subjects, now, reviewLimit);
-    Serial.printf("[review] order %s, first levels",
+    // Random gets a fresh seed per session; the deterministic strategies ignore
+    // it. Account keeps the historical fixed seed so today's order is intact.
+    const uint32_t seed =
+        orderStrategy == kk::ReviewOrderStrategy::Random ? esp_random() : 0x9E3779B9u;
+    state().review.gQueue.build(due, state().cache.gBatch.subjects, now, reviewLimit, seed);
+    Serial.printf("[review] order %s, types %d, current level %u, account %s\n",
+                  kk::reviewOrderStrategyName(orderStrategy), typeOrder ? 1 : 0,
+                  static_cast<unsigned>(currentLevel),
                   state().review.gQueue.lowerLevelsFirst() ? "lower_levels_first" : "shuffled");
+    Serial.printf("[review] first levels");
     for (size_t i = 0; i < state().review.gQueue.queue().size() && i < 8; ++i)
         Serial.printf(" %u", static_cast<unsigned>(state().review.gQueue.queue()[i].level));
     Serial.println();

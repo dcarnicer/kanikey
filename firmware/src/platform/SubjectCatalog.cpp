@@ -216,6 +216,36 @@ bool catalogHas(fs::FS& sd, uint32_t subjectId) {
     return sd.exists(path);
 }
 
+bool catalogLevel(fs::FS& sd, uint32_t subjectId, uint8_t* level) {
+    if (!level) return false;
+    *level = 0;
+    if (!gCatalog.open || subjectId == 0) return false;
+    char path[64];
+    subjectPath(subjectId, path, sizeof path);
+    File file = sd.open(path, "r");
+    if (!file) return false;
+    // Header plus the first payload fields: id (4), type (1), level (1).
+    constexpr size_t kPrefixBytes = 6;
+    uint8_t bytes[kCatalogSubjectHeaderBytes + kPrefixBytes];
+    size_t got = 0;
+    while (got < sizeof bytes) {
+        const int n = file.read(bytes + got, sizeof bytes - got);
+        if (n <= 0) break;
+        got += static_cast<size_t>(n);
+    }
+    file.close();
+    if (got != sizeof bytes) return false;
+    if (std::memcmp(bytes, kSubjectMagic, 4) != 0) return false;
+    if (get16(bytes + 4) != kVersion) return false;
+    if (get32(bytes + 6) != gCatalog.accountKey) return false;
+    const uint8_t* payload = bytes + kCatalogSubjectHeaderBytes;
+    if (get32(payload) != subjectId) return false;
+    const uint8_t value = payload[5];
+    if (value == 0 || value > 60) return false;  // WaniKani levels are 1..60
+    *level = value;
+    return true;
+}
+
 bool catalogLoad(fs::FS& sd, uint32_t subjectId, Subject* out) {
     if (!gCatalog.open || subjectId == 0 || !out) return false;
     char path[64];
