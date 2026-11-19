@@ -26,6 +26,7 @@
 #include "wk/Outbox.h"
 #include "wk/ReviewQueue.h"
 #include "wk/RomajiIme.h"
+#include "wk/ScreenModel.h"
 #include "wk/SrsCounts.h"
 #include "wk/SubmitPolicy.h"
 #include "wk/Summary.h"
@@ -85,7 +86,6 @@ struct SessionState {
     kk::SrsCounts gSrs;
     bool gHaveUser = false;
     bool gHaveSummary = false;
-    bool gShowHome = false;
     uint32_t gDueReviews = 0;
     uint32_t gLessons = 0;
     uint32_t gSyncedAt = 0;
@@ -139,33 +139,32 @@ constexpr size_t kSummaryStages = kk::kOutboxMax;
 
 struct ReviewState {
     kk::ReviewQueue gQueue;
-    bool gReviewActive = false;
-    bool gReviewSummary = false;
-    bool gFeedback = false;
+    // Sub-state of Screen::Review. The screen itself lives in ScreenState.
+    bool feedback = false;
     // REV-05: the user wrapped up; the header shows the pruned count until the
     // summary. Reset by startReview() and endReview().
     bool gWrapUp = false;
     // REV-06: millis() when correct feedback appeared; 0 when the auto-advance
     // timer is off.
-    uint32_t gFeedbackCorrectAt = 0;
+    uint32_t feedbackCorrectAt = 0;
     bool gNeedsSubmit = false;
     // Outbox record queued by the last completion; keeps its journal patch
     // paired with the POST (SPEED-01 sends tracked records in a loop).
     uint32_t gPendingSeq = 0;
-    bool gFeedbackCompleted = false;
+    bool feedbackCompleted = false;
     // SPEED-01: pre-review SRS stages for every record queued this session,
     // and the live progress of a send loop (summary or review hint bar).
     kk::StageTracker gStageTracker;
     bool gSending = false;
     uint32_t gSendSent = 0;
     uint32_t gSendTotal = 0;
-    bool gReviewDetail = false;
-    int gReviewDetailPage = 0;
-    int gReviewDetailPages = 5;
+    bool detail = false;
+    int detailPage = 0;
+    int detailPages = 5;
     kk::AnswerCheck gCheck;
-    kk::ReviewPart gFeedbackPart = kk::ReviewPart::None;
-    uint32_t gFeedbackSubjectId = 0;
-    std::string gFeedbackInput;
+    kk::ReviewPart feedbackPart = kk::ReviewPart::None;
+    uint32_t feedbackSubjectId = 0;
+    std::string feedbackInput;
     kk::SessionItem gCompletedItem;
     StageChange gStageChange;
     // REV-11: summary rows and their per-item data. The wrong answers keep the
@@ -182,8 +181,8 @@ struct ReviewState {
     std::string gDirectReading;  // test/serial reading input, bypasses the romaji IME
 #endif
     kk::RomajiIme gIme;
-    uint32_t gDetailSubjectId = 0;
-    bool gDetailFromCritical = false;
+    uint32_t detailSubjectId = 0;
+    bool detailFromCritical = false;
     uint32_t gPendingJournalHandle = 0;
 };
 
@@ -191,6 +190,9 @@ struct OutboxState {
     std::vector<kk::OutboxItem> gOutbox;
     uint32_t gOutboxSelectedSeq = 0;
     char gOutboxNote[40] = "";
+    // Opening the outbox from Settings must return there on Esc, as it did
+    // before the screen state machine.
+    kk::ScreenState returnScreen;
 };
 
 struct LessonState {
@@ -218,11 +220,14 @@ struct LessonState {
     std::string gLessonBatchDirectReading;
 #endif
     // Confirmation, offline message and failed-items frame before/after start.
+    // These are sub-state of Screen::LessonList (the start frame replaces the
+    // list without leaving the lesson list state).
     kk::LessonStartPlan gLessonStartPlan;
-    bool gLessonStartActive = false;
+    bool startConfirm = false;
     bool gLessonStartFailed = false;
     bool gLessonStartOffline = false;
-    // LES-05 workload guard. It shares gLessonStartActive with the start
+    bool quizBatch = false;  // Screen::LessonQuiz: whole batch vs one item (Q)
+    // LES-05 workload guard. It shares startConfirm with the start
     // confirmation so the existing key/draw dispatch reaches lessonStartKey().
     bool gLessonWorkloadActive = false;
     bool gLessonWorkloadConfirmed = false;
@@ -231,11 +236,6 @@ struct LessonState {
     uint32_t gLessonWorkloadDue = 0;
     uint32_t gLessonWorkloadStartedToday = 0;
     kk::WorkloadThresholds gLessonWorkloadLimits;
-    bool gLessonActive = false;
-    bool gLessonListActive = false;
-    bool gLessonEmptyActive = false;
-    bool gLessonQuizActive = false;       // single-item Q practice
-    bool gLessonBatchQuizActive = false;  // quiz over the whole selected batch
     char gLessonNote[40] = "";
 };
 
@@ -316,13 +316,10 @@ struct SyncState {
     bool gOutboxAuthIssue = false;
     SyncRow gSyncRows[kSyncRowCount];
     uint8_t gSyncCompleted = 0;
-    bool gSyncScreen = false;
     bool gSyncFinished = false;
     bool gSyncCancelRequested = false;
     SyncJobState gSyncJob;
 };
-
-enum class SettingsOrigin : uint8_t { Home, Pause };
 
 // SETUP-09: the on-device Wi-Fi flow can replace the phone portal from Settings
 // or from the boot "Wi-Fi needed" state.
@@ -351,19 +348,11 @@ struct UiState {
     bool gScreenOff = false;
     char gNetLine[48] = "NET: not tested";
     String gSerialLine;
-    bool gPauseActive = false;
     int gPauseIndex = 0;
-    bool gSettingsActive = false;
     // -1 shows the section list; otherwise the index into settingsSectionName().
     int gSettingsSection = -1;
     int gSettingsRow = 0;
     bool gSettingsResetConfirm = false;
-    SettingsOrigin gSettingsOrigin = SettingsOrigin::Home;
-    bool gAboutActive = false;
-    bool gSignOutConfirm = false;
-    bool gOutboxScreen = false;
-    bool gOutboxConfirm = false;
-    bool gLowBatteryPrompt = false;
     int gLowBatteryAction = 0;  // 1 = review, 2 = lessons
     bool gLowBatteryConfirmed = false;
     bool gNoticeActive = false;
@@ -392,11 +381,12 @@ struct OtaState {
     kk::ota::SavedState gOtaState;
     bool gOtaPending = false;
     uint32_t gOtaLoopAt = 0;
-    bool gFirmwareActive = false;
+    // The screen that opened Firmware (normally Settings above Home or Pause).
+    // Esc restores it instead of guessing an origin flag.
+    kk::ScreenState firmwareReturn;
     int gFirmwareIndex = 0;
     FirmwareStep gFirmwareStep = FirmwareStep::Idle;
     bool gFirmwareChecked = false;
-    bool gFirmwareConfirm = false;
     kk::ota::Manifest gFirmwareManifest;
     kk::ota::Offer gFirmwareOffer;
     char gFirmwareStatus[120] = "";
@@ -409,7 +399,6 @@ struct OtaState {
 struct SetupState {
     kk::SetupPortal gSetupPortal;
     kk::SetupPortalHooks gSetupHooks;
-    bool gPortalActive = false;
 };
 
 // SETUP-09: the Cardputer's own scan list and password field. The password
@@ -432,9 +421,11 @@ struct WifiState {
 
 struct DevState {
 #ifdef KANIKEY_DEV
-    bool gShowDebug = false;
-    bool gShowRadicalTest = false;
     uint32_t gRadicalTestId = 1;
+    // Tab and R are overlays on top of the real screen; remember what to show
+    // again when the dev screen closes.
+    kk::Screen debugReturn = kk::Screen::Home;
+    kk::Screen radicalReturn = kk::Screen::Home;
 #endif
 };
 
@@ -454,6 +445,7 @@ struct AppState {
     SetupState setup;
     WifiState wifi;
     DevState dev;
+    kk::ScreenState screen;
 };
 
 namespace detail {

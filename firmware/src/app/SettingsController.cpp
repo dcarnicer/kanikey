@@ -83,6 +83,8 @@ namespace {
 
 using tgc::Key;
 using tgc::KeyEvent;
+using kk::Modal;
+using kk::Screen;
 using namespace kk::ui;
 
 // The largest section (Reviews, twelve rows) fits this many pointers.
@@ -114,7 +116,7 @@ void setSettingsNote(const char* text, uint16_t color = kFaint) {
 // CFG-01: the review lock. Focusable but inert while a session is running;
 // the Firmware row itself stays live so Check now is reachable.
 bool settingsRowLocked(const char* id) {
-    if (!id || !state().review.gReviewActive) return false;
+    if (!id || kk::screenBase(state().screen) != Screen::Review) return false;
     return std::strcmp(id, "setup.portal") == 0 ||
            std::strcmp(id, "account.wifi") == 0 ||
            std::strcmp(id, "account.signOut") == 0 ||
@@ -174,8 +176,7 @@ void settingsRunAction(const kk::SettingDef& def) {
         state().ui.gSettingsNote[0] = 0;
         openWifiSetup(WifiSetupOrigin::Settings);
     } else if (std::strcmp(id, "setup.portal") == 0) {
-        state().ui.gSettingsActive = false;
-        state().session.gShowHome = false;
+        kk::screenReset(&state().screen);
         startSetupPortal();
     } else if (std::strcmp(id, "sync.now") == 0) {
         if (!state().storage.gSdOk || !state().storage.gFontPack.ready() ||
@@ -183,8 +184,7 @@ void settingsRunAction(const kk::SettingDef& def) {
             setSettingsNote("Configure Wi-Fi, token and pack", kWarn);
             return;
         }
-        state().ui.gSettingsActive = false;
-        state().session.gShowHome = false;
+        kk::screenReset(&state().screen);
         startSync();
     } else if (std::strcmp(id, "sync.outbox") == 0) {
         // The empty state explains itself; opening never needs a guard.
@@ -199,12 +199,12 @@ void settingsRunAction(const kk::SettingDef& def) {
         state().cache.gCacheSavedAt = 0;
         setSettingsNote("Cache cleared; next boot is cold", kOk);
     } else if (std::strcmp(id, "account.signOut") == 0) {
-        state().ui.gSignOutConfirm = true;
+        kk::screenPush(&state().screen, Modal::SignOut);
         state().ui.gSettingsNote[0] = 0;
     } else if (std::strcmp(id, "system.firmware") == 0) {
         openFirmware();
     } else if (std::strcmp(id, "system.about") == 0) {
-        state().ui.gAboutActive = true;
+        kk::screenPush(&state().screen, Modal::About);
         state().ui.gSettingsNote[0] = 0;
     } else if (std::strcmp(id, "system.reset") == 0) {
         // CFG-03: the second Enter erases; any move or Esc cancels.
@@ -323,13 +323,21 @@ void buildFirmwareView(kk::app::FirmwareView* view) {
 
     // The install row is focusable but inert during a review; name the reason
     // on the help line instead of the generic hint.
-    if (canInstall && state().review.gReviewActive && view->selectedIndex == 0) {
+    if (canInstall && kk::screenBase(state().screen) == Screen::Review &&
+        view->selectedIndex == 0) {
         view->note = "End the review session first";
         view->noteColor = kWarn;
     }
 }
 
 bool gFirmwareStateIdle() { return state().ota.gFirmwareStep == FirmwareStep::Idle; }
+
+bool firmwareScreenVisible() { return kk::screenBase(state().screen) == Screen::Firmware; }
+
+void popFirmwareConfirm() {
+    if (kk::screenTop(state().screen) == Modal::FirmwareConfirm)
+        kk::screenPop(&state().screen);
+}
 
 bool firmwareProgress(size_t done, size_t total, void*) {
     if (!total) return true;
@@ -378,41 +386,28 @@ bool lowBatteryNow() {
 }
 
 void requestLowBatteryConfirm(int action) {
-    state().ui.gLowBatteryPrompt = true;
     state().ui.gLowBatteryAction = action;
     state().ui.gLowBatteryConfirmed = false;
+    kk::screenPush(&state().screen, Modal::LowBattery);
     state().display.gDirty = true;
 }
 
-void openSettings(SettingsOrigin origin) {
-    state().ui.gSettingsActive = true;
-    state().ui.gAboutActive = false;
-    state().ota.gFirmwareActive = false;
-    state().ui.gSignOutConfirm = false;
-    state().ui.gPauseActive = false;
-    state().ui.gSettingsOrigin = origin;
+void openSettings() {
+    kk::screenPush(&state().screen, Modal::Settings);
     state().ui.gSettingsSection = -1;
     state().ui.gSettingsRow = 0;
     state().ui.gSettingsResetConfirm = false;
     state().ui.gSettingsNote[0] = 0;
-    state().session.gShowHome = false;
     state().display.gDirty = true;
 }
 
 void closeSettings() {
-    state().ui.gSettingsActive = false;
-    state().ui.gAboutActive = false;
-    state().ota.gFirmwareActive = false;
-    state().ui.gSignOutConfirm = false;
-    state().ota.gFirmwareConfirm = false;
+    if (kk::screenTop(state().screen) == Modal::Settings)
+        kk::screenPop(&state().screen);
     state().ui.gSettingsSection = -1;
     state().ui.gSettingsRow = 0;
     state().ui.gSettingsResetConfirm = false;
     state().ui.gSettingsNote[0] = 0;
-    if (state().ui.gSettingsOrigin == SettingsOrigin::Pause)
-        state().ui.gPauseActive = true;
-    else
-        state().session.gShowHome = true;
     state().display.gDirty = true;
 }
 
@@ -420,21 +415,17 @@ void closeSettings() {
 void settingsSelectEntry(const char* id) { settingsSelectEntryImpl(id); }
 
 void openPause() {
-    if (!state().review.gReviewActive) return;
-    state().ui.gPauseActive = true;
+    if (kk::screenBase(state().screen) != Screen::Review) return;
+    kk::screenPush(&state().screen, Modal::Pause);
     state().ui.gPauseIndex = 0;
-    state().ui.gSettingsActive = false;
-    state().ui.gAboutActive = false;
-    state().ota.gFirmwareActive = false;
-    state().ui.gSignOutConfirm = false;
     state().display.gDirty = true;
 }
 
 void settingsKey(const KeyEvent& e) {
     if (!e.down) return;
-    if (state().ui.gSignOutConfirm) {
+    if (kk::screenTop(state().screen) == Modal::SignOut) {
         if (e.key == Key::Esc) {
-            state().ui.gSignOutConfirm = false;
+            kk::screenPop(&state().screen);
             state().display.gDirty = true;
         } else if (e.key == Key::Enter) {
             kk::DevToken::clear();
@@ -476,19 +467,11 @@ void settingsKey(const KeyEvent& e) {
             state().sync.gSyncAttempted = false;
             state().sync.gSyncIssue = SyncIssue::None;
             state().sync.gOutboxAuthIssue = false;
-            state().review.gReviewActive = false;
-            state().review.gReviewSummary = false;
-            state().lesson.gLessonQuizActive = false;
-            state().review.gFeedback = false;
+            state().review.feedback = false;
             state().review.gNeedsSubmit = false;
-            state().ui.gPauseActive = false;
-            state().ui.gSettingsActive = false;
-            state().ui.gAboutActive = false;
-            state().ota.gFirmwareActive = false;
-            state().ui.gSignOutConfirm = false;
-            state().ui.gLowBatteryPrompt = false;
+            kk::screenReset(&state().screen);
+            state().ui.gLowBatteryAction = 0;
             state().ui.gLowBatteryConfirmed = false;
-            state().session.gShowHome = false;
             snprintf(state().session.gSyncClock, sizeof state().session.gSyncClock, "--:--");
             snprintf(state().session.gNextReview, sizeof state().session.gNextReview, "--:--");
             snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "Signed out");
@@ -497,13 +480,13 @@ void settingsKey(const KeyEvent& e) {
         }
         return;
     }
-    if (e.key == Key::Esc && state().ui.gAboutActive) {
-        state().ui.gAboutActive = false;
+    if (e.key == Key::Esc && kk::screenTop(state().screen) == Modal::About) {
+        kk::screenPop(&state().screen);
         state().ui.gSettingsNote[0] = 0;
         state().display.gDirty = true;
         return;
     }
-    if (state().ui.gAboutActive) return;
+    if (kk::screenTop(state().screen) == Modal::About) return;
 
     const int section = state().ui.gSettingsSection;
     const kk::SettingDef* rows[kSettingsSectionRows];
@@ -570,7 +553,7 @@ void settingsKey(const KeyEvent& e) {
 void pauseKey(const KeyEvent& e) {
     if (!e.down) return;
     if (e.key == Key::Esc) {
-        state().ui.gPauseActive = false;
+        kk::screenPop(&state().screen);
         state().display.gDirty = true;
         return;
     }
@@ -582,19 +565,17 @@ void pauseKey(const KeyEvent& e) {
         state().display.gDirty = true;
     } else if (e.key == Key::Enter) {
         if (state().ui.gPauseIndex == 0) {
-            state().ui.gPauseActive = false;
+            kk::screenPop(&state().screen);
         } else if (state().ui.gPauseIndex == 1) {
             // REV-05: keep the current item and the items already in progress;
             // drop the untouched rest and return to the current question.
             state().review.gWrapUp = true;
             state().review.gQueue.wrapUp();
-            state().ui.gPauseActive = false;
+            kk::screenPop(&state().screen);
         } else if (state().ui.gPauseIndex == 2) {
-            state().ui.gPauseActive = false;
             endReview();
         } else {
-            state().ui.gPauseActive = false;
-            openSettings(SettingsOrigin::Pause);
+            openSettings();
         }
         state().display.gDirty = true;
     }
@@ -786,14 +767,11 @@ void drawFirmware() {
 }
 
 void openFirmware() {
-    state().ota.gFirmwareActive = true;
-    state().ui.gSettingsActive = false;
-    state().ui.gAboutActive = false;
-    state().ui.gSignOutConfirm = false;
-    state().session.gShowHome = false;
+    state().ota.firmwareReturn = state().screen;
+    kk::screenReset(&state().screen);
+    state().screen.screen = Screen::Firmware;
     state().ui.gSettingsNote[0] = 0;
     state().ota.gFirmwareIndex = 0;
-    state().ota.gFirmwareConfirm = false;
     state().ota.gFirmwareProgress = -1;
     state().ota.gFirmwareStep = FirmwareStep::Idle;
     if (!state().ota.gFirmwareChecked) {
@@ -820,13 +798,13 @@ void firmwareCheck(bool manual) {
     if (!kk::ota::layoutIsOurs()) {
         firmwareStatus("No OTA slot on this build", kWarn);
         firmwareNoteImpl("Updates over USB only", kFaint);
-        if (state().ota.gFirmwareActive) drawFirmware();
+        if (firmwareScreenVisible()) drawFirmware();
         return;
     }
     if (!kk::DevWifi::connected() && !kk::DevWifi::connect(30000)) {
         firmwareStatus("No Wi-Fi connection", kWarn);
         firmwareNoteImpl("Join the saved network first", kFaint);
-        if (state().ota.gFirmwareActive) drawFirmware();
+        if (firmwareScreenVisible()) drawFirmware();
         return;
     }
 
@@ -834,7 +812,7 @@ void firmwareCheck(bool manual) {
     state().ota.gFirmwareProgress = -1;
     firmwareStatus("Checking GitHub...", kDim);
     firmwareNoteImpl(manual ? "This can take a few seconds" : "", kFaint);
-    if (state().ota.gFirmwareActive) drawFirmware();
+    if (firmwareScreenVisible()) drawFirmware();
 
     const String url = kk::ota::manifestUrl();
     std::string text;
@@ -913,12 +891,12 @@ void firmwareCheck(bool manual) {
     }
     state().ota.gFirmwareStep = FirmwareStep::Idle;
     state().ota.gFirmwareIndex = 0;
-    state().ota.gFirmwareConfirm = false;
+    popFirmwareConfirm();
     Serial.printf("[ota] check: %s (%s, http %d, %u bytes)\n",
                   kk::ota::fetchStatusString(r.status), state().ota.gFirmwareStatus, r.httpCode,
                   static_cast<unsigned>(r.bytes));
     state().display.gDirty = true;
-    if (state().ota.gFirmwareActive) drawFirmware();
+    if (firmwareScreenVisible()) drawFirmware();
 }
 
 // After a sync the device is already online: a silent check once a day keeps
@@ -935,9 +913,9 @@ void firmwareAfterSync() {
 
 void startFirmwareInstall() {
     if (state().ota.gFirmwareStep != FirmwareStep::Idle) return;
-    if (state().review.gReviewActive || state().lesson.gLessonActive || state().lesson.gLessonListActive ||
-        state().lesson.gLessonQuizActive || state().lesson.gLessonBatchQuizActive ||
-        state().lesson.gLessonStartActive) {
+    const Screen base = kk::screenBase(state().screen);
+    if (base == Screen::Review || base == Screen::LessonCard ||
+        base == Screen::LessonList || base == Screen::LessonQuiz) {
         firmwareNoteImpl("Finish the review/lesson first", kWarn);
         state().display.gDirty = true;
         return;
@@ -964,12 +942,12 @@ void startFirmwareInstall() {
     if (state().ota.gOtaPending && kk::ota::markValid()) state().ota.gOtaPending = false;
 
     state().ota.gFirmwareStep = FirmwareStep::Installing;
-    state().ota.gFirmwareConfirm = false;
+    popFirmwareConfirm();
     state().ota.gFirmwareProgress = 0;
     state().ui.gLastInputAt = millis();
     snprintf(state().ota.gFirmwareStatus, sizeof state().ota.gFirmwareStatus, "Downloading update 0%%");
     firmwareNoteImpl("Do not power off", kFaint);
-    if (state().ota.gFirmwareActive) drawFirmware();
+    if (firmwareScreenVisible()) drawFirmware();
     releaseCanvas();
 
     const kk::ota::FetchResult r = kk::ota::install(app, firmwareProgress, nullptr);
@@ -977,14 +955,14 @@ void startFirmwareInstall() {
         state().ota.gFirmwareProgress = 100;
         firmwareStatus("Verifying update...", kDim);
         firmwareNoteImpl("Do not power off", kFaint);
-        if (state().ota.gFirmwareActive) drawFirmware();
+        if (firmwareScreenVisible()) drawFirmware();
         kk::ota::saveInstallRecord(version, kk::ota::nextSlot());
         if (kk::ota::activate()) {
             state().ota.gFirmwareStep = FirmwareStep::Restarting;
             state().ota.gFirmwareProgress = 100;
             snprintf(state().ota.gFirmwareStatus, sizeof state().ota.gFirmwareStatus, "Restarting into %s", version.c_str());
             firmwareNoteImpl("Installed; rebooting", kOk);
-            if (state().ota.gFirmwareActive) drawFirmware();
+            if (firmwareScreenVisible()) drawFirmware();
             Serial.printf("[ota] restarting into %s\n", version.c_str());
             Serial.flush();
             delay(1500);
@@ -1014,19 +992,26 @@ void startFirmwareInstall() {
     state().ota.gOtaState.badgeBytes = 0;
     kk::ota::saveBadge("", 0);
     state().display.gDirty = true;
-    if (state().ota.gFirmwareActive) drawFirmware();
+    if (firmwareScreenVisible()) drawFirmware();
 }
 
 void firmwareKey(const KeyEvent& e) {
     if (!e.down) return;
     if (state().ota.gFirmwareStep != FirmwareStep::Idle) return;
     if (e.key == Key::Esc) {
-        if (state().ota.gFirmwareConfirm) {
-            state().ota.gFirmwareConfirm = false;
+        if (kk::screenTop(state().screen) == Modal::FirmwareConfirm) {
+            popFirmwareConfirm();
             firmwareNoteImpl("Install cancelled", kFaint);
         } else {
-            state().ota.gFirmwareActive = false;
-            state().ui.gSettingsActive = true;
+            // Restore the screen that opened Firmware. In the normal UI that
+            // is Settings above Home or Pause; the serial V command can open
+            // it from elsewhere, where Esc has always landed on Settings.
+            state().screen = state().ota.firmwareReturn;
+            if (kk::screenTop(state().screen) != Modal::Settings) {
+                state().screen.screen = Screen::Home;
+                state().screen.depth = 0;
+                kk::screenPush(&state().screen, Modal::Settings);
+            }
             settingsSelectEntry("system.firmware");
         }
         state().display.gDirty = true;
@@ -1037,12 +1022,12 @@ void firmwareKey(const KeyEvent& e) {
     const int rows = canInstall ? 2 : 1;
     if (e.key == Key::Up) {
         state().ota.gFirmwareIndex = (state().ota.gFirmwareIndex + rows - 1) % rows;
-        state().ota.gFirmwareConfirm = false;
+        popFirmwareConfirm();
         firmwareNoteImpl("", kFaint);
         state().display.gDirty = true;
     } else if (e.key == Key::Down) {
         state().ota.gFirmwareIndex = (state().ota.gFirmwareIndex + 1) % rows;
-        state().ota.gFirmwareConfirm = false;
+        popFirmwareConfirm();
         firmwareNoteImpl("", kFaint);
         state().display.gDirty = true;
     } else if (e.key == Key::Enter) {
@@ -1051,8 +1036,8 @@ void firmwareKey(const KeyEvent& e) {
             if (settingsRowLocked("system.firmware.install")) {
                 firmwareNoteImpl("End the review session first", kWarn);
                 state().display.gDirty = true;
-            } else if (!state().ota.gFirmwareConfirm) {
-                state().ota.gFirmwareConfirm = true;
+            } else if (kk::screenTop(state().screen) != Modal::FirmwareConfirm) {
+                kk::screenPush(&state().screen, Modal::FirmwareConfirm);
                 firmwareNoteImpl("Enter again to install, Esc cancels", kWarn);
                 state().display.gDirty = true;
             } else {

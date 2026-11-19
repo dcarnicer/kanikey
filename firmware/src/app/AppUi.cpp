@@ -312,12 +312,14 @@ void noticeKey(const KeyEvent& e) {
             // Leave the lesson like the 401 path does; the card is still the
             // current item until the summary is refreshed by a sync.
             state().ui.gNoticeAction = NoticeAction::None;
-            state().lesson.gLessonActive = false;
-            state().lesson.gLessonListActive = false;
-            state().session.gShowHome = true;
+            state().screen.screen = kk::Screen::Home;
             releaseLessonData();
+        } else if (kk::screenBase(state().screen) == kk::Screen::ReviewSummary) {
+            // A failed retry from the summary leaves the summary underneath,
+            // exactly as the old summary flag did.
         } else {
-            state().session.gShowHome = state().session.gHaveSummary;
+            state().screen.screen =
+                state().session.gHaveSummary ? kk::Screen::Home : kk::Screen::Boot;
         }
         state().display.gDirty = true;
         return;

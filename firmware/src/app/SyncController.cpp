@@ -85,6 +85,8 @@ namespace {
 
 using tgc::Key;
 using tgc::KeyEvent;
+using kk::Modal;
+using kk::Screen;
 using namespace kk::ui;
 
 bool runCriticalItems();
@@ -161,7 +163,8 @@ void resetSyncScreen() {
     state().sync.gSyncCompleted = 0;
     state().sync.gSyncFinished = false;
     state().sync.gSyncCancelRequested = false;
-    state().sync.gSyncScreen = true;
+    kk::screenReset(&state().screen);
+    state().screen.screen = Screen::Sync;
 }
 
 void syncRowText(int row, const char* text) {
@@ -207,7 +210,6 @@ void syncRowFail(int row, const char* text) {
 void finishSyncCancelled() {
     syncSessionClose();
     state().sync.gSyncFinished = true;
-    state().sync.gSyncScreen = false;
     state().sync.gSyncing = false;
     state().sync.gSyncAttempted = false;
     state().sync.gSyncIssue = SyncIssue::None;
@@ -215,24 +217,38 @@ void finishSyncCancelled() {
     state().sync.gSyncJob = SyncJobState{};
     snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "Sync cancelled");
     Serial.println("[sync] cancelled");
-    state().session.gShowHome = state().session.gHaveSummary;
+    kk::screenReset(&state().screen);
+    state().screen.screen = state().session.gHaveSummary ? Screen::Home : Screen::Boot;
     state().ui.gLastInputAt = millis();
     state().display.gDirty = true;
 }
 
 // True while another screen owns the display; the automatic job waits and
-// resumes when Home returns (SPEED-03).
+// resumes when Home returns (SPEED-03). The lesson start confirmation and the
+// batch quiz are deliberately not blockers, as they were not in the boolean
+// predicate this replaces.
 bool syncPausedByOtherScreen() {
-    return state().setup.gPortalActive || state().ui.gNoticeActive ||
-           state().ui.gLowBatteryPrompt || state().ui.gSignOutConfirm ||
-           state().ui.gAboutActive || state().ui.gOutboxScreen ||
-           state().stats.gStatsActive || state().study.gStudyMenuActive ||
-           state().study.gCriticalListActive || state().ota.gFirmwareActive ||
-           state().ui.gSettingsActive || state().ui.gPauseActive ||
-           state().review.gReviewDetail || state().review.gReviewActive ||
-           state().review.gReviewSummary || state().lesson.gLessonEmptyActive ||
-           state().lesson.gLessonListActive || state().lesson.gLessonQuizActive ||
-           state().lesson.gLessonActive;
+    if (kk::screenTop(state().screen) != Modal::None) return true;
+    if (state().ui.gNoticeActive) return true;
+    if (state().stats.gStatsActive || state().study.gStudyMenuActive ||
+        state().study.gCriticalListActive)
+        return true;
+    switch (kk::screenBase(state().screen)) {
+        case Screen::Setup:
+        case Screen::Outbox:
+        case Screen::Firmware:
+        case Screen::Review:
+        case Screen::ReviewSummary:
+        case Screen::LessonEmpty:
+        case Screen::LessonCard:
+            return true;
+        case Screen::LessonList:
+            return !state().lesson.startConfirm;
+        case Screen::LessonQuiz:
+            return !state().lesson.quizBatch;
+        default:
+            return false;
+    }
 }
 
 // The Home header counts Wifi..Prefetch, including the SNTP wait.
@@ -245,7 +261,12 @@ void finishSyncJob(bool openReview) {
     j.step = SyncStep::Done;
     state().sync.gSyncing = false;
     state().sync.gSyncFinished = true;
-    if (modal) state().sync.gSyncScreen = false;
+    if (modal) {
+        // The manual sync screen is a base screen; a successful job returns to
+        // Home (or Boot when there is no summary to show).
+        kk::screenReset(&state().screen);
+        state().screen.screen = state().session.gHaveSummary ? Screen::Home : Screen::Boot;
+    }
     // A full sync that reached the end without an auth/rate gate is the new
     // baseline for the "Full sync every" interval.
     if (full && !kk::wkAuthBlocked() && kk::wkRateLimitWaitSeconds() == 0) {
@@ -664,7 +685,6 @@ void startSyncJob(SyncKind kind, bool modal, bool coldBoot) {
     if (kind == SyncKind::Skip) return;
     if (state().storage.gFsFormatPrompt) return;  // wait for the storage choice
     if (!state().storage.gSdOk || !state().storage.gFontPack.ready() || !kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
-        state().sync.gSyncScreen = false;
         state().display.gDirty = true;
         return;
     }
@@ -692,7 +712,6 @@ void startSyncJob(SyncKind kind, bool modal, bool coldBoot) {
         resetSyncScreen();
         drawSync();
     } else {
-        state().sync.gSyncScreen = false;
         state().display.gDirty = true;
     }
 }
@@ -805,7 +824,11 @@ void runSummary() {
         pruneBatchToSummary(now);
         applySummary(now);
         state().cache.gOffline = false;
-        state().session.gShowHome = true;
+        // A background sync may reveal Home while it is still running; the
+        // modal sync screen keeps its own base and finishSyncJob() sets Home.
+        const Screen base = kk::screenBase(state().screen);
+        if (base == Screen::Boot || base == Screen::Home)
+            state().screen.screen = Screen::Home;
         saveCacheSnapshot();
     }
     if (r.parsed)
@@ -1076,8 +1099,7 @@ void syncScreenKey(const KeyEvent& e) {
     }
     if (e.key == Key::Enter) {
         if (state().sync.gSyncIssue == SyncIssue::Auth || state().sync.gSyncIssue == SyncIssue::Forbidden) {
-            state().sync.gSyncScreen = false;
-            state().session.gShowHome = false;
+            kk::screenReset(&state().screen);
             startSetupPortal();
         } else {
             startSync();
@@ -1085,8 +1107,8 @@ void syncScreenKey(const KeyEvent& e) {
         return;
     }
     if (e.key == Key::Esc) {
-        state().sync.gSyncScreen = false;
-        state().session.gShowHome = state().session.gHaveSummary;
+        kk::screenReset(&state().screen);
+        state().screen.screen = state().session.gHaveSummary ? Screen::Home : Screen::Boot;
         state().display.gDirty = true;
     }
 }
@@ -1104,9 +1126,9 @@ void syncAdvance() {
         syncSessionClose();
         j = SyncJobState{};
         state().sync.gSyncing = false;
-        state().sync.gSyncScreen = false;
         state().sync.gSyncFinished = true;
-        state().session.gShowHome = state().session.gHaveSummary;
+        kk::screenReset(&state().screen);
+        state().screen.screen = state().session.gHaveSummary ? Screen::Home : Screen::Boot;
         state().display.gDirty = true;
         return;
     }
@@ -1115,7 +1137,7 @@ void syncAdvance() {
         return;
     }
     if (j.modal) {
-        if (!state().sync.gSyncScreen) {
+        if (kk::screenBase(state().screen) != Screen::Sync) {
             syncSessionClose();
             return;
         }

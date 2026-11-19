@@ -83,6 +83,7 @@ namespace {
 
 using tgc::Key;
 using tgc::KeyEvent;
+using kk::Screen;
 using namespace kk::ui;
 
 bool portalValidateToken(const String& token, String* username, int* level, String* error);
@@ -479,25 +480,26 @@ kk::PortalPackResult portalUploadRadicalPack(const uint8_t* data, size_t length,
 void portalSwitchToStation() {
     const String ssid = kk::DevWifi::savedSsid();
     state().setup.gSetupPortal.end(false);
-    state().setup.gPortalActive = false;
     drawLoading("Connecting Wi-Fi...", ssid.c_str());
     if (!kk::DevWifi::connect(30000)) {
         const String notice = "Could not join \"" + ssid + "\". Check the password and try again.";
-        state().setup.gPortalActive = state().setup.gSetupPortal.beginAp(state().setup.gSetupHooks, notice);
+        const bool ok = state().setup.gSetupPortal.beginAp(state().setup.gSetupHooks, notice);
+        if (!ok) kk::screenReset(&state().screen);
         state().display.gDirty = true;
         return;
     }
     const bool ok = state().setup.gSetupPortal.beginStation(
         state().setup.gSetupHooks, "Wi-Fi OK. Add the token, then Finish.");
-    state().setup.gPortalActive = ok;
-    if (!ok) snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "Setup portal failed");
+    if (!ok) {
+        kk::screenReset(&state().screen);
+        snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "Setup portal failed");
+    }
     state().display.gDirty = true;
 }
 
 void portalFinish() {
     state().setup.gSetupPortal.end(true);
-    state().setup.gPortalActive = false;
-    state().session.gShowHome = false;
+    kk::screenReset(&state().screen);
     drawLoading("Setup complete", "Syncing...");
     startSync();
     state().display.gDirty = true;
@@ -506,10 +508,11 @@ void portalFinish() {
 }  // namespace
 
 bool startSetupPortal() {
-    if (state().setup.gPortalActive) return true;
-    if (state().review.gReviewActive || state().lesson.gLessonActive || state().lesson.gLessonListActive ||
-        state().lesson.gLessonEmptyActive || state().lesson.gLessonQuizActive ||
-        state().lesson.gLessonBatchQuizActive || state().lesson.gLessonStartActive)
+    if (kk::screenBase(state().screen) == Screen::Setup) return true;
+    const Screen base = kk::screenBase(state().screen);
+    if (base == Screen::Review || base == Screen::LessonCard ||
+        base == Screen::LessonList || base == Screen::LessonEmpty ||
+        base == Screen::LessonQuiz)
         return false;
     kk::wkClearAuthBlock();
     tgc::board::setDisplayOn(true);
@@ -525,16 +528,8 @@ bool startSetupPortal() {
     state().setup.gSetupHooks.uploadRadicalPack = portalUploadRadicalPack;
     state().setup.gSetupHooks.onSwitchToStation = portalSwitchToStation;
     state().setup.gSetupHooks.onFinish = portalFinish;
-    state().session.gShowHome = false;
-    state().review.gReviewSummary = false;
-    state().review.gFeedback = false;
-    state().ui.gPauseActive = false;
-    state().ui.gSettingsActive = false;
-    state().ui.gAboutActive = false;
-    state().ui.gSignOutConfirm = false;
-    state().lesson.gLessonEmptyActive = false;
-    state().lesson.gLessonListActive = false;
-    state().ui.gLowBatteryPrompt = false;
+    kk::screenReset(&state().screen);
+    state().ui.gLowBatteryAction = 0;
     state().ui.gLowBatteryConfirmed = false;
 
     // With a saved network, go straight to the station page so the user can
@@ -548,7 +543,7 @@ bool startSetupPortal() {
         if (kk::DevWifi::connected() &&
             state().setup.gSetupPortal.beginStation(state().setup.gSetupHooks,
                                       "Enter the token, then press Finish.")) {
-            state().setup.gPortalActive = true;
+            state().screen.screen = Screen::Setup;
             state().ui.gLastInputAt = millis();
             state().display.gDirty = true;
             return true;
@@ -557,20 +552,22 @@ bool startSetupPortal() {
 
     drawLoading("Starting setup...", "Scanning Wi-Fi...");
     kk::DevWifi::disconnect();
-    state().setup.gPortalActive = state().setup.gSetupPortal.beginAp(
-        state().setup.gSetupHooks, "Connect your phone to this setup network to configure KaniKey.");
+    if (state().setup.gSetupPortal.beginAp(
+            state().setup.gSetupHooks, "Connect your phone to this setup network to configure KaniKey.")) {
+        state().screen.screen = Screen::Setup;
+    }
     state().ui.gLastInputAt = millis();
     state().display.gDirty = true;
-    if (!state().setup.gPortalActive) {
+    if (kk::screenBase(state().screen) != Screen::Setup) {
         snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "Setup: AP failed");
         Serial.println("[setup] could not start the access point");
     }
-    return state().setup.gPortalActive;
+    return kk::screenBase(state().screen) == Screen::Setup;
 }
 
 void retryBoot() {
     if (state().session.gHaveSummary) {
-        state().session.gShowHome = true;
+        state().screen.screen = Screen::Home;
         state().display.gDirty = true;
         return;
     }

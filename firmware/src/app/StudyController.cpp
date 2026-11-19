@@ -81,6 +81,7 @@ namespace {
 
 using tgc::Key;
 using tgc::KeyEvent;
+using kk::Screen;
 using namespace kk::ui;
 
 struct MistakeEntry {
@@ -229,7 +230,6 @@ void openCriticalList() {
     state().study.gCriticalIndex = 0;
     state().study.gCriticalListActive = true;
     state().study.gStudyMenuActive = false;
-    state().session.gShowHome = false;
     state().display.gDirty = true;
 }
 
@@ -348,14 +348,13 @@ void startPractice(int mode) {
     state().study.gPracticeMode = mode;
     state().study.gStudyMenuActive = false;
     state().study.gCriticalListActive = false;
-    state().review.gDetailFromCritical = false;
-    state().review.gDetailSubjectId = 0;
-    state().session.gShowHome = false;
-    state().review.gReviewActive = true;
-    state().review.gReviewSummary = false;
-    state().review.gFeedback = false;
-    state().review.gFeedbackCompleted = false;
-    state().review.gReviewDetail = false;
+    state().review.detailFromCritical = false;
+    state().review.detailSubjectId = 0;
+    kk::screenReset(&state().screen);
+    state().screen.screen = Screen::Review;
+    state().review.feedback = false;
+    state().review.feedbackCompleted = false;
+    state().review.detail = false;
     state().review.gReviewElapsedMs = 0;
     state().review.gReviewStartMs = millis();
     state().review.gStageChange = StageChange{};
@@ -404,7 +403,6 @@ void openStudyMenu() {
     state().study.gStudyMenuActive = true;
     state().study.gStudyIndex = 0;
     state().study.gStudyNote[0] = 0;
-    state().session.gShowHome = false;
     refreshStudyCounts();
     state().display.gDirty = true;
 }
@@ -427,7 +425,6 @@ void studyMenuKey(const KeyEvent& e) {
     if (!e.down) return;
     if (e.key == Key::Esc) {
         state().study.gStudyMenuActive = false;
-        state().session.gShowHome = true;
         state().display.gDirty = true;
         return;
     }
@@ -474,12 +471,13 @@ void criticalListKey(const KeyEvent& e) {
         else if (e.key == Key::Enter) {
             const kk::Subject* s = state().study.gCriticalRows[static_cast<size_t>(state().study.gCriticalIndex)].subject;
             if (s) {
-                state().review.gDetailSubjectId = s->id;
-                state().review.gDetailFromCritical = true;
-                state().review.gReviewDetailPage = 0;
-                state().review.gReviewDetailPages = detailPageCount(*s);
-                state().review.gReviewDetail = true;
+                state().review.detailSubjectId = s->id;
+                state().review.detailFromCritical = true;
+                state().review.detailPage = 0;
+                state().review.detailPages = detailPageCount(*s);
+                state().review.detail = true;
                 state().study.gCriticalListActive = false;
+                state().screen.screen = Screen::Review;
                 state().display.gDirty = true;
             }
         } else if (e.key == Key::Other) {

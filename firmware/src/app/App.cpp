@@ -87,6 +87,9 @@ namespace {
 
 using tgc::Key;
 using tgc::KeyEvent;
+using kk::Modal;
+using kk::Screen;
+using kk::ScreenState;
 using namespace kk::ui;
 
 // CFG-04: which help table the current frame offers. The order follows draw()
@@ -94,39 +97,67 @@ using namespace kk::ui;
 // that own the keyboard (portal, Wi-Fi setup, low battery, sign-out) and the
 // screens without a table return None.
 kk::HelpScreen helpScreenForState() {
+    const ScreenState& s = state().screen;
+    const Screen base = kk::screenBase(s);
+    const Modal top = kk::screenTop(s);
     if (state().ui.gNoticeActive) return kk::HelpScreen::None;
-    if (state().setup.gPortalActive) return kk::HelpScreen::None;
+    if (base == Screen::Setup) return kk::HelpScreen::None;
     if (state().wifi.gWifiActive) return kk::HelpScreen::None;
-    if (state().ui.gLowBatteryPrompt) return kk::HelpScreen::None;
-    if (state().ui.gSignOutConfirm) return kk::HelpScreen::None;
-    if (state().ui.gAboutActive) return kk::HelpScreen::None;
-    if (state().ui.gOutboxScreen) return kk::HelpScreen::Outbox;
+    if (top == Modal::LowBattery || top == Modal::SignOut || top == Modal::About)
+        return kk::HelpScreen::None;
+    if (base == Screen::Outbox) return kk::HelpScreen::Outbox;
     if (state().stats.gStatsActive) return kk::HelpScreen::None;
     if (state().study.gStudyMenuActive || state().study.gCriticalListActive)
         return kk::HelpScreen::None;
-    if (state().ota.gFirmwareActive) return kk::HelpScreen::Firmware;
-    if (state().ui.gSettingsActive) return kk::HelpScreen::Settings;
-    if (state().ui.gPauseActive) return kk::HelpScreen::None;
-    if (state().sync.gSyncScreen) return kk::HelpScreen::None;
+    if (base == Screen::Firmware) return kk::HelpScreen::Firmware;
+    if (top == Modal::Settings) return kk::HelpScreen::Settings;
+    if (top == Modal::Pause) return kk::HelpScreen::None;
+    if (base == Screen::Sync) return kk::HelpScreen::None;
 #ifdef KANIKEY_DEV
-    if (state().dev.gShowRadicalTest) return kk::HelpScreen::None;
+    if (base == Screen::RadicalTest) return kk::HelpScreen::None;
 #endif
-    if (state().review.gReviewDetail) return kk::HelpScreen::None;
-    if (state().review.gReviewActive)
-        return state().review.gFeedback ? kk::HelpScreen::ReviewsFeedback
+    if (base == Screen::Review) {
+        if (state().review.detail) return kk::HelpScreen::None;
+        return state().review.feedback ? kk::HelpScreen::ReviewsFeedback
                                         : kk::HelpScreen::ReviewsQuestion;
-    if (state().review.gReviewSummary) return kk::HelpScreen::None;
-    if (state().lesson.gLessonEmptyActive || state().lesson.gLessonStartActive ||
-        state().lesson.gLessonListActive)
+    }
+    if (base == Screen::ReviewSummary) return kk::HelpScreen::None;
+    if (base == Screen::LessonEmpty || base == Screen::LessonList)
         return kk::HelpScreen::None;
-    if (state().lesson.gLessonBatchQuizActive || state().lesson.gLessonQuizActive)
-        return kk::HelpScreen::LessonQuiz;
-    if (state().lesson.gLessonActive) return kk::HelpScreen::LessonCard;
+    if (base == Screen::LessonQuiz) return kk::HelpScreen::LessonQuiz;
+    if (base == Screen::LessonCard) return kk::HelpScreen::LessonCard;
 #ifdef KANIKEY_DEV
-    if (state().dev.gShowDebug) return kk::HelpScreen::None;
+    if (base == Screen::Debug) return kk::HelpScreen::None;
 #endif
-    if (state().session.gShowHome) return kk::HelpScreen::Home;
+    if (base == Screen::Home) return kk::HelpScreen::Home;
     return kk::HelpScreen::None;
+}
+
+// Low battery is a modal: Enter continues into the action it was opened for,
+// Esc returns to the screen underneath.
+void lowBatteryKey(const KeyEvent& e) {
+    if (!e.down) return;
+    if (e.key == Key::Enter) {
+        const int action = state().ui.gLowBatteryAction;
+        kk::screenPop(&state().screen);
+        state().ui.gLowBatteryAction = 0;
+        state().ui.gLowBatteryConfirmed = true;
+        if (action == 1)
+            startReview();
+        else if (action == 2)
+            startLessons();
+        state().display.gDirty = true;
+    } else if (e.key == Key::Esc) {
+        const Screen base = kk::screenBase(state().screen);
+        kk::screenPop(&state().screen);
+        state().ui.gLowBatteryAction = 0;
+        state().ui.gLowBatteryConfirmed = false;
+        // The old Esc path set the Home flag. A retry from the summary kept the
+        // summary underneath the prompt, so preserve that one case.
+        if (base != Screen::ReviewSummary)
+            state().screen.screen = Screen::Home;
+        state().display.gDirty = true;
+    }
 }
 
 void onKeyImpl(const KeyEvent& e) {
@@ -138,11 +169,10 @@ void onKeyImpl(const KeyEvent& e) {
     }
 #endif
     updateModifier(e.x, e.y, e.down);
-    if (state().setup.gPortalActive) {
+    if (kk::screenBase(state().screen) == Screen::Setup) {
         if (e.down && e.key == Key::Esc) {
             state().setup.gSetupPortal.end(false);
-            state().setup.gPortalActive = false;
-            state().session.gShowHome = false;
+            kk::screenReset(&state().screen);
             snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "Setup cancelled");
             state().display.gDirty = true;
         }
@@ -169,7 +199,7 @@ void onKeyImpl(const KeyEvent& e) {
             state().ui.gHelpScreen = screen;
             // Like any other key on correct feedback, opening help cancels the
             // auto-advance timer; closing returns to the same feedback.
-            state().review.gFeedbackCorrectAt = 0;
+            state().review.feedbackCorrectAt = 0;
             state().display.gDirty = true;
             return;
         }
@@ -182,40 +212,34 @@ void onKeyImpl(const KeyEvent& e) {
         noticeKey(e);
         return;
     }
-    if (state().ui.gLowBatteryPrompt) {
-        if (e.down && e.key == Key::Enter) {
-            const int action = state().ui.gLowBatteryAction;
-            state().ui.gLowBatteryPrompt = false;
-            state().ui.gLowBatteryAction = 0;
-            state().ui.gLowBatteryConfirmed = true;
-            if (action == 1)
-                startReview();
-            else if (action == 2)
-                startLessons();
-            state().display.gDirty = true;
-        } else if (e.down && e.key == Key::Esc) {
-            state().ui.gLowBatteryPrompt = false;
-            state().ui.gLowBatteryAction = 0;
-            state().ui.gLowBatteryConfirmed = false;
-            state().session.gShowHome = true;
-            state().display.gDirty = true;
-        }
-        return;
+
+    // One modal dispatch above the base screen. Settings, About and Sign out
+    // share settingsKey(), exactly as they did when the flags were tested in
+    // that order inside it.
+    switch (kk::screenTop(state().screen)) {
+        case Modal::LowBattery:
+            lowBatteryKey(e);
+            return;
+        case Modal::SignOut:
+        case Modal::About:
+        case Modal::Settings:
+            settingsKey(e);
+            return;
+        case Modal::Pause:
+            pauseKey(e);
+            return;
+        case Modal::OutboxConfirm:
+            outboxKey(e);
+            return;
+        case Modal::FirmwareConfirm:
+            firmwareKey(e);
+            return;
+        case Modal::None:
+            break;
     }
-    if (state().sync.gSyncScreen) {
-        syncScreenKey(e);
-        return;
-    }
-    if (state().ui.gOutboxScreen) {
-        outboxKey(e);
-        return;
-    }
+
     if (state().stats.gStatsActive) {
         statsKey(e);
-        return;
-    }
-    if (state().review.gReviewDetail) {
-        reviewDetailKey(e);
         return;
     }
     if (state().study.gStudyMenuActive) {
@@ -226,76 +250,87 @@ void onKeyImpl(const KeyEvent& e) {
         criticalListKey(e);
         return;
     }
-    if (state().ota.gFirmwareActive) {
-        firmwareKey(e);
-        return;
-    }
-    if (state().ui.gSettingsActive) {
-        settingsKey(e);
-        return;
-    }
-    if (state().ui.gPauseActive) {
-        pauseKey(e);
-        return;
-    }
+
+    switch (kk::screenBase(state().screen)) {
+        case Screen::Review:
+            if (state().review.detail)
+                reviewDetailKey(e);
+            else
+                reviewKey(e);
+            return;
+        case Screen::ReviewSummary:
+            reviewSummaryKey(e);
+            return;
+        case Screen::LessonEmpty:
+            if (e.down && (e.key == Key::Enter || e.key == Key::Esc)) {
+                state().screen.screen = Screen::Home;
+                state().display.gDirty = true;
+            }
+            return;
+        case Screen::LessonList:
+            if (state().lesson.startConfirm)
+                lessonStartKey(e);
+            else
+                lessonListKey(e);
+            return;
+        case Screen::LessonCard:
+            lessonKey(e);
+            return;
+        case Screen::LessonQuiz:
+            if (state().lesson.quizBatch)
+                lessonBatchQuizKey(e);
+            else
+                lessonQuizKey(e);
+            return;
+        case Screen::Outbox:
+            outboxKey(e);
+            return;
+        case Screen::Firmware:
+            firmwareKey(e);
+            return;
+        case Screen::Sync:
+            syncScreenKey(e);
+            return;
+        case Screen::RadicalTest:
 #ifdef KANIKEY_DEV
-    if (state().dev.gShowRadicalTest) {
-        if (e.down && e.key == Key::Esc) {
-            state().dev.gShowRadicalTest = false;
-            state().display.gDirty = true;
-        }
-        return;
-    }
+            if (e.down && e.key == Key::Esc) {
+                state().screen.screen = state().dev.radicalReturn;
+                state().display.gDirty = true;
+            }
 #endif
-    if (state().lesson.gLessonEmptyActive) {
-        if (e.down && (e.key == Key::Enter || e.key == Key::Esc)) {
-            state().lesson.gLessonEmptyActive = false;
-            state().session.gShowHome = true;
-            state().display.gDirty = true;
-        }
-        return;
+            return;
+        case Screen::Debug:
+        case Screen::Boot:
+        case Screen::Home:
+        case Screen::Setup:
+            break;
     }
-    if (state().lesson.gLessonStartActive) {
-        lessonStartKey(e);
-        return;
-    }
-    if (state().lesson.gLessonListActive) {
-        lessonListKey(e);
-        return;
-    }
-    if (state().lesson.gLessonBatchQuizActive) {
-        lessonBatchQuizKey(e);
-        return;
-    }
-    if (state().lesson.gLessonQuizActive) {
-        lessonQuizKey(e);
-        return;
-    }
-    if (state().lesson.gLessonActive) {
-        lessonKey(e);
-        return;
-    }
-    if (state().review.gReviewActive) {
-        reviewKey(e);
-        return;
-    }
-    if (state().review.gReviewSummary) {
-        reviewSummaryKey(e);
-        return;
-    }
+
 #ifdef KANIKEY_DEV
     if (e.down && e.key == Key::Tab) {
-        state().dev.gShowDebug = !state().dev.gShowDebug;
+        if (kk::screenBase(state().screen) == Screen::Debug) {
+            state().screen.screen = state().dev.debugReturn;
+        } else {
+            state().dev.debugReturn = kk::screenBase(state().screen);
+            state().screen.screen = Screen::Debug;
+        }
         state().display.gDirty = true;
         return;
     }
 #endif
-    if (e.down && state().session.gShowHome && e.key == Key::Esc) {
-        openSettings(SettingsOrigin::Home);
+    const Screen base = kk::screenBase(state().screen);
+    // The debug screen is an overlay over Home or Boot, exactly like the old
+    // debug flag: its keys underneath still work while it is visible.
+    Screen underBase = base;
+#ifdef KANIKEY_DEV
+    if (base == Screen::Debug) underBase = state().dev.debugReturn;
+#endif
+    if (e.down && underBase == Screen::Home && e.key == Key::Esc) {
+        openSettings();
         return;
     }
     if (e.down && e.key == Key::Enter) {
-        if (state().session.gShowHome && state().session.gHaveSummary) {
+        if (underBase == Screen::Home && state().session.gHaveSummary) {
             if (state().session.gSummary.dueReviews(effectiveNow()) == 0) {
                 // Nothing due: no network call, just the next time. Refresh it
                 // first: answering the last due item leaves state().session.gNextReview at "now".
@@ -304,7 +339,6 @@ void onKeyImpl(const KeyEvent& e) {
                 state().ui.gNoticeLine2[0] = 0;
                 state().ui.gNoticeAction = NoticeAction::ReviewEmpty;
                 state().ui.gNoticeActive = true;
-                state().session.gShowHome = false;
                 state().display.gDirty = true;
             } else {
                 if (state().sync.gSyncJob.active && !state().sync.gSyncJob.modal) {
@@ -325,7 +359,7 @@ void onKeyImpl(const KeyEvent& e) {
     }
     // The boot "Wi-Fi needed" state keeps the phone portal as the fallback
     // (SETUP-09): Enter opens the on-device scan list, P opens the portal.
-    if (e.down && !state().session.gShowHome && e.key == Key::Other &&
+    if (e.down && underBase == Screen::Boot && e.key == Key::Other &&
         !state().sync.gSyncing && state().storage.gSdOk &&
         state().storage.gFontPack.ready() && !kk::DevWifi::hasSaved()) {
         const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
@@ -334,31 +368,31 @@ void onKeyImpl(const KeyEvent& e) {
             return;
         }
     }
-    if (e.down && state().session.gShowHome && e.key == Key::Other &&
+    if (e.down && underBase == Screen::Home && e.key == Key::Other &&
         (tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 'o' ||
          tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 'O')) {
         openOutbox();
         return;
     }
-    if (e.down && state().session.gShowHome && e.key == Key::Other &&
+    if (e.down && underBase == Screen::Home && e.key == Key::Other &&
         (tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 'l' ||
          tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 'L')) {
         startLessons();
         return;
     }
-    if (e.down && state().session.gShowHome && e.key == Key::Other &&
+    if (e.down && underBase == Screen::Home && e.key == Key::Other &&
         (tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 't' ||
          tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 'T')) {
         openStats();
         return;
     }
-    if (e.down && state().session.gShowHome && e.key == Key::Other &&
+    if (e.down && underBase == Screen::Home && e.key == Key::Other &&
         (tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 'p' ||
          tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 'P')) {
         openStudyMenu();
         return;
     }
-    if (e.down && state().session.gShowHome && !state().sync.gSyncing && e.key == Key::Other &&
+    if (e.down && underBase == Screen::Home && !state().sync.gSyncing && e.key == Key::Other &&
         (tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 's' ||
          tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 'S')) {
         startSync();
@@ -608,33 +642,126 @@ void drawBoot() {
     present();
 }
 
+void drawBaseScreen() {
+    switch (kk::screenBase(state().screen)) {
+        case Screen::Boot:
+            drawBoot();
+            return;
+        case Screen::Home:
+            drawHome();
+            return;
+        case Screen::Review:
+            if (state().review.detail)
+                showReviewDetail();
+            else
+                showReview();
+            return;
+        case Screen::ReviewSummary:
+            showReviewSummary();
+            return;
+        case Screen::LessonEmpty:
+            showLessonEmpty();
+            return;
+        case Screen::LessonList:
+            if (state().lesson.startConfirm)
+                drawLessonStart();
+            else
+                showLessonList();
+            return;
+        case Screen::LessonCard:
+            showLesson();
+            return;
+        case Screen::LessonQuiz:
+            if (state().lesson.quizBatch)
+                showLessonBatchQuiz();
+            else
+                showLessonQuiz();
+            return;
+        case Screen::Outbox:
+            drawOutbox();
+            return;
+        case Screen::Firmware:
+            drawFirmware();
+            return;
+        case Screen::Sync:
+            drawSync();
+            return;
+        case Screen::Setup:
+            drawSetupPortal();
+            return;
+        case Screen::Debug:
+#ifdef KANIKEY_DEV
+            showDebug();
+#else
+            drawBoot();
+#endif
+            return;
+        case Screen::RadicalTest:
+#ifdef KANIKEY_DEV
+            showRadicalTest();
+#else
+            drawBoot();
+#endif
+            return;
+    }
+}
+
+void drawModal() {
+    switch (kk::screenTop(state().screen)) {
+        case Modal::None:
+            return;
+        case Modal::Pause:
+            drawPause();
+            return;
+        case Modal::Settings:
+            drawSettings();
+            return;
+        case Modal::About:
+            drawAbout();
+            return;
+        case Modal::SignOut:
+            drawSignOutConfirm();
+            return;
+        case Modal::LowBattery:
+            drawLowBattery();
+            return;
+        case Modal::OutboxConfirm:
+        case Modal::FirmwareConfirm:
+            // These two confirmations are part of their base frame: the outbox
+            // list draws the confirm panel and the firmware view carries the
+            // "Enter again" note. Their modal entry only gives keys priority.
+            return;
+    }
+}
+
 void drawScreen() {
     if (state().ui.gNoticeActive) {
         drawNotice();
         return;
     }
-    if (state().setup.gPortalActive) {
-        drawSetupPortal();
+    const Screen base = kk::screenBase(state().screen);
+    // The setup portal is the outermost screen after the notice frame; it used
+    // to be checked before every other flag.
+    if (base == Screen::Setup) {
+        drawBaseScreen();
         return;
     }
     if (state().wifi.gWifiActive) {
         drawWifiSetup();
         return;
     }
-    if (state().ui.gLowBatteryPrompt) {
-        drawLowBattery();
+
+    const Modal top = kk::screenTop(state().screen);
+
+    // Keep the old priority order for the blocking frames: low battery, sign
+    // out and About were drawn before the stats/study/outbox screens.
+    if (top == Modal::LowBattery || top == Modal::SignOut || top == Modal::About) {
+        drawModal();
         return;
     }
-    if (state().ui.gSignOutConfirm) {
-        drawSignOutConfirm();
-        return;
-    }
-    if (state().ui.gAboutActive) {
-        drawAbout();
-        return;
-    }
-    if (state().ui.gOutboxScreen) {
-        drawOutbox();
+    if (base == Screen::Outbox) {
+        drawBaseScreen();
+        drawModal();
         return;
     }
     if (state().stats.gStatsActive) {
@@ -649,75 +776,15 @@ void drawScreen() {
         drawCriticalList();
         return;
     }
-    if (state().ota.gFirmwareActive) {
-        drawFirmware();
-        return;
-    }
-    if (state().ui.gSettingsActive) {
-        drawSettings();
-        return;
-    }
-    if (state().ui.gPauseActive) {
-        drawPause();
-        return;
-    }
-    if (state().sync.gSyncScreen) {
-        drawSync();
-        return;
-    }
-#ifdef KANIKEY_DEV
-    if (state().dev.gShowRadicalTest) {
-        showRadicalTest();
-        return;
-    }
-#endif
-    if (state().review.gReviewDetail) {
-        showReviewDetail();
-        return;
-    }
-    if (state().review.gReviewActive) {
-        showReview();
-        return;
-    }
-    if (state().review.gReviewSummary) {
-        showReviewSummary();
-        return;
-    }
-    if (state().lesson.gLessonEmptyActive) {
-        showLessonEmpty();
-        return;
-    }
-    if (state().lesson.gLessonStartActive) {
-        drawLessonStart();
-        return;
-    }
-    if (state().lesson.gLessonListActive) {
-        showLessonList();
-        return;
-    }
-    if (state().lesson.gLessonBatchQuizActive) {
-        showLessonBatchQuiz();
-        return;
-    }
-    if (state().lesson.gLessonQuizActive) {
-        showLessonQuiz();
-        return;
-    }
-    if (state().lesson.gLessonActive) {
-        showLesson();
-        return;
-    }
-#ifdef KANIKEY_DEV
-    if (state().dev.gShowDebug) {
-        showDebug();
-        return;
-    }
-#endif
-    if (state().session.gShowHome) {
-        drawHome();
-        return;
-    }
-    drawBoot();
+
+    // Pause, Settings, About, Sign out and low battery fill the panel. Draw the
+    // top one alone: drawing the base first would push a full frame the user
+    // never saw before this refactor. The remaining modals are painted as part
+    // of their base (outbox confirm panel, firmware note), so the base is
+    // needed there.
+    const bool opaqueModal = top == Modal::Pause || top == Modal::Settings;
+    if (!opaqueModal) drawBaseScreen();
+    drawModal();
 }
 
 // CFG-04: draw the static help table over the frame drawScreen() just put on
@@ -765,28 +832,16 @@ void draw() {
 
 // True only when draw() would actually show Home. The SPEED-07 minute tick
 // must not repaint a review, a modal, the portal, the dev asset server or the
-// manual sync screen; several of those keep gShowHome set.
+// manual sync screen; Home is now the base screen instead of a flag.
 bool homeOwnsScreen() {
-    if (!state().session.gShowHome) return false;
-    if (state().setup.gPortalActive || state().storage.gAssetServerActive) return false;
+    if (kk::screenBase(state().screen) != Screen::Home) return false;
+    if (kk::screenTop(state().screen) != Modal::None) return false;
+    if (state().storage.gAssetServerActive) return false;
     if (state().wifi.gWifiActive) return false;
-    if (state().ui.gNoticeActive || state().ui.gLowBatteryPrompt ||
-        state().ui.gSignOutConfirm || state().ui.gAboutActive ||
-        state().ui.gOutboxScreen || state().stats.gStatsActive ||
-        state().study.gStudyMenuActive || state().study.gCriticalListActive ||
-        state().ota.gFirmwareActive || state().ui.gSettingsActive ||
-        state().ui.gPauseActive || state().sync.gSyncScreen ||
-        (state().sync.gSyncJob.active && state().sync.gSyncJob.modal) ||
-        state().review.gReviewDetail || state().review.gReviewActive ||
-        state().review.gReviewSummary)
+    if (state().ui.gNoticeActive || state().stats.gStatsActive ||
+        state().study.gStudyMenuActive || state().study.gCriticalListActive)
         return false;
-    if (state().lesson.gLessonEmptyActive || state().lesson.gLessonStartActive ||
-        state().lesson.gLessonListActive || state().lesson.gLessonBatchQuizActive ||
-        state().lesson.gLessonQuizActive || state().lesson.gLessonActive)
-        return false;
-#ifdef KANIKEY_DEV
-    if (state().dev.gShowDebug || state().dev.gShowRadicalTest) return false;
-#endif
+    if (state().sync.gSyncJob.active && state().sync.gSyncJob.modal) return false;
     return true;
 }
 
@@ -837,14 +892,16 @@ namespace {
 // REV-10: the only states that own an editable answer field. Feedback, the
 // review detail card, Pause and the other modals keep their own key handling.
 bool answerFieldActive() {
-    if (state().ui.gHelpActive || state().ui.gPauseActive || state().ui.gSettingsActive ||
-        state().ui.gNoticeActive || state().review.gReviewDetail)
+    if (state().ui.gHelpActive || kk::screenTop(state().screen) != Modal::None ||
+        state().ui.gNoticeActive)
         return false;
-    if (state().review.gReviewActive) return !state().review.gFeedback;
-    if (state().lesson.gLessonQuizActive)
+    const Screen base = kk::screenBase(state().screen);
+    if (base == Screen::Review) return !state().review.detail && !state().review.feedback;
+    if (base == Screen::LessonQuiz) {
+        if (state().lesson.quizBatch)
+            return !state().lesson.gLessonBatchFeedback && !state().lesson.gLessonBatchQueue.empty();
         return !state().lesson.gLessonQuiz.feedback() && !state().lesson.gLessonQuiz.complete();
-    if (state().lesson.gLessonBatchQuizActive)
-        return !state().lesson.gLessonBatchFeedback && !state().lesson.gLessonBatchQueue.empty();
+    }
     return false;
 }
 
@@ -925,19 +982,20 @@ void setup() {
 void loop() {
     tgc::board::update();
     handleSerial();
-    // The portal closes itself after 15 idle minutes; leave state().setup.gPortalActive set
+    // The portal closes itself after 15 idle minutes; leave Screen::Setup set
     // until here so the hooks can keep their own messages.
-    if (state().setup.gPortalActive) {
+    if (kk::screenBase(state().screen) == Screen::Setup) {
         state().setup.gSetupPortal.poll();
-        if (state().setup.gPortalActive && !state().setup.gSetupPortal.active()) {
-            state().setup.gPortalActive = false;
+        if (kk::screenBase(state().screen) == Screen::Setup &&
+            !state().setup.gSetupPortal.active()) {
+            kk::screenReset(&state().screen);
             snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "Setup timed out");
             state().display.gDirty = true;
         } else if (state().setup.gSetupPortal.takeRedrawRequest()) {
             state().display.gDirty = true;
         }
     }
-    if (!state().setup.gPortalActive) serviceAssetServer();
+    if (kk::screenBase(state().screen) != Screen::Setup) serviceAssetServer();
     if (state().storage.gPackRecheckPending) {
         // Deferred from portalRecheckPack(): the HTTP request has returned, so
         // the new handle cannot be invalidated by the client closing.

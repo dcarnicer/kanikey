@@ -82,6 +82,7 @@ namespace {
 
 using tgc::Key;
 using tgc::KeyEvent;
+using kk::Screen;
 using namespace kk::ui;
 
 }  // namespace
@@ -95,18 +96,18 @@ bool devForceBattery() {
 }
 
 void drawStatus() {
-    if (!state().display.gDisp || state().setup.gPortalActive || state().wifi.gWifiActive || state().ui.gLowBatteryPrompt || state().ui.gSignOutConfirm || state().ui.gAboutActive ||
-        state().ota.gFirmwareActive || state().ui.gSettingsActive || state().ui.gPauseActive || state().sync.gSyncScreen || state().session.gShowHome ||
-        state().review.gReviewActive || state().review.gReviewSummary || state().lesson.gLessonListActive || state().lesson.gLessonEmptyActive ||
-        state().lesson.gLessonActive || state().lesson.gLessonBatchQuizActive || state().lesson.gLessonStartActive ||
-        state().ui.gOutboxScreen || state().stats.gStatsActive || state().study.gStudyMenuActive ||
-        state().study.gCriticalListActive)
-        return;
+    if (!state().display.gDisp) return;
+    const Screen base = kk::screenBase(state().screen);
+    if (base == Screen::Debug) {
 #ifdef KANIKEY_DEV
-    if (state().dev.gShowDebug) showDebug();
+        // The old flag kept Home set behind Tab, so the debug screen only
+        // refreshed itself when it had been opened from Boot.
+        if (state().dev.debugReturn == Screen::Boot) showDebug();
 #endif
-    // The boot screen is redrawn on state changes through state().display.gDirty; only the
-    // debug screen needs a periodic heap/battery refresh.
+        return;
+    }
+    if (base != Screen::Boot) return;
+    // The boot screen is redrawn on state changes through state().display.gDirty.
 }
 
 void wakeScreen() {
@@ -165,32 +166,29 @@ bool powerTick(uint32_t now) {
     // helper clamps a future timestamp to zero, and a zero limit disables a
     // timer exactly as before.
     const uint32_t lastInput = state().ui.gLastInputAt;
-    if (!state().setup.gPortalActive && !state().wifi.gWifiActive && !state().ui.gDimmed &&
+    const bool portalActive = kk::screenBase(state().screen) == Screen::Setup;
+    if (!portalActive && !state().wifi.gWifiActive && !state().ui.gDimmed &&
         kk::idleDue(now, lastInput, dimMs)) {
         tgc::board::setBrightness(20);
         state().ui.gDimmed = true;
     }
-    if (!state().setup.gPortalActive && !state().wifi.gWifiActive && !state().ui.gScreenOff &&
+    if (!portalActive && !state().wifi.gWifiActive && !state().ui.gScreenOff &&
         kk::idleDue(now, lastInput, blankMs)) {
         Serial.printf("[power] blank after %u ms idle\n",
                       static_cast<unsigned>(kk::idleAgeMs(now, lastInput)));
         tgc::board::setDisplayOn(false);
         state().ui.gScreenOff = true;
     }
-    if (!state().setup.gPortalActive && !state().wifi.gWifiActive && !state().ui.gNoticeActive &&
-        !state().review.gReviewActive && !state().review.gReviewSummary &&
-        !state().review.gFeedback && !state().lesson.gLessonActive &&
-        !state().lesson.gLessonListActive && !state().lesson.gLessonEmptyActive &&
-        !state().lesson.gLessonQuizActive && !state().lesson.gLessonBatchQuizActive &&
-        !state().lesson.gLessonStartActive && !state().ui.gPauseActive &&
-        !state().ui.gSettingsActive && !state().ui.gAboutActive &&
-        !state().ui.gOutboxScreen && !state().stats.gStatsActive &&
-        !state().study.gStudyMenuActive && !state().study.gCriticalListActive &&
-        !state().ota.gFirmwareActive && state().ota.gFirmwareStep == FirmwareStep::Idle &&
-        // A deep-sleep wake is a reset, so sleeping while the new image is
-        // pending would roll it back; the 10-minute window bounds the wait.
-        !state().ota.gOtaPending && !state().ui.gLowBatteryPrompt &&
-        !state().storage.gAssetServerActive &&
+    const bool auxiliaryScreen = state().ui.gNoticeActive || state().wifi.gWifiActive ||
+                                 state().stats.gStatsActive ||
+                                 state().study.gStudyMenuActive ||
+                                 state().study.gCriticalListActive;
+    // A deep-sleep wake is a reset, so sleeping while the new image is pending
+    // would roll it back; the 10-minute window bounds the wait.
+    const bool firmwareBusy = state().ota.gFirmwareStep != FirmwareStep::Idle ||
+                              state().ota.gOtaPending;
+    if (kk::screenCanSleep(state().screen, portalActive, state().storage.gAssetServerActive,
+                           firmwareBusy, auxiliaryScreen) &&
         kk::idleDue(now, lastInput, sleepMs) &&
         (devForceBattery() || !tgc::board::externalPower())) {
         Serial.println("[power] idle sleep");
