@@ -174,6 +174,8 @@ void showReview() {
     view.minimalHeader =
         kk::settingsGetInt("rv.header", &headerInfo) && headerInfo == 1;
     view.srsStage = state().review.gFeedbackCompleted ? state().review.gCompletedItem.srsStage : (item ? item->srsStage : 0);
+    view.wrapUpCount =
+        state().review.gWrapUp ? static_cast<int>(state().review.gQueue.remaining()) : 0;
     view.total = static_cast<int>(state().review.gQueue.completedCount() + state().review.gQueue.remaining());
     view.position = static_cast<int>(state().review.gQueue.completedCount()) + 1;
     if (state().review.gFeedback && state().review.gFeedbackCompleted)
@@ -405,6 +407,7 @@ void endReview() {
     state().review.gFeedback = false;
     state().review.gFeedbackCompleted = false;
     state().review.gQueue = kk::ReviewQueue{};
+    state().review.gWrapUp = false;
     state().study.gPracticeActive = false;
     state().study.gPracticeMode = 0;
     state().study.gPracticeSubjects.clear();
@@ -436,6 +439,7 @@ void startReview() {
     state().review.gStageUps = 0;
     state().review.gReviewElapsedMs = 0;
     state().review.gFeedbackCorrectAt = 0;
+    state().review.gWrapUp = false;
     if (!state().ui.gLowBatteryConfirmed && lowBatteryNow()) {
         requestLowBatteryConfirm(1);
         return;

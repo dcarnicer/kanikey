@@ -115,6 +115,9 @@ struct ReviewState {
     bool gReviewActive = false;
     bool gReviewSummary = false;
     bool gFeedback = false;
+    // REV-05: the user wrapped up; the header shows the pruned count until the
+    // summary. Reset by startReview() and endReview().
+    bool gWrapUp = false;
     // REV-06: millis() when correct feedback appeared; 0 when the auto-advance
     // timer is off.
     uint32_t gFeedbackCorrectAt = 0;

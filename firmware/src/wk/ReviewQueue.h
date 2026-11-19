@@ -96,6 +96,10 @@ public:
     // Drop the current item (the user skipped it). It is not submitted.
     void skip();
 
+    // REV-05: keep the current item plus queued items with one part done and
+    // drop untouched items. The current part is unchanged. Returns remaining().
+    size_t wrapUp();
+
     // Requeue gap: mistakes return this many items later.
     static constexpr size_t kRequeueGap = 4;
 

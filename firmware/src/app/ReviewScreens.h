@@ -23,6 +23,8 @@ struct ReviewView {
     bool minimalHeader = false;  // R10: hide the SRS/accuracy text
     bool showDetailHint = true;
     const char* escHint = "Esc: quit";
+    // REV-05: > 0 draws `WRAP UP N` instead of the header until the summary.
+    int wrapUpCount = 0;
     uint8_t srsStage = 0;
     int position = 1;
     int total = 0;

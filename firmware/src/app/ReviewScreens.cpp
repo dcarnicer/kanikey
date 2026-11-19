@@ -88,7 +88,14 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     d.setTextFont(1);
     d.setTextSize(1);
     d.setTextColor(ui::kDim, ui::kBg);
-    d.drawString(view.header ? view.header : "REVIEWS", 6, 3);
+    if (view.wrapUpCount > 0) {
+        // REV-05: the count is the pruned queue, so the counter below matches.
+        char wrap[24];
+        snprintf(wrap, sizeof wrap, "WRAP UP %d", view.wrapUpCount);
+        d.drawString(wrap, 6, 3);
+    } else {
+        d.drawString(view.header ? view.header : "REVIEWS", 6, 3);
+    }
     if (view.srsStage > 0 && !view.minimalHeader) {
         char srs[24];
         if (s->hasReviewStats)
