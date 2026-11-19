@@ -747,10 +747,14 @@ A150 G143 M81 E147 B586).
   three-row list, `R`, stage updates during the send loop and the 240×135
   layout remain.
 - **REV-08.** Eleven native tests cover every order, type grouping, the limit,
-  unknown levels and `availableAt`. R2 `Oldest available` started a real review
-  (`RADICAL L5`, `1/20`) without an answer and was returned to Account; the
-  request/page/byte/heap log and visible SRS/level/type order still need the
-  dedicated run.
+  unknown levels and `availableAt`. R2 `Oldest available` (online, cached batch
+  present) fetched the full due set: 8 pages, 228,077 B, 464 assignments,
+  20 chosen, then a 20-item queue (`二斤`, `氏`, `出す`, …), with no reset. The
+  first run aborted in `loadCachedBatch` with a `bad_alloc` while copying the
+  52 cached subjects; moving them instead, not reserving the full due vector
+  before the TLS handshake, and catching `bad_alloc` fixed it. R2 was returned
+  to Account and the outbox was empty. The visible SRS/level/type order,
+  fallback and cached-offline checks remain.
 
 ## Round 2 hardware checks
 

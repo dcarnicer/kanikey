@@ -91,8 +91,8 @@ with no extra request. Other orders fetch all summary due assignments in 60-id
 pages over one session (`fetchDueAssignments`), select IDs purely, then
 `build()` re-applies the same comparator; a failed fetch falls back to Account
 with a log, and cached/offline batches use the same strategy. Eleven new native
-tests (391 on the merged main); release 1,655,861 B (90.2%), dev 1,723,681 B
-(93.9%), +17 KB flash. The request/page/byte/heap log, visible order, level
+tests (391 on the merged main); release 1,656,837 B (90.3%), dev 1,724,725 B
+(94.0%), +17 KB flash. The request/page/byte/heap log, visible order, level
 catalog, R3 grouping, fallback and cached checks remain on hardware.
 
 ### REV-01 — Show all accepted answers on feedback
