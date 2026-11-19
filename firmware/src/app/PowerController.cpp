@@ -72,6 +72,7 @@
 #include "wk/ReviewResponse.h"
 #include "wk/RomajiIme.h"
 #include "wk/SessionStats.h"
+#include "wk/SleepPolicy.h"
 #include "wk/Stats.h"
 #include "wk/SubjectText.h"
 #include "wk/Time.h"
@@ -84,6 +85,67 @@ using tgc::Key;
 using tgc::KeyEvent;
 using kk::Screen;
 using namespace kk::ui;
+
+// P5 "Light sleep" defaults to On; the registry row may not exist on a device
+// that never stored it.
+bool lightSleepEnabled() {
+    int value = 1;
+    kk::settingsGetInt("dp.lightsleep", &value);
+    return value != 0;
+}
+
+// P6 "Sleep during review" defaults to Never; the stored value is the choice's
+// meaning (0 or 600 seconds), not its menu index.
+kk::SleepDuringReview reviewSleepPolicy() {
+    int value = 0;
+    kk::settingsGetInt("dp.revsleep", &value);
+    return kk::sleepDuringReviewFromValue(value);
+}
+
+// A review or its summary owns the screen. Modals (Pause, Settings, help) keep
+// the old "no sleep" rule and are handled by screenCanSleep().
+bool reviewScreenOpen() {
+    if (state().screen.depth != 0) return false;
+    const Screen base = kk::screenBase(state().screen);
+    return base == Screen::Review || base == Screen::ReviewSummary;
+}
+
+// One blank-panel light-sleep period. Returns true when a key woke it: the
+// screen is back and the loop may resume. False means a timer woke it (or the
+// deep-sleep deadline was already due); the panel is blank again and the caller
+// runs the deep-sleep check. The timer slice is recomputed after an early
+// timer wake, so a slightly early RTC does not strand the device with the panel
+// off and no pending timer.
+bool lightSleepUntilDeadline(uint32_t blankMs, uint32_t sleepMs, bool reviewOpen,
+                             kk::SleepDuringReview policy) {
+    const uint32_t lastInput = state().ui.gLastInputAt;
+    for (;;) {
+        const uint32_t now = millis();
+        const uint32_t idleMs = kk::idleAgeMs(now, lastInput);
+        if (kk::deepSleepAllowed(reviewOpen, policy, idleMs) &&
+            (reviewOpen || kk::sleepDeadlineReached(idleMs, sleepMs)))
+            return false;
+        const uint32_t slice =
+            kk::lightSleepTimerMs(idleMs, blankMs, sleepMs, reviewOpen, policy);
+        Serial.printf("[power] light sleep: idle %u ms, timer %u ms\n",
+                      static_cast<unsigned>(idleMs), static_cast<unsigned>(slice));
+        const uint64_t startedUs = tgc::board::rtcMicros();
+        const bool keyWake = tgc::board::lightSleep(slice);
+        const uint64_t sleptUs = tgc::board::rtcMicros() - startedUs;
+        Serial.printf("[power] light sleep: %s wake after %llu us (timer %d)\n",
+                      keyWake ? "key" : "timer", static_cast<unsigned long long>(sleptUs),
+                      tgc::board::wokeFromTimer() ? 1 : 0);
+        if (keyWake) {
+            state().ui.gLastInputAt = millis();
+            wakeScreen();
+            return true;
+        }
+        // The board brings the panel back before returning; keep it off for the
+        // next slice or the deep-sleep path.
+        tgc::board::setDisplayOn(false);
+        state().ui.gScreenOff = true;
+    }
+}
 
 }  // namespace
 
@@ -138,6 +200,11 @@ bool powerWakeCheck(uint32_t now) {
             state().ui.gLastInputAt = now;
             wakeScreen();
         } else {
+            // The panel is blank. Run the idle check here too: with P5 Off the
+            // loop would otherwise park in this branch forever and never reach
+            // the P4/P6 deadline in powerTick(); with P5 On it also starts a
+            // light sleep that was skipped while a background job was busy.
+            if (powerTick(now)) return true;
             delay(10);
             return true;
         }
@@ -168,7 +235,7 @@ bool powerTick(uint32_t now) {
     const uint32_t lastInput = state().ui.gLastInputAt;
     const bool portalActive = kk::screenBase(state().screen) == Screen::Setup;
     if (!portalActive && !state().wifi.gWifiActive && !state().ui.gDimmed &&
-        kk::idleDue(now, lastInput, dimMs)) {
+        !state().ui.gScreenOff && kk::idleDue(now, lastInput, dimMs)) {
         tgc::board::setBrightness(20);
         state().ui.gDimmed = true;
     }
@@ -187,11 +254,49 @@ bool powerTick(uint32_t now) {
     // would roll it back; the 10-minute window bounds the wait.
     const bool firmwareBusy = state().ota.gFirmwareStep != FirmwareStep::Idle ||
                               state().ota.gOtaPending;
-    if (kk::screenCanSleep(state().screen, portalActive, state().storage.gAssetServerActive,
-                           firmwareBusy, auxiliaryScreen) &&
-        kk::idleDue(now, lastInput, sleepMs) &&
-        (devForceBattery() || !tgc::board::externalPower())) {
-        Serial.println("[power] idle sleep");
+    const bool batteryPower = devForceBattery() || !tgc::board::externalPower();
+    // A background sync and the asset server keep working while the panel is
+    // blank (SPEED-03/05); light sleep would freeze them for the whole slice.
+    const bool lightSleepBusy =
+        state().sync.gSyncJob.active || state().storage.gAssetServerActive || firmwareBusy;
+    // SPEED-06: after the blank delay, light sleep instead of staying fully
+    // awake until the deep-sleep deadline. USB power keeps the serial port up
+    // and never light-sleeps, like the deep-sleep path below.
+    if (state().ui.gScreenOff && batteryPower && !portalActive && !state().wifi.gWifiActive &&
+        !lightSleepBusy && lightSleepEnabled()) {
+        const bool reviewOpen = reviewScreenOpen();
+        const kk::SleepDuringReview policy = reviewSleepPolicy();
+        if (lightSleepUntilDeadline(blankMs, sleepMs, reviewOpen, policy)) return false;
+        // A timer wake brought the panel back; the sleep check below owns it
+        // now. Recompute the idle age because the CPU was asleep.
+        now = millis();
+    }
+    const Screen base = kk::screenBase(state().screen);
+    const bool reviewOpen =
+        state().screen.depth == 0 && (base == Screen::Review || base == Screen::ReviewSummary);
+    const uint32_t idleMs = kk::idleAgeMs(now, lastInput);
+    const kk::SleepDuringReview policy = reviewSleepPolicy();
+    // P6 replaces P4 during a review: Never keeps today's no-deep-sleep rule,
+    // After 10 min ends the session even when P4 is "Never". At home the P4
+    // deadline is unchanged.
+    const bool deepSleepDue = reviewOpen ? kk::reviewMayDeepSleep(policy, idleMs)
+                                         : kk::idleDue(now, lastInput, sleepMs);
+    const bool screenCanSleepNow =
+        reviewOpen ? (!portalActive && !state().storage.gAssetServerActive && !firmwareBusy &&
+                      !auxiliaryScreen)
+                   : kk::screenCanSleep(state().screen, portalActive,
+                                        state().storage.gAssetServerActive, firmwareBusy,
+                                        auxiliaryScreen);
+    if (deepSleepDue && screenCanSleepNow && batteryPower) {
+        if (reviewOpen) {
+            // Completed items are already in the outbox; a half-typed answer is
+            // dropped by endReview(false) and nothing is sent.
+            Serial.printf("[power] review idle sleep after %u ms\n",
+                          static_cast<unsigned>(idleMs));
+            endReview(false);
+        } else {
+            Serial.println("[power] idle sleep");
+        }
         saveCacheSnapshot();
         firmwareBeforeSleep();
         tgc::board::deepSleep();

@@ -131,6 +131,15 @@ void setDisplayOn(bool on);
 // (on the Cardputer ADV any key too, which is not delivered as a key event),
 // and the chip then boots through setup() again. Never returns.
 [[noreturn]] void deepSleep();
+// Blanks the panel, turns Wi-Fi off and enters light sleep. RAM and the current
+// screen stay; the Select button and the keyboard's INT line wake it, and with
+// maxMs > 0 a timer does too (0 = key only). The panel is on again when this
+// returns. True when a key/button woke it, false on the timer; the key that
+// woke the chip is consumed, exactly like the blank-panel wake path.
+bool lightSleep(uint32_t maxMs);
+// True when the last sleep was ended by its timer. A key wake from deepSleep()
+// is EXT1 and is reported by wokeFromSleep(), not here.
+bool wokeFromTimer();
 // Microseconds since the RTC timer started. It keeps counting through deep
 // sleep and resets only on a power cut, so differences measure sleep time.
 uint64_t rtcMicros();

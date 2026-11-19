@@ -1225,6 +1225,21 @@ void handleSerial() {
         } else if (state().ui.gSerialLine == "O") {
             state().storage.gDevForceBattery = !state().storage.gDevForceBattery;
             Serial.printf("[power] force battery %d\n", state().storage.gDevForceBattery ? 1 : 0);
+        } else if (state().ui.gSerialLine == "Z") {
+            // Hardware spike (SPEED-06): enter light sleep on demand. A 10 s
+            // timer bounds the test; a key or G0 wakes it sooner. rtcMicros()
+            // keeps counting through light sleep, so the difference is the
+            // time actually slept.
+            Serial.println("[power] light-sleep test: 10 s timer, press a key or G0");
+            const uint64_t startedUs = tgc::board::rtcMicros();
+            const bool keyWake = tgc::board::lightSleep(10000);
+            const uint64_t sleptUs = tgc::board::rtcMicros() - startedUs;
+            Serial.printf("[power] light-sleep test: %s wake after %llu us (timer %d)\n",
+                          keyWake ? "key" : "timer",
+                          static_cast<unsigned long long>(sleptUs),
+                          tgc::board::wokeFromTimer() ? 1 : 0);
+            state().ui.gLastInputAt = millis();
+            state().display.gDirty = true;
         } else if (state().ui.gSerialLine.startsWith("Z ")) {
             const int seconds = state().ui.gSerialLine.substring(2).toInt();
             if (kk::settingsSetSleepSecondsDev(seconds))
@@ -1298,7 +1313,7 @@ void handleSerial() {
 #endif
         } else if (!state().ui.gSerialLine.isEmpty()) {
 #ifdef KANIKEY_DEV
-            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page-right <=page-left j=lesson-select D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear J=attention-outbox Y=clear-rollback C=dev-cache X=clear-cache K <keys>=type R<id>=radical U <url>=manifest F=firmware-check I=firmware-install V=firmware-screen k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload T=dev-token L=radical-lesson E=zero-due H=drop-batch A<code>=fake-start B=bad-pack-crc O=force-battery Z<s>=sleep G<n>=key-storm n=test-tone a=audio-cache\n");
+            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page-right <=page-left j=lesson-select D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear J=attention-outbox Y=clear-rollback C=dev-cache X=clear-cache K <keys>=type R<id>=radical U <url>=manifest F=firmware-check I=firmware-install V=firmware-screen k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload T=dev-token L=radical-lesson E=zero-due H=drop-batch A<code>=fake-start B=bad-pack-crc O=force-battery Z=light-sleep-test Z<s>=sleep G<n>=key-storm n=test-tone a=audio-cache\n");
 #else
             Serial.printf("[kk] commands: h=heap i=pack S=asset-server p=picture r=restart n=test-tone a=audio-cache up <bytes> <path>=sd-upload\n");
 #endif
