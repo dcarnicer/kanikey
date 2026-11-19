@@ -25,6 +25,10 @@ String idList(const std::vector<uint32_t>& ids, size_t begin, size_t end) {
 
 ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& dueSubjectIds,
                              uint32_t now, size_t limit) {
+    // Assignments, subject pages, study materials, statistics and components
+    // share one TLS connection (SPEED-05). syncPrefetchStep() nests this inside
+    // the sync job's session, so there it joins instead of reconnecting.
+    WkSessionGuard session;
     ReviewBatch batch;
     if (dueSubjectIds.empty()) {
         batch.error = "no due subject ids";
