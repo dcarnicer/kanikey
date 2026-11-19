@@ -141,6 +141,9 @@ RAM and is more code. The pack gives quality and keeps the firmware simple.
 
 **Implications:** the SD is required to review. The pack is generated with the user's
 token and is not redistributed. If a glyph is missing, the item is blocked with a warning.
+**Superseded in part on 2026-11-19 (`ONB-01`):** the font pack is public and
+account-independent; only the radical pack is token-generated and personal.
+The card still holds both packs.
 
 ---
 
@@ -231,9 +234,9 @@ keystroke. A "strict" setting can count the warning as a failure.
 `Imprecise`, `Warning`, `Incorrect`) and the UI decides.
 **Superseded in part on 2026-11-01 (`REV-02`):** every reading with
 `accepted_answer=true` is now correct (see “Readings follow WaniKani's accepted
-flag”), and a listed but non-accepted reading is a warning. The current build
-still uses the strict warning for close meanings; the R6 `Typos` row is
-registered but REV-02 has not wired it yet.
+flag”), and a listed but non-accepted reading is a warning. A close meaning
+follows R6: WaniKani accepts it by default, while Strict warns without naming
+the answer (see the 2026-11-19 REV-02 entry).
 
 ---
 
@@ -261,6 +264,10 @@ needed because the device does the syncing.
 
 **Implications:** the user configures from the phone once; after that everything is done
 with the keyboard. The portal reopens only when requested.
+**Superseded in part on 2026-10-28:** the portal is two-phase. The AP page saves
+Wi-Fi, then the station page is served on the home network behind a 6-digit
+page code. On 2026-11-19 (`SETUP-09`) Settings › Account › Wi-Fi added the
+on-device scan; the portal remains the token/time/pack path.
 
 ---
 
@@ -395,6 +402,10 @@ shuffle keeps variety inside a level.
 
 **Implications:** `KKCA` v9 stores the order; older caches are discarded.
 Offline sessions keep the last known order.
+**Superseded in part on 2026-11-19 (`REV-08`):** R2 `Order` adds Random, level,
+SRS and oldest-available orders; `Account preference` (the default) keeps the
+`reviews_presentation_order` behaviour described here. R4 `First question`
+remains a separate meaning/reading/random setting.
 
 ---
 
@@ -573,8 +584,8 @@ the existing outbox and is a user action. Review/lesson preferences,
 clear-cache, sign-out and the auth/rate-limit screens are implemented
 (SETUP-05/07).
 **Superseded on 2026-11-19 (`CFG-01/02/03`):** Settings is the eight-section,
-47-row registry menu with `System › Reset settings`; the flat row list above is
-the v1 state.
+48-row registry menu with `System › Reset settings`; the flat row list above is
+the v1 state. SETUP-09 later added `Account › Wi-Fi`.
 
 ---
 
@@ -617,7 +628,9 @@ request midway.
 request returns (SRS can take up to five requests). What already arrived stays
 in the cache and the device returns Home, or to `Sync cancelled` when there is
 no cache. An Account or Summary failure stops later steps; Level and SRS
-failures are warnings and the sync completes.
+failures are warnings and the sync completes. **Superseded in part on
+2026-11-19 (`SPEED-02/03`):** the automatic boot/wake sync is now a background
+job; `Sync now` keeps this modal screen, now seven rows with `Critical`.
 
 ---
 
@@ -893,18 +906,18 @@ pure lookup/cycle/validate/value-label functions and a fixed-capacity
 `SettingsCache`. `platform/DeviceSettings` loads the keyed rows once at boot
 through `settingsGetInt`/`settingsSetInt`; the seven existing getters/setters
 become wrappers with unchanged NVS keys and defaults. The six STUDY-era keys
-keep direct getters until CFG-02 adds them to the registry.
+kept direct getters until CFG-02 added them to the registry.
 
-**Why:** CFG-01/CFG-02 add about 25 rows; without one table, each setting
+**Why:** CFG-01/CFG-02 added about 25 rows; without one table, each setting
 means changes in three places and nothing can be tested without hardware. The
 only visible change is that a stored value outside a choice list falls back to
 its default, as ARCH-02 specifies.
 
-**Implications:** `settingsAction()`/`drawSettings()` are untouched, so the
-current flat 19-row menu stays until CFG-01. A no-op change performs no NVS
-write. The dev-only `Z <seconds>` idle-sleep hook bypasses the choice list with
-`settingsSetSleepSecondsDev`; normal callers stay validated. CFG-02 owns the
-remaining rows and the settings section UX.
+**Implications:** `settingsAction()`/`drawSettings()` were untouched, so the
+flat 19-row menu stayed until CFG-01. A no-op change performs no NVS write. The
+dev-only `Z <seconds>` idle-sleep hook bypasses the choice list with
+`settingsSetSleepSecondsDev`; normal callers stay validated. CFG-02 owned the
+remaining rows and the settings section UX and landed on 2026-11-19.
 
 ---
 
@@ -931,12 +944,13 @@ writes, one `PUT` per item with a `lessonStarted` journal record.
 
 ## 2026-11-19 — Sectioned settings and the registry of record (CFG-01/02/03)
 
-**Decision:** Settings is an eight-section menu backed by one 47-row registry
-(39 keyed settings and 8 actions) with the IDs, labels, choices, defaults, NVS
+**Decision:** Settings is an eight-section menu backed by one 48-row registry
+(39 keyed settings and 9 actions) with the IDs, labels, choices, defaults, NVS
 keys and help text from `docs/spec/03-settings.md`. `Enter`/`Right` cycle
-forward, `Left` back, `Esc` pops one level; destructive rows are locked during
-a review; `System › Reset settings` removes only registry keys (the legacy
-`order` included) and keeps the token, Wi-Fi, time zone, cache and outbox.
+forward, `Left` back, `Esc` pops one level; destructive rows (including the
+on-device Wi-Fi action) are locked during a review; `System › Reset settings`
+removes only registry keys (the legacy `order` included) and keeps the token,
+Wi-Fi, time zone, cache and outbox.
 
 **Why:** the flat 19-row list could not hold the round-2 settings, and every
 row had its label/value duplicated in the controller and the screen. One
@@ -944,8 +958,8 @@ registry makes the values testable natively and lets CFG-02 add settings
 without touching the UI.
 
 **Implications:** R4 migrates `order` to `rv.first`; the six STUDY keys, L3,
-Y1–Y3, P5/P6 and M1–M7 are registry-backed. CFG-04's `?` overlay is still
-open. A stored value outside a choice list falls back to the default.
+Y1–Y3, P5/P6 and M1–M7 are registry-backed. CFG-04's `?` overlay landed on
+2026-11-19. A stored value outside a choice list falls back to the default.
 
 ---
 
@@ -962,8 +976,8 @@ and `Essay` are also accepted is misleading, and the old wrong-answer line
 spent the only free line repeating the NOT QUITE pill.
 
 **Implications:** the answer token helpers are pure and native-tested; the
-lesson quiz uses the same layout. REV-02 (typo policy) and the remaining review
-options stay open.
+lesson quiz uses the same layout. REV-02 and the other review options landed in
+their own 2026-11-19 entries; the hardware feedback checks remain.
 
 ---
 
@@ -1047,8 +1061,9 @@ their defaults keep the existing Enter-only, back-to-back and SRS-header
 behaviour for users who change nothing.
 
 **Implications:** the rows persist in NVS and apply without a reboot. Hardware
-checks are pending. R6 `Typos`, R7, R9, R12 and R2/R3 remain open, so this does
-not complete the review wave.
+checks are pending. R6 `Typos`, R7, R9, R12 and R2/R3 landed in their own
+2026-11-19 entries, so the review wave is implemented; its hardware checks
+remain.
 
 ---
 
@@ -1131,7 +1146,7 @@ verified download, while the radical bitmaps remain personal.
 RAM, +1,936 B flash measured). `build.py --split DIR` writes both and verifies
 v2 kind/table consistency; the public font build is 9.36 MB. Both-pack boot,
 missing-radical boot, v1 fallback and both upload paths remain hardware checks;
-ONB-02 adds the portal download/upload.
+ONB-02 provides the portal download/upload (2026-11-19).
 
 ---
 
@@ -1155,3 +1170,70 @@ flushes the tail at the summary. The summary shows `Sending n/m`, a bar, stage
 moves and the outbox count. Each queued record carries its journal handle in
 the tracker, so every POST patches its own `srsAfter`, not only the last one.
 The hardware summary/Esc/offline/Every-5/Immediately and heap checks remain.
+
+---
+
+## 2026-11-19 — Screens are base screens plus a modal stack (ARCH-04)
+
+**Decision:** one pure `wk/ScreenModel` owns the base screen and a four-deep
+modal stack. Pause, Settings, About, sign-out, the Outbox discard confirmation,
+the low-battery prompt and the firmware-install confirmation are modals; lesson
+start and the batch quiz stay sub-states of the lesson screen. `draw()` and
+`onKey()` dispatch to the top modal first, and `screenCanSleep()` is the only
+sleep predicate. Stats, Extra study, Critical items, on-device Wi-Fi and
+notices remain separate screens or overlays that block sleep.
+
+**Why:** about twenty booleans allowed invalid combinations such as
+`gAboutActive && gPauseActive`, and the draw, key and sleep orderings had
+drifted apart. A stack makes the reachable states explicit and gives `Esc` one
+meaning: pop one level.
+
+**Implications:** Pause → Settings → About returns About → Settings → Pause
+without `gSettingsOrigin`, and no `gShowHome`/`gReviewActive`/… flag remains.
+The model is pure and native-tested. The return chain passed on 2026-11-19;
+sleep/dim, firmware install, low-battery and debug routes remain hardware
+checks.
+
+---
+
+## 2026-11-19 — One list, hint and text primitive set (TNG-03)
+
+**Decision:** the Tangocho-derived `ui/ListView` window math and row frame,
+`ui/HintBar` preferred-first width fallback, `ui/TextLayout` wrapping/ellipsis/
+UTF-8 trimming and the 1 bpp `ui/Icons` tables are the shared primitives. Home
+hints, Settings, the Wi-Fi scan, Outbox, the lesson list and the Study/critical
+windows use them; lesson, critical and study rows keep their custom 20 px
+painters. `UiFont` is not ported and the icons are not adopted in screens yet.
+
+**Why:** every list carried its own scroll-window and clipping code, and a
+wide hint could collide with the right side. One tested rule keeps the 240×135
+screens consistent and makes a new list cheaper to add.
+
+**Implications:** the window math and fallbacks are native-tested, and a
+migrated list keeps its own fonts and row content, so the layout is unchanged.
+The remaining scroll/window hardware cases and icon adoption are follow-ups;
+`UiFont` stays out because the UI keeps the built-in fonts (D1).
+
+---
+
+## 2026-11-19 — The public font pack ships from the release workflow (ONB-01/02)
+
+**Decision:** the release workflow builds the v2 kind-1 font pack from a fixed
+kana + JIS X 0208 set with pinned Noto Sans JP and Pillow, verifies it,
+publishes it as `glyphs.kgp` beside the app image and adds a
+`pack font <name> <bytes> <sha256>` row to the OTA manifest. The setup station
+page downloads that record through `glyphs.kgp.tmp`, checks exact size and
+SHA-256, validates the font kind and reopens it; a personal `radicals.kgp`
+arrives through the local upload form (or a manual card copy). `Check pack
+again` is the explicit full-CRC path.
+
+**Why:** the split pack made the font safe to publish, but most users should
+not need Python, a token and a computer to install it. The radical bitmaps
+remain WaniKani-derived and must stay personal.
+
+**Implications:** a tagged release must build and attach the pack; the firmware
+update path does not require a `pack` record, but the setup page uses the
+`font` one. The download checks HTTPS, size, SHA-256 and kind; the upload checks
+size, free space and the v2 kind-2 structure but not the CRC. Empty-card
+download, cut Wi-Fi, valid and truncated upload, `Esc` and heap checks remain
+on hardware (see [`docs/hardware.md`](hardware.md), 2026-11-19).

@@ -5,8 +5,8 @@ The documentation still describes the design mockups rather than the device: `do
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
 | DOC-01 | Mockups match the device | P2 | M | none | any | review (2026-11-19: renders refreshed; device side-by-side pending) |
-| DOC-02 | `ux.md` alignment | P2 | S | DOC-01, REV-10, LES-01…LES-04, CFG | any | review |
-| DOC-03 | `decisions.md` entries | P2 | S | REV-02, LES-01…LES-03, SPEED-06 | any | review |
+| DOC-02 | `ux.md` alignment | P2 | S | DOC-01, REV-10, LES-01…LES-04, CFG | any | review (2026-11-19: audit complete) |
+| DOC-03 | `decisions.md` entries | P2 | S | REV-02, LES-01…LES-03, SPEED-06 | any | review (2026-11-19: entries and supersede notes in place; SPEED-06 deep-sleep note deferred) |
 | DOC-04 | ROADMAP round 2 | P2 | S | none | any | review |
 | DOC-05 | Hardware check log template | P3 | S | none | any | review (2026-11-19: table filled from the v1 pass) |
 | ONB-01 | Split the visual pack | P2 | M | none | 2 (after ARCH-01) | review (2026-11-19: merged; hardware pending) |
