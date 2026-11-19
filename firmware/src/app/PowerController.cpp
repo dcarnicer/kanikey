@@ -63,6 +63,7 @@
 #include "platform/WkReviewStatistics.h"
 #include "platform/WkSrsCounts.h"
 #include "wk/AnswerChecker.h"
+#include "wk/IdleTimer.h"
 #include "wk/IdSample.h"
 #include "wk/LessonOrder.h"
 #include "wk/LessonQuiz.h"
@@ -127,6 +128,11 @@ bool powerWakeCheck(uint32_t now) {
         if (tgc::board::wasPressed(tgc::board::Button::Select) ||
             tgc::board::wasHeld(tgc::board::Button::Select))
             wake = true;
+        // A manual sync is a foreground operation with a progress screen. It
+        // must not sit frozen behind a blank panel waiting for a key; wake it
+        // and let syncAdvance() continue. A background job already runs while
+        // the panel is blank.
+        if (!wake && state().sync.gSyncJob.active && state().sync.gSyncJob.modal) wake = true;
         if (wake) {
             state().ui.gLastInputAt = now;
             wakeScreen();
@@ -154,13 +160,20 @@ bool powerTick(uint32_t now) {
     const uint32_t dimMs = static_cast<uint32_t>(kk::settingsDimSeconds()) * 1000u;
     const uint32_t blankMs = static_cast<uint32_t>(kk::settingsBlankSeconds()) * 1000u;
     const uint32_t sleepMs = static_cast<uint32_t>(kk::settingsSleepSeconds()) * 1000u;
-    if (!state().setup.gPortalActive && !state().wifi.gWifiActive && dimMs && !state().ui.gDimmed &&
-        now - state().ui.gLastInputAt > dimMs) {
+    // A sync step may refresh gLastInputAt after the loop captured `now`; a
+    // plain subtraction would underflow and look like ~49 days of idle. The
+    // helper clamps a future timestamp to zero, and a zero limit disables a
+    // timer exactly as before.
+    const uint32_t lastInput = state().ui.gLastInputAt;
+    if (!state().setup.gPortalActive && !state().wifi.gWifiActive && !state().ui.gDimmed &&
+        kk::idleDue(now, lastInput, dimMs)) {
         tgc::board::setBrightness(20);
         state().ui.gDimmed = true;
     }
-    if (!state().setup.gPortalActive && !state().wifi.gWifiActive && blankMs && !state().ui.gScreenOff &&
-        now - state().ui.gLastInputAt > blankMs) {
+    if (!state().setup.gPortalActive && !state().wifi.gWifiActive && !state().ui.gScreenOff &&
+        kk::idleDue(now, lastInput, blankMs)) {
+        Serial.printf("[power] blank after %u ms idle\n",
+                      static_cast<unsigned>(kk::idleAgeMs(now, lastInput)));
         tgc::board::setDisplayOn(false);
         state().ui.gScreenOff = true;
     }
@@ -177,8 +190,8 @@ bool powerTick(uint32_t now) {
         // A deep-sleep wake is a reset, so sleeping while the new image is
         // pending would roll it back; the 10-minute window bounds the wait.
         !state().ota.gOtaPending && !state().ui.gLowBatteryPrompt &&
-        !state().storage.gAssetServerActive && sleepMs &&
-        now - state().ui.gLastInputAt > sleepMs &&
+        !state().storage.gAssetServerActive &&
+        kk::idleDue(now, lastInput, sleepMs) &&
         (devForceBattery() || !tgc::board::externalPower())) {
         Serial.println("[power] idle sleep");
         saveCacheSnapshot();

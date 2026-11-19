@@ -3607,6 +3607,7 @@ void run_cache_tests();
 void run_rev_tests();
 void run_pack_tests();
 void run_http_tests();
+void run_power_tests();
 
 int main(int, char**) {
     UNITY_BEGIN();
@@ -3800,5 +3801,6 @@ int main(int, char**) {
     run_rev_tests();
     run_pack_tests();
     run_http_tests();
+    run_power_tests();
     return UNITY_END();
 }

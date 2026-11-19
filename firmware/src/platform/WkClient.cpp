@@ -87,6 +87,15 @@ bool readLine(WiFiClientSecure& client, String& line, uint32_t deadline) {
     return false;
 }
 
+// WiFiClientSecure::stop() memsets sslclient_context and leaves its socket at
+// 0 instead of -1. A second stop on the same object then closes fd 0, which
+// may by then belong to another lwIP socket. Force the sentinel back after
+// every close so a reused static client cannot close an unrelated descriptor.
+void closeClient(WiFiClientSecure& client) {
+    client.stop();
+    client.socket();  // the library accessor sets sslclient->socket = -1
+}
+
 struct Attempt {
     WkResponse r;
     bool retryable = false;
@@ -107,7 +116,7 @@ Attempt performRequest(WiFiClientSecure& client, const String& method, const Str
     if (reused) {
         Serial.printf("[http] %s reuse\n", path.c_str());
     } else {
-        client.stop();
+        closeClient(client);
         client.setCACert(tgc::kRootCaPem);
         client.setHandshakeTimeout(kHandshakeTimeoutS);
         client.setTimeout(timeoutMs / 1000);
@@ -117,7 +126,7 @@ Attempt performRequest(WiFiClientSecure& client, const String& method, const Str
             r.ms = millis() - t0;
             Serial.printf("[http] connect failed after %u ms, error %d %s\n",
                           static_cast<unsigned>(r.ms), r.tlsError, err);
-            client.stop();
+            closeClient(client);
             a.retryable = true;
             return a;
         }
@@ -177,7 +186,7 @@ Attempt performRequest(WiFiClientSecure& client, const String& method, const Str
         // A GET may be retried after any transport failure. A POST/PUT is only
         // retried when no byte left the device, so a review cannot be sent twice.
         a.retryable = written == 0 || method == "GET";
-        client.stop();
+        closeClient(client);
         return a;
     }
 
@@ -186,7 +195,7 @@ Attempt performRequest(WiFiClientSecure& client, const String& method, const Str
         r.ms = millis() - t0;
         Serial.printf("[http] %s no status line\n", path.c_str());
         a.retryable = method == "GET";
-        client.stop();
+        closeClient(client);
         return a;
     }
     status.trim();
@@ -230,7 +239,7 @@ Attempt performRequest(WiFiClientSecure& client, const String& method, const Str
         r.ms = millis() - t0;
         Serial.printf("[http] %s header read failed\n", path.c_str());
         a.retryable = method == "GET";
-        client.stop();
+        closeClient(client);
         return a;
     }
 
@@ -364,7 +373,7 @@ Attempt performRequest(WiFiClientSecure& client, const String& method, const Str
                   r.httpCode, static_cast<unsigned>(r.bytes), static_cast<unsigned>(r.ms),
                   contentLength, chunked ? " chunked" : "",
                   r.truncated ? " (truncated)" : "", a.keepAlive ? " keep" : "");
-    if (!a.keepAlive) client.stop();
+    if (!a.keepAlive) closeClient(client);
     return a;
 }
 }  // namespace
@@ -377,7 +386,7 @@ void wkSetRequestHooks(WkMemHook before, WkMemHook after) {
 bool wkSessionBegin() {
     if (gSessionDepth == 0) {
         gSessionRequests = 0;
-        gSessionClient.stop();
+        closeClient(gSessionClient);
     }
     ++gSessionDepth;
     return true;
@@ -387,7 +396,7 @@ void wkSessionEnd() {
     if (gSessionDepth == 0) return;
     --gSessionDepth;
     if (gSessionDepth > 0) return;
-    gSessionClient.stop();
+    closeClient(gSessionClient);
     const uint32_t requests = gSessionRequests;
     gSessionRequests = 0;
     if (requests) Serial.printf("[http] session close after %u requests\n",
@@ -470,7 +479,7 @@ WkResponse request(const String& method, const String& path, const String& token
         // requests. One fresh connection is allowed before the error is real.
         retried = true;
         Serial.printf("[http] %s retrying on a new connection\n", path.c_str());
-        client.stop();
+        closeClient(client);
         delay(50);
     }
 
