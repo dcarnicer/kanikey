@@ -95,6 +95,8 @@ bool hasRelatedSubjects(const kk::Subject& s);
 int detailPageKind(int index, const kk::Subject& s);
 // REV-04: R7 gates the C/A feedback actions.
 bool reviewWrongActionsEnabled();
+// REV-07: R9 opens the mnemonic page on a wrong answer.
+bool reviewDetailsOnWrongEnabled();
 // Queue, persist and count one completed item (normal answers and C).
 void applyCompletion();
 
@@ -129,6 +131,11 @@ uint32_t reviewAdvanceDelayMs() {
 bool reviewWrongActionsEnabled() {
     int value = 0;
     return kk::settingsGetInt("rv.wrong", &value) && value != 0;
+}
+
+bool reviewDetailsOnWrongEnabled() {
+    int value = 0;
+    return kk::settingsGetInt("rv.details", &value) && value != 0;
 }
 
 // The serial test helper can inject a reading directly; release builds only
@@ -357,6 +364,19 @@ void checkCurrent() {
     if (state().review.gCheck.status != kk::AnswerStatus::Warning) {
         const kk::AnswerOutcome o = state().review.gQueue.answer(state().review.gCheck.status);
         if (o.completed) applyCompletion();
+    }
+    // REV-07: R9 opens the mnemonic for the part that failed. Only here, so
+    // returning from the card leaves the feedback and Tab starts at page 1.
+    if (state().review.gFeedback &&
+        state().review.gCheck.status == kk::AnswerStatus::Incorrect &&
+        reviewDetailsOnWrongEnabled() &&
+        subjectById(state().review.gFeedbackSubjectId)) {
+        state().review.gDetailSubjectId = 0;
+        state().review.gDetailFromCritical = false;
+        state().review.gReviewDetailPages = detailPageCount(*s);
+        state().review.gReviewDetailPage =
+            state().review.gFeedbackPart == kk::ReviewPart::Meaning ? 1 : 2;
+        state().review.gReviewDetail = true;
     }
     state().display.gDirty = true;
 }

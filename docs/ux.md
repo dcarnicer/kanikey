@@ -562,6 +562,10 @@ kept inside each level.
   advance. R8 is Off by default, so the current Enter-only behaviour stays.
   **Hardware pending** (see [`docs/hardware.md`](hardware.md), 2026-11-19).
 - `Tab` opens the full card: meanings, readings, mnemonic and components.
+- With R9 `Details on wrong` On, a wrong answer opens the card once, directly
+  at page 2 for a failed meaning or page 3 for a failed reading; `Esc`/`Tab`
+  returns to the same NOT QUITE feedback and a later `Tab` starts at page 1.
+  Correct and warning feedback never open it, and R9 is Off by default.
 - **Implementation note (2026-10-28).** After a correct answer, the free lines
   under the answer show the user's meaning or reading note when one exists.
   Wrong answers show the hint sentence described above. `Tab` opens the full
@@ -591,6 +595,14 @@ kept inside each level.
 The page count depends on the subject: five base pages, plus vocabulary and
 related pages when they apply. `Space`/`←`/`→` page and `Tab`/`Esc` returns to
 feedback.
+
+**Implementation (2026-11-19, REV-07).** R9 `Details on wrong` is live: an
+Incorrect answer opens the card at page 2 (meaning mnemonic) or page 3 (reading
+mnemonic), matching the failed part, and keeps the feedback state underneath.
+Returning does not reopen it; `Tab` from feedback still starts at page 1. A
+missing mnemonic shows `No mnemonic cached.` Correct and warning feedback are
+unchanged. **Hardware pending:** wrong meaning/reading page, return, Correct/
+Warning and the empty-mnemonic state (see [`docs/hardware.md`](hardware.md)).
 
 ### 5.7 Session summary
 
