@@ -24,6 +24,9 @@ struct SettingDef {
     uint8_t choiceCount;
     int defaultValue;
     bool live;
+    // Short affordance for Action, Submenu and Info rows ("open", "run",
+    // "info"); nullptr for keyed rows. The menu draws it in the value column.
+    const char* valueText;
 };
 
 // The table lives in wk/SettingsRegistry.cpp. The pointer stays valid for the
@@ -49,14 +52,24 @@ void settingValueLabel(const SettingDef& def, int value, char* buf, size_t size)
 // were written. Section names are the eight CFG-02 names.
 size_t settingsInSection(const char* section, const SettingDef** out, size_t max);
 
+// The eight section names in menu order. The index is stable; unknown indexes
+// give an empty string.
+size_t settingsSectionCount();
+const char* settingsSectionName(size_t index);
+
+// R4 migration: `rv.first` replaces the old `order` key. When `rv.first` has
+// never been written, a stored `order` (0 Reading first, 1 Meaning first) is
+// mapped onto the new values. Neither key present means Meaning first.
+int settingFirstQuestionValue(bool hasFirst, int first, bool hasOrder, int order);
+
 // Fixed-capacity cache of {nvsKey, value}; no heap and no NVS dependency. Load
 // once at boot, then read and write through get()/set().
 class SettingsCache {
 public:
     using Reader = int (*)(void* context, const char* nvsKey, int fallback);
 
-    // Room for the full CFG-02 registry (currently thirteen rows); static RAM
-    // only, roughly 12 bytes per keyed entry.
+    // Room for the full CFG-02 registry (39 keyed rows); static RAM only,
+    // roughly 12 bytes per keyed entry.
     static constexpr size_t kCapacity = 64;
 
     // Fills from the registry. A null reader yields every default; otherwise

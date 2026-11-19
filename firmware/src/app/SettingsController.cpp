@@ -71,6 +71,7 @@
 #include "wk/ReviewResponse.h"
 #include "wk/RomajiIme.h"
 #include "wk/SessionStats.h"
+#include "wk/SettingsModel.h"
 #include "wk/Stats.h"
 #include "wk/SubjectText.h"
 #include "wk/Time.h"
@@ -83,12 +84,14 @@ using tgc::Key;
 using tgc::KeyEvent;
 using namespace kk::ui;
 
-constexpr int kSettingsRows = 20;
+// The largest section (Reviews, twelve rows) fits this many pointers.
+constexpr size_t kSettingsSectionRows = 16;
 
 void setSettingsNote(const char* text, uint16_t color);
-int nextPreset(const int* values, int count, int current);
-String secondsLabel(int seconds);
-void settingsAction();
+void settingsValueText(const kk::SettingDef& def, char* out, size_t n);
+void settingsCycle(const kk::SettingDef& def, bool forward);
+void settingsRunAction(const kk::SettingDef& def);
+void settingsSelectEntryImpl(const char* id);
 void formatBytes(uint32_t bytes, char* out, size_t n);
 void firmwareStatus(const char* text, uint16_t color);
 void firmwareNoteImpl(const char* text, uint16_t color);
@@ -107,163 +110,129 @@ void setSettingsNote(const char* text, uint16_t color = kFaint) {
     state().ui.gSettingsNoteColor = color;
 }
 
-int nextPreset(const int* values, int count, int current) {
-    for (int i = 0; i < count; ++i)
-        if (values[i] == current) return values[(i + 1) % count];
-    for (int i = 0; i < count; ++i)
-        if (values[i] > current) return values[i];
-    return values[0];
+// CFG-01: the review lock. Focusable but inert while a session is running;
+// the Firmware row itself stays live so Check now is reachable.
+bool settingsRowLocked(const char* id) {
+    if (!id || !state().review.gReviewActive) return false;
+    return std::strcmp(id, "setup.portal") == 0 ||
+           std::strcmp(id, "account.signOut") == 0 ||
+           std::strcmp(id, "sync.clearCache") == 0 ||
+           std::strcmp(id, "system.reset") == 0 ||
+           std::strcmp(id, "system.firmware.install") == 0;
 }
 
-String secondsLabel(int seconds) {
-    if (seconds <= 0) return String("off");
-    if (seconds < 60) return String(seconds) + "s";
-    return String(seconds / 60) + "m";
+int settingCurrentValue(const kk::SettingDef& def) {
+    if (!def.nvsKey) return def.defaultValue;
+    int value = def.defaultValue;
+    if (!kk::settingsGetInt(def.nvsKey, &value)) value = def.defaultValue;
+    return kk::settingValidate(def, value);
 }
 
-void settingsAction() {
-    switch (state().ui.gSettingsIndex) {
-        case 0: {
-            static const int kLevels[] = {64, 128, 192, 255};
-            const int level = nextPreset(kLevels, 4, kk::settingsBrightness());
-            kk::settingsSetBrightness(level);
-            tgc::board::setBrightness(level);
-            char note[32];
-            snprintf(note, sizeof note, "Brightness %d", level);
-            setSettingsNote(note, kOk);
-            break;
-        }
-        case 1: {
-            static const int kDim[] = {0, 15, 30, 60};
-            const int value = nextPreset(kDim, 4, kk::settingsDimSeconds());
-            kk::settingsSetDimSeconds(value);
-            setSettingsNote((String("Dim after ") + secondsLabel(value)).c_str(), kOk);
-            break;
-        }
-        case 2: {
-            static const int kBlank[] = {0, 30, 60, 120};
-            const int value = nextPreset(kBlank, 4, kk::settingsBlankSeconds());
-            kk::settingsSetBlankSeconds(value);
-            setSettingsNote((String("Blank after ") + secondsLabel(value)).c_str(), kOk);
-            break;
-        }
-        case 3: {
-            static const int kSleep[] = {0, 120, 300, 600};
-            const int value = nextPreset(kSleep, 4, kk::settingsSleepSeconds());
-            kk::settingsSetSleepSeconds(value);
-            setSettingsNote((String("Sleep after ") + secondsLabel(value)).c_str(), kOk);
-            break;
-        }
-        case 4: {
-            static const int kSizes[] = {10, 20, 30};
-            const int value = nextPreset(kSizes, 3, kk::settingsReviewBatchSize());
-            kk::settingsSetReviewBatchSize(value);
-            setSettingsNote((String("Review batch ") + String(value)).c_str(), kOk);
-            break;
-        }
-        case 5: {
-            const bool meaning = !kk::settingsMeaningFirst();
-            kk::settingsSetMeaningFirst(meaning);
-            setSettingsNote(meaning ? "Meaning first" : "Reading first", kOk);
-            break;
-        }
-        case 6: {
-            static const int kLessons[] = {3, 5, 10};
-            const int value = nextPreset(kLessons, 3, kk::settingsLessonBatchSize());
-            kk::settingsSetLessonBatchSize(value);
-            setSettingsNote((String("Lesson batch ") + String(value)).c_str(), kOk);
-            break;
-        }
-        case 7: {
-            const bool value = !kk::settingsLessonQuizRequired();
-            kk::settingsSetLessonQuizRequired(value);
-            setSettingsNote(value ? "Lesson quiz required" : "Lesson quiz skipped", kOk);
-            break;
-        }
-        case 8: {
-            const bool value = !kk::settingsCriticalFirst();
-            kk::settingsSetCriticalFirst(value);
-            setSettingsNote(value ? "Critical items first" : "Normal review order", kOk);
-            break;
-        }
-        case 9: {
-            static const int kPercents[] = {60, 70, 75, 80, 90};
-            const int value = nextPreset(kPercents, 5, kk::settingsCriticalPercent());
-            kk::settingsSetCriticalPercent(value);
-            setSettingsNote((String("Critical below ") + String(value) + "%").c_str(), kOk);
-            break;
-        }
-        case 10: {
-            static const int kAnswers[] = {3, 5, 10};
-            const int value = nextPreset(kAnswers, 3, kk::settingsCriticalMinAnswers());
-            kk::settingsSetCriticalMinAnswers(value);
-            setSettingsNote((String("Critical min ") + String(value)).c_str(), kOk);
-            break;
-        }
-        case 11: {
-            static const int kWindows[] = {86400, 259200, 604800};
-            const int value =
-                nextPreset(kWindows, 3, kk::settingsPracticeMistakesWindow());
-            kk::settingsSetPracticeMistakesWindow(value);
-            setSettingsNote(value == 86400 ? "Mistakes: 24 h"
-                                           : value == 259200 ? "Mistakes: 3 days"
-                                                             : "Mistakes: 7 days",
-                            kOk);
-            break;
-        }
-        case 12: {
-            const int value = (kk::settingsPracticeLessonsMode() + 1) % 4;
-            kk::settingsSetPracticeLessonsMode(value);
-            static const char* kLabels[] = {"Apprentice", "24 hours", "3 days", "7 days"};
-            setSettingsNote((String("Lessons: ") + kLabels[value]).c_str(), kOk);
-            break;
-        }
-        case 13: {
-            const int value = kk::settingsPracticeSize() == 10 ? 20 : 10;
-            kk::settingsSetPracticeSize(value);
-            setSettingsNote((String("Practice size ") + String(value)).c_str(), kOk);
-            break;
-        }
-        case 14:
-            if (state().review.gReviewActive) {
-                setSettingsNote("End the review session first", kWarn);
-                break;
-            }
-            state().ui.gSettingsActive = false;
-            state().session.gShowHome = false;
-            startSetupPortal();
-            break;
-        case 15:
-            if (!state().storage.gSdOk || !state().storage.gPack.ready() || !kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
-                setSettingsNote("Configure Wi-Fi, token and pack", kWarn);
-                break;
-            }
-            state().ui.gSettingsActive = false;
-            state().session.gShowHome = false;
-            startSync();
-            break;
-        case 16:
-            openFirmware();
-            break;
-        case 17:
-            state().ui.gAboutActive = true;
-            state().ui.gSettingsNote[0] = 0;
-            break;
-        case 18:
-            if (state().storage.gFsOk) kk::cacheClearSnapshot();
-            if (state().storage.gSdOk) {
-                kk::cacheClearSubjects(SD);
-                kk::audioCacheClear(SD);
-            }
-            state().cache.gCacheSavedAt = 0;
-            setSettingsNote("Cache cleared; next boot is cold", kOk);
-            break;
-        case 19:
-            state().ui.gSignOutConfirm = true;
-            state().ui.gSettingsNote[0] = 0;
-            break;
+void settingsValueText(const kk::SettingDef& def, char* out, size_t n) {
+    if (!out || n == 0) return;
+    if (std::strcmp(def.id, "system.firmware") == 0) {
+        const std::string& badge = state().ota.gOtaState.badgeVersion;
+        snprintf(out, n, "%s", badge.empty() ? kk::kFirmwareVersion : badge.c_str());
+        return;
     }
-    state().display.gDirty = true;
+    char value[24];
+    kk::settingValueLabel(def, settingCurrentValue(def), value, sizeof value);
+    snprintf(out, n, "%s", value);
+}
+
+void settingsCycle(const kk::SettingDef& def, bool forward) {
+    if (!def.nvsKey) return;
+    const int current = settingCurrentValue(def);
+    const int next =
+        forward ? kk::settingNextValue(def, current) : kk::settingPrevValue(def, current);
+    if (next == current) return;
+    if (!kk::settingsSetInt(def.nvsKey, next)) {
+        setSettingsNote("Could not save the setting", kWarn);
+        return;
+    }
+    // Brightness is the only value the panel applies itself; the rest are
+    // read through the cache on their next use.
+    if (std::strcmp(def.id, "P1") == 0) tgc::board::setBrightness(next);
+    char value[24];
+    kk::settingValueLabel(def, next, value, sizeof value);
+    char note[48];
+    snprintf(note, sizeof note, "%s: %s", def.label, value);
+    setSettingsNote(note, kOk);
+}
+
+void settingsRunAction(const kk::SettingDef& def) {
+    const char* id = def.id;
+    if (settingsRowLocked(id)) {
+        setSettingsNote("End the review session first", kWarn);
+        return;
+    }
+    if (std::strcmp(id, "setup.portal") == 0) {
+        state().ui.gSettingsActive = false;
+        state().session.gShowHome = false;
+        startSetupPortal();
+    } else if (std::strcmp(id, "sync.now") == 0) {
+        if (!state().storage.gSdOk || !state().storage.gPack.ready() ||
+            !kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
+            setSettingsNote("Configure Wi-Fi, token and pack", kWarn);
+            return;
+        }
+        state().ui.gSettingsActive = false;
+        state().session.gShowHome = false;
+        startSync();
+    } else if (std::strcmp(id, "sync.outbox") == 0) {
+        // The empty state explains itself; opening never needs a guard.
+        state().ui.gSettingsNote[0] = 0;
+        openOutbox();
+    } else if (std::strcmp(id, "sync.clearCache") == 0) {
+        if (state().storage.gFsOk) kk::cacheClearSnapshot();
+        if (state().storage.gSdOk) {
+            kk::cacheClearSubjects(SD);
+            kk::audioCacheClear(SD);
+        }
+        state().cache.gCacheSavedAt = 0;
+        setSettingsNote("Cache cleared; next boot is cold", kOk);
+    } else if (std::strcmp(id, "account.signOut") == 0) {
+        state().ui.gSignOutConfirm = true;
+        state().ui.gSettingsNote[0] = 0;
+    } else if (std::strcmp(id, "system.firmware") == 0) {
+        openFirmware();
+    } else if (std::strcmp(id, "system.about") == 0) {
+        state().ui.gAboutActive = true;
+        state().ui.gSettingsNote[0] = 0;
+    } else if (std::strcmp(id, "system.reset") == 0) {
+        // CFG-03: the second Enter erases; any move or Esc cancels.
+        if (!state().ui.gSettingsResetConfirm) {
+            state().ui.gSettingsResetConfirm = true;
+            setSettingsNote("Reset settings? Enter again, Esc cancels", kWarn);
+            return;
+        }
+        state().ui.gSettingsResetConfirm = false;
+        if (!kk::settingsResetAll()) {
+            setSettingsNote("Could not reset settings", kWarn);
+            return;
+        }
+        tgc::board::setBrightness(kk::settingsBrightness());
+        setSettingsNote("Settings reset", kOk);
+    }
+}
+
+void settingsSelectEntryImpl(const char* id) {
+    const kk::SettingDef* def = kk::settingById(id);
+    if (!def) return;
+    for (size_t section = 0; section < kk::settingsSectionCount(); ++section) {
+        const char* name = kk::settingsSectionName(section);
+        if (std::strcmp(name, def->section) != 0) continue;
+        const kk::SettingDef* rows[kSettingsSectionRows];
+        const size_t count = kk::settingsInSection(name, rows, kSettingsSectionRows);
+        state().ui.gSettingsSection = static_cast<int>(section);
+        for (size_t row = 0; row < count; ++row)
+            if (rows[row] == def) {
+                state().ui.gSettingsRow = static_cast<int>(row);
+                break;
+            }
+        break;
+    }
+    state().ui.gSettingsResetConfirm = false;
 }
 
 void formatBytes(uint32_t bytes, char* out, size_t n) {
@@ -337,12 +306,20 @@ void buildFirmwareView(kk::app::FirmwareView* view) {
         kk::app::FirmwareRowView install;
         install.label = "Install update";
         install.value = state().ota.gFirmwareManifest.version;
+        install.disabled = settingsRowLocked("system.firmware.install");
         view->rows.push_back(std::move(install));
     }
     kk::app::FirmwareRowView check;
     check.label = canInstall ? "Check again" : "Check now";
     check.value = "GitHub";
     view->rows.push_back(std::move(check));
+
+    // The install row is focusable but inert during a review; name the reason
+    // on the help line instead of the generic hint.
+    if (canInstall && state().review.gReviewActive && view->selectedIndex == 0) {
+        view->note = "End the review session first";
+        view->noteColor = kWarn;
+    }
 }
 
 bool gFirmwareStateIdle() { return state().ota.gFirmwareStep == FirmwareStep::Idle; }
@@ -407,7 +384,9 @@ void openSettings(SettingsOrigin origin) {
     state().ui.gSignOutConfirm = false;
     state().ui.gPauseActive = false;
     state().ui.gSettingsOrigin = origin;
-    state().ui.gSettingsIndex = 0;
+    state().ui.gSettingsSection = -1;
+    state().ui.gSettingsRow = 0;
+    state().ui.gSettingsResetConfirm = false;
     state().ui.gSettingsNote[0] = 0;
     state().session.gShowHome = false;
     state().display.gDirty = true;
@@ -419,6 +398,9 @@ void closeSettings() {
     state().ota.gFirmwareActive = false;
     state().ui.gSignOutConfirm = false;
     state().ota.gFirmwareConfirm = false;
+    state().ui.gSettingsSection = -1;
+    state().ui.gSettingsRow = 0;
+    state().ui.gSettingsResetConfirm = false;
     state().ui.gSettingsNote[0] = 0;
     if (state().ui.gSettingsOrigin == SettingsOrigin::Pause)
         state().ui.gPauseActive = true;
@@ -426,6 +408,9 @@ void closeSettings() {
         state().session.gShowHome = true;
     state().display.gDirty = true;
 }
+
+// Serial back paths and firmwareKey() return to the exact row they came from.
+void settingsSelectEntry(const char* id) { settingsSelectEntryImpl(id); }
 
 void openPause() {
     if (!state().review.gReviewActive) return;
@@ -505,28 +490,74 @@ void settingsKey(const KeyEvent& e) {
         }
         return;
     }
+    if (e.key == Key::Esc && state().ui.gAboutActive) {
+        state().ui.gAboutActive = false;
+        state().ui.gSettingsNote[0] = 0;
+        state().display.gDirty = true;
+        return;
+    }
+    if (state().ui.gAboutActive) return;
+
+    const int section = state().ui.gSettingsSection;
+    const kk::SettingDef* rows[kSettingsSectionRows];
+    const size_t rowCount =
+        section < 0
+            ? kk::settingsSectionCount()
+            : kk::settingsInSection(kk::settingsSectionName(static_cast<size_t>(section)), rows,
+                                    kSettingsSectionRows);
+
+    // Any move or a new action drops the transient note and the two-step
+    // Reset settings prompt (CFG-03).
+    auto clearTransient = [&]() {
+        state().ui.gSettingsNote[0] = 0;
+        state().ui.gSettingsResetConfirm = false;
+    };
+
     if (e.key == Key::Esc) {
-        if (state().ui.gAboutActive) {
-            state().ui.gAboutActive = false;
-            state().ui.gSettingsNote[0] = 0;
+        clearTransient();
+        if (section >= 0) {
+            // Esc pops exactly one level; only the top level closes Settings.
+            state().ui.gSettingsSection = -1;
+            state().ui.gSettingsRow = 0;
         } else {
             closeSettings();
         }
         state().display.gDirty = true;
         return;
     }
-    if (state().ui.gAboutActive) return;
-    if (e.key == Key::Up) {
-        state().ui.gSettingsIndex = (state().ui.gSettingsIndex + kSettingsRows - 1) % kSettingsRows;
-        state().ui.gSettingsNote[0] = 0;
+    if (e.key == Key::Up || e.key == Key::Down) {
+        clearTransient();
+        if (rowCount) {
+            const int count = static_cast<int>(rowCount);
+            state().ui.gSettingsRow =
+                (state().ui.gSettingsRow + (e.key == Key::Down ? 1 : count - 1)) % count;
+        }
         state().display.gDirty = true;
-    } else if (e.key == Key::Down) {
-        state().ui.gSettingsIndex = (state().ui.gSettingsIndex + 1) % kSettingsRows;
-        state().ui.gSettingsNote[0] = 0;
-        state().display.gDirty = true;
-    } else if (e.key == Key::Enter) {
-        settingsAction();
+        return;
     }
+    if (section < 0) {
+        if (e.key == Key::Enter && rowCount) {
+            state().ui.gSettingsSection = state().ui.gSettingsRow;
+            state().ui.gSettingsRow = 0;
+            state().display.gDirty = true;
+        }
+        return;
+    }
+    if (e.key != Key::Enter && e.key != Key::Left && e.key != Key::Right) return;
+    if (!rowCount) return;
+    if (state().ui.gSettingsRow < 0 || state().ui.gSettingsRow >= static_cast<int>(rowCount))
+        state().ui.gSettingsRow = 0;
+    const kk::SettingDef& def = *rows[state().ui.gSettingsRow];
+    state().ui.gSettingsNote[0] = 0;
+    // A second Enter on Reset settings must keep the first prompt armed; every
+    // other key or row cancels it.
+    const bool keepReset = e.key == Key::Enter && std::strcmp(def.id, "system.reset") == 0;
+    if (!keepReset) state().ui.gSettingsResetConfirm = false;
+    if (def.kind == kk::SettingKind::Choice || def.kind == kk::SettingKind::Toggle)
+        settingsCycle(def, e.key != Key::Left);
+    else if (e.key == Key::Enter)
+        settingsRunAction(def);
+    state().display.gDirty = true;
 }
 
 void pauseKey(const KeyEvent& e) {
@@ -574,51 +605,61 @@ void drawPause() {
 
 void drawSettings() {
     if (!state().display.gDisp) return;
-    auto& d = target();
-
-    static const char* kLabels[] = {"Brightness", "Dim after", "Blank after", "Sleep after",
-                                    "Review batch", "Order", "Lesson batch", "Lesson quiz",
-                                    "Critical first", "Critical below", "Critical min",
-                                    "Practice mistakes", "Practice lessons", "Practice size",
-                                    "Setup portal", "Sync now", "Firmware", "About",
-                                    "Clear cache", "Sign out"};
-    String values[kSettingsRows];
-    values[0] = String(kk::settingsBrightness());
-    values[1] = secondsLabel(kk::settingsDimSeconds());
-    values[2] = secondsLabel(kk::settingsBlankSeconds());
-    values[3] = secondsLabel(kk::settingsSleepSeconds());
-    values[4] = String(kk::settingsReviewBatchSize());
-    values[5] = kk::settingsMeaningFirst() ? "Meaning" : "Reading";
-    values[6] = String(kk::settingsLessonBatchSize());
-    values[7] = kk::settingsLessonQuizRequired() ? "Required" : "Skip";
-    values[8] = kk::settingsCriticalFirst() ? "On" : "Off";
-    values[9] = String(kk::settingsCriticalPercent()) + "%";
-    values[10] = String(kk::settingsCriticalMinAnswers());
-    const int mistakes = kk::settingsPracticeMistakesWindow();
-    values[11] = mistakes == 86400 ? "24h" : mistakes == 259200 ? "3d" : "7d";
-    static const char* kLessonLabels[] = {"Apprentice", "24h", "3d", "7d"};
-    values[12] = kLessonLabels[kk::settingsPracticeLessonsMode()];
-    values[13] = String(kk::settingsPracticeSize());
-    values[14] = "open";
-    values[15] = "run";
-    values[16] = state().ota.gOtaState.badgeVersion.empty() ? kk::kFirmwareVersion
-                                                : state().ota.gOtaState.badgeVersion.c_str();
-    values[17] = "info";
-    values[18] = "clear";
-    values[19] = "out";
 
     SettingsView view;
-    view.selectedIndex = state().ui.gSettingsIndex;
     view.note = state().ui.gSettingsNote;
     view.noteColor = state().ui.gSettingsNoteColor;
-    view.rows.reserve(kSettingsRows);
-    for (int i = 0; i < kSettingsRows; ++i) {
-        SettingsRowView row;
-        row.label = kLabels[i];
-        row.value = values[i].c_str();
-        view.rows.push_back(std::move(row));
-    }
+    char help[40] = "";
 
+    const int section = state().ui.gSettingsSection;
+    if (section < 0) {
+        // The eight sections, in registry order, with a short summary.
+        view.title = "settings";
+        snprintf(help, sizeof help, "Enter: open  Esc: back");
+        view.rows.reserve(kk::settingsSectionCount());
+        for (size_t i = 0; i < kk::settingsSectionCount(); ++i) {
+            const char* name = kk::settingsSectionName(i);
+            SettingsRowView row;
+            row.label = name;
+            if (std::strcmp(name, "Account") == 0) {
+                row.value = kk::DevToken::has() ? "token set" : "no token";
+            } else {
+                const kk::SettingDef* rows[kSettingsSectionRows];
+                const size_t count = kk::settingsInSection(name, rows, kSettingsSectionRows);
+                char value[24];
+                snprintf(value, sizeof value, "%u settings", static_cast<unsigned>(count));
+                row.value = value;
+            }
+            view.rows.push_back(std::move(row));
+        }
+        view.selectedIndex = state().ui.gSettingsRow;
+    } else {
+        const char* name = kk::settingsSectionName(static_cast<size_t>(section));
+        view.title = name;
+        const kk::SettingDef* rows[kSettingsSectionRows];
+        const size_t count = kk::settingsInSection(name, rows, kSettingsSectionRows);
+        if (state().ui.gSettingsRow < 0 ||
+            state().ui.gSettingsRow >= static_cast<int>(count))
+            state().ui.gSettingsRow = count ? static_cast<int>(count) - 1 : 0;
+        view.selectedIndex = state().ui.gSettingsRow;
+        view.rows.reserve(count);
+        for (size_t i = 0; i < count; ++i) {
+            const kk::SettingDef& def = *rows[i];
+            SettingsRowView row;
+            row.label = def.label;
+            char value[24];
+            settingsValueText(def, value, sizeof value);
+            row.value = value;
+            row.disabled = settingsRowLocked(def.id);
+            if (static_cast<int>(i) == view.selectedIndex)
+                snprintf(help, sizeof help, "%s",
+                         row.disabled ? "End the review session first" : def.help);
+            view.rows.push_back(std::move(row));
+        }
+    }
+    view.help = help;
+
+    auto& d = target();
     d.startWrite();
     drawSettingsScreen(d, view);
     d.endWrite();
@@ -973,7 +1014,7 @@ void firmwareKey(const KeyEvent& e) {
         } else {
             state().ota.gFirmwareActive = false;
             state().ui.gSettingsActive = true;
-            state().ui.gSettingsIndex = 16;
+            settingsSelectEntry("system.firmware");
         }
         state().display.gDirty = true;
         return;
@@ -993,7 +1034,11 @@ void firmwareKey(const KeyEvent& e) {
         state().display.gDirty = true;
     } else if (e.key == Key::Enter) {
         if (canInstall && state().ota.gFirmwareIndex == 0) {
-            if (!state().ota.gFirmwareConfirm) {
+            // The review lock covers Install update but not Check now.
+            if (settingsRowLocked("system.firmware.install")) {
+                firmwareNoteImpl("End the review session first", kWarn);
+                state().display.gDirty = true;
+            } else if (!state().ota.gFirmwareConfirm) {
                 state().ota.gFirmwareConfirm = true;
                 firmwareNoteImpl("Enter again to install, Esc cancels", kWarn);
                 state().display.gDirty = true;

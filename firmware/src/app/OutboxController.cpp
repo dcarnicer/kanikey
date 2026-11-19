@@ -474,7 +474,8 @@ void flushOutbox() {
 }
 
 void openOutbox() {
-    if (kk::outboxAttentionCount(state().outbox.gOutbox) == 0) return;
+    // The empty state explains itself, so the list opens even when nothing
+    // needs attention (Settings › Sync & data › Outbox).
     state().ui.gOutboxScreen = true;
     state().ui.gOutboxConfirm = false;
     state().outbox.gOutboxSelectedSeq = 0;

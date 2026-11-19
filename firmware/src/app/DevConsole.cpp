@@ -1021,7 +1021,7 @@ void handleSerial() {
             if (state().ota.gFirmwareActive) {
                 state().ota.gFirmwareActive = false;
                 state().ui.gSettingsActive = true;
-                state().ui.gSettingsIndex = 16;
+                settingsSelectEntry("system.firmware");
                 state().ota.gFirmwareConfirm = false;
                 state().display.gDirty = true;
             } else if (state().ui.gSettingsActive) {

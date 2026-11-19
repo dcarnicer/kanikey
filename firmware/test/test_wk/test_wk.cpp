@@ -2923,7 +2923,6 @@ static int settingsTestReader(void* context, const char* nvsKey, int fallback) {
     (void)context;
     ++gSettingsLoadCalls;
     if (std::strcmp(nvsKey, "bright") == 0) return 192;
-    if (std::strcmp(nvsKey, "order") == 0) return 0;
     if (std::strcmp(nvsKey, "sleep") == 0) return 9999;  // not a choice
     return fallback;
 }
@@ -2938,11 +2937,20 @@ static bool isSettingSection(const char* section) {
     return false;
 }
 
+static int settingsKeyedCount() {
+    size_t count = 0;
+    const SettingDef* all = settingsAll(&count);
+    int keyed = 0;
+    for (size_t i = 0; i < count; ++i)
+        if (all[i].kind == SettingKind::Choice || all[i].kind == SettingKind::Toggle) ++keyed;
+    return keyed;
+}
+
 static void test_settings_registry_ids() {
     size_t count = 0;
     const SettingDef* all = settingsAll(&count);
     TEST_ASSERT_NOT_NULL(all);
-    TEST_ASSERT_EQUAL(13, static_cast<int>(count));
+    TEST_ASSERT_EQUAL(47, static_cast<int>(count));
     for (size_t i = 0; i < count; ++i) {
         const SettingDef& def = all[i];
         TEST_ASSERT_NOT_NULL(def.id);
@@ -2964,10 +2972,13 @@ static void test_settings_registry_ids() {
             TEST_ASSERT_NOT_NULL(def.choices);
             TEST_ASSERT_GREATER_OR_EQUAL(2, def.choiceCount);
             TEST_ASSERT_EQUAL_PTR(&all[i], settingByNvsKey(def.nvsKey));
+            TEST_ASSERT_NULL(def.valueText);
         } else {
             TEST_ASSERT_NULL(def.nvsKey);
             TEST_ASSERT_NULL(def.choices);
             TEST_ASSERT_EQUAL(0, def.choiceCount);
+            TEST_ASSERT_NOT_NULL(def.valueText);
+            TEST_ASSERT_GREATER_THAN(0, static_cast<int>(std::strlen(def.valueText)));
         }
         for (size_t j = i + 1; j < count; ++j)
             TEST_ASSERT_TRUE(std::strcmp(def.id, all[j].id) != 0);
@@ -2984,7 +2995,7 @@ static void test_settings_registry_defaults() {
     };
     static const Expected kExpected[] = {
         {"P1", "bright", 128},  {"P2", "dim", 30},      {"P3", "blank", 60},
-        {"P4", "sleep", 120},   {"R1", "revsize", 20},   {"R4", "order", 1},
+        {"P4", "sleep", 120},   {"R1", "revsize", 20},   {"R4", "rv.first", 1},
         {"L1", "lessonsz", 5},
     };
     for (const Expected& expected : kExpected) {
@@ -3052,7 +3063,6 @@ static void test_settings_sections() {
     size_t count = 0;
     const SettingDef* all = settingsAll(&count);
     TEST_ASSERT_NOT_NULL(all);
-    TEST_ASSERT_EQUAL(13, static_cast<int>(count));
     for (size_t i = 0; i < count; ++i)
         TEST_ASSERT_TRUE(isSettingSection(all[i].section));
 
@@ -3061,9 +3071,10 @@ static void test_settings_sections() {
         const char* name;
         int expected;
     } kSections[] = {
-        {"Display & power", 4}, {"Reviews", 2},    {"Lessons", 1},
-        {"Sync & data", 2},     {"Account", 2},    {"System", 2},
-        {"Study", 0},           {"Reminders & sound", 0},
+        {"Reviews", 12},          {"Lessons", 6},
+        {"Study", 5},             {"Sync & data", 6},
+        {"Display & power", 6},   {"Reminders & sound", 7},
+        {"Account", 2},           {"System", 3},
     };
     size_t total = 0;
     for (const auto& section : kSections) {
@@ -3071,7 +3082,7 @@ static void test_settings_sections() {
         TEST_ASSERT_EQUAL_INT(section.expected, static_cast<int>(found));
         total += found;
     }
-    TEST_ASSERT_EQUAL_INT(13, static_cast<int>(total));
+    TEST_ASSERT_EQUAL(47, static_cast<int>(total));
     TEST_ASSERT_EQUAL(2, static_cast<int>(settingsInSection("Display & power", out, 2)));
     TEST_ASSERT_EQUAL_STRING("P1", out[0]->id);
     TEST_ASSERT_EQUAL_STRING("P2", out[1]->id);
@@ -3082,14 +3093,14 @@ static void test_settings_cache() {
     SettingsCache cache;
     cache.load(settingsTestReader, nullptr);
     TEST_ASSERT_TRUE(cache.loaded());
-    TEST_ASSERT_EQUAL(7, static_cast<int>(cache.size()));
-    TEST_ASSERT_EQUAL(7, gSettingsLoadCalls);
+    TEST_ASSERT_EQUAL(39, static_cast<int>(cache.size()));
+    TEST_ASSERT_EQUAL(39, gSettingsLoadCalls);
 
     int value = 0;
     TEST_ASSERT_TRUE(cache.get("bright", &value));
     TEST_ASSERT_EQUAL_INT(192, value);
-    TEST_ASSERT_TRUE(cache.get("order", &value));
-    TEST_ASSERT_EQUAL_INT(0, value);
+    TEST_ASSERT_TRUE(cache.get("rv.first", &value));
+    TEST_ASSERT_EQUAL_INT(1, value);  // reader leaves the default
     TEST_ASSERT_TRUE(cache.get("sleep", &value));
     TEST_ASSERT_EQUAL_INT(120, value);  // invalid stored 9999 -> default
     TEST_ASSERT_FALSE(cache.get("missing", &value));
@@ -3099,7 +3110,7 @@ static void test_settings_cache() {
     TEST_ASSERT_TRUE(cache.get("bright", &value));
     TEST_ASSERT_EQUAL_INT(64, value);
     TEST_ASSERT_FALSE(cache.set("bright", 64));
-    TEST_ASSERT_EQUAL(7, gSettingsLoadCalls);  // get/set never reload
+    TEST_ASSERT_EQUAL(39, gSettingsLoadCalls);  // get/set never reload
 
     SettingsCache defaults;
     defaults.load();
@@ -3114,10 +3125,16 @@ static void test_settings_value_labels() {
     const SettingDef* dim = settingById("P2");
     const SettingDef* sleep = settingById("P4");
     const SettingDef* portal = settingById("setup.portal");
+    const SettingDef* types = settingById("R3");
+    const SettingDef* advance = settingById("R8");
+    const SettingDef* reminder = settingById("M3");
     TEST_ASSERT_NOT_NULL(brightness);
     TEST_ASSERT_NOT_NULL(dim);
     TEST_ASSERT_NOT_NULL(sleep);
     TEST_ASSERT_NOT_NULL(portal);
+    TEST_ASSERT_NOT_NULL(types);
+    TEST_ASSERT_NOT_NULL(advance);
+    TEST_ASSERT_NOT_NULL(reminder);
     settingValueLabel(*brightness, 128, buf, sizeof buf);
     TEST_ASSERT_EQUAL_STRING("128", buf);
     settingValueLabel(*dim, 0, buf, sizeof buf);
@@ -3127,7 +3144,239 @@ static void test_settings_value_labels() {
     settingValueLabel(*sleep, 120, buf, sizeof buf);
     TEST_ASSERT_EQUAL_STRING("2m", buf);
     settingValueLabel(*portal, 0, buf, sizeof buf);
-    TEST_ASSERT_EQUAL_STRING("", buf);
+    TEST_ASSERT_EQUAL_STRING("open", buf);
+    settingValueLabel(*types, 1, buf, sizeof buf);
+    TEST_ASSERT_EQUAL_STRING("Radical>Kanji>Vocab", buf);
+    settingValueLabel(*advance, 500, buf, sizeof buf);
+    TEST_ASSERT_EQUAL_STRING("0.5 s", buf);
+    settingValueLabel(*reminder, 480, buf, sizeof buf);
+    TEST_ASSERT_EQUAL_STRING("08:00", buf);
+}
+
+static void test_settings_keys_unique_and_short() {
+    size_t count = 0;
+    const SettingDef* all = settingsAll(&count);
+    TEST_ASSERT_NOT_NULL(all);
+    int keyed = 0;
+    for (size_t i = 0; i < count; ++i) {
+        const SettingDef& def = all[i];
+        if (!def.nvsKey) continue;
+        ++keyed;
+        const size_t length = std::strlen(def.nvsKey);
+        TEST_ASSERT_GREATER_THAN(0, static_cast<int>(length));
+        TEST_ASSERT_LESS_OR_EQUAL(15, static_cast<int>(length));
+        for (const char* c = def.nvsKey; *c; ++c)
+            TEST_ASSERT_TRUE((*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') ||
+                             *c == '.' || *c == '_' || *c == '-');
+        for (size_t j = i + 1; j < count; ++j)
+            if (all[j].nvsKey)
+                TEST_ASSERT_TRUE(std::strcmp(def.nvsKey, all[j].nvsKey) != 0);
+    }
+    TEST_ASSERT_EQUAL(39, keyed);
+    TEST_ASSERT_EQUAL(keyed, settingsKeyedCount());
+}
+
+static void test_settings_registry_keys_and_defaults() {
+    struct Expected {
+        const char* id;
+        const char* nvsKey;
+        int defaultValue;
+    };
+    // Every keyed row of the CFG-02 tables: key and default exactly.
+    static const Expected kExpected[] = {
+        {"R1", "revsize", 20},          {"R2", "rv.order", 0},
+        {"R3", "rv.types", 0},          {"R4", "rv.first", 1},
+        {"R5", "rv.b2b", 1},            {"R6", "rv.typos", 0},
+        {"R7", "rv.wrong", 0},          {"R8", "rv.advance", 0},
+        {"R9", "rv.details", 0},        {"R10", "rv.header", 0},
+        {"R11", "rv.critical", 0},      {"R12", "rv.submit", 0},
+        {"L1", "lessonsz", 5},          {"L2", "ls.order", 0},
+        {"L3", "ls.quiz", 1},           {"L4", "ls.appr", 0},
+        {"L5", "ls.due", 0},            {"L6", "ls.daily", 0},
+        {"S1", "st.critpct", 75},       {"S2", "st.critmin", 5},
+        {"S3", "st.recent", 0},         {"S4", "st.mistakes", 86400},
+        {"S5", "st.practice", 10},      {"Y1", "sy.wake", 1},
+        {"Y2", "sy.full", 21600},       {"Y3", "sy.prefetch", 1},
+        {"P1", "bright", 128},          {"P2", "dim", 30},
+        {"P3", "blank", 60},            {"P4", "sleep", 120},
+        {"P5", "dp.lightsleep", 1},     {"P6", "dp.revsleep", 0},
+        {"M1", "rm.remind", 0},         {"M2", "rm.quiet", 1},
+        {"M3", "rm.time", 0},           {"M4", "rm.sound", 0},
+        {"M5", "rm.volume", 1},         {"M6", "rm.autoplay", 0},
+        {"M7", "rm.voice", 0},
+    };
+    const int expectedCount = static_cast<int>(sizeof kExpected / sizeof kExpected[0]);
+    TEST_ASSERT_EQUAL(39, expectedCount);
+    TEST_ASSERT_EQUAL(expectedCount, settingsKeyedCount());
+    for (const Expected& expected : kExpected) {
+        const SettingDef* def = settingById(expected.id);
+        TEST_ASSERT_NOT_NULL(def);
+        TEST_ASSERT_NOT_NULL(def->nvsKey);
+        TEST_ASSERT_EQUAL_STRING(expected.nvsKey, def->nvsKey);
+        TEST_ASSERT_EQUAL_INT(expected.defaultValue, def->defaultValue);
+    }
+}
+
+static void test_settings_defaults_are_in_choices() {
+    size_t count = 0;
+    const SettingDef* all = settingsAll(&count);
+    TEST_ASSERT_NOT_NULL(all);
+    for (size_t i = 0; i < count; ++i) {
+        const SettingDef& def = all[i];
+        if (!def.choices || def.choiceCount == 0) continue;
+        bool found = false;
+        for (uint8_t c = 0; c < def.choiceCount; ++c)
+            if (def.choices[c].value == def.defaultValue) found = true;
+        TEST_ASSERT_TRUE(found);
+    }
+}
+
+static void test_settings_sections_cover_every_entry() {
+    TEST_ASSERT_EQUAL(8, static_cast<int>(settingsSectionCount()));
+    static const char* const kNames[] = {
+        "Reviews", "Lessons", "Study", "Sync & data",
+        "Display & power", "Reminders & sound", "Account", "System",
+    };
+    for (size_t i = 0; i < 8; ++i)
+        TEST_ASSERT_EQUAL_STRING(kNames[i], settingsSectionName(i));
+    TEST_ASSERT_EQUAL_STRING("", settingsSectionName(8));
+
+    const SettingDef* out[16];
+    size_t total = 0;
+    for (size_t i = 0; i < 8; ++i) {
+        const size_t found = settingsInSection(settingsSectionName(i), out, 16);
+        TEST_ASSERT_GREATER_THAN(0, static_cast<int>(found));
+        total += found;
+    }
+    TEST_ASSERT_EQUAL(47, static_cast<int>(total));
+    TEST_ASSERT_EQUAL(12, static_cast<int>(settingsInSection("Reviews", out, 16)));
+}
+
+static void test_settings_review_defaults_match_wanikani() {
+    struct Expected {
+        const char* id;
+        const char* label;
+    };
+    static const Expected kExpected[] = {
+        {"R1", "20"},            {"R2", "Account preference"},
+        {"R3", "Off"},           {"R4", "Meaning"},
+        {"R5", "On"},            {"R6", "WaniKani"},
+        {"R7", "Off"},           {"R8", "Off"},
+        {"R9", "Off"},           {"R10", "SRS+accuracy"},
+        {"R11", "Off"},          {"R12", "At session end"},
+    };
+    char value[24];
+    for (const Expected& expected : kExpected) {
+        const SettingDef* def = settingById(expected.id);
+        TEST_ASSERT_NOT_NULL(def);
+        settingValueLabel(*def, def->defaultValue, value, sizeof value);
+        TEST_ASSERT_EQUAL_STRING(expected.label, value);
+    }
+}
+
+static void test_settings_lesson_defaults() {
+    struct Expected {
+        const char* id;
+        const char* label;
+    };
+    static const Expected kExpected[] = {
+        {"L1", "5"},  {"L2", "WaniKani"}, {"L3", "Required"},
+        {"L4", "Off"}, {"L5", "Off"},      {"L6", "Off"},
+    };
+    char value[24];
+    for (const Expected& expected : kExpected) {
+        const SettingDef* def = settingById(expected.id);
+        TEST_ASSERT_NOT_NULL(def);
+        settingValueLabel(*def, def->defaultValue, value, sizeof value);
+        TEST_ASSERT_EQUAL_STRING(expected.label, value);
+    }
+}
+
+static void test_settings_cycle_next_prev_wraps() {
+    char value[24];
+    const SettingDef* review = settingById("R1");
+    TEST_ASSERT_NOT_NULL(review);
+    TEST_ASSERT_EQUAL_INT(10, settingNextValue(*review, 50));
+    TEST_ASSERT_EQUAL_INT(50, settingPrevValue(*review, 10));
+
+    const SettingDef* brightness = settingById("P1");
+    TEST_ASSERT_NOT_NULL(brightness);
+    TEST_ASSERT_EQUAL_INT(64, settingNextValue(*brightness, 255));
+    TEST_ASSERT_EQUAL_INT(192, settingNextValue(*brightness, 128));
+    TEST_ASSERT_EQUAL_INT(255, settingPrevValue(*brightness, 64));
+    TEST_ASSERT_EQUAL_INT(64, settingPrevValue(*brightness, 128));
+    TEST_ASSERT_EQUAL_INT(128, settingNextValue(*brightness, 200));
+    TEST_ASSERT_EQUAL_INT(128, settingPrevValue(*brightness, 200));
+
+    const SettingDef* sync = settingById("Y1");
+    TEST_ASSERT_NOT_NULL(sync);
+    TEST_ASSERT_EQUAL_INT(1, settingNextValue(*sync, 0));
+    settingValueLabel(*sync, 1, value, sizeof value);
+    TEST_ASSERT_EQUAL_STRING("Quick", value);
+
+    const SettingDef* quiz = settingById("L3");
+    TEST_ASSERT_NOT_NULL(quiz);
+    TEST_ASSERT_EQUAL_INT(1, settingNextValue(*quiz, 0));
+    TEST_ASSERT_EQUAL_INT(0, settingPrevValue(*quiz, 1));
+
+    const SettingDef* order = settingById("R2");
+    TEST_ASSERT_NOT_NULL(order);
+    TEST_ASSERT_EQUAL_INT(0, settingNextValue(*order, 6));
+    TEST_ASSERT_EQUAL_INT(6, settingPrevValue(*order, 0));
+}
+
+static void test_settings_meaning_first_migration() {
+    const SettingDef* first = settingById("R4");
+    TEST_ASSERT_NOT_NULL(first);
+    TEST_ASSERT_EQUAL_STRING("rv.first", first->nvsKey);
+    // No rv.first yet: a stored order reads meaning for 1 and reading for 0.
+    TEST_ASSERT_EQUAL_INT(1, settingFirstQuestionValue(false, 0, true, 1));
+    TEST_ASSERT_EQUAL_INT(0, settingFirstQuestionValue(false, 0, true, 0));
+    // Neither key present: WaniKani's default, meaning first.
+    TEST_ASSERT_EQUAL_INT(1, settingFirstQuestionValue(false, 0, false, 0));
+    // rv.first wins once written, including the new Random choice.
+    TEST_ASSERT_EQUAL_INT(2, settingFirstQuestionValue(true, 2, true, 0));
+    TEST_ASSERT_EQUAL_INT(1,
+                          settingValidate(*first, settingFirstQuestionValue(false, 0, true, 1)));
+    char value[16];
+    settingValueLabel(*first, 1, value, sizeof value);
+    TEST_ASSERT_EQUAL_STRING("Meaning", value);
+    settingValueLabel(*first, 0, value, sizeof value);
+    TEST_ASSERT_EQUAL_STRING("Reading", value);
+    settingValueLabel(*first, 2, value, sizeof value);
+    TEST_ASSERT_EQUAL_STRING("Random", value);
+}
+
+static void test_settings_help_fits_one_line() {
+    size_t count = 0;
+    const SettingDef* all = settingsAll(&count);
+    TEST_ASSERT_NOT_NULL(all);
+    for (size_t i = 0; i < count; ++i) {
+        const SettingDef& def = all[i];
+        TEST_ASSERT_NOT_NULL(def.help);
+        const size_t length = std::strlen(def.help);
+        TEST_ASSERT_GREATER_THAN(0, static_cast<int>(length));
+        TEST_ASSERT_LESS_OR_EQUAL(38, static_cast<int>(length));
+        TEST_ASSERT_NULL(std::strchr(def.help, '\n'));
+    }
+}
+
+static void test_settings_actions_have_no_key() {
+    static const char* const kActions[] = {
+        "setup.portal", "account.signOut", "system.firmware", "system.about",
+        "system.reset", "sync.now",       "sync.outbox",    "sync.clearCache",
+    };
+    for (const char* id : kActions) {
+        const SettingDef* def = settingById(id);
+        TEST_ASSERT_NOT_NULL(def);
+        TEST_ASSERT_TRUE(def->kind == SettingKind::Action ||
+                         def->kind == SettingKind::Submenu ||
+                         def->kind == SettingKind::Info);
+        TEST_ASSERT_NULL(def->nvsKey);
+        TEST_ASSERT_NULL(def->choices);
+        TEST_ASSERT_EQUAL(0, def->choiceCount);
+        TEST_ASSERT_NOT_NULL(def->valueText);
+    }
 }
 
 void run_queue_tests();
@@ -3303,6 +3552,16 @@ int main(int, char**) {
     RUN_TEST(test_settings_sections);
     RUN_TEST(test_settings_cache);
     RUN_TEST(test_settings_value_labels);
+    RUN_TEST(test_settings_keys_unique_and_short);
+    RUN_TEST(test_settings_registry_keys_and_defaults);
+    RUN_TEST(test_settings_defaults_are_in_choices);
+    RUN_TEST(test_settings_sections_cover_every_entry);
+    RUN_TEST(test_settings_review_defaults_match_wanikani);
+    RUN_TEST(test_settings_lesson_defaults);
+    RUN_TEST(test_settings_cycle_next_prev_wraps);
+    RUN_TEST(test_settings_meaning_first_migration);
+    RUN_TEST(test_settings_help_fits_one_line);
+    RUN_TEST(test_settings_actions_have_no_key);
     run_queue_tests();
     run_les_tests();
     run_ota_tests();

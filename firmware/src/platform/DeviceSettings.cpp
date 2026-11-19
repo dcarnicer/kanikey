@@ -21,7 +21,7 @@ constexpr const char* kKeySleep = "sleep";
 constexpr const char* kKeyReviewSize = "revsize";
 constexpr const char* kKeyLessonSize = "lessonsz";
 constexpr const char* kKeyLessonQuiz = "ls.quiz";
-constexpr const char* kKeyMeaningFirst = "order";
+constexpr const char* kKeyMeaningFirst = "rv.first";
 constexpr const char* kKeyCriticalFirst = "rv.critical";
 constexpr const char* kKeyCriticalPercent = "st.critpct";
 constexpr const char* kKeyCriticalMin = "st.critmin";
@@ -32,68 +32,37 @@ constexpr const char* kKeyAutoSync = "sy.wake";
 constexpr const char* kKeySyncFull = "sy.full";
 constexpr const char* kKeyPrefetch = "sy.prefetch";
 
-struct DisplaySettings {
-    SettingsCache cache;
-    bool lessonQuiz = true;
-    bool criticalFirst = false;
-    int criticalPercent = 75;
-    int criticalMin = 5;
-    int practiceMistakes = 24 * 3600;
-    int practiceLessons = 0;
-    int practiceSize = 10;
-    int autoSync = 1;  // 1 = Quick, 2 = Full, 0 = Off
-    int syncFull = 6 * 3600;
-    bool prefetch = true;
-};
-
 int readPreference(void* context, const char* key, int fallback) {
-    return static_cast<Preferences*>(context)->getInt(key, fallback);
+    Preferences& p = *static_cast<Preferences*>(context);
+    // R4 migration: `rv.first` replaces the old `order` key. Until the user
+    // changes the value, `order` (0 Reading, 1 Meaning) supplies it.
+    if (std::strcmp(key, kKeyMeaningFirst) == 0) {
+        const bool hasFirst = p.isKey(kKeyMeaningFirst);
+        const int first = p.getInt(kKeyMeaningFirst, fallback);
+        return settingFirstQuestionValue(hasFirst, first, p.isKey("order"), p.getInt("order", 1));
+    }
+    return p.getInt(key, fallback);
 }
 
-DisplaySettings& displaySettings();
-
-int cachedSetting(const char* key, int fallback) {
-    int value = fallback;
-    displaySettings().cache.get(key, &value);
-    return value;
-}
-
-DisplaySettings& displaySettings() {
-    static DisplaySettings values;
+SettingsCache& settingsCache() {
+    static SettingsCache cache;
     static bool loaded = false;
-    if (loaded) return values;
+    if (loaded) return cache;
     loaded = true;
     Preferences p;
     if (!p.begin(kNs, false)) {
-        values.cache.load();
-    } else {
-        values.cache.load(readPreference, &p);
-        values.lessonQuiz = p.getInt(kKeyLessonQuiz, values.lessonQuiz ? 1 : 0) != 0;
-        values.criticalFirst = p.getInt(kKeyCriticalFirst, values.criticalFirst ? 1 : 0) != 0;
-        values.criticalPercent = p.getInt(kKeyCriticalPercent, values.criticalPercent);
-        values.criticalMin = p.getInt(kKeyCriticalMin, values.criticalMin);
-        values.practiceMistakes = p.getInt(kKeyPracticeMistakes, values.practiceMistakes);
-        values.practiceLessons = p.getInt(kKeyPracticeLessons, values.practiceLessons);
-        values.practiceSize = p.getInt(kKeyPracticeSize, values.practiceSize);
-        values.autoSync = p.getInt(kKeyAutoSync, values.autoSync);
-        values.syncFull = p.getInt(kKeySyncFull, values.syncFull);
-        values.prefetch = p.getInt(kKeyPrefetch, values.prefetch ? 1 : 0) != 0;
-        p.end();
+        cache.load();
+        return cache;
     }
-    if (values.criticalPercent != 60 && values.criticalPercent != 70 &&
-        values.criticalPercent != 75 && values.criticalPercent != 80 &&
-        values.criticalPercent != 90)
-        values.criticalPercent = 75;
-    if (values.criticalMin != 3 && values.criticalMin != 5 && values.criticalMin != 10)
-        values.criticalMin = 5;
-    if (values.practiceMistakes < 86400 || values.practiceMistakes > 7 * 86400)
-        values.practiceMistakes = 86400;
-    if (values.practiceLessons < 0 || values.practiceLessons > 3) values.practiceLessons = 0;
-    if (values.practiceSize < 10 || values.practiceSize > 20) values.practiceSize = 10;
-    if (values.autoSync < 0 || values.autoSync > 2) values.autoSync = 1;
-    if (values.syncFull != 3600 && values.syncFull != 21600 && values.syncFull != 86400)
-        values.syncFull = 21600;
-    return values;
+    cache.load(readPreference, &p);
+    p.end();
+    return cache;
+}
+
+int cachedSetting(const char* key, int fallback) {
+    int value = fallback;
+    settingsCache().get(key, &value);
+    return value;
 }
 
 bool saveInt(const char* key, int value) {
@@ -102,6 +71,21 @@ bool saveInt(const char* key, int value) {
     const bool ok = p.putInt(key, value) == sizeof(int32_t);
     p.end();
     return ok;
+}
+
+// One NVS write per change, cache first so a failed write rolls back. The
+// value is not validated: only the dev idle-sleep hook bypasses the choices.
+bool saveSettingRaw(const char* key, int value) {
+    SettingsCache& cache = settingsCache();
+    int previous = value;
+    const bool hadPrevious = cache.get(key, &previous);
+    if (hadPrevious && previous == value) return true;
+    if (!cache.set(key, value)) return false;
+    if (!saveInt(key, value)) {
+        if (hadPrevious) cache.set(key, previous);
+        return false;
+    }
+    return true;
 }
 
 bool validRule(const String& rule) {
@@ -156,22 +140,30 @@ bool settingsSaveTimeZone(const String& rule, const String& name) {
 
 bool settingsGetInt(const char* nvsKey, int* out) {
     if (!nvsKey || !out) return false;
-    return displaySettings().cache.get(nvsKey, out);
+    return settingsCache().get(nvsKey, out);
 }
 
 bool settingsSetInt(const char* nvsKey, int value) {
     const SettingDef* def = settingByNvsKey(nvsKey);
     if (!def || !def->nvsKey) return false;
     if (settingValidate(*def, value) != value) return false;
-    SettingsCache& cache = displaySettings().cache;
-    int previous = value;
-    const bool hadPrevious = cache.get(nvsKey, &previous);
-    if (hadPrevious && previous == value) return true;
-    if (!cache.set(nvsKey, value)) return false;
-    if (!saveInt(nvsKey, value)) {
-        if (hadPrevious) cache.set(nvsKey, previous);
-        return false;
-    }
+    return saveSettingRaw(nvsKey, value);
+}
+
+bool settingsResetAll() {
+    Preferences p;
+    if (!p.begin(kNs, false)) return false;
+    size_t count = 0;
+    const SettingDef* all = settingsAll(&count);
+    for (size_t i = 0; i < count; ++i)
+        if (all[i].nvsKey && all[i].nvsKey[0]) p.remove(all[i].nvsKey);
+    // The legacy R4 key would otherwise resurrect Reading first on the next
+    // boot, because rv.first is now absent and the migration falls back to it.
+    p.remove("order");
+    p.end();
+    // The token, time zone and display name stay; only settings keys were
+    // removed, and the cache now returns every default without a reboot.
+    settingsCache().load();
     return true;
 }
 
@@ -207,16 +199,7 @@ bool settingsSetSleepSeconds(int seconds) {
 bool settingsSetSleepSecondsDev(int seconds) {
     if (seconds < 0) seconds = 0;
     if (seconds > 3600) seconds = 3600;
-    DisplaySettings& v = displaySettings();
-    int previous = seconds;
-    const bool hadPrevious = v.cache.get(kKeySleep, &previous);
-    if (hadPrevious && previous == seconds) return true;
-    if (!v.cache.set(kKeySleep, seconds)) return false;
-    if (!saveInt(kKeySleep, seconds)) {
-        if (hadPrevious) v.cache.set(kKeySleep, previous);
-        return false;
-    }
-    return true;
+    return saveSettingRaw(kKeySleep, seconds);
 }
 #endif
 
@@ -234,12 +217,9 @@ bool settingsSetLessonBatchSize(int count) {
     return settingsSetInt(kKeyLessonSize, count);
 }
 
-bool settingsLessonQuizRequired() { return displaySettings().lessonQuiz; }
+bool settingsLessonQuizRequired() { return cachedSetting(kKeyLessonQuiz, 1) != 0; }
 bool settingsSetLessonQuizRequired(bool required) {
-    DisplaySettings& v = displaySettings();
-    if (v.lessonQuiz == required) return true;
-    v.lessonQuiz = required;
-    return saveInt(kKeyLessonQuiz, required ? 1 : 0);
+    return settingsSetInt(kKeyLessonQuiz, required ? 1 : 0);
 }
 
 bool settingsMeaningFirst() { return cachedSetting(kKeyMeaningFirst, 1) != 0; }
@@ -247,85 +227,58 @@ bool settingsSetMeaningFirst(bool meaningFirst) {
     return settingsSetInt(kKeyMeaningFirst, meaningFirst ? 1 : 0);
 }
 
-bool settingsCriticalFirst() { return displaySettings().criticalFirst; }
+bool settingsCriticalFirst() { return cachedSetting(kKeyCriticalFirst, 0) != 0; }
 bool settingsSetCriticalFirst(bool criticalFirst) {
-    DisplaySettings& v = displaySettings();
-    if (v.criticalFirst == criticalFirst) return true;
-    v.criticalFirst = criticalFirst;
-    return saveInt(kKeyCriticalFirst, criticalFirst ? 1 : 0);
+    return settingsSetInt(kKeyCriticalFirst, criticalFirst ? 1 : 0);
 }
 
-int settingsCriticalPercent() { return displaySettings().criticalPercent; }
+int settingsCriticalPercent() { return cachedSetting(kKeyCriticalPercent, 75); }
 bool settingsSetCriticalPercent(int percent) {
     if (percent != 60 && percent != 70 && percent != 75 && percent != 80 && percent != 90)
         percent = 75;
-    DisplaySettings& v = displaySettings();
-    if (v.criticalPercent == percent) return true;
-    v.criticalPercent = percent;
-    return saveInt(kKeyCriticalPercent, percent);
+    return settingsSetInt(kKeyCriticalPercent, percent);
 }
 
-int settingsCriticalMinAnswers() { return displaySettings().criticalMin; }
+int settingsCriticalMinAnswers() { return cachedSetting(kKeyCriticalMin, 5); }
 bool settingsSetCriticalMinAnswers(int answers) {
     if (answers != 3 && answers != 5 && answers != 10) answers = 5;
-    DisplaySettings& v = displaySettings();
-    if (v.criticalMin == answers) return true;
-    v.criticalMin = answers;
-    return saveInt(kKeyCriticalMin, answers);
+    return settingsSetInt(kKeyCriticalMin, answers);
 }
 
-int settingsPracticeMistakesWindow() { return displaySettings().practiceMistakes; }
+int settingsPracticeMistakesWindow() { return cachedSetting(kKeyPracticeMistakes, 86400); }
 bool settingsSetPracticeMistakesWindow(int seconds) {
     if (seconds != 86400 && seconds != 3 * 86400 && seconds != 7 * 86400) seconds = 86400;
-    DisplaySettings& v = displaySettings();
-    if (v.practiceMistakes == seconds) return true;
-    v.practiceMistakes = seconds;
-    return saveInt(kKeyPracticeMistakes, seconds);
+    return settingsSetInt(kKeyPracticeMistakes, seconds);
 }
 
-int settingsPracticeLessonsMode() { return displaySettings().practiceLessons; }
+int settingsPracticeLessonsMode() { return cachedSetting(kKeyPracticeLessons, 0); }
 bool settingsSetPracticeLessonsMode(int mode) {
     if (mode < 0) mode = 0;
     if (mode > 3) mode = 3;
-    DisplaySettings& v = displaySettings();
-    if (v.practiceLessons == mode) return true;
-    v.practiceLessons = mode;
-    return saveInt(kKeyPracticeLessons, mode);
+    return settingsSetInt(kKeyPracticeLessons, mode);
 }
 
-int settingsPracticeSize() { return displaySettings().practiceSize; }
+int settingsPracticeSize() { return cachedSetting(kKeyPracticeSize, 10); }
 bool settingsSetPracticeSize(int size) {
     if (size != 10 && size != 20) size = 10;
-    DisplaySettings& v = displaySettings();
-    if (v.practiceSize == size) return true;
-    v.practiceSize = size;
-    return saveInt(kKeyPracticeSize, size);
+    return settingsSetInt(kKeyPracticeSize, size);
 }
 
-int settingsAutoSyncMode() { return displaySettings().autoSync; }
+int settingsAutoSyncMode() { return cachedSetting(kKeyAutoSync, 1); }
 bool settingsSetAutoSyncMode(int mode) {
     if (mode < 0 || mode > 2) mode = 1;
-    DisplaySettings& v = displaySettings();
-    if (v.autoSync == mode) return true;
-    v.autoSync = mode;
-    return saveInt(kKeyAutoSync, mode);
+    return settingsSetInt(kKeyAutoSync, mode);
 }
 
-int settingsSyncFullEverySeconds() { return displaySettings().syncFull; }
+int settingsSyncFullEverySeconds() { return cachedSetting(kKeySyncFull, 21600); }
 bool settingsSetSyncFullEverySeconds(int seconds) {
     if (seconds != 3600 && seconds != 21600 && seconds != 86400) seconds = 21600;
-    DisplaySettings& v = displaySettings();
-    if (v.syncFull == seconds) return true;
-    v.syncFull = seconds;
-    return saveInt(kKeySyncFull, seconds);
+    return settingsSetInt(kKeySyncFull, seconds);
 }
 
-bool settingsPrefetchReviews() { return displaySettings().prefetch; }
+bool settingsPrefetchReviews() { return cachedSetting(kKeyPrefetch, 1) != 0; }
 bool settingsSetPrefetchReviews(bool prefetch) {
-    DisplaySettings& v = displaySettings();
-    if (v.prefetch == prefetch) return true;
-    v.prefetch = prefetch;
-    return saveInt(kKeyPrefetch, prefetch ? 1 : 0);
+    return settingsSetInt(kKeyPrefetch, prefetch ? 1 : 0);
 }
 
 String formatFixedTimeZone(int offsetMinutes) {

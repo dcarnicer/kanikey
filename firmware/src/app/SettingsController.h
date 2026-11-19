@@ -10,6 +10,9 @@ bool lowBatteryNow();
 void requestLowBatteryConfirm(int action);
 void openSettings(SettingsOrigin origin);
 void closeSettings();
+// Selects one registry entry by id (section + row), for the Firmware screen's
+// Esc return and the serial back paths.
+void settingsSelectEntry(const char* id);
 void openPause();
 void settingsKey(const tgc::KeyEvent& e);
 void pauseKey(const tgc::KeyEvent& e);

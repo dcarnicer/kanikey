@@ -63,6 +63,12 @@ bool settingsSetPracticeSize(int size);
 bool settingsGetInt(const char* nvsKey, int* out);
 bool settingsSetInt(const char* nvsKey, int value);
 
+// CFG-03: removes every registry key (never Preferences::clear(), so the token,
+// the time zone and the display name survive) and reloads the cache with the
+// registry defaults. Returns false when NVS cannot be opened; the caller then
+// keeps the old values.
+bool settingsResetAll();
+
 // Sync preferences (SPEED-02, SPEED-04). The auto-sync mode is stored as its
 // meaning: 0 Off, 1 Quick, 2 Full. The full interval is stored in seconds and
 // the prefetch flag as 0/1.
