@@ -29,7 +29,10 @@ struct ReviewView {
     std::string romaji;  // IME raw text, reading prompt only
     kk::AnswerStatus status = kk::AnswerStatus::Incorrect;
     std::string message;
-    std::string answer;
+    // Accepted answers in display order. Reading lists may contain an empty
+    // token as an on'yomi/kun'yomi group break.
+    std::vector<std::string> answers;
+    std::vector<std::string> synonyms;  // drawn faint after the answers
 };
 
 // Draws the review prompt or feedback frame into d.

@@ -8,11 +8,62 @@
 
 #include "ui/Text.h"
 #include "ui/Widgets.h"
+#include "wk/Text.h"
 #include "wk/Utf8.h"
 
 namespace kk::app {
 
 using namespace ui;
+
+namespace {
+
+std::string partHint(const kk::Subject& s, bool meaning) {
+    return meaning ? s.meaningHint : s.readingHint;
+}
+
+std::string partNote(const kk::Subject& s, bool meaning) {
+    return meaning ? s.meaningNote : s.readingNote;
+}
+
+// REV-03: a wrong answer shows the first hint sentence, then the user's note.
+// A correct answer keeps the checker text (for example the close note).
+std::string feedbackLine(const LessonQuizView& view) {
+    if (!view.subject) return std::string();
+    if (view.status == kk::AnswerStatus::Incorrect) {
+        const std::string hint = kk::firstSentence(partHint(*view.subject, view.meaning));
+        if (!hint.empty()) return hint;
+        return partNote(*view.subject, view.meaning);
+    }
+    if (view.status == kk::AnswerStatus::Warning) return view.message;
+    if (view.message.empty() || view.message == "Correct") return std::string();
+    return view.message;
+}
+
+void drawFeedbackLine(lgfx::LovyanGFX& d, const LessonQuizView& view, int x, int y, int w) {
+    if (view.status == kk::AnswerStatus::Correct) {
+        // Keep the checker line (REV-02's close note) and the user's note on
+        // separate lines so a long close note cannot push the note away.
+        int line = 0;
+        const std::string message = feedbackLine(view);
+        if (!message.empty()) {
+            drawWrapped(d, message, x, y, w, 1, ui::kFaint, ui::kBg, true);
+            line = 1;
+        }
+        if (view.subject) {
+            const std::string note = partNote(*view.subject, view.meaning);
+            if (!note.empty()) {
+                const std::string prefix = view.meaning ? "Note: " : "Reading note: ";
+                drawWrapped(d, prefix + note, x, y + line * 8, w, 2 - line, ui::kFaint,
+                            ui::kBg, true);
+            }
+        }
+        return;
+    }
+    const std::string text = feedbackLine(view);
+    if (!text.empty()) drawWrapped(d, text, x, y, w, 2, ui::kFaint, ui::kBg, true);
+}
+
+}  // namespace
 
 void drawLessonListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
                           const LessonListView& view) {
@@ -298,7 +349,6 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
         }
         const bool japanese = !meaning;
         std::string typed = view.typed;
-        std::string answer = view.answer;
         if (japanese) {
             d.drawString("Y", 86, 40);
             bool typedDrawn = false;
@@ -316,21 +366,18 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
             d.setTextSize(1);
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("A", 86, 72);
-            bool answerDrawn = drawJapaneseFit(
-                d, pack, answer, 94, 232, 86, 142,
-                ok ? ui::kOk : warn ? ui::kWarn : ui::kErr, ui::kBg,
-                kk::ClipRect{94, 68, 236, 88});
-            if (!answerDrawn) {
+            const int lines = drawReadingTokens(
+                d, pack, view.answers, 94, 68, 142, 2, ok ? ui::kOk : ui::kErr, ui::kBg,
+                kk::ClipRect{94, 66, 236, 110});
+            if (lines < 0) {
                 d.setTextFont(1);
                 d.setTextSize(1);
                 d.setTextColor(ui::kWarn, ui::kBg);
                 d.drawString("no glyph", 94, 74);
+            } else if (lines <= 1) {
+                // A second reading line would collide with the note line.
+                drawFeedbackLine(d, view, 86, 96, 150);
             }
-            if (!ok)
-                drawWrapped(d, view.message, 86, 96, 150, 2, ui::kFaint, ui::kBg);
-            else if (!s.readingNote.empty())
-                drawWrapped(d, "Reading note: " + s.readingNote, 86, 96, 150, 2, ui::kFaint,
-                            ui::kBg);
         } else {
             d.drawString("You typed", 86, 38);
             d.setTextFont(1);
@@ -342,16 +389,9 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
             d.setTextSize(1);
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("Answer", 86, 65);
-            d.setTextFont(1);
-            d.setTextSize(1);
-            d.setTextColor(ok ? ui::kOk : warn ? ui::kWarn : ui::kErr, ui::kBg);
-            while (answer.size() > 1 && d.textWidth(answer.c_str()) > 150) answer.pop_back();
-            d.drawString(answer.c_str(), 86, 74);
-            if (!ok)
-                drawWrapped(d, view.message, 86, 96, 150, 2, ui::kFaint, ui::kBg);
-            else if (!s.meaningNote.empty())
-                drawWrapped(d, "Note: " + s.meaningNote, 86, 96, 150, 2, ui::kFaint,
-                            ui::kBg);
+            drawAnswerTokens(d, view.answers, view.synonyms, 86, 74, 150, 2,
+                             ok ? ui::kOk : ui::kErr, ui::kFaint, ui::kBg);
+            drawFeedbackLine(d, view, 86, 92, 150);
         }
         d.setTextFont(0);
         d.setTextSize(1);

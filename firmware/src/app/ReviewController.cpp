@@ -63,6 +63,7 @@
 #include "platform/WkReviewStatistics.h"
 #include "platform/WkSrsCounts.h"
 #include "wk/AnswerChecker.h"
+#include "wk/AnswerDisplay.h"
 #include "wk/IdSample.h"
 #include "wk/LessonOrder.h"
 #include "wk/LessonQuiz.h"
@@ -162,8 +163,14 @@ void showReview() {
         view.message = state().review.gCheck.message;
         // A warning must not leak the answer through the feedback frame or the
         // detail card; the user is expected to fix the typed text instead.
-        if (state().review.gCheck.status != kk::AnswerStatus::Warning)
-            view.answer = correctAnswer(*s, part);
+        if (state().review.gCheck.status != kk::AnswerStatus::Warning) {
+            if (part == kk::ReviewPart::Meaning) {
+                view.answers = kk::acceptedMeaningTokens(*s);
+                view.synonyms = s->meaningSynonyms;
+            } else {
+                view.answers = kk::acceptedReadingTokens(*s);
+            }
+        }
     }
 
     auto& d = target();

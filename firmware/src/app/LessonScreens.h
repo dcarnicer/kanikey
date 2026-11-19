@@ -60,7 +60,10 @@ struct LessonQuizView {
     kk::AnswerStatus status = kk::AnswerStatus::Incorrect;
     std::string message;
     std::string typed;
-    std::string answer;
+    // Accepted answers in display order. Reading lists may contain an empty
+    // token as an on'yomi/kun'yomi group break.
+    std::vector<std::string> answers;
+    std::vector<std::string> synonyms;  // drawn faint after the answers
     std::string romaji;
     uint16_t mistakes = 0;
     int position = 1;

@@ -181,6 +181,25 @@ inline std::string stripMarkup(std::string_view s) {
     return out;
 }
 
+// First sentence of a hint or note: trimmed, ending after `.`, `!` or `?` when
+// the mark is followed by a space or the end of the string, or after the
+// Japanese stops `。`, `！` and `？` (which need no following space). Returns the
+// whole string when there is no stop.
+inline std::string firstSentence(std::string_view s) {
+    const std::string text = trim(s);
+    const char* p = text.data();
+    const char* end = p + text.size();
+    while (p < end) {
+        const uint32_t cp = utf8Next(&p);
+        if (cp == 0) break;
+        const bool japaneseStop = cp == 0x3002 || cp == 0xFF01 || cp == 0xFF1F;
+        const bool asciiStop = cp == '.' || cp == '!' || cp == '?';
+        if (japaneseStop || (asciiStop && (p == end || isSpace(*p))))
+            return text.substr(0, static_cast<size_t>(p - text.data()));
+    }
+    return text;
+}
+
 // Allowed typo distance for an answer of this length. Callers pass the length
 // of the expected answer, not of the typed input. The curve is KaniKey's
 // current heuristic; WaniKani does not publish its rule (REV-02 owns the final
