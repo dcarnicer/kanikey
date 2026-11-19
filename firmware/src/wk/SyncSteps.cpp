@@ -64,4 +64,9 @@ SyncStep nextStep(SyncKind kind, SyncStep current, bool interrupted) {
     return SyncStep::Done;
 }
 
+bool syncTimeReady(uint32_t nowEpoch, uint32_t waitedMs, uint32_t timeoutMs) {
+    if (nowEpoch >= kSyncTrustedEpoch) return true;
+    return waitedMs >= timeoutMs;
+}
+
 }  // namespace kk

@@ -2641,6 +2641,24 @@ static void test_sync_steps_error_is_terminal() {
                           static_cast<int>(kk::nextStep(kk::SyncKind::Quick, kk::SyncStep::Done, false)));
 }
 
+// The Time step must always leave Time: a trusted clock immediately, an
+// untrusted one after one bounded 5 s wait.
+static void test_sync_time_ready_trusted_clock() {
+    TEST_ASSERT_TRUE(kk::syncTimeReady(1760000000u, 0, 5000));
+    TEST_ASSERT_TRUE(kk::syncTimeReady(1760000000u, 0, 0));
+}
+
+static void test_sync_time_ready_waits_untrusted() {
+    TEST_ASSERT_FALSE(kk::syncTimeReady(0, 0, 5000));
+    TEST_ASSERT_FALSE(kk::syncTimeReady(0, 4999, 5000));
+}
+
+static void test_sync_time_ready_gives_up() {
+    TEST_ASSERT_TRUE(kk::syncTimeReady(0, 5000, 5000));
+    TEST_ASSERT_TRUE(kk::syncTimeReady(0, 5001, 5000));
+    TEST_ASSERT_TRUE(kk::syncTimeReady(0, 0, 0));
+}
+
 static void test_cache_corruption_is_rejected() {
     CacheSnapshot in;
     in.meta.savedAt = 1234;
@@ -3259,6 +3277,9 @@ int main(int, char**) {
     RUN_TEST(test_sync_steps_optional_flags);
     RUN_TEST(test_sync_steps_interrupt_skips_optional);
     RUN_TEST(test_sync_steps_error_is_terminal);
+    RUN_TEST(test_sync_time_ready_trusted_clock);
+    RUN_TEST(test_sync_time_ready_waits_untrusted);
+    RUN_TEST(test_sync_time_ready_gives_up);
     RUN_TEST(test_ota_manifest_parse);
     RUN_TEST(test_ota_manifest_edges);
     RUN_TEST(test_ota_versions);

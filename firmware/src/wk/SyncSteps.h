@@ -38,4 +38,8 @@ uint8_t stepNumber(SyncStep step, SyncKind kind, bool needsAccount);
 // the caller can start a cached review.
 SyncStep nextStep(SyncKind kind, SyncStep current, bool interrupted);
 
+// Time step decision: a trusted clock is ready at once; an untrusted clock
+// gets one bounded wait (the SNTP client keeps running in the background).
+bool syncTimeReady(uint32_t nowEpoch, uint32_t waitedMs, uint32_t timeoutMs);
+
 }  // namespace kk

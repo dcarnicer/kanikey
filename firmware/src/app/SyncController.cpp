@@ -7,6 +7,7 @@
 #include <SPI.h>
 #include <WiFi.h>
 #include <esp_heap_caps.h>
+#include <esp_sntp.h>
 #include <esp_system.h>
 #include <time.h>
 
@@ -341,19 +342,37 @@ void syncWifiStep() {
     jobNextStep();
 }
 
+// Starts the SNTP client once per boot through the ESP-IDF wrappers. They post
+// to the lwIP task instead of taking the core lock on the caller, so loop()
+// cannot stall here. The old Arduino configTzTime() called lwIP directly from
+// the sync step and blocked the non-modal job before it could record any
+// progress (stuck at SyncStep::Time, sub 0).
+bool gSntpStarted = false;
+void startSntpOnce() {
+    if (gSntpStarted) return;
+    gSntpStarted = true;
+    const String rule = kk::settingsTimeZoneRule();
+    setenv("TZ", rule.c_str(), 1);
+    tzset();
+    esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
+    esp_sntp_setservername(0, "pool.ntp.org");
+    esp_sntp_setservername(1, "time.cloudflare.com");
+    esp_sntp_init();
+    Serial.println("[time] SNTP started");
+}
+
+// Time is a bounded wait, never a blocking SNTP setup (SPEED-03). A trusted
+// clock (the board RTC keeps epoch time) advances on the first pass.
 void syncTimeStep() {
     SyncJobState& j = job();
     if (j.sub == 0) {
-        // configTzTime applies the POSIX rule and starts SNTP in one step.
-        // Plain configTime() would overwrite the rule with UTC right after
-        // applying it. The wait is non-blocking: loop() checks each pass.
-        configTzTime(kk::settingsTimeZoneRule().c_str(), "pool.ntp.org", "time.cloudflare.com");
         j.timeStartedAt = millis();
         j.sub = 1;
-        return;
+        if (time(nullptr) < 1700000000) startSntpOnce();
     }
-    if (time(nullptr) < 1700000000 && millis() - j.timeStartedAt < 5000) return;
     const uint32_t utc = static_cast<uint32_t>(time(nullptr));
+    const uint32_t waited = millis() - j.timeStartedAt;
+    if (!kk::syncTimeReady(utc, waited, 5000)) return;
     Serial.printf("[time] %s: %u\n", utc >= 1700000000 ? "synced" : "not synced",
                   static_cast<unsigned>(utc));
     jobNextStep();
