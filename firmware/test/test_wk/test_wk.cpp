@@ -1039,6 +1039,30 @@ static void test_forecast_count_single_and_zero() {
     TEST_ASSERT_EQUAL(4, s.nextReviewCount(200));
 }
 
+static void test_summary_counts_advance_with_time() {
+    const uint32_t t = 1760000000u;
+    Summary s;
+    addReviewBucket(&s, t, 4);
+    addReviewBucket(&s, t + 3600, 6);
+    TEST_ASSERT_EQUAL_UINT32(4, s.dueReviews(t));
+    TEST_ASSERT_EQUAL_UINT32(10, s.dueReviews(t + 3600));
+    TEST_ASSERT_EQUAL_UINT32(t + 3600, s.nextReviewAt(t));
+    TEST_ASSERT_EQUAL(6, s.nextReviewCount(t));
+}
+
+static void test_summary_next_review_after_last_bucket() {
+    const uint32_t t = 1760000000u;
+    Summary s;
+    addReviewBucket(&s, t, 2);
+    addReviewBucket(&s, t + 3600, 3);
+    TEST_ASSERT_EQUAL_UINT32(0, s.nextReviewAt(t + 7200));
+    TEST_ASSERT_EQUAL(0, s.nextReviewCount(t + 7200));
+    TEST_ASSERT_EQUAL_UINT32(5, s.dueReviews(t + 7200));
+    char out[20];
+    formatNextReview(s, t + 7200, "09:00", out, sizeof out);
+    TEST_ASSERT_EQUAL_STRING("now", out);
+}
+
 static void test_forecast_24_slots_fill_gaps() {
     const uint32_t now = 10000;
     const uint32_t start = (now / 3600u) * 3600u;
@@ -3449,6 +3473,8 @@ int main(int, char**) {
     RUN_TEST(test_forecast_line_due_without_next);
     RUN_TEST(test_forecast_line_idle_without_next);
     RUN_TEST(test_forecast_count_single_and_zero);
+    RUN_TEST(test_summary_counts_advance_with_time);
+    RUN_TEST(test_summary_next_review_after_last_bucket);
     RUN_TEST(test_forecast_24_slots_fill_gaps);
     RUN_TEST(test_forecast_includes_current_hour);
     RUN_TEST(test_forecast_ignores_past_buckets);
