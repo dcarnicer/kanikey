@@ -1132,3 +1132,27 @@ RAM, +1,936 B flash measured). `build.py --split DIR` writes both and verifies
 v2 kind/table consistency; the public font build is 9.36 MB. Both-pack boot,
 missing-radical boot, v1 fallback and both upload paths remain hardware checks;
 ONB-02 adds the portal download/upload.
+
+---
+
+## 2026-11-19 — Reviews are submitted by policy, not on every Enter (SPEED-01)
+
+**Decision:** R12 `Submit reviews` selects At session end (default), Every 5 or
+Immediately. A completed item is written to the local outbox first; the
+summary (or the every-5 checkpoint) runs a bounded send loop over the records
+queued by this session, one request at a time. `Esc` stops the loop and leaves
+the rest Pending for the next sync. A bounded `StageTracker` keeps each
+record's pre-review stage, replacing the old last-pair globals.
+
+**Why:** with the old one-POST-per-completion behaviour every Enter after a
+review paid the network wait; the default now lets the user finish the batch
+and sends at the summary, where progress and `Esc: stop` are visible.
+
+**Implications:** the outbox is the source of truth and the same reconciliation,
+auth/rate gates and offline handling apply. Immediately keeps today's
+behaviour; Every 5 sends the session's batch after the 5th/10th completion and
+flushes the tail at the summary. The summary shows `Sending n/m`, a bar, stage
+moves and the outbox count. Earlier journal records do not yet get their
+`srsAfter` patched when several are queued (only the last handle is kept); the
+UI stage count uses the tracker and is correct. The hardware summary/Esc/
+offline/Every-5/Immediately and heap checks remain.
