@@ -726,10 +726,13 @@ A150 G143 M81 E147 B586).
 - **REV-10.** 15 native tests cover the repeat timer, the kana-aware Backspace,
   the clear path and the 64-byte cap; the hardware hold/clear/kana/paste checks
   remain.
-- **REV-04.** Seven native tests cover undo after a requeue/other part, C
-  completing an item, A requeueing unanswered and the other-part flags; the
-  journal round-trip covers C/A. The hardware C/A, warning-inert, bar/help and
-  practice checks remain.
+- **REV-04.** With R7 On, a wrong `banana` for 今夜's meaning followed by `C`
+  moved to the `READING` question; a wrong kana reading followed by `A`
+  requeued the item and advanced to the next item (人) with no completion. The
+  synthetic outbox was cleared before restoring the cache. The journal, warning,
+  bar/help and practice checks remain.
+- **REV-07.** No native test (routing only). R9 On should open page 2/5 for a
+  wrong meaning and 3/5 for a wrong reading; the hardware check remains.
 
 ## Round 2 hardware checks
 

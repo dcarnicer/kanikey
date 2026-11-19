@@ -12,8 +12,8 @@ wave 3 log); FIX-06, 07, 14, 20 and 24 still need the network/OTA and Wi-Fi
 upload checks listed there. FIX-07's random AP key and FIX-24 (a)/(b) have
 passed; FIX-24 (c) is partial. The rest of round 2 is specified in
 [docs/spec/README.md](docs/spec/README.md); the per-task status tables there
-are authoritative. ARCH, CFG, REV-01/02/03, REV-05/06/09/12,
-LES-01…LES-06, SETUP-09, ONB-01, SPEED-02/03/04/05 and SPEED-07 have landed
+are authoritative. ARCH, CFG, REV-01/02/03/04/05/06/07/09/10/12,
+LES-01…LES-06, SETUP-09, ONB-01/02, SPEED-02/03/04/05 and SPEED-07 have landed
 and are in review.
 
 The review loop works on hardware. The 2026-11-19 pass closed the deliberate
@@ -137,10 +137,10 @@ Working on hardware:
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Last recorded build (REV-04): **release 1,631,237 B / 1,835,008 B flash
-(88.9%)**, **dev 1,698,625 B (92.6%)**, static RAM 103,288/103,424 B (31.6%).
-Removing `efontJA_16` freed ~468 KB; the dev image now has ~136 KB of headroom. The
-loop task uses a 24 KiB stack;
+Last recorded build (REV-07): **release 1,631,345 B / 1,835,008 B flash
+(88.9%)**, **dev 1,698,725 B (92.6%)**, static RAM 103,288/103,424 B (31.6%).
+Removing `efontJA_16` freed ~468 KB; the dev image now has ~136 KB of headroom.
+The loop task uses a 24 KiB stack;
 the lazy review batch keeps the lesson-fetch minimum free heap above ~44 KB in
 the 2026-11-19 logs.
 
@@ -763,7 +763,7 @@ round 2.
 | On-device Wi-Fi | SETUP-09 | 2.4 GHz scan, manual SSID, masked password | review (2026-11-19; scan/password mask smoke) |
 | Review feedback | REV-01, REV-03 | All accepted answers, synonyms, hint line | review (2026-11-19; hardware pending) |
 | Typo policy | REV-02 | WaniKani close-answer acceptance / Strict | review (2026-11-19; hardware pending) |
-| Review options | REV-04, REV-05, REV-06, REV-09, REV-10, REV-12 | Wrong C/A, wrap up, auto-advance, back-to-back, input editing, minimal header | review (2026-11-19; auto-advance/wrap-up smokes passed) |
+| Review options | REV-04, REV-05, REV-06, REV-07, REV-09, REV-10, REV-12 | Wrong C/A, wrap up, auto-advance, details on wrong, back-to-back, input editing, minimal header | review (2026-11-19; auto-advance/wrap-up/C/A smokes passed) |
 | Visual pack split | ONB-01, ONB-02 | Font/radical v2 packs, portal download/upload | review (2026-11-19; portal hardware pending) |
 | Background sync and prefetch | SPEED-02, SPEED-03, SPEED-04 | Quick/full plan, non-modal sync, review prefetch | review (2026-11-19; hardware partial) |
 | TLS transport | SPEED-05 | Keep-alive session, chunked bodies | review (2026-11-19: re-landed with the idle-age fix; manual sync completed with 35 reused requests) |
@@ -773,11 +773,12 @@ The other spec groups are tracked in `docs/spec`: ARCH (controllers, settings
 registry, local stores, screen state), FIX (01-fixes), SPEED (submission/sync),
 CFG (sectioned settings), REV (review options), LES (batch flow), STUDY, STATS,
 REM/AUD, ONB (pack and setup) and DOC (this documentation pass). ARCH-01/02 are
-merged and CFG-01/02/03/04, REV-01/02/03/04/05/06/09/10/12, LES-01…LES-06,
-SETUP-09, ONB-01/02 and SPEED-02/03/04/05/07 are in review. The eight-section
-Settings menu replaces the flat list; the registry now has 48 rows after the
-Account › Wi-Fi action. Main has 368 native tests and builds at 1,631,237 B
-(88.9%) release / 1,698,625 B (92.6%) dev. No round-2 task is claimed as done
+merged and CFG-01/02/03/04, REV-01/02/03/04/05/06/07/09/10/12,
+LES-01…LES-06, SETUP-09, ONB-01/02 and SPEED-02/03/04/05/07 are in review. The
+eight-section Settings menu replaces the flat list; the registry now has 48
+rows after the Account › Wi-Fi action. Main has 368 native tests and builds at
+1,631,345 B (88.9%) release / 1,698,725 B (92.6%) dev. No round-2 task is
+claimed as done
 here beyond the spec status above.
 
 ## 11. Bluetooth keyboard (after v1)

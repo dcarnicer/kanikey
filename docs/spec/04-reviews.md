@@ -10,7 +10,7 @@ These twelve tasks turn the review session into a configurable, WaniKani-faithfu
 | REV-04 | Wrong-answer actions | P2 | M | ARCH-01, ARCH-02, ARCH-03 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-05 | Wrap up | P2 | M | ARCH-01 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-06 | Auto-advance on correct | P2 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
-| REV-07 | Details on wrong | P3 | S | ARCH-01, ARCH-02 | 2 | todo |
+| REV-07 | Details on wrong | P3 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-08 | More review orders | P2 | L | ARCH-01, ARCH-02, ARCH-03; SPEED-05 for option B | 2 | todo |
 | REV-09 | Back-to-back | P2 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-10 | Input editing | P2 | M | ARCH-01 | 2 | review (2026-11-19: merged; hardware pending) |
