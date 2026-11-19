@@ -643,14 +643,61 @@ provoked), API-03 403 (read-only token), FIX-06 slow server, FIX-07 15-minute
 AP close, FIX-14 forced small cap, FIX-20 bad-first-boot/two-strike, RAD-04
 low-level account and a real level-up.
 
-### 2026-11-19 — SPEED-05 keep-alive reverted
+### 2026-11-19 — SPEED-05 keep-alive stall and fix
 
-The keep-alive/chunked transport (SPEED-05) was merged and reverted after a
-manual sync stopped at `Outbox` with no `[http]` line; it only continued after
-serial input. This is a regression observation, not a timing measurement. The
-transport of record is HTTP/1.0 with `Connection: close` per request; the
-2026-10-29 Wi-Fi and API numbers above still apply. The branch
-`spec/SPEED-05-keepalive` keeps the change for a re-land.
+The keep-alive/chunked transport (SPEED-05) first stalled at `Outbox` with no
+`[http]` line; it only continued after serial input. The cause was the idle
+timer: `App.cpp` captures `now` before a sync step refreshes `gLastInputAt`, so
+`now - last` underflowed to ~49 days, the panel blanked, and the modal sync
+waited for a key. `wk/IdleTimer.h` clamps a future timestamp; dim/blank/sleep
+use it, and a modal sync wakes the panel if it is already off.
+
+After the fix, a manual `S` sync on the dev image (Wi-Fi connected first, no
+serial input during the run) completed:
+
+```
+[sync] step Time -> Outbox (sub 0)
+[sync] step Outbox -> Account (sub 0)
+[http] ... /v2/user reuse ... -> 200 ...
+...
+[http] /v2/subjects?ids=419 reuse
+[http] ... -> 200, 2199 body bytes, 199 ms, cl=-1 chunked keep
+[http] session close after 35 requests
+[sync] complete
+[power] blank after 60002 ms idle
+```
+
+Minimum free heap in the request logs was 22,836 B (largest 24,564 B at the
+end); the panel blanked only after 60 s of real idle. This confirms the
+`Outbox` stall is gone and chunked responses parse. The TLS spike timing/heap
+comparison, a dropped reused connection and a real `/summary` parse check
+remain; the 2026-10-29 HTTP/1.0 timings above are not directly comparable.
+
+### 2026-11-19 — SETUP-09, LES and REV-06 smoke (dev image)
+
+Run on the same Cardputer ADV with the real account cache restored after each
+synthetic check (`X`, reboot, full sync; Home 464 due / 115 lessons, SRS
+A150 G143 M81 E147 B586).
+
+- **SETUP-09.** Settings › Account showed `Wi-Fi scan`, `Setup portal` and
+  `Sign out`; `Wi-Fi` opened a 2.4 GHz list with SSID, signal bars and `WPA2`
+  (no 5 GHz rows; `Sakurakou Keionbu!`, `Shimokitazawa`, `TP-Link_A1B3` and the
+  DIGIFIBRA APs). `Esc` returned to Account. The password screen showed the
+  selected SSID, a masked field and `Tab: show`; no password was printed.
+  The join/save/failure paths, manual hidden SSID, boot flow, review lock and
+  power guard remain.
+- **LES-04/05/06.** Lessons showed `Order: WaniKani`; Right changed it to
+  `Radicals>Kanji>Vocab` and again to `Interleave types`, and Left restored
+  WaniKani. `Apprentice limit warning: 100` with A150 opened
+  `WORKLOAD CHECK — Apprentice items: 150 (limit 100)`, `Enter: continue
+  Esc: back`; `Esc` returned Home without a fetch. The first lesson card showed
+  `1/5 p1/6`, `VOCAB L7`, `以前`, `Meaning`; page 2 was `READING` and page 3
+  continued the reading topic. L5/L6, the 60-candidate ordering check and the
+  radical/vocabulary page set remain.
+- **REV-06.** With `Auto-advance on correct = 2 s` and the synthetic cache,
+  answering `tonight` for 今夜 moved to the `READING` question without Enter.
+  R8 was returned to Off. Back-to-back Off, minimal header and the
+  wrong/warning/detail/pause/blank guards remain.
 
 ## Round 2 hardware checks
 

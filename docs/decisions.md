@@ -989,22 +989,26 @@ Y1–Y3 and R1 are registry-backed. Hardware checks remain partial (see
 
 ---
 
-## 2026-11-19 — TLS keep-alive is reverted; requests stay HTTP/1.0 (SPEED-05)
+## 2026-11-19 — TLS keep-alive with an idle-age fix (SPEED-05)
 
-**Decision:** keep one `WiFiClientSecure` per request and HTTP/1.0 with
-`Connection: close`; the keep-alive session and chunked decoder from SPEED-05
-are not part of the current build. The branch `spec/SPEED-05-keepalive` keeps
-the implementation for a re-land after the stall is fixed.
+**Decision:** keep one `WiFiClientSecure` over HTTP/1.1 + `Connection:
+keep-alive` for a sync step, batch/lesson fetch or outbox flush, with chunked or
+`Content-Length` bodies decoded in place and one fresh-connection retry. The
+canvas stays released until `wkSessionEnd()`; non-session callers keep HTTP/1.0.
 
-**Why:** after the merge, a manual sync stalled at `Outbox` with no `[http]`
-line and only continued after serial input. That is worse than paying a
-handshake per request.
+**Why:** the first merge stalled at `Outbox` after `[sync] step Time -> Outbox`
+with no `[http]` line. The root cause was not the HTTP session: `App.cpp`
+captures `now` before a sync step refreshes `gLastInputAt`, so `now - last`
+underflowed to ~49 days, the panel blanked, and the modal sync then waited for
+a key. A serial byte woke it. Clamping the idle age (and waking a modal sync if
+the panel is already off) removes the stall.
 
-**Implications:** no session reuse, HTTP/1.1 or chunked dependency in the sync
-path; the canvas is still restored after each request. The transport work is
-open again, so later tasks must not assume keep-alive (for example REV-08's
-option B). The HTTP/1.0 timings in `docs/hardware.md` still apply; the stall is
-recorded there under 2026-11-19.
+**Implications:** `wk/IdleTimer.h` is pure and tested; dim/blank/sleep all use
+it. A reused connection failure retries once, but a partially written POST is
+not retried and follows the ambiguous/outbox path. The hardware run completed
+35 reused requests in one session with `[sync] complete`; the TLS spike,
+timing/heap targets, parsed chunked `/summary`, idle-drop retry and REV-08
+option B still need their checks.
 
 ---
 
@@ -1045,3 +1049,86 @@ behaviour for users who change nothing.
 **Implications:** the rows persist in NVS and apply without a reboot. Hardware
 checks are pending. R6 `Typos`, R7, R9, R12 and R2/R3 remain open, so this does
 not complete the review wave.
+
+---
+
+## 2026-11-19 — On-device Wi-Fi setup (SETUP-09)
+
+**Decision:** Settings › Account › Wi-Fi opens a 2.4 GHz scan with a manual
+SSID row for hidden networks and a masked password field; credentials are
+written only after `WL_CONNECTED`, and a failed join keeps the password
+editable while the saved network stays untouched. The boot “Wi-Fi needed”
+state offers the on-device flow on Enter and the phone portal on `P`; the
+portal remains the token and time-zone path.
+
+**Why:** changing networks should not require a phone or a serial cable, while
+the portal must stay as the fallback and as the only first-boot token entry.
+
+**Implications:** the registry grew to 48 rows (Account now has three). 5 GHz
+entries are filtered in both the scan and the pure builder; the join runs
+before saving, so a typo cannot replace a working network. The
+join/save/failure, hidden-SSID, boot-flow, review-lock and power-guard checks
+remain on hardware.
+
+---
+
+## 2026-11-19 — Lesson ordering, workload guard and topic pages (LES-04/05/06)
+
+**Decision:** L2 `ls.order` chooses WaniKani (default), type groups
+(`Radicals>Kanji>Vocab`) or interleaved types over the existing 60-candidate
+pool. L4/L5/L6 are evaluated locally before any fetch or the low-battery
+prompt; the guard lists each exceeded reason, `Enter` continues and `Esc`
+returns Home. A lesson card is split by topic (`Meaning`, `Reading`,
+`Components and notes`, `Context`) and long topics continue on extra pages with
+the title repeated.
+
+**Why:** the batch flow needs a predictable order, and a user with too many
+apprentice items or due reviews should see that before spending Wi-Fi and a
+lesson slot; one dense card also hid the topic structure.
+
+**Implications:** the lessons started-today count comes from the ARCH-03
+journal and is local to this device. The guard returns without a fetch, so the
+cache and lesson pool are unchanged. The multi-reason guard, L5/L6, the
+60-candidate ordering check and a radical/vocabulary page set remain on
+hardware.
+
+---
+
+## 2026-11-19 — Typo policy: WaniKani or Strict (REV-02)
+
+**Decision:** R6 `rv.typos` selects the default WaniKani policy (a close meaning
+within tolerance of at least four characters is CORRECT, with
+`Close: <answer>` and no mistake) or Strict (CHECK, retry the same part, answer
+hidden). Readings keep their current strictness, and reviews plus both lesson
+quizzes read the same row.
+
+**Why:** WaniKani accepts a small typo as correct, and the old default marked
+it as a warning and asked for a retry; the strict policy stays available for
+users who want it.
+
+**Implications:** this supersedes the 2026-10-25 “Strict checking with
+warnings” default for meanings only. The received answer is not sent
+differently; the queue sees Correct or Warning, so the accuracy bookkeeping and
+auto-advance follow the policy. Hardware checks under both policies remain.
+
+---
+
+## 2026-11-19 — Font and radical packs are separate (ONB-01)
+
+**Decision:** pack v2 uses the reserved header word as `kind` (0
+combined/legacy, 1 font, 2 radical) with the same body and CRC. The card
+carries `/kanikey/glyphs.kgp` (font, no WaniKani content, buildable without a
+token) and `/kanikey/radicals.kgp` (personal, token-generated); v1 combined
+packs still open for both roles. A missing radical pack affects only radical
+prompts (`no glyph`), while a missing font keeps the existing `Pack missing`
+boot state.
+
+**Why:** the combined file made the whole pack personal, so every user needed a
+token and Python before the device worked. Separating the font allows a public,
+verified download, while the radical bitmaps remain personal.
+
+**Implications:** two open files and two caches instead of one (+1,148 B static
+RAM, +1,936 B flash measured). `build.py --split DIR` writes both and verifies
+v2 kind/table consistency; the public font build is 9.36 MB. Both-pack boot,
+missing-radical boot, v1 fallback and both upload paths remain hardware checks;
+ONB-02 adds the portal download/upload.

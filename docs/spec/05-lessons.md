@@ -7,9 +7,26 @@ Decision D2 (2026-11-01) replaces the per-card start with WaniKani's batch flow:
 | LES-01 | Batch browse | P1 | L | ARCH-01 | 2 | review (2026-11-19: browse + selection; hardware smoke pending) |
 | LES-02 | Batch quiz | P1 | M | LES-01 | 2 | review (2026-11-19: batch quiz + L3; hardware smoke pending) |
 | LES-03 | Start the batch | P1 | M | LES-01, LES-02; ARCH-03 (journal, optional) | 2 | review (2026-11-19: confirmed start; hardware smoke pending) |
-| LES-04 | Ordering | P2 | M | LES-01, FIX-08, ARCH-03 | 2 | partial (LESSON-08 default order) |
-| LES-05 | Workload guard | P2 | S | LES-01, ARCH-02 | 2 | todo |
-| LES-06 | Card pages by topic | P2 | M | LES-01 | 2 | todo |
+| LES-04 | Ordering | P2 | M | LES-01, FIX-08, ARCH-03 | 2 | review (2026-11-19: L2 order; hardware pending) |
+| LES-05 | Workload guard | P2 | S | LES-01, ARCH-02 | 2 | review (2026-11-19: guard + Esc; hardware pending) |
+| LES-06 | Card pages by topic | P2 | M | LES-01 | 2 | review (2026-11-19: topic pages; hardware partial) |
+
+**Implementation (2026-11-19).** LES-04 reads `ls.order`: WaniKani is the
+default, `Radicals>Kanji>Vocab` stable-groups the 60-candidate pool and
+`Interleave types` round-robins the three types; ties break by id and unknown
+levels stay last. LES-05 evaluates `ls.appr`/`ls.due`/`ls.daily` locally before
+Wi-Fi or the battery prompt, lists every exceeded reason and returns Home on
+`Esc`; started-today comes from the ARCH-03 journal. LES-06 splits a card into
+`Meaning`, `Reading` (skipped when not needed), `Components and notes` and
+`Context` (only when parts of speech or sentences exist); long topics continue
+on further pages with the title repeated. 15 new native tests (324 on the
+merged main); release 1,607,749 B (87.6%), dev 1,675,265 B (91.3%). Hardware:
+the Lessons menu showed `Order: Interleave types` and `Apprentice limit
+warning: 100`; with Apprentice 150 the workload screen showed `Apprentice items:
+150 (limit 100)` and `Esc` returned Home; the first card showed `p1/6`, page 2
+`READING`, page 3 the continued reading topic. The full multi-reason guard,
+L5/L6, the 60-candidate ordering check and a radical/vocabulary card set
+remain.
 
 ### LES-01 — Batch browse
 

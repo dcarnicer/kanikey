@@ -1,6 +1,6 @@
 # Faster open → review → close
 
-The README promise is "open it, the pending review appears, type, close". Today the loop is slow at every step: each API call opens a new TLS connection (`platform/WkClient.cpp:112`, `Connection: close` at `:138`) and costs ~2 s (`docs/hardware.md:63-64`); a wake from deep sleep is a cold boot whose `setup()` runs `startSync()` (`firmware/src/app/App.cpp:4885`), a modal 10-request sync of 20-25 s; `Enter` without a cached batch adds 8-10 requests; and every completed item POSTs for ~2 s with the canvas released (`App.cpp:1085-1087`), freezing the screen. This file removes those waits: defer submissions, trim and background the boot sync, prefetch the batch, reuse the TLS connection (SPEED-05, reverted; see below) and keep RAM alive in light sleep. SPEED-02, SPEED-03 and SPEED-04 rewrite the same sync code and run in that order on one branch; SPEED-05 touches the HTTP client and the sync steps, so it starts after SPEED-03 merges (its spike can run any time).
+The README promise is "open it, the pending review appears, type, close". Today the loop is slow at every step: each API call opens a new TLS connection (`platform/WkClient.cpp:112`, `Connection: close` at `:138`) and costs ~2 s (`docs/hardware.md:63-64`); a wake from deep sleep is a cold boot whose `setup()` runs `startSync()` (`firmware/src/app/App.cpp:4885`), a modal 10-request sync of 20-25 s; `Enter` without a cached batch adds 8-10 requests; and every completed item POSTs for ~2 s with the canvas released (`App.cpp:1085-1087`), freezing the screen. This file removes those waits: defer submissions, trim and background the boot sync, prefetch the batch, reuse the TLS connection (SPEED-05, re-landed after the idle-age fix; see below) and keep RAM alive in light sleep. SPEED-02, SPEED-03 and SPEED-04 rewrite the same sync code and run in that order on one branch; SPEED-05 touches the HTTP client and the sync steps, so it starts after SPEED-03 merges (its spike can run any time).
 
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
@@ -8,16 +8,22 @@ The README promise is "open it, the pending review appears, type, close". Today 
 | SPEED-02 | Quick and full sync | P1 | M | none | 2 | review (2026-11-19: merged; auto sync + on-demand Wi-Fi; smoke partial) |
 | SPEED-03 | Background (non-modal) sync | P1 | L | SPEED-02 | 2 (after 02) | review (2026-11-19: merged; auto sync + on-demand Wi-Fi; smoke partial) |
 | SPEED-04 | Prefetch the review batch | P2 | M | SPEED-02, SPEED-03 | 2 (after 02/03) | review (2026-11-19: merged; auto sync + on-demand Wi-Fi; smoke partial) |
-| SPEED-05 | TLS keep-alive (spike, then implement) | P2 | L | none | 2 | todo |
+| SPEED-05 | TLS keep-alive (spike, then implement) | P2 | L | none | 2 | review (2026-11-19: re-landed with the idle-age fix; manual sync passed) |
 | SPEED-06 | Light sleep before deep sleep (spike first) | P2 | M | SPEED-01 (for `endReview(send)`) | 2 | todo |
 | SPEED-07 | Home updates over time | P2 | S | none | 2 | review (2026-11-19: merged; hardware check pending) |
 
-**Reverted (2026-11-19, SPEED-05).** The keep-alive/chunked implementation was
-merged and then reverted from `main`: a manual sync stalled at `Outbox` with no
-`[http]` line and only continued after serial input. The transport of record is
-HTTP/1.0 with `Connection: close` per request; the branch
-`spec/SPEED-05-keepalive` keeps the change for a re-land after the stall is
-fixed. The task stays `todo`. The stall is recorded in
+**Re-landed (2026-11-19, SPEED-05).** The keep-alive/chunked implementation
+was merged, stalled at `Outbox` on hardware, reverted, and then re-landed with
+the real fix: the idle timer subtracted `gLastInputAt` from a `now` captured
+earlier in the loop, underflowed to ~49 days and blanked the panel mid-step; a
+modal sync then waited for a key. `wk/IdleTimer.h` now clamps a future
+timestamp, `powerTick()` uses it for dim/blank/sleep, and a modal sync wakes
+the panel if it is already off. Manual `S` sync on the dev image completed with
+one session, 35 requests (`reuse`, `chunked keep`) and `[sync] complete`; the
+panel blanked only after 60 s of real idle. The transport is HTTP/1.1 +
+`Connection: keep-alive` with chunked/Content-Length bodies; non-session
+callers keep HTTP/1.0. The TLS spike numbers, parsed chunked `/summary`, idle
+drop retry and timing/heap targets remain. The old stall is recorded in
 [`docs/hardware.md`](../hardware.md) under 2026-11-19.
 
 **Implementation (2026-11-19).** SPEED-02/03/04 are merged: pure

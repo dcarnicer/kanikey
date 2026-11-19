@@ -9,9 +9,21 @@ The documentation still describes the design mockups rather than the device: `do
 | DOC-03 | `decisions.md` entries | P2 | S | REV-02, LES-01…LES-03, SPEED-06 | any | review |
 | DOC-04 | ROADMAP round 2 | P2 | S | none | any | review |
 | DOC-05 | Hardware check log template | P3 | S | none | any | review |
-| ONB-01 | Split the visual pack | P2 | M | none | 2 (after ARCH-01) | todo |
+| ONB-01 | Split the visual pack | P2 | M | none | 2 (after ARCH-01) | review (2026-11-19: merged; hardware pending) |
 | ONB-02 | Pack from the setup portal | P2 | L | ONB-01, FIX-01 | 2 (after ONB-01) | todo |
-| ONB-03 | `setup.md` for non-developers | P3 | S | ONB-01, ONB-02, FIX-01 | any | review (current pack flow; ONB-01/02 pending) |
+| ONB-03 | `setup.md` for non-developers | P3 | S | ONB-01, ONB-02, FIX-01 | any | review (current pack flow; ONB-02 pending) |
+
+**Implementation (2026-11-19, ONB-01).** Pack v2 uses the reserved header word
+as `kind` (0 combined/legacy, 1 font, 2 radical) with the body and CRC
+unchanged; v1 combined packs still open for both roles. The device opens
+`/kanikey/glyphs.kgp` and `/kanikey/radicals.kgp`; a missing radical pack only
+changes radical prompts to `no glyph`, while a missing font is still
+`Pack missing`. About and the setup page report both. `build.py --split DIR`
+writes the two v2 files; a font-only build uses a fixed kana + JIS X 0208 set
+and needs no token. Four native header tests and six `build.py` tests (324 on
+the merged main); release flash +1,936 B, static RAM +1,148 B. The 9.36 MB
+public font pack, both-pack boot, missing-radical boot, v1 fallback and both
+upload paths remain hardware checks.
 
 ### DOC-01 — Mockups match the device
 

@@ -369,8 +369,15 @@ Home ──L──► Lessons list ──Space──► select up to N
 - The portal is reachable from the whole home network and closes when setup
   finishes or after 15 minutes without a request. A locked page shows the
   device name, the address and the unlock field only.
-- Selecting a Wi-Fi network and typing its password on the Cardputer itself is
-  **planned** (SETUP-09), not in the current setup screen.
+- **On-device Wi-Fi (SETUP-09, 2026-11-19).** Settings › Account › Wi-Fi opens
+  a 2.4 GHz scan: SSID left, signal bars and `WPA2`/`WPA2/3` right, plus a
+  `+ Enter network name` row for hidden networks. `↑↓` moves, `Enter` chooses,
+  `R` rescans and `Esc` returns to Account. The password screen shows the SSID,
+  a masked field, `Tab: show/hide` and `8-63 characters; empty for open`;
+  `Enter` joins, `Esc` goes back. A failed join keeps the password editable and
+  shows `not found`, `wrong password`, `timeout` or `unsupported`; credentials
+  are saved only after a successful join. The phone portal above remains the
+  token/time/pack path and the boot fallback.
 - If the visual pack is missing, the station page shows the
   `Pack missing` status and the device keeps the `/kanikey/glyphs.kgp` boot
   instruction; `Enter: check again` re-checks it.
@@ -530,6 +537,12 @@ kept inside each level.
   - `Answer` with the accepted list, same layout as Correct.
   - The first sentence of the part's hint, else the user's note; never the
     generic `Incorrect meaning` / `Incorrect reading` line.
+- **REV-02 typo policy (2026-11-19).** With R6 `Typos = WaniKani` (default), a
+  close meaning of at least four characters is **Correct**, with
+  `Close: <answer>` on the note line and no mistake; the part completes and R8
+  can auto-advance. With `Strict` the same answer is a CHECK that retries the
+  same part and keeps the answer hidden. Readings are unchanged and lessons
+  use the same policy.
 - Warning (`CHECK` pill in amber):
   - Only the pill and the message are shown; no typed row and no answer row, so
     the expected answer cannot leak.
@@ -635,6 +648,16 @@ sorts the whole pool and only then trims to the batch size. Component meanings,
 hints and the user's meaning/reading notes are appended to the paged card after
 the mnemonic. **Hardware pending:** the full quiz with mistakes, offline start,
 422 and L3 `Skip` (see [`docs/hardware.md`](hardware.md), 2026-11-19).
+- **LES-04/05/06 (2026-11-19).** L2 orders the pool by WaniKani (default),
+  `Radicals>Kanji>Vocab` or `Interleave types`. Before Wi-Fi or the low-battery
+  prompt, L4/L5/L6 can open `WORKLOAD CHECK` with one reason per exceeded
+  threshold (`Apprentice items: 150 (limit 100)`); `Enter` continues and `Esc`
+  returns Home without a fetch. A card is split into `Meaning`, `Reading`
+  (skipped when the subject needs none), `Components and notes` and `Context`
+  (only when parts of speech or sentences exist); a long topic repeats its
+  title on further pages, and the header `pN/M` counts the drawn pages. The
+  first hardware card showed `p1/6` and `p2/6 READING`; the multi-reason guard,
+  L5/L6 and a radical/vocabulary page set remain.
 
 ### 5.9 Lesson card
 
@@ -734,9 +757,9 @@ the mnemonic. **Hardware pending:** the full quiz with mistakes, offline start,
   warning; a still-valid cached Level value can remain `ok`.
 - The rows are drawn between the blocking TLS requests, so a cancel pressed
   during a request takes effect when it finishes.
-- Each request opens its own TLS connection; the SPEED-05 keep-alive session
-  was reverted after a manual-sync stall, so there is no connection reuse in
-  the sync path (see [`02-speed.md`](spec/02-speed.md)).
+- A sync step, batch/lesson fetch or outbox flush reuses one TLS connection
+  (SPEED-05); the sync screen does not pay a handshake per request. The
+  remaining chunked/timing/heap checks are in `docs/hardware.md`.
 - SNTP starts with the stored POSIX rule (`configTzTime`), so Home `Synced
   HH:MM`, `Next review` and the level date are local time. Changing the zone in
   Settings applies at the next sync without a reboot.
@@ -757,15 +780,16 @@ the mnemonic. **Hardware pending:** the full quiz with mistakes, offline start,
   shows the focused row's registry help; a transient note replaces it until the
   selection moves. A change writes NVS once and applies without a reboot;
   nothing here calls WaniKani.
-- The registry holds 47 rows (39 keyed settings and 8 actions). R5
-  `Back-to-back` (On), R8 `Auto-advance on correct` (Off) and R10 `Header
-  info` (SRS+accuracy) are live and hardware pending. R6 `Typos`, R7, R9 and
-  R12 `Submit reviews` are visible and stored but do not change the review yet;
-  R2/R3 await REV-08, and R4's `Random` value is stored but the build only
-  distinguishes Meaning and Reading. The other open rows (L2, L4–L6, P5–P6,
-  M1–M7) are listed with their owner in `03-settings.md`. The current build
-  reads R1, R4 (Meaning/Reading), R5, R8, R10, R11, L1, L3, S1–S5, Y1–Y3,
-  P1–P4 and the actions.
+- The registry holds 48 rows (40 keyed settings and 8 actions) after the
+  Account › Wi-Fi action. R5 `Back-to-back` (On), R8 `Auto-advance on correct`
+  (Off) and R10 `Header info` (SRS+accuracy) are live and hardware pending;
+  R6 `Typos` now selects WaniKani/Strict in reviews and both lesson quizzes.
+  R7, R9 and R12 `Submit reviews` are visible and stored but do not change the
+  review yet; R2/R3 await REV-08, and R4's `Random` value is stored but the
+  build only distinguishes Meaning and Reading. L2 `Order`, L4–L6 and the
+  other keyed rows are live where `03-settings.md` says so; P5–P6 and M1–M7
+  still await their owners. The current build reads R1, R4 (Meaning/Reading),
+  R5, R6, R8, R10, R11, L1–L6, S1–S5, Y1–Y3, P1–P4 and the actions.
 - WaniKani's `reviews_presentation_order` is applied automatically and is not
   a device setting.
 - `Setup portal` reopens the Wi-Fi/token/time page; it is disabled during a

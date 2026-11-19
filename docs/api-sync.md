@@ -491,13 +491,15 @@ plan: Skip | Quick | Full
   until the reset and the sync reports the countdown.
 - `KKCA` v12 stores `lastFullAt`, `lastQuickAt` and `lastUserAt` for the plan;
   a v11 snapshot loads with all three set to its `savedAt`.
-- **Transport (SPEED-05 reverted, 2026-11-19):** every request opens its own
-  `WiFiClientSecure` and sends HTTP/1.0 with `Connection: close`. The
-  keep-alive/chunked implementation was merged and reverted after a manual sync
-  stalled at `Outbox` with no `[http]` line and only continued after serial
-  input; the branch `spec/SPEED-05-keepalive` keeps it for a re-land. The
-  HTTP/1.0 timings in `docs/hardware.md` still apply; the stall is recorded
-  there under 2026-11-19.
+- **Transport (SPEED-05, 2026-11-19):** a sync step, batch/lesson fetch or
+  outbox flush runs in a session that reuses one `WiFiClientSecure` over
+  HTTP/1.1 with `Connection: keep-alive`; POST/PUT carry `Content-Length` and
+  responses may be chunked (decoded in place) or length-delimited. A reused
+  connection failure retries once on a fresh one; a partially written POST is
+  not retried and goes to the ambiguous/outbox path. Non-session callers
+  (portal/OTA) keep HTTP/1.0 + `Connection: close`. The hardware run completed
+  35 reused requests in one session and `[sync] complete`; the TLS spike and
+  timing/heap targets remain.
 
 **Not implemented yet:** the global `assignments`/`subjects` delta, ETag/304 and
 `updated_after` warm sync. Review and lesson batches fetch their own
@@ -820,10 +822,12 @@ use details=false, so mnemonics, parts of speech and context sentences are not
 copied. The DOM parsers remain for small payloads (`/user`, study materials,
 statistics, level/SRS) and tests. `/summary` keeps its own streaming parser.
 
-**SPEED-05 reverted (2026-11-19).** The chunked decoder and the keep-alive
-session are not in the current build. A body is read by `Content-Length` or
-until close in the same 32 KB `WkClient` buffer; the branch
-`spec/SPEED-05-keepalive` keeps the in-place decoder for a re-land.
+**SPEED-05 (2026-11-19).** The chunked decoder (`wk/HttpChunked`) and the
+keep-alive session are in the current build. A chunked or length-delimited body
+is decoded in place in the same 32 KB `WkClient` buffer; the session owns the
+canvas release until `wkSessionEnd()`. The initial re-land stalled at `Outbox`
+because of an idle-timer underflow, not the HTTP path; `wk/IdleTimer.h` fixes
+that and the manual sync now completes.
 
 Rejected alternative: download the JSON to the SD card and parse it afterwards
 with a DOM. It still needs a DOM and duplicates temporary storage.

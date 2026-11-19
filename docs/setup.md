@@ -4,20 +4,23 @@ KaniKey is a pocket review terminal for WaniKani on the M5Stack Cardputer ADV.
 This guide goes from the box to a finished review session and is written for
 someone who has not built the firmware.
 
-> **The visual pack is the one step that still needs a computer.** It is built
-> with a script and copied to the microSD card today. A phone-only pack flow is
-> planned but is **not** in this firmware yet; see §12.
+> **The visual pack is the one step that still needs a computer.** The font
+> pack can be built without an account; the personal radical pack still needs
+> your WaniKani token. Both are copied to the microSD card. A phone-only pack
+> flow is planned but is **not** in this firmware yet; see §12.
 
 ---
 
 ## Quick start
 
 1. **Prepare the card (once).** Use a **FAT32** microSD card and copy the visual
-   pack to `/kanikey/glyphs.kgp`. See §3 for the build command. If the card
-   already has that file, skip to step 2.
+   packs to `/kanikey/glyphs.kgp` (font) and, if you built the personal one,
+   `/kanikey/radicals.kgp`. A v1 combined `glyphs.kgp` from an older build still
+   works. See §3 for the commands. If the card already has them, skip to step 2.
 2. **Charge and start.** Connect USB-C, insert the card and turn the device on.
    `No SD card` means the card is missing or not FAT32. `Pack missing` means
-   `/kanikey/glyphs.kgp` is not on the card. Fix it and press `Enter`.
+   `/kanikey/glyphs.kgp` is not on the card. Fix it and press `Enter`; a missing
+   `radicals.kgp` only affects radical images, not text.
 3. **Open setup.** With no Wi-Fi or token saved, the device starts the
    `KaniKey-XXXX` setup network automatically; if the screen shows `Token
    needed` or `Wi-Fi needed` instead, press `Enter`. On your phone, join
@@ -96,44 +99,54 @@ through **Settings › Setup portal**. There is no KaniKey password to recover.
 
 ## 3. The visual pack
 
-The firmware has no Japanese font built in. Kanji, kana and radical prompts are
-drawn from one file on the card:
+The firmware has no Japanese font built in. Text and radical prompts are drawn
+from two files on the card:
 
 ```
-/kanikey/glyphs.kgp
+/kanikey/glyphs.kgp    font: kana, kanji and the Latin glyphs
+/kanikey/radicals.kgp  personal: the image-only radical bitmaps
 ```
 
-The current firmware uses one combined pack (format `KKGP` v1): glyphs at 64,
-32 and 20 px plus radical bitmaps. A full pack built with the account token has
-about **7,269 glyphs and 498 radical bitmaps**, roughly **3.7 MB**. A pack
-built without a token has glyphs but no radical bitmaps, so image-only radicals
-show `no glyph`. Treat the combined file as personal: it mixes font glyphs with
-radical images derived from WaniKani, so do not publish or share it.
+Both use the `KKGP` v2 header: glyphs at 64, 32 and 20 px in the font pack, and
+radical bitmaps in the personal pack; the body and CRC are unchanged from v1.
+A v1 **combined** `glyphs.kgp` from an older build still opens for both roles,
+so an existing card keeps working. The font pack contains no WaniKani-derived
+data and can be built without a token; the radical pack is personal, so do not
+publish or share it.
 
-A future firmware splits this into a font pack (`glyphs.kgp`) and a personal
-radical pack (`radicals.kgp`). That split is planned, not current; see §12.
+### 3.1 Build the packs (once, on a computer)
 
-### 3.1 Build the pack (once, on a computer)
+From a checkout (or the source ZIP) of this repository, the simplest path is a
+font-only split build (no token, fixed kana + JIS X 0208 set):
 
-From a checkout (or the source ZIP) of this repository:
+```sh
+uv run --with pillow python3 tools/glyph-pack/build.py --split dist
+```
+
+For the personal radical pack, add the token and `cairosvg`:
 
 ```sh
 WANIKANI_TOKEN=... uv run --with pillow --with cairosvg \
-  python3 tools/glyph-pack/build.py --out dist/glyphs.kgp
+  python3 tools/glyph-pack/build.py --split dist
 ```
+
+The second command writes `dist/glyphs.kgp` and `dist/radicals.kgp`; without a
+token the font pack is written and the tool prints `no token: radicals.kgp
+skipped`. The old single-file form is still available with
+`--out dist/glyphs.kgp` (without a token it has glyphs but no radical bitmaps).
 
 Install `uv` once from <https://docs.astral.sh/uv/> if needed. With plain
 Python instead:
 
 ```sh
 python3 -m pip install pillow cairosvg
-WANIKANI_TOKEN=... python3 tools/glyph-pack/build.py --out dist/glyphs.kgp
+WANIKANI_TOKEN=... python3 tools/glyph-pack/build.py --split dist
 ```
 
 The generator reads `WANIKANI_TOKEN`; `--token` also works. It calls
-`GET /user` for the highest level your subscription allows, collects the
-characters from `GET /subjects`, renders them with Noto Sans JP and rasterizes
-the radical SVG images. The pack stays on your computer and card; nothing is
+`GET /user` for the highest level your subscription allows and `GET /subjects`
+for the account characters, renders them with Noto Sans JP and rasterizes the
+radical SVG images. The packs stay on your computer and card; nothing is
 uploaded to a KaniKey server.
 
 By default the generator looks for Noto Sans JP at
@@ -142,41 +155,45 @@ file is not there, download Noto Sans JP (OFL) from
 <https://fonts.google.com/noto/specimen/Noto+Sans+JP> and add
 `--font /path/to/NotoSansJP-Regular.otf`.
 
-### 3.2 Copy it to the card
+### 3.2 Copy them to the card
 
-With the card in a card reader, copy the file to the lowercase `kanikey` folder
-in the card's root. The firmware looks for exactly `/kanikey/glyphs.kgp`; do not
-rename the file.
+With the card in a card reader, copy the files to the lowercase `kanikey`
+folder in the card's root. The firmware looks for exactly
+`/kanikey/glyphs.kgp` and `/kanikey/radicals.kgp`; do not rename them.
 
 macOS, if the card is mounted as `KANIKEY`:
 
 ```sh
 mkdir -p /Volumes/KANIKEY/kanikey
 cp dist/glyphs.kgp /Volumes/KANIKEY/kanikey/glyphs.kgp
+cp dist/radicals.kgp /Volumes/KANIKEY/kanikey/radicals.kgp   # if built with a token
 ```
 
 Replace `KANIKEY` with the name the card actually mounts under. On Windows,
-create `kanikey` in the card's root and copy the file as
-`D:\kanikey\glyphs.kgp` (use the card's drive letter). On Linux, the path is
-usually `/media/<user>/<card>/kanikey/glyphs.kgp`. Eject the card safely before
-removing it.
+create `kanikey` in the card's root and copy the files as
+`D:\kanikey\glyphs.kgp` and `D:\kanikey\radicals.kgp` (use the card's drive
+letter). On Linux, the path is usually
+`/media/<user>/<card>/kanikey/`. Eject the card safely before removing it.
 
-### 3.3 Check the pack on the device
+### 3.3 Check the packs on the device
 
-The setup page and **About** show the pack status, for example:
+The setup page and **About** show both status lines, for example:
 
 ```
-7269 glyphs, 498 radicals, 64/32/20 px
+Font: 19683 glyphs, 64/32/20 px
+Rad:  498 radicals
 ```
 
-`pack missing` (or `no pack` when no card is mounted) means the file is missing
-or could not be opened. When the card is mounted but the pack cannot be opened,
-the boot screen says `Pack missing`. In the setup page press
-**Check pack again**. The full CRC of the 3.7 MB file takes a few seconds, so
-the new result can appear on the next page load. On boot, `Pack missing` with
+`Pack missing` (or `no pack` when no card is mounted) means `glyphs.kgp` is
+missing or could not be opened; that gates boot and sync. A missing
+`radicals.kgp` leaves all text working and only changes image-only radical
+prompts to `no glyph` (the status line says `no radicals`). In the setup page
+press **Check pack again**. The full CRC of the font pack takes a few seconds,
+so the new result can appear on the next page load. On boot, `Pack missing` with
 `Copy glyphs.kgp to /kanikey/ on the SD card` and `Enter: check again` is the
 same problem. A damaged or truncated file reports a `pack: ...` error (for
-example `pack: bad crc`); copy it again.
+example `pack: bad crc`); copy it again. A v1 combined file still works for both
+roles.
 
 You can configure Wi-Fi and the token before the pack is ready, but reviews and
 lessons need it for Japanese text.

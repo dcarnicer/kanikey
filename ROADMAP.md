@@ -12,9 +12,9 @@ wave 3 log); FIX-06, 07, 14, 20 and 24 still need the network/OTA and Wi-Fi
 upload checks listed there. FIX-07's random AP key and FIX-24 (a)/(b) have
 passed; FIX-24 (c) is partial. The rest of round 2 is specified in
 [docs/spec/README.md](docs/spec/README.md); the per-task status tables there
-are authoritative. ARCH, CFG, REV-01/03, REV-06/09/12, LES-01/02/03,
-SPEED-02/03/04 and SPEED-07 have landed and are in review; SPEED-05 was merged
-and reverted.
+are authoritative. ARCH, CFG, REV-01/02/03, REV-05/06/09/12,
+LES-01…LES-06, SETUP-09, ONB-01, SPEED-02/03/04/05 and SPEED-07 have landed
+and are in review.
 
 The review loop works on hardware. The 2026-11-19 pass closed the deliberate
 offline boot, the final OUTBOX screen, the 401 gate, the parse-retry path, the
@@ -151,10 +151,10 @@ the 2026-11-19 logs.
 |---:|---|---|---|---|
 | 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Done except a real low-level radical-only lesson; the synthetic radical lesson UI passed | RAD-04 |
 | 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Done: real-account online fetch, deliberate offline reboot and cached session verified (2026-11-19) | CACHE-07 |
-| 3 | Complete lesson flow | List/picker, card, components, quiz, empty state, start and ordering exist; the round-2 browse → quiz → batch-start flow is in review | v1 flow complete; LES-01/02/03 in review 2026-11-19 (hardware pending); LES-04/05/06 and the real low-level run open | LES-04 |
+| 3 | Complete lesson flow | List/picker, card, components, quiz, empty state, start and ordering exist; the round-2 browse → quiz → batch-start flow is in review | v1 flow complete; LES-01…LES-06 in review 2026-11-19 (hardware partial); the real low-level run is open | LES-01 |
 | 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; stats and local review history are live; audio remains | Stats/local history done; AUD-03 remains; round 2 tracked in `docs/spec` | AUD |
 | 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Code and docs done; OUTBOX (API-01/05), 401 (API-03) and parse retry (API-04) verified 2026-11-19; 429 (API-02) and 403 still pending | — |
-| 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done for v1; on-device Wi-Fi setup is v1.1 (SETUP-09) | SETUP-09 |
+| 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | v1 done; SETUP-09 on-device Wi-Fi is in review 2026-11-19 (scan/password mask smoked; join paths pending) | SETUP-09 |
 | 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen, item detail, level progress and the Stats screen are live | Partial | UI-08 |
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal, OTA, storage and sleep done; widgets pending | TNG-03 |
 | 9 | Technical debt, CI and release | Maintainability and shipping | Done (TECH-01…06, TECH-08); TECH-07 only if needed | TECH-07 |
@@ -519,7 +519,11 @@ scan/password flow on the Cardputer itself.
   is still where the token is entered in this task. Reuse
   `DevWifi::scan/connect` and the existing text-entry path; never log or show
   the password while masked. A phone-free first boot also needs on-device
-  token entry — a separate follow-up if wanted.
+  token entry — a separate follow-up if wanted. **Review (2026-11-19):**
+  Account › Wi-Fi opens the 2.4 GHz list (SSID, signal, WPA2; no 5 GHz rows),
+  `Esc` returns to Account, and the password screen masks the typed text with
+  `Tab: show`. The join/save/failure paths, hidden SSID, boot flow, review lock
+  and power guard remain.
 
 ## 7. UI, stats and sync (M5)
 
@@ -754,23 +758,28 @@ round 2.
 | EXT-05 + WK-11 | STATS-01…STATS-04 | Forecast, history, streak and level progress | done (2026-11-06) |
 | EXT-06 | AUD-01…AUD-03 | Vocabulary audio | partial (AUD-01/02); AUD-03 todo |
 | EXT-09 | REM-01…REM-03 | Device-local reminders and sounds | todo |
-| Complete lesson flow | LES-01, LES-02, LES-03 | Browse → batch quiz → confirmed batch start | review (2026-11-19; hardware pending) |
-| LESSON-08 | LES-04 | Lesson ordering | partial: default order done; L2 choices open |
-| Settings menu | CFG-01, CFG-02, CFG-03 | Eight sections, 47-row registry, reset | review (2026-11-19; hardware partial) |
+| Complete lesson flow | LES-01, LES-02, LES-03, LES-04, LES-05, LES-06 | Browse → batch quiz → confirmed start → order/workload/topic pages | review (2026-11-19; hardware partial) |
+| LESSON-08 | LES-04 | Lesson ordering | review: WaniKani/type groups/interleave; 60-pool check pending |
+| Settings menu | CFG-01, CFG-02, CFG-03 | Eight sections, 48-row registry, reset | review (2026-11-19; hardware partial) |
+| On-device Wi-Fi | SETUP-09 | 2.4 GHz scan, manual SSID, masked password | review (2026-11-19; scan/password mask smoke) |
 | Review feedback | REV-01, REV-03 | All accepted answers, synonyms, hint line | review (2026-11-19; hardware pending) |
-| Review options | REV-06, REV-09, REV-12 | Auto-advance, back-to-back, minimal header | review (2026-11-19; hardware pending) |
+| Typo policy | REV-02 | WaniKani close-answer acceptance / Strict | review (2026-11-19; hardware pending) |
+| Review options | REV-05, REV-06, REV-09, REV-12 | Wrap up, auto-advance, back-to-back, minimal header | review (2026-11-19; auto-advance smoke passed) |
+| Visual pack split | ONB-01 | Font/radical v2 packs, no-token font build | review (2026-11-19; hardware pending) |
 | Background sync and prefetch | SPEED-02, SPEED-03, SPEED-04 | Quick/full plan, non-modal sync, review prefetch | review (2026-11-19; hardware partial) |
-| TLS transport | SPEED-05 | Keep-alive session, chunked bodies | reverted (2026-11-19): manual sync stalled at `Outbox`; branch kept for a re-land |
+| TLS transport | SPEED-05 | Keep-alive session, chunked bodies | review (2026-11-19: re-landed with the idle-age fix; manual sync completed with 35 reused requests) |
 | Home clock | SPEED-07 | 60 s Home refresh, offline uptime | review (2026-11-19; hardware pending) |
 
 The other spec groups are tracked in `docs/spec`: ARCH (controllers, settings
 registry, local stores, screen state), FIX (01-fixes), SPEED (submission/sync),
 CFG (sectioned settings), REV (review options), LES (batch flow), STUDY, STATS,
 REM/AUD, ONB (pack and setup) and DOC (this documentation pass). ARCH-01/02 are
-merged and CFG-01/02/03, REV-01/03, REV-06/09/12, LES-01/02/03 and
-SPEED-02/03/04/07 are in review; SPEED-05 was reverted. The eight-section
-Settings menu replaces the flat list. No round-2 task is claimed as done here
-beyond the spec status above.
+merged and CFG-01/02/03, REV-01/02/03, REV-05/06/09/12, LES-01…LES-06,
+SETUP-09, ONB-01 and SPEED-02/03/04/05/07 are in review. The eight-section
+Settings menu replaces the flat list; the registry now has 48 rows after the
+Account › Wi-Fi action. Main has 338 native tests and builds at 1,611,837 B
+(87.8%) release / 1,679,413 B (91.5%) dev. No round-2 task is claimed as done
+here beyond the spec status above.
 
 ## 11. Bluetooth keyboard (after v1)
 

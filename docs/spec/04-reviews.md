@@ -5,10 +5,10 @@ These twelve tasks turn the review session into a configurable, WaniKani-faithfu
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
 | REV-01 | Show all accepted answers on feedback | P1 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
-| REV-02 | Typo policy | P1 | S | FIX-03, ARCH-01, ARCH-02 | 2 | todo |
+| REV-02 | Typo policy | P1 | S | FIX-03, ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-03 | Useful wrong-answer line | P2 | S | ARCH-01 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-04 | Wrong-answer actions | P2 | M | ARCH-01, ARCH-02, ARCH-03 | 2 | todo |
-| REV-05 | Wrap up | P2 | M | ARCH-01 | 2 | todo |
+| REV-05 | Wrap up | P2 | M | ARCH-01 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-06 | Auto-advance on correct | P2 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-07 | Details on wrong | P3 | S | ARCH-01, ARCH-02 | 2 | todo |
 | REV-08 | More review orders | P2 | L | ARCH-01, ARCH-02, ARCH-03; SPEED-05 for option B | 2 | todo |
@@ -31,8 +31,25 @@ readings, hint fallback, lesson quiz) remain.
 feeds the next field; wrong/warning/detail/pause/blank never advance).
 Back-to-back is live behind R5 `rv.b2b` (On default; Off interleaves correct and
 wrong answers; a single-item queue still asks the other part). R10 `rv.header`
-`Minimal` hides only the SRS block. 293 native tests on the merged main; the
-hardware checks are pending.
+`Minimal` hides only the SRS block. 293 native tests at the merge; the rest of
+the hardware checks are pending. Hardware: with R8 `2 s` and the synthetic
+cache, answering `tonight` for 今夜 advanced by itself to the `READING` question
+without Enter.
+
+**Implementation (2026-11-19, REV-02).** R6 `rv.typos` selects WaniKani
+(default) or Strict. A close meaning of at least four characters is CORRECT
+with `Close: <answer>` and no mistake by default; Strict returns CHECK, retries
+the same part and keeps the answer hidden. Readings keep their current
+strictness; reviews, the single-card quiz and the batch quiz read the same row.
+Six new native tests (324 at the merge). The hardware checks under both
+policies remain.
+
+**Implementation (2026-11-19, REV-05).** Pause is `Continue / Wrap up / End
+session / Settings`. Wrap up keeps the current item plus any queued item with
+one part already done, drops untouched items, shows `WRAP UP N` with the pruned
+counter/bar and is idempotent; it never calls the network and the summary opens
+after the last kept item. Five new native tests (338 on the merged main). The
+hardware queue/header/summary checks remain.
 
 ### REV-01 — Show all accepted answers on feedback
 
