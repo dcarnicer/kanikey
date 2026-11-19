@@ -1152,7 +1152,6 @@ and sends at the summary, where progress and `Esc: stop` are visible.
 auth/rate gates and offline handling apply. Immediately keeps today's
 behaviour; Every 5 sends the session's batch after the 5th/10th completion and
 flushes the tail at the summary. The summary shows `Sending n/m`, a bar, stage
-moves and the outbox count. Earlier journal records do not yet get their
-`srsAfter` patched when several are queued (only the last handle is kept); the
-UI stage count uses the tracker and is correct. The hardware summary/Esc/
-offline/Every-5/Immediately and heap checks remain.
+moves and the outbox count. Each queued record carries its journal handle in
+the tracker, so every POST patches its own `srsAfter`, not only the last one.
+The hardware summary/Esc/offline/Every-5/Immediately and heap checks remain.
