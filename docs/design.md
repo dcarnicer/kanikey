@@ -196,6 +196,7 @@ Still open:
 - Pronunciation audio (ES8311).
 - Optional Bluetooth LE keyboard input (the built-in keyboard remains primary
   and the only wake source).
+- On-device Wi-Fi picker and password entry, without a phone.
 - M5Stack PaperDIY e-paper companion (read-only first; full reviews need an
   external keyboard).
 - Stroke order with KanjiVG.

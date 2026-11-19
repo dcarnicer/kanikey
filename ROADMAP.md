@@ -142,7 +142,7 @@ heap to ~56 KB.
 | 3 | Complete lesson flow | List/picker, card, components, quiz, empty state, start and ordering exist; a real low-level run remains | Code complete; radical-only UI verified synthetically | RAD-04 |
 | 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; stats and local review history are live; audio remains | Partial | EXT-06 |
 | 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Code and docs done; hardware check pending for the final OUTBOX screen (API-01) and API-02…05 | — |
-| 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done | — |
+| 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done for v1; on-device Wi-Fi setup is v1.1 (SETUP-09) | SETUP-09 |
 | 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen, item detail, level progress and the Stats screen are live | Partial | UI-08 |
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal, OTA, storage and sleep done; widgets pending | TNG-03 |
 | 9 | Technical debt, CI and release | Maintainability and shipping | Done (TECH-01…06, TECH-08); TECH-07 only if needed | TECH-07 |
@@ -169,9 +169,10 @@ upload part of FIX-24) and the API-01…05 hardware pass.
 | 5 | API robustness | API-07 (API-01/02/03/04/05/06 done) | Done; hardware verification of API-01's final OUTBOX screen and API-02…05 still pending |
 | 6 | UI, stats and sync | UI-07 → UI-08 (UI-01/02/03/04/05/06 done) | Polish |
 | 7 | Technical debt and release | TECH-03 → TECH-08 (done; TECH-07 optional) | Version, OTA, license and hardening |
-| 8 | Kakehashi-inspired extras | EXT-01 → EXT-09 | Practice modes, critical items, audio and stats |
-| 9 | External input (post-v1) | BT-01 → BT-04 | Optional BLE keyboard with the built-in keyboard as fallback |
-| 10 | PaperDIY (post-v1) | PD-01 → PD-05 | Read-only e-paper companion; full reviews after BT |
+| 8 | On-device Wi-Fi (v1.1) | SETUP-09 | Pick the network and type the password on the Cardputer |
+| 9 | Kakehashi-inspired extras | EXT-01 → EXT-09 | Practice modes, critical items, audio and stats |
+| 10 | External input (post-v1) | BT-01 → BT-04 | Optional BLE keyboard with the built-in keyboard as fallback |
+| 11 | PaperDIY (post-v1) | PD-01 → PD-05 | Read-only e-paper companion; full reviews after BT |
 
 ## 1. Radicals and remove `efontJA_16` (v1 blocker)
 
@@ -442,7 +443,8 @@ network, saves the home Wi-Fi, joins it, then serves the station page where the
 token is validated with `GET /user`, the browser sets the clock/time zone and
 the pack can be checked again. Pause, the core device settings, review/lesson
 batch sizes, order and clear auth/rate-limit/offline screens are also on the
-device.
+device. SETUP-09 makes the phone optional for Wi-Fi changes by adding a
+scan/password flow on the Cardputer itself.
 
 - **SETUP-01 — First-boot setup portal.** Wi-Fi scan/password, token entry
   (masked, never logged), timezone and visual-pack check. Port the applicable
@@ -478,6 +480,18 @@ device.
 - **SETUP-08 — About.** Firmware version, pack status, cache status, heap and
   last sync. **Done (2026-10-28):** version, build date, pack, cached batch,
   last sync/offline, Wi-Fi/IP, token presence, time zone and heap.
+- **SETUP-09 — On-device Wi-Fi setup (v1.1).** Choose the 2.4 GHz network and
+  type its password on the Cardputer, without a phone. A scan list shows SSID,
+  signal and security, with a manual SSID for hidden networks; the password
+  field is masked, supports Backspace and a show/hide toggle, and only saves
+  the credentials after a successful join. On failure the password stays
+  editable and the reason is shown (`not found`, `wrong password`, `timeout`,
+  `unsupported`); `Esc` cancels. Reachable from Settings › Wi-Fi and from the
+  boot “Wi-Fi not configured” state; the phone portal stays as the fallback and
+  is still where the token is entered in this task. Reuse
+  `DevWifi::scan/connect` and the existing text-entry path; never log or show
+  the password while masked. A phone-free first boot also needs on-device
+  token entry — a separate follow-up if wanted.
 
 ## 7. UI, stats and sync (M5)
 
