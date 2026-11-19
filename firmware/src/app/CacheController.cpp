@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <new>
 
 #include "app/AboutScreen.h"
 #include "app/App.h"
@@ -307,47 +308,65 @@ bool loadCache() {
 // supplies the data used by the review screens.
 bool loadCachedBatch() {
     if (!state().storage.gFsOk || !state().storage.gSdOk || !kk::DevToken::has()) return false;
-    kk::CacheSnapshot snapshot;
-    if (!kk::cacheLoadSnapshot(&snapshot) || snapshot.assignments.empty()) return false;
-    const uint32_t key = currentAccountKey();
-    if (snapshot.meta.accountKey != key) return false;
+    try {
+        kk::CacheSnapshot snapshot;
+        if (!kk::cacheLoadSnapshot(&snapshot) || snapshot.assignments.empty()) return false;
+        const uint32_t key = currentAccountKey();
+        if (snapshot.meta.accountKey != key) return false;
 
-    kk::SubjectCache subjects;
-    if (!kk::cacheLoadSubjects(SD, &subjects) || subjects.meta.accountKey != key) return false;
+        kk::SubjectCache subjects;
+        if (!kk::cacheLoadSubjects(SD, &subjects) || subjects.meta.accountKey != key) return false;
 
-    kk::ReviewBatch batch;
-    for (const kk::Assignment& a : snapshot.assignments) {
-        const kk::Subject* match = nullptr;
-        for (const kk::Subject& s : subjects.subjects)
-            if (s.id == a.subjectId) {
-                match = &s;
-                break;
+        // Move the subjects instead of copying them: a 52-subject cache has many
+        // small strings, and the copy doubled the heap peak enough to abort
+        // after joining Wi-Fi. The used flags keep component subjects for the
+        // offline detail card.
+        kk::ReviewBatch batch;
+        batch.assignments.reserve(snapshot.assignments.size());
+        batch.subjects.reserve(subjects.subjects.size());
+        std::vector<bool> used(subjects.subjects.size(), false);
+        for (const kk::Assignment& a : snapshot.assignments) {
+            size_t match = subjects.subjects.size();
+            for (size_t i = 0; i < subjects.subjects.size(); ++i)
+                if (subjects.subjects[i].id == a.subjectId) {
+                    match = i;
+                    break;
+                }
+            if (match == subjects.subjects.size()) continue;
+            batch.assignments.push_back(a);
+            if (used[match]) {
+                // Duplicate subject ids are not expected, but keep a valid row
+                // rather than moving the same object twice.
+                batch.subjects.push_back(subjects.subjects[match]);
+            } else {
+                batch.subjects.push_back(std::move(subjects.subjects[match]));
+                used[match] = true;
             }
-        if (!match) continue;
-        batch.assignments.push_back(a);
-        batch.subjects.push_back(*match);
+        }
+        for (size_t i = 0; i < subjects.subjects.size(); ++i) {
+            if (used[i]) continue;
+            batch.subjects.push_back(std::move(subjects.subjects[i]));
+        }
+        if (batch.assignments.empty()) return false;
+        batch.fetchedAt = snapshot.meta.savedAt;
+        batch.ok = true;
+        state().cache.gBatch = std::move(batch);
+        state().cache.gBatchEvicted = false;
+        state().cache.gCachedBatchCount = state().cache.gBatch.assignments.size();
+        pruneCacheOutbox();
+        pruneBatchToSummary(effectiveNow());
+        state().cache.gCachedBatchCount = state().cache.gBatch.assignments.size();
+        state().cache.gBatch.ok = !state().cache.gBatch.assignments.empty() && !state().cache.gBatch.subjects.empty();
+        Serial.printf("[cache] batch loaded: %u assignments, %u subjects\n",
+                      static_cast<unsigned>(state().cache.gBatch.assignments.size()),
+                      static_cast<unsigned>(state().cache.gBatch.subjects.size()));
+        return state().cache.gBatch.ok;
+    } catch (const std::bad_alloc&) {
+        Serial.println("[cache] batch load out of memory");
+        state().cache.gBatch = kk::ReviewBatch{};
+        state().cache.gBatchEvicted = false;
+        return false;
     }
-    // Keep component subjects too, for the offline detail card.
-    for (const kk::Subject& s : subjects.subjects) {
-        if (std::any_of(batch.subjects.begin(), batch.subjects.end(),
-                        [&s](const kk::Subject& x) { return x.id == s.id; }))
-            continue;
-        batch.subjects.push_back(s);
-    }
-    if (batch.assignments.empty()) return false;
-    batch.fetchedAt = snapshot.meta.savedAt;
-    batch.ok = true;
-    state().cache.gBatch = std::move(batch);
-    state().cache.gBatchEvicted = false;
-    state().cache.gCachedBatchCount = state().cache.gBatch.assignments.size();
-    pruneCacheOutbox();
-    pruneBatchToSummary(effectiveNow());
-    state().cache.gCachedBatchCount = state().cache.gBatch.assignments.size();
-    state().cache.gBatch.ok = !state().cache.gBatch.assignments.empty() && !state().cache.gBatch.subjects.empty();
-    Serial.printf("[cache] batch loaded: %u assignments, %u subjects\n",
-                  static_cast<unsigned>(state().cache.gBatch.assignments.size()),
-                  static_cast<unsigned>(state().cache.gBatch.subjects.size()));
-    return state().cache.gBatch.ok;
 }
 
 // Drops the batch's subject strings when the app leaves review mode or starts

@@ -695,8 +695,15 @@ void startReview() {
         state().display.gDirty = true;
         return;
     }
-    if (state().cache.gBatch.assignments.empty() && state().cache.gBatchEvicted) loadCachedBatch();
-    if (state().cache.gBatch.assignments.empty()) {
+    // REV-08: a non-Account order must see the whole frozen due set, not only
+    // the assignments left in a previous batch. When online, fetch it before
+    // loading the cached subjects; only a failed fetch falls back to the cache.
+    const bool explicitOrder = reviewOrderStrategy() != kk::ReviewOrderStrategy::Account;
+    const bool online = kk::DevWifi::connected();
+    const bool fetchDue = explicitOrder && online;
+    if (!fetchDue && state().cache.gBatch.assignments.empty() && state().cache.gBatchEvicted)
+        loadCachedBatch();
+    if (fetchDue || state().cache.gBatch.assignments.empty()) {
         char subtitle[48];
         const uint32_t dueNow = state().session.gSummary.dueReviews(effectiveNow());
         snprintf(subtitle, sizeof subtitle, "%u due items, please wait",
@@ -704,18 +711,32 @@ void startReview() {
         drawLoading("Fetching reviews...", subtitle);
         flushOutbox();
         if (!runBatch()) {
-            if (state().cache.gBatch.httpCode == 401 || state().cache.gBatch.httpCode == 403)
-                setSyncIssue(state().cache.gBatch.httpCode, true, 0, "Reviews");
-            else if (kk::wkAuthBlocked())
-                setSyncIssue(401, true, 0, "Reviews");
-            snprintf(state().ui.gNoticeLine, sizeof state().ui.gNoticeLine, "%s", state().ui.gNetLine);
-            state().ui.gNoticeLine2[0] = 0;
-            state().ui.gNoticeAction = NoticeAction::ReviewError;
-            state().ui.gNoticeActive = true;
-            state().session.gShowHome = false;
-            state().display.gDirty = true;
-            return;
+            // A failed explicit-order fetch may still use the cached batch; a
+            // plain Account start with no batch is the existing error path.
+            if (fetchDue && state().cache.gBatch.assignments.empty() &&
+                state().cache.gBatchEvicted)
+                loadCachedBatch();
+            if (!state().cache.gBatch.assignments.empty()) {
+                Serial.printf("[review] due fetch failed; using %u cached assignments\n",
+                              static_cast<unsigned>(state().cache.gBatch.assignments.size()));
+            } else {
+                if (state().cache.gBatch.httpCode == 401 || state().cache.gBatch.httpCode == 403)
+                    setSyncIssue(state().cache.gBatch.httpCode, true, 0, "Reviews");
+                else if (kk::wkAuthBlocked())
+                    setSyncIssue(401, true, 0, "Reviews");
+                snprintf(state().ui.gNoticeLine, sizeof state().ui.gNoticeLine, "%s",
+                         state().ui.gNetLine);
+                state().ui.gNoticeLine2[0] = 0;
+                state().ui.gNoticeAction = NoticeAction::ReviewError;
+                state().ui.gNoticeActive = true;
+                state().session.gShowHome = false;
+                state().display.gDirty = true;
+                return;
+            }
         }
+    } else if (explicitOrder) {
+        Serial.printf("[review] offline: ordering %u cached assignments\n",
+                      static_cast<unsigned>(state().cache.gBatch.assignments.size()));
     }
     if (kk::wkAuthBlocked()) {
         // Optional study materials/statistics/components can arm the gate after

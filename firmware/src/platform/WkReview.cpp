@@ -30,7 +30,10 @@ DueAssignments fetchDueAssignments(const String& token,
         result.error = "no due subject ids";
         return result;
     }
-    result.assignments.reserve(dueSubjectIds.size());
+    // Do not reserve the whole due set here: 464 Assignment objects would take
+    // the contiguous block the first TLS handshake needs. Reserve one page and
+    // let the vector grow after each response instead.
+    result.assignments.reserve(std::min<size_t>(dueSubjectIds.size(), 60));
     WkSessionGuard session;
     // One page is ~450-600 B per assignment; 60 stays under the 32 KB body
     // buffer on a real account. A truncated page retries smaller and keeps the
