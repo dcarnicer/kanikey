@@ -17,9 +17,10 @@ void showReviewSummary();
 void checkCurrent();
 void advanceFeedback();
 bool reviewAutoAdvance(uint32_t now);
-void endReview();
+// send=false ends the session without submitting pending reviews (SPEED-06).
+void endReview(bool send = true);
 void startReview();
 bool reviewKey(const tgc::KeyEvent& e);
-void applyReviewUpdate(const kk::ReviewUpdate& update, uint32_t pendingAssignment);
+void applyReviewUpdate(const kk::ReviewUpdate& update);
 
 }  // namespace kk::app

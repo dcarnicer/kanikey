@@ -247,13 +247,18 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     d.setTextFont(0);
     d.setTextSize(1);
     d.setTextColor(ui::kFaint, ui::kBg);
-    if (view.feedback)
+    if (view.sending) {
+        char sending[24];
+        snprintf(sending, sizeof sending, "Sending %u/%u", view.sent, view.sendTotal);
+        d.drawString(sending, 6, 125);
+    } else if (view.feedback) {
         d.drawString(view.wrongShortcuts
                          ? "C ok  A later  Tab info"
                          : view.showDetailHint ? "Enter: next  Tab: details" : "Enter: next",
                      6, 125);
-    else
+    } else {
         d.drawString("Enter: check", 6, 125);
+    }
     d.setTextDatum(lgfx::top_right);
     d.drawString(view.escHint ? view.escHint : "Esc: quit", 233, 125);
     d.setTextDatum(lgfx::top_left);
@@ -534,13 +539,19 @@ void drawReviewSummaryScreen(lgfx::LovyanGFX& d, const ReviewSummaryView& view) 
     d.drawString(line, 8, 98);
 
     char outbox[40];
-    if (view.attention)
+    if (view.sending)
+        snprintf(outbox, sizeof outbox, "Sending %u/%u", view.sent, view.sendTotal);
+    else if (view.attention)
         snprintf(outbox, sizeof outbox, "%u need attention", view.attention);
     else if (view.pending)
         snprintf(outbox, sizeof outbox, "%u pending", view.pending);
     else
         snprintf(outbox, sizeof outbox, "All reviews sent");
-    d.setTextColor(view.attention ? ui::kErr : view.pending ? ui::kWarn : ui::kFaint, ui::kBg);
+    d.setTextColor(view.sending ? ui::kWarn
+                   : view.attention ? ui::kErr
+                   : view.pending   ? ui::kWarn
+                                    : ui::kFaint,
+                   ui::kBg);
     d.setTextDatum(lgfx::top_right);
     d.drawString(outbox, 232, 98);
     d.setTextDatum(lgfx::top_left);
@@ -568,6 +579,17 @@ void drawReviewSummaryScreen(lgfx::LovyanGFX& d, const ReviewSummaryView& view) 
         }
         d.setTextColor(ui::kOk, ui::kBg);
         d.drawString(srs, 8, 112);
+    }
+    if (view.sending) {
+        // SPEED-01: a 3 px progress bar under the stage line; Esc stops the
+        // loop and leaves the rest pending for the next sync.
+        d.fillRect(8, 121, 224, 3, ui::kSurfaceHi);
+        const unsigned total = view.sendTotal ? view.sendTotal : 1;
+        const unsigned sent = view.sent > total ? total : view.sent;
+        d.fillRect(8, 121, static_cast<int>(224u * sent / total), 3, ui::kAccentHi);
+        d.setTextColor(ui::kFaint, ui::kBg);
+        d.drawString("Esc: stop", 8, 125);
+        return;
     }
     d.setTextColor(ui::kFaint, ui::kBg);
     d.drawString("Enter: home", 8, 125);

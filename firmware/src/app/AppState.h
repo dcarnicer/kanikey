@@ -27,6 +27,7 @@
 #include "wk/ReviewQueue.h"
 #include "wk/RomajiIme.h"
 #include "wk/SrsCounts.h"
+#include "wk/SubmitPolicy.h"
 #include "wk/Summary.h"
 #include "wk/SyncSteps.h"
 #include "wk/Types.h"
@@ -128,8 +129,16 @@ struct ReviewState {
     // timer is off.
     uint32_t gFeedbackCorrectAt = 0;
     bool gNeedsSubmit = false;
-    uint32_t gPendingSeq = 0;  // outbox record queued at completion, sent on Enter
+    // Outbox record queued by the last completion; keeps its journal patch
+    // paired with the POST (SPEED-01 sends tracked records in a loop).
+    uint32_t gPendingSeq = 0;
     bool gFeedbackCompleted = false;
+    // SPEED-01: pre-review SRS stages for every record queued this session,
+    // and the live progress of a send loop (summary or review hint bar).
+    kk::StageTracker gStageTracker;
+    bool gSending = false;
+    uint32_t gSendSent = 0;
+    uint32_t gSendTotal = 0;
     bool gReviewDetail = false;
     int gReviewDetailPage = 0;
     int gReviewDetailPages = 5;
@@ -139,8 +148,6 @@ struct ReviewState {
     std::string gFeedbackInput;
     kk::SessionItem gCompletedItem;
     StageChange gStageChange;
-    uint32_t gPendingStageAssignment = 0;
-    uint8_t gPendingStageFrom = 0;
     uint32_t gStageUps = 0;        // successful upward moves in the current session
     uint32_t gReviewStartMs = 0;   // millis() when the current session started
     uint32_t gReviewElapsedMs = 0; // latched when the summary is entered

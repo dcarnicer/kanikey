@@ -11,7 +11,9 @@ bool outboxHasAssignment(uint32_t assignmentId);
 size_t outboxFreeSlots();
 void saveOutbox();
 bool queueReviewLocal(const kk::SessionItem& item);
-void sendQueuedReview(uint32_t seq);
+// Sends one queued record now. False when it did not reach WaniKani (offline,
+// gate or rejection); the caller's send loop stops on the first failure.
+bool sendQueuedReview(uint32_t seq);
 void flushOutbox();
 void journalPractice(const kk::SessionItem& item);
 void openOutbox();
