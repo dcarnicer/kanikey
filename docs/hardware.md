@@ -767,7 +767,11 @@ A150 G143 M81 E147 B586).
   the lesson list window and Study/critical windows to the shared primitives;
   lesson/critical/study rows keep their custom 20 px painters. Home,
   Settings and the Wi-Fi list rendered with the same layout after flashing;
-  the remaining window/scroll cases are in the table.
+  the remaining window/scroll cases are in the table. Phase 3 moved wrapping,
+  ellipsis and UTF-8 trimming into `TextLayout` and added the 1bpp icon tables;
+  Home and a real review feedback (answer list, faint synonyms and a two-line
+  hint with `...`) rendered correctly after flashing. Icons are not adopted in
+  screens yet.
 
 ## Round 2 hardware checks
 
