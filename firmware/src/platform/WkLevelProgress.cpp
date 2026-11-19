@@ -41,7 +41,7 @@ bool fetchCount(const String& token, const String& path, uint16_t* out) {
 }
 }  // namespace
 
-LevelProgress fetchLevelProgress(const String& token, uint8_t currentLevel) {
+LevelProgress fetchLevelProgressions(const String& token, uint8_t currentLevel) {
     LevelProgress progress;
     LevelProgressArgs args{currentLevel, &progress};
     const WkBodyResult r = wkGetBodyRetry("/v2/level_progressions", token, 32768,
@@ -61,24 +61,44 @@ LevelProgress fetchLevelProgress(const String& token, uint8_t currentLevel) {
         Serial.println("[level] no matching progression");
         return progress;
     }
+    return progress;
+}
 
+bool fetchLevelKanjiCount(const String& token, uint8_t level, bool passed, uint16_t* out) {
+    if (!out) return false;
+    String path;
+    if (passed) {
+        path = "/v2/assignments?levels=";
+        path += String(static_cast<unsigned>(level));
+        path += "&subject_types=kanji&srs_stages=5,6,7,8,9&hidden=false&page_after_id=999999999";
+    } else {
+        path = "/v2/subjects?levels=";
+        path += String(static_cast<unsigned>(level));
+        path += "&types=kanji&hidden=false&page_after_id=999999999";
+    }
+    return fetchCount(token, path, out);
+}
+
+bool fetchLevelCounts(const String& token, LevelProgress* progress) {
+    if (!progress || !progress->valid) return false;
     // Two tiny collection requests read only total_count: every kanji in the
     // level, and those that reached Guru (stages 5-9). A failure keeps the
     // timestamps but leaves both counts at 0.
-    String totalPath = "/v2/subjects?levels=";
-    totalPath += String(static_cast<unsigned>(progress.level));
-    totalPath += "&types=kanji&hidden=false&page_after_id=999999999";
-    String passedPath = "/v2/assignments?levels=";
-    passedPath += String(static_cast<unsigned>(progress.level));
-    passedPath += "&subject_types=kanji&srs_stages=5,6,7,8,9&hidden=false&page_after_id=999999999";
     uint16_t total = 0;
     uint16_t passed = 0;
-    if (fetchCount(token, totalPath, &total) && fetchCount(token, passedPath, &passed)) {
-        progress.kanjiTotal = total;
-        progress.kanjiPassed = passed;
-    } else {
+    if (!fetchLevelKanjiCount(token, progress->level, false, &total) ||
+        !fetchLevelKanjiCount(token, progress->level, true, &passed))
+        return false;
+    progress->kanjiTotal = total;
+    progress->kanjiPassed = passed;
+    return true;
+}
+
+LevelProgress fetchLevelProgress(const String& token, uint8_t currentLevel) {
+    LevelProgress progress = fetchLevelProgressions(token, currentLevel);
+    if (!progress.valid) return progress;
+    if (!fetchLevelCounts(token, &progress))
         Serial.println("[level] kanji counts unavailable; keeping timestamps only");
-    }
 
     Serial.printf("[level] %u unlocked %u, started %u, passed %u, completed %u, kanji %u/%u\n",
                   static_cast<unsigned>(progress.level),

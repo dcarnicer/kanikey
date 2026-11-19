@@ -235,7 +235,16 @@ void onKeyImpl(const KeyEvent& e) {
                 state().session.gShowHome = false;
                 state().display.gDirty = true;
             } else {
-                startReview();
+                if (state().sync.gSyncJob.active && !state().sync.gSyncJob.modal) {
+                    // Enter during an automatic sync: try the cached batch at
+                    // the next request boundary instead of starting a second
+                    // network fetch (SPEED-03).
+                    state().sync.gSyncJob.interrupted = true;
+                    state().sync.gSyncJob.startReviewPending = true;
+                    state().display.gDirty = true;
+                } else {
+                    startReview();
+                }
             }
         } else {
             retryBoot();
@@ -305,6 +314,11 @@ kk::app::HomeView buildHomeView() {
     view.lessons = state().session.gLessons;
     view.nextReview = state().session.gNextReview;
     view.syncClock = state().session.gSyncClock;
+    const SyncJobState& job = state().sync.gSyncJob;
+    if (job.active && !job.modal) {
+        view.syncTotal = kk::stepCount(job.kind, job.needsUser);
+        view.syncStep = kk::stepNumber(job.step, job.kind, job.needsUser);
+    }
     view.offline = state().cache.gOffline;
     view.srs = state().session.gSrs;
     view.outboxAttention = static_cast<uint32_t>(kk::outboxAttentionCount(state().outbox.gOutbox));
@@ -751,6 +765,10 @@ void loop() {
         }
         onKey(e);
     }
+
+    // Advance the automatic or manual sync by at most one request, then draw
+    // the frame the keys selected.
+    syncAdvance();
 
     if (state().display.gDirty && now - state().display.gLastDrawMs >= 16) {
         draw();
