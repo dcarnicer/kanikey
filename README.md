@@ -164,7 +164,7 @@ already solved and tested on hardware in
 | [docs/api-sync.md](docs/api-sync.md) | WaniKani API, cache, offline queue and data model |
 | [docs/ota.md](docs/ota.md) | OTA manifest, slots, install and rollback |
 | [docs/reuse-tangocho.md](docs/reuse-tangocho.md) | What is reused from Tangocho and how it is ported |
-| [docs/setup.md](docs/setup.md) | Token, visual pack, first boot and troubleshooting |
+| [docs/setup.md](docs/setup.md) | Setup (Wi-Fi, token, packs), first boot, offline and troubleshooting |
 | [docs/decisions.md](docs/decisions.md) | Short log of accepted decisions |
 | [docs/hardware.md](docs/hardware.md) | Measured Cardputer ADV results (heap, SD, Wi-Fi, TLS) |
 | [docs/screens/](docs/screens/) | 240×135 renders (M5GFX fonts and RGB332; individual at 4×, contact sheet at 2×) |

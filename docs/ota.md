@@ -7,7 +7,7 @@ the update. `LittleFS` stays on its partition.
 
 ## Release assets
 
-Every `vX.Y.Z` tag publishes:
+A release contains:
 
 | Asset | Purpose |
 |---|---|
@@ -146,9 +146,11 @@ NVS under `fwfailver` / `fwfailcnt`.
    `cardputer-adv`, writes the manifest with
    `tools/release/firmware_manifest.py` (which checks the tag against
    `Version.h` and refuses an image larger than its slot) and publishes the
-   release. Pass `--pack dist/glyphs.kgp` to publish the public font pack and
-   emit the `pack font` record used by **Download pack**; without it the
-   manifest has no pack record and the portal hides that button.
+   release. The workflow above does not build the public font pack. To include
+   it, build `dist/glyphs.kgp`, run `tools/release/firmware_manifest.py` with
+   `--pack dist/glyphs.kgp`, and attach the file to the release. Without a
+   `pack font` record, **Download pack** reports that the release has no font
+   pack, so the pack must be copied to the card.
 
 The first OTA-capable image must be installed over USB. Every later release
 can arrive over the air. The partition table already has the two slots, so no
