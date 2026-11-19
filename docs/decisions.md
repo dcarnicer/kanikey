@@ -853,3 +853,24 @@ current flat 19-row menu stays until CFG-01. A no-op change performs no NVS
 write. The dev-only `Z <seconds>` idle-sleep hook bypasses the choice list with
 `settingsSetSleepSecondsDev`; normal callers stay validated. CFG-02 owns the
 remaining rows and the settings section UX.
+
+---
+
+## 2026-11-19 — Lesson batch flow (LES-01/02/03)
+
+**Decision:** lessons follow D2: browse every selected card, take a batch quiz
+(L3 `Required` by default, `Skip` optional), then start the whole batch with
+one confirmation. `Enter` on a card only pages/advances; it never sends
+`PUT /assignments/{id}/start`. The start loop treats 2xx and 422 as started,
+stops on any other code, keeps the unstarted items and offers retry. The `Q`
+single-item quiz remains optional and local. Started subjects leave the
+summary and the snapshot immediately.
+
+**Why:** the old per-card `Enter` started a lesson irreversibly while paging,
+and only the last card could be quizzed. The batch flow matches WaniKani and
+makes the start deliberate.
+
+**Implications:** this supersedes the 2026-10-28 “Lesson quiz is optional and
+local-only” decision for the batch gate, not for the `Q` practice. The batch
+quiz and the start never write review/SRS state; only the confirmed start loop
+writes, one `PUT` per item with a `lessonStarted` journal record.

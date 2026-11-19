@@ -142,7 +142,7 @@ minimum free heap above ~44 KB in the 2026-11-19 logs.
 |---:|---|---|---|---|
 | 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Done except a real low-level radical-only lesson; the synthetic radical lesson UI passed | RAD-04 |
 | 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Done: real-account online fetch, deliberate offline reboot and cached session verified (2026-11-19) | CACHE-07 |
-| 3 | Complete lesson flow | List/picker, card, components, quiz, empty state, start and ordering exist; the round-2 browse → quiz → batch-start flow is specified in `docs/spec` | Code complete for v1; radical-only UI verified synthetically; round 2 specified in `docs/spec` | LES-04 |
+| 3 | Complete lesson flow | List/picker, card, components, quiz, empty state, start and ordering exist; the round-2 browse → quiz → batch-start flow is in review | v1 flow complete; LES-01/02/03 in review 2026-11-19 (hardware pending); LES-04/05/06 and the real low-level run open | LES-04 |
 | 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; stats and local review history are live; audio remains | Partial; round 2 specified in `docs/spec` (STATS/AUD) | AUD, STATS |
 | 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Code and docs done; OUTBOX (API-01/05), 401 (API-03) and parse retry (API-04) verified 2026-11-19; 429 (API-02) and 403 still pending | — |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | Done for v1; on-device Wi-Fi setup is v1.1 (SETUP-09) | SETUP-09 |
@@ -168,7 +168,7 @@ real low-level lesson and a real level-up.
 |---:|---|---|---|
 | 0 | Close radicals (parallel) | RAD-04 (RAD-02 done) | Real radical prompts and a radical-only lesson |
 | 1 | Offline cache | CACHE-05 → CACHE-07, TNG-04, TNG-05 | Review and Home work after reboot without network (offline boot verified 2026-11-19) |
-| 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | List, understand, quiz and start lessons (code complete) |
+| 2 | Complete lessons | LESSON-01 → LESSON-08, WK-02, TNG-03 | v1 flow complete; LES-01/02/03 batch flow in review (hardware pending) |
 | 3 | Setup and device UX | TNG-02 (done) | OTA release path (setup/settings complete) |
 | 4 | WaniKani data and detail | WK-11 (WK-01/03/04/05/06/07/08/09/10 done) | Forecast, SRS, level stats and local history/streak done |
 | 5 | API robustness | API-07 (API-01/02/03/04/05/06 done) | OUTBOX/401/parse retry verified 2026-11-19; 429 (API-02) and 403 pending |
@@ -745,6 +745,7 @@ round 2.
 | EXT-05 + WK-11 | STATS-01…STATS-04 | Forecast, history, streak and level progress | done (2026-11-06) |
 | EXT-06 | AUD-01…AUD-03 | Vocabulary audio | partial (AUD-01/02); AUD-03 todo |
 | EXT-09 | REM-01…REM-03 | Device-local reminders and sounds | todo |
+| Complete lesson flow | LES-01, LES-02, LES-03 | Browse → batch quiz → confirmed batch start | review (2026-11-19; hardware pending) |
 | LESSON-08 | LES-04 | Lesson ordering | partial: default order done; L2 choices open |
 
 The other spec groups are tracked in `docs/spec`: ARCH (controllers, settings

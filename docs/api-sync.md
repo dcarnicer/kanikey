@@ -319,9 +319,12 @@ Body:
   batch/sync.
 - The client sends `Content-Type: application/json` and `Content-Length` on
   the PUT, as it does on POST.
-- A 422 means the assignment was already started: the client treats it as
-  success, removes the subject from the lesson buckets and advances the card.
-  Any other non-2xx keeps the item and shows a retry screen.
+- A 422 means the assignment was already started: the batch treats it as
+  success and continues. 2xx and 422 remove the subject from the lesson
+  buckets, save the snapshot and lower Home's count without a sync.
+- Any other non-2xx stops the batch, keeps the unstarted items and shows the
+  failed-items retry screen. Browsing and the local quiz never send a start;
+  only the confirmation does.
 
 ### 3.8 `/review_statistics`
 

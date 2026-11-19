@@ -167,7 +167,7 @@ the field is active.
 
 | Key | Action |
 |---|---|
-| `Enter` | Check answer / continue / open / start lesson / discard in Outbox (today; LES-01 makes it advance a lesson card instead) |
+| `Enter` | Check answer / continue / open / advance a lesson card / start the batch / discard in Outbox |
 | `Esc` | Back / cancel / pause session |
 | `Tab` | Item detail on review feedback |
 | `↑` `↓` | Move focus; in text, `Fn` + arrows |
@@ -568,17 +568,18 @@ history/accuracy side of the item line.
 - If there are no lessons: `No lessons now` + the next review time from
   `/summary`; the next unlock is not known to v1.
 - The list is sorted by level and `lesson_position`.
+- `Space` toggles a row into the batch (at most the configured size); `Enter`
+  studies the selected batch. The list hint is `Space: select  Enter: study`.
 - **Planned (LES-04):** the L2 setting adds `WaniKani` (default), `Radicals →
   Kanji → Vocab` and `Interleave types`; the current list only has the
-  WaniKani order. LES-01 also adds `Space` row selection and changes the hint
-  to `Space: select  Enter: study`; neither is implemented yet.
+  WaniKani order.
 
 **Implementation note (2026-11-06).** The list and picker are live: a scrolling
 list of up to the configured batch, sorted by level and `lesson_position`.
 The device reads up to 60 summary candidates, fetches their assignments and
 base subject levels in bounded pages, sorts the whole pool and only then trims
-to the batch size. Opening a card and paging does not call `PUT /start`; only
-`Enter` on the card starts the lesson. Component meanings, hints and the user's
+to the batch size. Opening a card and paging does not call `PUT /start`;
+`Enter` advances the card and only the confirmed batch start sends requests. Component meanings, hints and the user's
 meaning/reading notes are appended to the paged card after the mnemonic.
 
 ### 5.9 Lesson card
@@ -596,27 +597,22 @@ meaning/reading notes are appended to the paged card after the mnemonic.
 - Mnemonic in three 6×8 lines at 9 px pitch; `Space` or `→` turns the page,
   `←` or Backspace goes back. The page count is clamped to the drawn pages.
 - `Q quiz` opens the optional single-item local quiz.
-- `Enter start` attempts the `PUT` for this one item; a start that cannot reach
-  WaniKani (or gets a 5xx/other 4xx) shows `Could not start lesson` with
-  `HTTP n` or `No connection` and `Enter: retry  Esc: home`, and keeps the
-  card so `Enter` retries it. A 422 counts as already started and advances the
-  card like a 2xx.
-- Bottom hint: `Space p  Q quiz` left and `Enter start  Esc list` right at
-  y=125, with a gap between them.
-- On start, `drawLoading` shows the English main meaning as its subtitle; the
-  built-in font has no Japanese glyphs, so the character is not used there.
-  Then a brief progress animation and the next card; `Esc` returns to the
-  list. The card itself only reads until `Enter`.
-- **Planned (LES-01…LES-04, D2).** `Enter`/`Space`/`Right` will advance to the
-  next page and then the next card; `Enter` will no longer send `PUT /start`.
-  After the last card a batch quiz (LES-02) or the start confirmation (LES-03)
-  follows, and one confirmed action starts the selected batch. The single-card
-  `Enter start` behaviour above is what the current firmware does.
+- `Enter`/`Space`/`Right` page forward; `Enter` on the last page advances to
+  the next card. `Left`/`Backspace` page back or move to the previous card on
+  page 1; `Esc` returns to the list with the batch intact. Nothing is sent
+  while browsing.
+- Bottom hint: `Space p  Q quiz` left and `Enter/Space: next  Esc: list` right
+  at y=125, with a gap between them.
+- After the last card, the batch quiz runs (default) or the start confirmation
+  follows when L3 = Skip. The card itself only reads until the last page.
+- **Implementation (2026-11-19, LES-01/02/03).** The batch flow above is live;
+  the card never sends `PUT /start`. The start confirmation and the per-item
+  progress appear after the quiz (see §5.10).
 
 ### 5.10 Lesson quiz
 
-- `Q` on a lesson card opens an optional local quiz; it is not required before
-  starting the lesson.
+- `Q` on a lesson card opens the optional single-item local quiz; the batch
+  quiz below is the required gate by default.
 - Header `LESSON QUIZ`, `1/2` (or `1/1` for radicals).
 - Meaning first, then reading when the subject has one.
 - Typed answers use the same romaji-to-kana input and answer checker as reviews.
@@ -628,11 +624,11 @@ meaning/reading notes are appended to the paged card after the mnemonic.
   `No /start sent.`; `Enter` returns to the card.
 - `Esc` also returns to the card. The quiz never calls `PUT /start`; starting
   the lesson remains `Enter` on the card.
-- **Planned (LES-02, D2).** After the last card, `Enter` starts a quiz over
-  every selected item, shuffled, with meaning first and reading where the
-  subject has one. Wrong parts requeue; `CHECK` retries the same part. The L3
-  setting (`Required` / `Skip`) is added in `03-settings.md`. `Q` stays as the
-  single-item practice. This is not implemented yet.
+- **Implementation (2026-11-19, LES-02).** After the last card, `Enter` starts
+  a quiz over every selected item, shuffled, with meaning first and reading
+  where the subject has one. Wrong parts requeue; `CHECK` retries the same
+  part. The L3 setting (`Required` / `Skip`) is live; `Q` remains the
+  single-item practice. The quiz never writes; the start confirmation follows.
 
 ### 5.11 Sync
 

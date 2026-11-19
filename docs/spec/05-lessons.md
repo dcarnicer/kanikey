@@ -4,9 +4,9 @@ Decision D2 (2026-11-01) replaces the per-card start with WaniKani's batch flow:
 
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
-| LES-01 | Batch browse | P1 | L | ARCH-01 | 2 | todo |
-| LES-02 | Batch quiz | P1 | M | LES-01 | 2 | todo |
-| LES-03 | Start the batch | P1 | M | LES-01, LES-02; ARCH-03 (journal, optional) | 2 | todo |
+| LES-01 | Batch browse | P1 | L | ARCH-01 | 2 | review (2026-11-19: browse + selection; hardware smoke pending) |
+| LES-02 | Batch quiz | P1 | M | LES-01 | 2 | review (2026-11-19: batch quiz + L3; hardware smoke pending) |
+| LES-03 | Start the batch | P1 | M | LES-01, LES-02; ARCH-03 (journal, optional) | 2 | review (2026-11-19: confirmed start; hardware smoke pending) |
 | LES-04 | Ordering | P2 | M | LES-01, FIX-08, ARCH-03 | 2 | partial (LESSON-08 default order) |
 | LES-05 | Workload guard | P2 | S | LES-01, ARCH-02 | 2 | todo |
 | LES-06 | Card pages by topic | P2 | M | LES-01 | 2 | todo |
@@ -85,6 +85,22 @@ Decision D2 (2026-11-01) replaces the per-card start with WaniKani's batch flow:
 - [ ] Started items leave the summary buckets, the snapshot is saved and Home shows the lower count without a sync.
 - [ ] Offline start shows `Needs Wi-Fi — your batch stays here` and the batch is still browsable.
 - [ ] Each successful start writes one journal entry when ARCH-03 exists.
+
+**Implementation (2026-11-19).** The batch flow is live in
+`LessonController`/`LessonScreens`/`ModalScreens`: `Space` selects up to N,
+`Enter` opens the cards, `Enter`/`Space`/`Right` page forward,
+`Left`/`Backspace` back, `Enter` on the last page starts the batch quiz, and
+the confirmed start loop uses `PUT /assignments/{id}/start` (2xx and 422 are
+started; other codes keep the failed items). Started subjects are removed from
+the summary and snapshot; L3 `ls.quiz` defaults to Required; each started item
+writes a journal record with `lessonStarted`. The pure parts are
+`wk/LessonSession`, `wk/ReviewQueue::buildPractice` and
+`Summary::removeLessonSubjects`; 15 new native tests (231 on the branch, 239 on
+the merged main). Builds: release 1,573,037 B (85.7%), dev 1,640,489 B
+(89.4%). Hardware checks still pending: browse with no `[lesson] start` log, a
+5-item quiz with two mistakes and no outbox growth, a real 5-item start with
+the Home count dropping without a sync, offline start, 422, L3 = Skip and the
+visual checks.
 
 ### LES-04 — Ordering
 
