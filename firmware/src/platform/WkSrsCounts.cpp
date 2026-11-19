@@ -37,11 +37,16 @@ bool fetchTotal(const String& token, const char* path, uint32_t* out) {
 }
 }  // namespace
 
+bool fetchSrsBucket(const String& token, uint8_t bucket, uint32_t* out) {
+    if (!out || bucket > 4) return false;
+    return fetchTotal(token, kBucketPaths[bucket], out);
+}
+
 bool fetchSrsCounts(const String& token, SrsCounts* out) {
     if (!out) return false;
     uint32_t values[5] = {};
-    for (size_t i = 0; i < 5; ++i) {
-        if (!fetchTotal(token, kBucketPaths[i], &values[i])) return false;
+    for (uint8_t i = 0; i < 5; ++i) {
+        if (!fetchSrsBucket(token, i, &values[i])) return false;
     }
     SrsCounts counts;
     counts.apprentice = values[0];

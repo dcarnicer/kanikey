@@ -22,7 +22,10 @@
 
 namespace kk {
 
-constexpr uint16_t kCacheVersion = 11;
+constexpr uint16_t kCacheVersion = 12;
+// v11 files stay readable: their payload has no last-sync times and decodes
+// them as meta.savedAt.
+constexpr uint16_t kCacheVersionMin = 11;
 constexpr size_t kCacheHeaderBytes = 24;
 
 struct CacheMeta {
@@ -36,6 +39,11 @@ struct CacheSnapshot {
     User user;
     LevelProgress levelProgress;
     SrsCounts srs;
+    // Last successful API contact of each kind (SPEED-02). A v11 file has no
+    // payload fields for these; they then default to meta.savedAt.
+    uint32_t lastFullAt = 0;
+    uint32_t lastQuickAt = 0;
+    uint32_t lastUserAt = 0;
     std::vector<Assignment> assignments;
 };
 
@@ -59,7 +67,10 @@ struct ByteSource {
 
 uint32_t cacheAccountKey(std::string_view token);
 
-bool encodeCacheSnapshot(const CacheSnapshot& snapshot, std::vector<uint8_t>* out);
+// `version` exists for the migration test: production always writes
+// kCacheVersion. A version below 12 omits the last-sync times.
+bool encodeCacheSnapshot(const CacheSnapshot& snapshot, std::vector<uint8_t>* out,
+                         uint16_t version = kCacheVersion);
 bool decodeCacheSnapshot(const uint8_t* data, size_t size, CacheSnapshot* out);
 bool encodeSubjectCache(const SubjectCache& cache, std::vector<uint8_t>* out);
 // Same payload without copying the subjects into a SubjectCache.

@@ -40,6 +40,8 @@
 #include "wk/SrsCounts.h"
 #include "wk/Stats.h"
 #include "wk/SubjectCodec.h"
+#include "wk/SyncPlan.h"
+#include "wk/SyncSteps.h"
 #include "wk/Text.h"
 
 using namespace kk;
@@ -2407,6 +2409,9 @@ static void test_cache_snapshot_round_trip() {
     in.levelProgress.kanjiPassed = 17;
     in.levelProgress.valid = true;
     in.srs = SrsCounts{42, 18, 9, 4, 2, true};
+    in.lastFullAt = 1759990000u;
+    in.lastQuickAt = 1760000000u;
+    in.lastUserAt = 1759980000u;
     Assignment a;
     a.id = 100;
     a.subjectId = 42;
@@ -2423,6 +2428,7 @@ static void test_cache_snapshot_round_trip() {
     TEST_ASSERT_GREATER_OR_EQUAL(kCacheHeaderBytes, bytes.size());
     TEST_ASSERT_EQUAL_UINT8('K', bytes[0]);
     TEST_ASSERT_EQUAL_UINT8('A', bytes[3]);
+    TEST_ASSERT_EQUAL_UINT16(kCacheVersion, static_cast<uint16_t>(bytes[4] | (bytes[5] << 8)));
 
     CacheSnapshot out;
     TEST_ASSERT_TRUE(decodeCacheSnapshot(bytes.data(), bytes.size(), &out));
@@ -2451,12 +2457,188 @@ static void test_cache_snapshot_round_trip() {
     TEST_ASSERT_EQUAL_UINT32(4, out.srs.enlightened);
     TEST_ASSERT_EQUAL_UINT32(2, out.srs.burned);
     TEST_ASSERT_EQUAL_UINT32(75, out.srs.total());
+    TEST_ASSERT_EQUAL_UINT32(in.lastFullAt, out.lastFullAt);
+    TEST_ASSERT_EQUAL_UINT32(in.lastQuickAt, out.lastQuickAt);
+    TEST_ASSERT_EQUAL_UINT32(in.lastUserAt, out.lastUserAt);
     TEST_ASSERT_EQUAL(1, out.assignments.size());
     TEST_ASSERT_EQUAL_UINT32(100, out.assignments[0].id);
     TEST_ASSERT_EQUAL_UINT32(42, out.assignments[0].subjectId);
     TEST_ASSERT_EQUAL(3, out.assignments[0].srsStage);
     TEST_ASSERT_TRUE(out.assignments[0].hidden);
     TEST_ASSERT_TRUE(out.assignments[0].pendingReview);
+}
+
+// A v11 snapshot has no last-sync times; all three must come back as savedAt
+// so a device that upgrades does not think it never synced.
+static void test_cache_v11_snapshot_loads() {
+    CacheSnapshot in;
+    in.meta.savedAt = 1760000000u;
+    in.meta.accountKey = cacheAccountKey("token");
+    in.summary.dataUpdatedAt = 1760000123u;
+    in.summary.lessons = {{0, 1, {10}}};
+    in.user.username = "dabi";
+    in.user.level = 7;
+    in.levelProgress.level = 7;
+    in.levelProgress.valid = true;
+    in.srs = SrsCounts{5, 4, 3, 2, 1, true};
+    in.lastFullAt = 1759000000u;
+    in.lastQuickAt = 1759500000u;
+    in.lastUserAt = 1758000000u;
+
+    std::vector<uint8_t> bytes;
+    TEST_ASSERT_TRUE(encodeCacheSnapshot(in, &bytes, 11));
+    TEST_ASSERT_EQUAL_UINT16(11, static_cast<uint16_t>(bytes[4] | (bytes[5] << 8)));
+
+    CacheSnapshot out;
+    TEST_ASSERT_TRUE(decodeCacheSnapshot(bytes.data(), bytes.size(), &out));
+    TEST_ASSERT_EQUAL_UINT32(1760000000u, out.meta.savedAt);
+    TEST_ASSERT_EQUAL_STRING("dabi", out.user.username.c_str());
+    TEST_ASSERT_EQUAL_UINT32(5, out.srs.apprentice);
+    TEST_ASSERT_EQUAL_UINT32(out.meta.savedAt, out.lastFullAt);
+    TEST_ASSERT_EQUAL_UINT32(out.meta.savedAt, out.lastQuickAt);
+    TEST_ASSERT_EQUAL_UINT32(out.meta.savedAt, out.lastUserAt);
+}
+
+// ---------------------------------------------------------------- sync plan
+static kk::SyncTimes syncTimesAt(uint32_t now) {
+    kk::SyncTimes t;
+    t.now = now;
+    t.lastQuick = now ? now - 600u : 0;
+    t.lastFull = now ? now - 600u : 0;
+    t.lastUser = now ? now - 600u : 0;
+    return t;
+}
+
+static void test_sync_plan_manual_is_full() {
+    kk::SyncTimes t = syncTimesAt(1760000000u);
+    t.lastQuick = t.now - 60u;  // even a sync from a minute ago stays Full
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(kk::SyncKind::Full),
+                          static_cast<int>(kk::planSync(kk::SyncKind::Full, false, t, 21600)));
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(kk::SyncKind::Skip),
+                          static_cast<int>(kk::planSync(kk::SyncKind::Skip, true, t, 21600)));
+}
+
+static void test_sync_plan_wake_quick() {
+    const kk::SyncTimes t = syncTimesAt(1760000000u);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(kk::SyncKind::Quick),
+                          static_cast<int>(kk::planSync(kk::SyncKind::Quick, false, t, 21600)));
+}
+
+static void test_sync_plan_full_when_due() {
+    kk::SyncTimes t = syncTimesAt(1760000000u);
+    t.lastFull = t.now - 21600u;
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(kk::SyncKind::Full),
+                          static_cast<int>(kk::planSync(kk::SyncKind::Quick, false, t, 21600)));
+    t.lastFull = 0;
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(kk::SyncKind::Full),
+                          static_cast<int>(kk::planSync(kk::SyncKind::Quick, true, t, 21600)));
+    t = syncTimesAt(1760000000u);
+    t.lastFull = t.now + 60u;  // clock moved backwards
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(kk::SyncKind::Full),
+                          static_cast<int>(kk::planSync(kk::SyncKind::Quick, false, t, 21600)));
+}
+
+static void test_sync_plan_skip_recent() {
+    kk::SyncTimes t = syncTimesAt(1760000000u);
+    t.lastQuick = t.now - 60u;
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(kk::SyncKind::Skip),
+                          static_cast<int>(kk::planSync(kk::SyncKind::Quick, false, t, 21600)));
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(kk::SyncKind::Skip),
+                          static_cast<int>(kk::planSync(kk::SyncKind::Quick, true, t, 21600)));
+    t.lastQuick = t.now - kk::kSyncSkipRecentSeconds;
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(kk::SyncKind::Quick),
+                          static_cast<int>(kk::planSync(kk::SyncKind::Quick, false, t, 21600)));
+}
+
+static void test_sync_plan_untrusted_clock_is_full() {
+    kk::SyncTimes t;
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(kk::SyncKind::Full),
+                          static_cast<int>(kk::planSync(kk::SyncKind::Quick, true, t, 21600)));
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(kk::SyncKind::Quick),
+                          static_cast<int>(kk::planSync(kk::SyncKind::Quick, false, t, 21600)));
+}
+
+static void test_sync_plan_user_due_cold_and_six_hours() {
+    kk::SyncTimes t = syncTimesAt(1760000000u);
+    TEST_ASSERT_TRUE(kk::quickNeedsUser(t, true));
+    t.lastUser = t.now - kk::kUserRefreshSeconds;
+    TEST_ASSERT_TRUE(kk::quickNeedsUser(t, false));
+    t.lastUser = t.now - kk::kUserRefreshSeconds + 1u;
+    TEST_ASSERT_FALSE(kk::quickNeedsUser(t, false));
+    t.lastUser = 0;
+    TEST_ASSERT_TRUE(kk::quickNeedsUser(t, false));
+    kk::SyncTimes untrusted;
+    TEST_ASSERT_TRUE(kk::quickNeedsUser(untrusted, false));
+}
+
+// ---------------------------------------------------------------- prefetch
+static void test_prefetch_when_empty() {
+    TEST_ASSERT_TRUE(kk::shouldPrefetch(5, 0, 20, false));
+}
+
+static void test_prefetch_when_smaller() {
+    TEST_ASSERT_TRUE(kk::shouldPrefetch(30, 19, 20, false));
+}
+
+static void test_prefetch_skips_full_batch() {
+    TEST_ASSERT_FALSE(kk::shouldPrefetch(5, 20, 20, false));
+    TEST_ASSERT_FALSE(kk::shouldPrefetch(5, 25, 20, false));
+    TEST_ASSERT_FALSE(kk::shouldPrefetch(5, 0, 0, false));
+}
+
+static void test_prefetch_skips_low_battery() {
+    TEST_ASSERT_FALSE(kk::shouldPrefetch(5, 0, 20, true));
+}
+
+static void test_prefetch_skips_no_due() {
+    TEST_ASSERT_FALSE(kk::shouldPrefetch(0, 0, 20, false));
+}
+
+// ---------------------------------------------------------------- sync steps
+static void test_sync_steps_quick_count() {
+    TEST_ASSERT_EQUAL_UINT8(4, kk::stepCount(kk::SyncKind::Quick, false));
+    TEST_ASSERT_EQUAL_UINT8(5, kk::stepCount(kk::SyncKind::Quick, true));
+    TEST_ASSERT_EQUAL_UINT8(0, kk::stepCount(kk::SyncKind::Skip, true));
+}
+
+static void test_sync_steps_full_count() {
+    TEST_ASSERT_EQUAL_UINT8(8, kk::stepCount(kk::SyncKind::Full, false));
+    TEST_ASSERT_EQUAL_UINT8(9, kk::stepCount(kk::SyncKind::Full, true));
+}
+
+static void test_sync_steps_optional_flags() {
+    TEST_ASSERT_TRUE(kk::stepIsOptional(kk::SyncStep::Account));
+    TEST_ASSERT_TRUE(kk::stepIsOptional(kk::SyncStep::Level));
+    TEST_ASSERT_TRUE(kk::stepIsOptional(kk::SyncStep::Srs));
+    TEST_ASSERT_TRUE(kk::stepIsOptional(kk::SyncStep::Critical));
+    TEST_ASSERT_TRUE(kk::stepIsOptional(kk::SyncStep::Prefetch));
+    TEST_ASSERT_FALSE(kk::stepIsOptional(kk::SyncStep::Wifi));
+    TEST_ASSERT_FALSE(kk::stepIsOptional(kk::SyncStep::Time));
+    TEST_ASSERT_FALSE(kk::stepIsOptional(kk::SyncStep::Outbox));
+    TEST_ASSERT_FALSE(kk::stepIsOptional(kk::SyncStep::Summary));
+}
+
+static void test_sync_steps_interrupt_skips_optional() {
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(kk::SyncStep::Done),
+                          static_cast<int>(kk::nextStep(kk::SyncKind::Full, kk::SyncStep::Summary, true)));
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(kk::SyncStep::Done),
+                          static_cast<int>(kk::nextStep(kk::SyncKind::Quick, kk::SyncStep::Outbox, true)));
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(kk::SyncStep::Level),
+                          static_cast<int>(kk::nextStep(kk::SyncKind::Full, kk::SyncStep::Summary, false)));
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(kk::SyncStep::Done),
+                          static_cast<int>(kk::nextStep(kk::SyncKind::Quick, kk::SyncStep::Summary, false)));
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(kk::SyncStep::Prefetch),
+                          static_cast<int>(kk::nextStep(kk::SyncKind::Full, kk::SyncStep::Critical, false)));
+    TEST_ASSERT_EQUAL_UINT8(4, kk::stepNumber(kk::SyncStep::Summary, kk::SyncKind::Quick, false));
+    TEST_ASSERT_EQUAL_UINT8(5, kk::stepNumber(kk::SyncStep::Summary, kk::SyncKind::Quick, true));
+    TEST_ASSERT_EQUAL_UINT8(0, kk::stepNumber(kk::SyncStep::Level, kk::SyncKind::Quick, false));
+}
+
+static void test_sync_steps_error_is_terminal() {
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(kk::SyncStep::Failed),
+                          static_cast<int>(kk::nextStep(kk::SyncKind::Full, kk::SyncStep::Failed, false)));
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(kk::SyncStep::Done),
+                          static_cast<int>(kk::nextStep(kk::SyncKind::Quick, kk::SyncStep::Done, false)));
 }
 
 static void test_cache_corruption_is_rejected() {
@@ -3058,8 +3240,25 @@ int main(int, char**) {
     RUN_TEST(test_http_retry_policy);
     RUN_TEST(test_cache_account_key);
     RUN_TEST(test_cache_snapshot_round_trip);
+    RUN_TEST(test_cache_v11_snapshot_loads);
     RUN_TEST(test_cache_corruption_is_rejected);
     RUN_TEST(test_cache_subjects_round_trip);
+    RUN_TEST(test_sync_plan_manual_is_full);
+    RUN_TEST(test_sync_plan_wake_quick);
+    RUN_TEST(test_sync_plan_full_when_due);
+    RUN_TEST(test_sync_plan_skip_recent);
+    RUN_TEST(test_sync_plan_untrusted_clock_is_full);
+    RUN_TEST(test_sync_plan_user_due_cold_and_six_hours);
+    RUN_TEST(test_prefetch_when_empty);
+    RUN_TEST(test_prefetch_when_smaller);
+    RUN_TEST(test_prefetch_skips_full_batch);
+    RUN_TEST(test_prefetch_skips_low_battery);
+    RUN_TEST(test_prefetch_skips_no_due);
+    RUN_TEST(test_sync_steps_quick_count);
+    RUN_TEST(test_sync_steps_full_count);
+    RUN_TEST(test_sync_steps_optional_flags);
+    RUN_TEST(test_sync_steps_interrupt_skips_optional);
+    RUN_TEST(test_sync_steps_error_is_terminal);
     RUN_TEST(test_ota_manifest_parse);
     RUN_TEST(test_ota_manifest_edges);
     RUN_TEST(test_ota_versions);
