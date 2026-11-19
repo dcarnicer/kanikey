@@ -295,6 +295,110 @@ static void test_back_to_back_off_same_item_not_first() {
     TEST_ASSERT_NOT_EQUAL(first, q.queue().front().subjectId);
 }
 
+// ------------------------------------------------------------- REV-05
+
+static void test_wrap_up_keeps_current_and_partial() {
+    std::vector<Subject> subjects;
+    std::vector<Assignment> assignments;
+    ReviewQueue q;
+    q.setBackToBack(false);
+    buildFive(&q, &subjects, &assignments);
+
+    const uint32_t done = q.current()->subjectId;
+    q.answer(AnswerStatus::Correct);  // meaning of the first item
+    const uint32_t current = q.current()->subjectId;
+    TEST_ASSERT_NOT_EQUAL(done, current);
+    const ReviewPart part = q.part();
+
+    TEST_ASSERT_EQUAL(2, q.wrapUp());
+    TEST_ASSERT_EQUAL(2, q.remaining());
+    TEST_ASSERT_EQUAL(current, q.current()->subjectId);
+    TEST_ASSERT_EQUAL(part, q.part());
+    TEST_ASSERT_EQUAL(done, q.queue()[1].subjectId);
+    TEST_ASSERT_TRUE(q.queue()[1].meaningDone);
+    TEST_ASSERT_FALSE(q.queue()[1].readingDone);
+}
+
+static void test_wrap_up_drops_fresh_items() {
+    std::vector<Subject> subjects;
+    std::vector<Assignment> assignments;
+    ReviewQueue q;
+    buildFive(&q, &subjects, &assignments);
+    const uint32_t current = q.current()->subjectId;
+    const ReviewPart part = q.part();
+
+    TEST_ASSERT_EQUAL(1, q.wrapUp());
+    TEST_ASSERT_EQUAL(1, q.remaining());
+    TEST_ASSERT_EQUAL(1, q.queue().size());
+    TEST_ASSERT_EQUAL(current, q.current()->subjectId);
+    TEST_ASSERT_EQUAL(part, q.part());
+}
+
+static void test_wrap_up_is_idempotent() {
+    std::vector<Subject> subjects;
+    std::vector<Assignment> assignments;
+    ReviewQueue q;
+    q.setBackToBack(false);
+    buildFive(&q, &subjects, &assignments);
+
+    q.answer(AnswerStatus::Correct);  // first item is now partial
+    q.answer(AnswerStatus::Correct);  // second item is now partial
+    TEST_ASSERT_EQUAL(3, q.wrapUp());
+
+    std::vector<uint32_t> ids;
+    for (const SessionItem& item : q.queue()) ids.push_back(item.subjectId);
+    const ReviewPart part = q.part();
+
+    TEST_ASSERT_EQUAL(3, q.wrapUp());
+    TEST_ASSERT_EQUAL(3, q.remaining());
+    TEST_ASSERT_EQUAL(part, q.part());
+    TEST_ASSERT_EQUAL(static_cast<unsigned>(ids.size()), static_cast<unsigned>(q.queue().size()));
+    for (size_t i = 0; i < ids.size(); ++i)
+        TEST_ASSERT_EQUAL(ids[i], q.queue()[i].subjectId);
+}
+
+static void test_wrap_up_keeps_reading_only_item() {
+    std::vector<Subject> subjects;
+    std::vector<Assignment> assignments;
+    ReviewQueue q;
+    q.setMeaningFirst(false);
+    q.setBackToBack(false);
+    buildTwo(&q, &subjects, &assignments);
+
+    const uint32_t readingDone = q.current()->subjectId;
+    const uint32_t current = q.queue()[1].subjectId;
+    TEST_ASSERT_EQUAL(ReviewPart::Reading, q.part());
+    q.answer(AnswerStatus::Correct);  // reading done, item interleaved back
+    TEST_ASSERT_EQUAL(2, q.remaining());
+    TEST_ASSERT_EQUAL(current, q.current()->subjectId);
+    TEST_ASSERT_EQUAL(ReviewPart::Reading, q.part());
+
+    TEST_ASSERT_EQUAL(2, q.wrapUp());
+    TEST_ASSERT_EQUAL(2, q.remaining());
+    TEST_ASSERT_EQUAL(readingDone, q.queue()[1].subjectId);
+    TEST_ASSERT_TRUE(q.queue()[1].readingDone);
+    TEST_ASSERT_FALSE(q.queue()[1].meaningDone);
+}
+
+static void test_wrap_up_count_after_current_completes() {
+    std::vector<Subject> subjects;
+    std::vector<Assignment> assignments;
+    ReviewQueue q;
+    buildFive(&q, &subjects, &assignments);
+
+    q.answer(AnswerStatus::Correct);  // current meaning, reading still pending
+    TEST_ASSERT_EQUAL(1, q.wrapUp());  // the untouched rest is dropped
+    TEST_ASSERT_EQUAL(1, q.remaining());
+    TEST_ASSERT_EQUAL(ReviewPart::Reading, q.part());
+
+    const AnswerOutcome o = q.answer(AnswerStatus::Correct);
+    TEST_ASSERT_TRUE(o.completed);
+    TEST_ASSERT_EQUAL(0, q.remaining());
+    TEST_ASSERT_EQUAL(1, q.completedCount());
+    // A later wrap up with nothing left is harmless.
+    TEST_ASSERT_EQUAL(0, q.wrapUp());
+}
+
 void run_queue_tests() {
     RUN_TEST(test_wrong_meaning_then_correct_reading_requeues);
     RUN_TEST(test_wrong_reading_then_correct_meaning_requeues);
@@ -307,4 +411,9 @@ void run_queue_tests() {
     RUN_TEST(test_back_to_back_off_wrong_requeues_other_part);
     RUN_TEST(test_back_to_back_off_single_item_does_not_stall);
     RUN_TEST(test_back_to_back_off_same_item_not_first);
+    RUN_TEST(test_wrap_up_keeps_current_and_partial);
+    RUN_TEST(test_wrap_up_drops_fresh_items);
+    RUN_TEST(test_wrap_up_is_idempotent);
+    RUN_TEST(test_wrap_up_keeps_reading_only_item);
+    RUN_TEST(test_wrap_up_count_after_current_completes);
 }

@@ -25,8 +25,8 @@ void drawPauseScreen(lgfx::LovyanGFX& d, const PauseView& view) {
     d.drawString(progress, 232, 5);
     d.setTextDatum(lgfx::top_left);
 
-    static const char* kRows[] = {"Continue", "End session", "Settings"};
-    for (int i = 0; i < 3; ++i) {
+    static const char* kRows[] = {"Continue", "Wrap up", "End session", "Settings"};
+    for (int i = 0; i < 4; ++i) {
         const int y = 40 + i * 20;
         if (i == view.selectedIndex) {
             d.fillRect(4, y - 2, 232, 16, ui::kSurfaceHi);

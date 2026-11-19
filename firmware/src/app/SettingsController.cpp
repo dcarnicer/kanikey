@@ -575,15 +575,21 @@ void pauseKey(const KeyEvent& e) {
         return;
     }
     if (e.key == Key::Up) {
-        state().ui.gPauseIndex = (state().ui.gPauseIndex + 2) % 3;
+        state().ui.gPauseIndex = (state().ui.gPauseIndex + 3) % 4;
         state().display.gDirty = true;
     } else if (e.key == Key::Down) {
-        state().ui.gPauseIndex = (state().ui.gPauseIndex + 1) % 3;
+        state().ui.gPauseIndex = (state().ui.gPauseIndex + 1) % 4;
         state().display.gDirty = true;
     } else if (e.key == Key::Enter) {
         if (state().ui.gPauseIndex == 0) {
             state().ui.gPauseActive = false;
         } else if (state().ui.gPauseIndex == 1) {
+            // REV-05: keep the current item and the items already in progress;
+            // drop the untouched rest and return to the current question.
+            state().review.gWrapUp = true;
+            state().review.gQueue.wrapUp();
+            state().ui.gPauseActive = false;
+        } else if (state().ui.gPauseIndex == 2) {
             state().ui.gPauseActive = false;
             endReview();
         } else {

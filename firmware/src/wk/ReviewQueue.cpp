@@ -251,4 +251,21 @@ void ReviewQueue::skip() {
     if (!queue_.empty()) setPart(queue_.front());
 }
 
+size_t ReviewQueue::wrapUp() {
+    if (queue_.empty()) return 0;
+    // The current item stays even when it is untouched; behind it only items
+    // already in progress survive. The current part is left alone so the
+    // question on screen does not change.
+    std::deque<SessionItem> kept;
+    kept.push_back(queue_.front());
+    for (size_t i = 1; i < queue_.size(); ++i) {
+        const SessionItem& item = queue_[i];
+        if ((item.needsMeaning && item.meaningDone) ||
+            (item.needsReading && item.readingDone))
+            kept.push_back(item);
+    }
+    queue_.swap(kept);
+    return queue_.size();
+}
+
 }  // namespace kk
