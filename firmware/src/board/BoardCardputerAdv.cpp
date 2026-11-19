@@ -24,6 +24,8 @@
 #if defined(TGC_BOARD_CARDPUTER_ADV) || defined(TGC_BOARD_M5)
 #include <HWCDC.h>
 #include <M5Unified.h>
+#include <WiFi.h>
+#include <driver/gpio.h>
 #include <driver/rtc_io.h>
 #include <esp_random.h>
 #include <esp_sleep.h>
@@ -148,6 +150,28 @@ bool setupKeyboard() {
 }
 
 bool anyKeyDown() { return gKeysDown[0] || gKeysDown[1]; }
+
+// G0 and every key up first, or the wake level would be there at once (a key's
+// release asserts INT too). The FIFO is drained and the interrupt cleared
+// meanwhile, so INT is high when the chip sleeps. A key still down after 3 s
+// (or an INT that stays low) leaves G0 as the only wake source. True when the
+// keyboard INT may be used as a wake source too.
+bool waitForKeysUp() {
+    const uint32_t t0 = millis();
+    bool kbdWake = gKbd;
+    for (;;) {
+        if (gKbd) readKeyboard(false);
+        const bool g0Up = digitalRead(kSelectPin) == HIGH;
+        const bool kbdIdle = !gKbd || (!anyKeyDown() && digitalRead(kKbdIntPin) == HIGH);
+        if (g0Up && kbdIdle) break;
+        if (millis() - t0 >= 3000) {
+            kbdWake = false;
+            if (g0Up) break;
+        }
+        delay(10);
+    }
+    return kbdWake;
+}
 
 }  // namespace
 
@@ -287,23 +311,7 @@ void deepSleep() {
     M5.Display.setBrightness(0);
     M5.Display.sleep();
     M5.Display.waitDisplay();
-    // G0 and every key up first, or the wake level would be there at once (a
-    // key's release asserts INT too). The FIFO is drained and the interrupt
-    // cleared meanwhile, so INT is high when the chip sleeps. A key still down
-    // after 3 s (or an INT that stays low) leaves G0 as the only wake source.
-    const uint32_t t0 = millis();
-    bool kbdWake = gKbd;
-    for (;;) {
-        if (gKbd) readKeyboard(false);
-        const bool g0Up = digitalRead(kSelectPin) == HIGH;
-        const bool kbdIdle = !gKbd || (!anyKeyDown() && digitalRead(kKbdIntPin) == HIGH);
-        if (g0Up && kbdIdle) break;
-        if (millis() - t0 >= 3000) {
-            kbdWake = false;
-            if (g0Up) break;
-        }
-        delay(10);
-    }
+    const bool kbdWake = waitForKeysUp();
     // Both lines have external pull-ups; the RTC ones are a belt-and-braces
     // default while the digital pads are powered down.
     esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
@@ -319,6 +327,48 @@ void deepSleep() {
     Serial.flush();
     esp_deep_sleep_start();
 }
+
+bool lightSleep(uint32_t maxMs) {
+    M5.Display.setBrightness(0);
+    M5.Display.sleep();
+    M5.Display.waitDisplay();
+    // Light sleep keeps the radio's domain powered unless Wi-Fi is off; an
+    // idle device does not need it. The next sync joins again through DevWifi.
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    const bool kbdWake = waitForKeysUp();
+    // These are digital pins in light sleep (no RTC-domain reset happens), so
+    // the normal pull-ups are the ones GPIO wake uses. G0 stays a wake source
+    // even when a key is stuck; the keyboard INT is added only when it is idle
+    // (the same 3 s fallback as deepSleep()).
+    pinMode(kSelectPin, INPUT_PULLUP);
+    pinMode(kKbdIntPin, INPUT_PULLUP);
+    gpio_wakeup_enable(kSelectPin, GPIO_INTR_LOW_LEVEL);
+    if (kbdWake) gpio_wakeup_enable(kKbdIntPin, GPIO_INTR_LOW_LEVEL);
+    esp_sleep_enable_gpio_wakeup();
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+    if (maxMs)
+        esp_sleep_enable_timer_wakeup(static_cast<uint64_t>(maxMs) * 1000ull);
+    else
+        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+    Serial.flush();
+    esp_light_sleep_start();
+    const esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+    // The light-sleep sources must not leak into the next deepSleep() (which
+    // sets up EXT1 itself) or into a later light sleep with a different slice.
+    gpio_wakeup_disable(kSelectPin);
+    gpio_wakeup_disable(kKbdIntPin);
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+    M5.Display.wakeup();
+    M5.Display.setBrightness(gBrightness);
+    // The key that woke the chip only wakes the screen, like the blank-panel
+    // path: drain its FIFO entry now so it never reaches the app as an action.
+    if (gKbd) readKeyboard(false);
+    gKbdPolledAt = millis();
+    return cause != ESP_SLEEP_WAKEUP_TIMER;
+}
+
+bool wokeFromTimer() { return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER; }
 
 uint64_t rtcMicros() { return esp_rtc_get_time_us(); }
 bool powerButtonClicked() { return false; }  // a power switch, no button
