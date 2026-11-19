@@ -74,6 +74,7 @@
 #include "wk/Stats.h"
 #include "wk/SubjectText.h"
 #include "wk/Time.h"
+#include "ui/ListView.h"
 #include "ui/Theme.h"
 
 namespace kk::app {
@@ -429,9 +430,11 @@ void studyMenuKey(const KeyEvent& e) {
         return;
     }
     if (e.key == Key::Up)
-        state().study.gStudyIndex = (state().study.gStudyIndex + kk::app::kStudyRows - 1) % kk::app::kStudyRows;
+        state().study.gStudyIndex =
+            listMoveSelection(state().study.gStudyIndex, kk::app::kStudyRows, -1, true);
     else if (e.key == Key::Down)
-        state().study.gStudyIndex = (state().study.gStudyIndex + 1) % kk::app::kStudyRows;
+        state().study.gStudyIndex =
+            listMoveSelection(state().study.gStudyIndex, kk::app::kStudyRows, 1, true);
     else if (e.key == Key::Enter) {
         if (state().study.gStudyIndex == 2)
             openCriticalList();
@@ -465,9 +468,11 @@ void criticalListKey(const KeyEvent& e) {
     }
     if (total > 0) {
         if (e.key == Key::Up)
-            state().study.gCriticalIndex = (state().study.gCriticalIndex + total - 1) % total;
+            state().study.gCriticalIndex =
+                listMoveSelection(state().study.gCriticalIndex, total, -1, true);
         else if (e.key == Key::Down)
-            state().study.gCriticalIndex = (state().study.gCriticalIndex + 1) % total;
+            state().study.gCriticalIndex =
+                listMoveSelection(state().study.gCriticalIndex, total, 1, true);
         else if (e.key == Key::Enter) {
             const kk::Subject* s = state().study.gCriticalRows[static_cast<size_t>(state().study.gCriticalIndex)].subject;
             if (s) {

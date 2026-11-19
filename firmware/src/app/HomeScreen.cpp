@@ -4,6 +4,8 @@
 
 #include <cstdio>
 
+#include "ui/HintBar.h"
+
 namespace kk::app {
 
 void drawHomeScreen(lgfx::LovyanGFX& d, const HomeView& view) {
@@ -125,17 +127,15 @@ void drawHomeScreen(lgfx::LovyanGFX& d, const HomeView& view) {
         d.setTextColor(ui::kFaint, ui::kBg);
         d.drawString(view.levelLine, 8, 117);
     }
-    d.setTextColor(ui::kFaint, ui::kBg);
-    const char* hint = "Enter: reviews  L  S  Esc: menu";
+    const char* hint;
     if (view.outboxAttention) {
-        hint = "O: outbox  Enter  S  Esc: menu";
-        if (d.textWidth(hint) > 224) hint = "O  Enter  S  Esc: menu";
-        if (d.textWidth(hint) > 224) hint = "O  S  Esc: menu";
-    } else if (d.textWidth(hint) > 224) {
-        hint = "Enter  L  S  Esc: menu";
-        if (d.textWidth(hint) > 224) hint = "Enter  S  Esc: menu";
+        hint = ui::fitHint(d, {"O: outbox  Enter  S  Esc: menu",
+                               "O  Enter  S  Esc: menu", "O  S  Esc: menu"});
+    } else {
+        hint = ui::fitHint(d, {"Enter: reviews  L  S  Esc: menu",
+                               "Enter  L  S  Esc: menu", "Enter  S  Esc: menu"});
     }
-    d.drawString(hint, 8, 125);
+    ui::drawHintLeft(d, hint);
 }
 
 }  // namespace kk::app

@@ -76,6 +76,7 @@
 #include "wk/Stats.h"
 #include "wk/SubjectText.h"
 #include "wk/Time.h"
+#include "ui/ListView.h"
 #include "ui/Theme.h"
 
 namespace kk::app {
@@ -520,7 +521,8 @@ void settingsKey(const KeyEvent& e) {
         if (rowCount) {
             const int count = static_cast<int>(rowCount);
             state().ui.gSettingsRow =
-                (state().ui.gSettingsRow + (e.key == Key::Down ? 1 : count - 1)) % count;
+                listMoveSelection(state().ui.gSettingsRow, count,
+                                  e.key == Key::Down ? 1 : -1, true);
         }
         state().display.gDirty = true;
         return;

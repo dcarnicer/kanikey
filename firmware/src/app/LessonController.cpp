@@ -79,6 +79,7 @@
 #include "wk/Text.h"
 #include "wk/Time.h"
 #include "wk/WorkloadGuard.h"
+#include "ui/ListView.h"
 #include "ui/Theme.h"
 
 namespace kk::app {
@@ -1142,13 +1143,15 @@ void lessonListKey(const KeyEvent& e) {
         return;
     }
     if (e.key == Key::Up) {
-        l.gLessonBrowse.setCursor(l.gLessonBrowse.cursor() == 0
-                                      ? total - 1
-                                      : l.gLessonBrowse.cursor() - 1);
+        l.gLessonBrowse.setCursor(
+            static_cast<size_t>(listMoveSelection(static_cast<int>(l.gLessonBrowse.cursor()),
+                                                  static_cast<int>(total), -1, true)));
         l.gLessonNote[0] = 0;
         state().display.gDirty = true;
     } else if (e.key == Key::Down) {
-        l.gLessonBrowse.setCursor((l.gLessonBrowse.cursor() + 1) % total);
+        l.gLessonBrowse.setCursor(
+            static_cast<size_t>(listMoveSelection(static_cast<int>(l.gLessonBrowse.cursor()),
+                                                  static_cast<int>(total), 1, true)));
         l.gLessonNote[0] = 0;
         state().display.gDirty = true;
     } else if (e.key == Key::Other &&

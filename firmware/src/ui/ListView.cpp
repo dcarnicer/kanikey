@@ -19,7 +19,10 @@ void drawList(lgfx::LovyanGFX& d, const ListWindow& window, ListRowFn row,
             d.fillRect(style.x, y - 2, 2, style.rowHeight, style.focusBar);
         }
         d.setTextDatum(lgfx::top_left);
-        if (row) row(d, index, style.x + 6, y, style.width - 6, focus, ctx);
+        if (row) {
+            const int textX = style.x + style.textInset;
+            row(d, index, textX, y, style.width - style.textInset, focus, ctx);
+        }
     }
     d.setTextDatum(lgfx::top_left);
 

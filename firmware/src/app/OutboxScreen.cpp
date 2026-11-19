@@ -2,9 +2,10 @@
 // startWrite()/endWrite() (the caller owns the transfer window).
 #include "app/OutboxScreen.h"
 
-#include <algorithm>
 #include <cstdio>
 
+#include "ui/HintBar.h"
+#include "ui/ListView.h"
 #include "ui/Text.h"
 #include "wk/Utf8.h"
 
@@ -34,6 +35,26 @@ uint16_t reasonColor(OutboxReasonKind kind) {
     return ui::kFaint;
 }
 
+void drawOutboxRow(lgfx::LovyanGFX& d, int index, int x, int y, int width, bool focus,
+                   const void* ctx) {
+    (void)width;
+    const OutboxView& view = *static_cast<const OutboxView*>(ctx);
+    const OutboxRowView& item = view.rows[static_cast<size_t>(index)];
+
+    d.setTextFont(0);
+    d.setTextSize(1);
+    const int reasonWidth = d.textWidth(item.reason.c_str());
+    std::string label = item.label;
+    fitBack(d, label, 212 - reasonWidth);
+
+    d.setTextColor(focus ? ui::kText : ui::kDim, focus ? ui::kSurfaceHi : ui::kBg);
+    d.drawString(label.c_str(), x, y);
+    d.setTextDatum(lgfx::top_right);
+    d.setTextColor(reasonColor(item.reasonKind), focus ? ui::kSurfaceHi : ui::kBg);
+    d.drawString(item.reason.c_str(), 228, y);
+    d.setTextDatum(lgfx::top_left);
+}
+
 }  // namespace
 
 void drawOutboxScreen(lgfx::LovyanGFX& d, const OutboxView& view) {
@@ -47,20 +68,14 @@ void drawOutboxScreen(lgfx::LovyanGFX& d, const OutboxView& view) {
     d.drawString("OUTBOX", 6, 2);
     char count[32];
     snprintf(count, sizeof count, "%u need attention", view.total);
-    d.setTextFont(0);
-    d.setTextDatum(lgfx::top_right);
-    d.setTextColor(ui::kErr, ui::kBg);
-    d.drawString(count, 232, 5);
-    d.setTextDatum(lgfx::top_left);
+    ui::drawHintRight(d, count, ui::kErr, 232, 5);
 
     if (view.rows.empty()) {
         d.drawFastHLine(4, 22, 232, ui::kLine);
         d.setTextFont(1);
         d.setTextColor(ui::kDim, ui::kBg);
         d.drawString("No reviews need attention", 8, 52);
-        d.setTextFont(0);
-        d.setTextColor(ui::kFaint, ui::kBg);
-        d.drawString("Esc: back", 8, 124);
+        ui::drawHintLeft(d, "Esc: back", ui::kFaint, 8, 124);
         return;
     }
 
@@ -88,9 +103,7 @@ void drawOutboxScreen(lgfx::LovyanGFX& d, const OutboxView& view) {
             d.drawString(view.note.c_str(), 8, 112);
         }
 
-        d.setTextFont(0);
-        d.setTextColor(ui::kFaint, ui::kBg);
-        d.drawString("Enter: discard  Esc: cancel", 8, 124);
+        ui::drawHintLeft(d, "Enter: discard  Esc: cancel", ui::kFaint, 8, 124);
         return;
     }
 
@@ -100,48 +113,13 @@ void drawOutboxScreen(lgfx::LovyanGFX& d, const OutboxView& view) {
     if (selectedIndex < 0) selectedIndex = 0;
 
     constexpr int kVisibleRows = 7;
-    constexpr int kRowY = 28;
-    constexpr int kRowH = 12;
-    int top = selectedIndex - kVisibleRows / 2;
-    if (top < 0) top = 0;
-    const int maxTop = std::max(0, static_cast<int>(view.rows.size()) - kVisibleRows);
-    if (top > maxTop) top = maxTop;
-
-    for (int row = 0; row < kVisibleRows; ++row) {
-        const int index = top + row;
-        if (index >= static_cast<int>(view.rows.size())) break;
-        const OutboxRowView& item = view.rows[static_cast<size_t>(index)];
-        const bool focus = index == selectedIndex;
-        const int y = kRowY + row * kRowH;
-        if (focus) {
-            d.fillRect(4, y - 2, 228, kRowH, ui::kSurfaceHi);
-            d.fillRect(4, y - 2, 2, kRowH, ui::kAccent);
-        }
-
-        const int reasonWidth = d.textWidth(item.reason.c_str());
-        std::string label = item.label;
-        fitBack(d, label, 212 - reasonWidth);
-
-        d.setTextFont(0);
-        d.setTextSize(1);
-        d.setTextColor(focus ? ui::kText : ui::kDim, focus ? ui::kSurfaceHi : ui::kBg);
-        d.drawString(label.c_str(), 10, y);
-        d.setTextDatum(lgfx::top_right);
-        d.setTextColor(reasonColor(item.reasonKind), focus ? ui::kSurfaceHi : ui::kBg);
-        d.drawString(item.reason.c_str(), 228, y);
-        d.setTextDatum(lgfx::top_left);
-    }
-
-    if (view.rows.size() > kVisibleRows) {
-        constexpr int kTrackY = kRowY;
-        constexpr int kTrackH = kVisibleRows * kRowH - 4;
-        d.fillRect(235, kTrackY, 2, kTrackH, ui::kLine);
-        const int thumbH =
-            std::max(10, kTrackH * kVisibleRows / static_cast<int>(view.rows.size()));
-        const int thumbY = kTrackY + (kTrackH - thumbH) * top /
-                                         (static_cast<int>(view.rows.size()) - kVisibleRows);
-        d.fillRect(235, thumbY, 2, thumbH, ui::kAccentHi);
-    }
+    const ui::ListWindow window =
+        ui::listWindow(static_cast<int>(view.rows.size()), selectedIndex, kVisibleRows);
+    ui::ListStyle style;
+    style.y = 28;
+    style.rowHeight = 12;
+    style.trackHeight = kVisibleRows * style.rowHeight - 4;
+    ui::drawList(d, window, drawOutboxRow, &view, style);
 
     if (!view.note.empty()) {
         d.setTextFont(0);
@@ -149,10 +127,7 @@ void drawOutboxScreen(lgfx::LovyanGFX& d, const OutboxView& view) {
         d.setTextColor(ui::kErr, ui::kBg);
         d.drawString(view.note.c_str(), 8, 112);
     }
-    d.setTextFont(0);
-    d.setTextSize(1);
-    d.setTextColor(ui::kFaint, ui::kBg);
-    d.drawString("Enter: review  D: discard  Esc: back", 8, 124);
+    ui::drawHintLeft(d, "Enter: review  D: discard  Esc: back", ui::kFaint, 8, 124);
 }
 
 }  // namespace kk::app

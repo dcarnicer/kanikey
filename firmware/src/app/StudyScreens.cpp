@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include "ui/HintBar.h"
+#include "ui/ListView.h"
 #include "ui/Widgets.h"
 #include "wk/Utf8.h"
 
@@ -35,8 +37,10 @@ void drawStudyMenuScreen(lgfx::LovyanGFX& d, const StudyMenuView& view) {
     d.drawString("EXTRA STUDY", 6, 2);
     d.drawFastHLine(4, 22, 232, ui::kLine);
 
-    for (int i = 0; i < kStudyRows; ++i) {
-        const int y = 30 + i * 20;
+    const ui::ListWindow window = ui::listWindow(kStudyRows, view.selectedIndex, kStudyRows);
+    for (int row = 0; row < window.rows; ++row) {
+        const int i = window.first + row;
+        const int y = 30 + row * 20;
         const bool focus = i == view.selectedIndex;
         if (focus) {
             d.fillRect(4, y - 1, 228, 19, ui::kSurfaceHi);
@@ -61,9 +65,7 @@ void drawStudyMenuScreen(lgfx::LovyanGFX& d, const StudyMenuView& view) {
         d.setTextColor(ui::kWarn, ui::kBg);
         d.drawString(view.note, 8, 112);
     }
-    d.setTextFont(0);
-    d.setTextColor(ui::kFaint, ui::kBg);
-    d.drawString("Enter: open  Esc: home", 8, 125);
+    ui::drawHintLeft(d, "Enter: open  Esc: home");
 }
 
 void drawCriticalListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
@@ -81,9 +83,7 @@ void drawCriticalListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         d.setTextFont(1);
         d.setTextColor(ui::kFaint, ui::kBg);
         d.drawString("No critical items", 8, 56);
-        d.setTextFont(0);
-        d.setTextColor(ui::kFaint, ui::kBg);
-        d.drawString("Esc: back", 8, 125);
+        ui::drawHintLeft(d, "Esc: back");
         return;
     }
     char count[16];
@@ -96,10 +96,9 @@ void drawCriticalListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     d.fillRect(0, 14, 240, 2, ui::kSurfaceHi);
 
     constexpr int kVisible = 5;
-    int top = std::max(0, view.selectedIndex - kVisible / 2);
-    if (top + kVisible > total) top = std::max(0, total - kVisible);
-    for (int row = 0; row < kVisible && top + row < total; ++row) {
-        const int i = top + row;
+    const ui::ListWindow window = ui::listWindow(total, view.selectedIndex, kVisible);
+    for (int row = 0; row < window.rows; ++row) {
+        const int i = window.first + row;
         const CriticalRowView& item = view.rows[static_cast<size_t>(i)];
         const int y = 18 + row * 20;
         if (i == view.selectedIndex) {
@@ -132,12 +131,11 @@ void drawCriticalListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         constexpr int kTrackH = 100;
         d.fillRect(236, kTrackY, 2, kTrackH, ui::kLine);
         const int thumbH = std::max(10, kTrackH * kVisible / total);
-        const int thumbY = kTrackY + (kTrackH - thumbH) * top / std::max(1, total - kVisible);
+        const int thumbY =
+            kTrackY + (kTrackH - thumbH) * window.first / std::max(1, total - kVisible);
         d.fillRect(236, thumbY, 2, thumbH, ui::kAccentHi);
     }
-    d.setTextFont(0);
-    d.setTextColor(ui::kFaint, ui::kBg);
-    d.drawString("Enter: detail  P: practice  Esc: back", 8, 125);
+    ui::drawHintLeft(d, "Enter: detail  P: practice  Esc: back");
 }
 
 }  // namespace kk::app
