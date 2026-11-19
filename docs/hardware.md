@@ -759,8 +759,9 @@ A150 G143 M81 E147 B586).
   screen table. On hardware: Home, Settings, Pause (Continue/Wrap up/End
   session/Settings), About (`Font: 7269`, `Rad: 498`), the empty Outbox, the
   lesson list (`1/5`, five vocab rows) and the setup portal (`835570`) render
-  normally. The Pause→Settings→About return chain, sleep/dim, firmware install,
-  low battery and debug routes remain.
+  normally. The full `Pause → Settings → System → About → Esc ×3` chain returned
+  to Pause with Settings selected. Sleep/dim, firmware install, low battery and
+  debug routes remain.
 - **TNG-03.** Fifteen native tests cover the list-window math and hint
   fallbacks; no screen is migrated yet, so there is nothing to see on hardware.
 
