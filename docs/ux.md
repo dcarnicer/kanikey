@@ -823,8 +823,9 @@ the mnemonic. **Hardware pending:** the full quiz with mistakes, offline start,
   R6 `Typos` now selects WaniKani/Strict in reviews and both lesson quizzes;
   R7 `Wrong answer actions` (Off) adds C/A, R9 `Details on wrong` (Off) opens
   the failed mnemonic and R12 `Submit reviews` chooses when completed reviews
-  are POSTed. R2/R3 await REV-08, and R4's `Random` value is stored but the
-  build only distinguishes Meaning and Reading. L2 `Order`, L4–L6 and the
+  are POSTed, and R2/R3 order and group the due set before the batch limit.
+  R4's `Random` value is stored but the build only distinguishes Meaning and
+  Reading. L2 `Order`, L4–L6 and the
   other keyed rows are live where `03-settings.md` says so; P5–P6 and M1–M7
   still await their owners. The current build reads R1, R4 (Meaning/Reading),
   R5–R12, L1–L6, S1–S5, Y1–Y3, P1–P4 and the actions.
