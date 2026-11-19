@@ -74,6 +74,7 @@
 #include "wk/SessionStats.h"
 #include "wk/Stats.h"
 #include "wk/SubjectText.h"
+#include "wk/Text.h"
 #include "wk/Time.h"
 #include "ui/Theme.h"
 
@@ -103,12 +104,12 @@ void clearReviewInput() {
 
 void feedReviewChar(char c) {
     if (state().review.gQueue.part() == kk::ReviewPart::Meaning) {
-        state().review.gMeaningInput.push_back(c);
+        kk::appendCapped(state().review.gMeaningInput, c, kk::kMaxAnswerBytes);
     } else {
 #ifdef KANIKEY_DEV
         state().review.gDirectReading.clear();
 #endif
-        state().review.gIme.feed(c);
+        state().review.gIme.feedCapped(c, kk::kMaxAnswerBytes);
     }
     state().display.gDirty = true;
 }
@@ -602,7 +603,10 @@ bool reviewKey(const KeyEvent& e) {
         return true;
     }
     if (e.key == Key::Backspace) {
-        if (state().review.gQueue.part() == kk::ReviewPart::Meaning) {
+        // REV-10: Fn or Ctrl clears the field, including the romaji raw line.
+        if (state().ui.gFn || state().ui.gCtrl) {
+            clearReviewInput();
+        } else if (state().review.gQueue.part() == kk::ReviewPart::Meaning) {
             if (!state().review.gMeaningInput.empty()) state().review.gMeaningInput.pop_back();
         }
 #ifdef KANIKEY_DEV

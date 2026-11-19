@@ -813,6 +813,24 @@ void openGlyphPacks(bool checkCrc) {
 
 void onKey(const KeyEvent& e) { onKeyImpl(e); }
 
+namespace {
+
+// REV-10: the only states that own an editable answer field. Feedback, the
+// review detail card, Pause and the other modals keep their own key handling.
+bool answerFieldActive() {
+    if (state().ui.gHelpActive || state().ui.gPauseActive || state().ui.gSettingsActive ||
+        state().ui.gNoticeActive || state().review.gReviewDetail)
+        return false;
+    if (state().review.gReviewActive) return !state().review.gFeedback;
+    if (state().lesson.gLessonQuizActive)
+        return !state().lesson.gLessonQuiz.feedback() && !state().lesson.gLessonQuiz.complete();
+    if (state().lesson.gLessonBatchQuizActive)
+        return !state().lesson.gLessonBatchFeedback && !state().lesson.gLessonBatchQueue.empty();
+    return false;
+}
+
+}  // namespace
+
 void setup() {
     Serial.setRxBufferSize(4096);
     Serial.begin(115200);
@@ -923,6 +941,7 @@ void loop() {
 
     bool firstKey = true;
     KeyEvent e;
+    static tgc::KeyRepeat keyRepeat;
     while (tgc::board::nextKeyEvent(&e)) {
         state().ui.gLastInputAt = now;
         if (firstKey) {
@@ -930,6 +949,7 @@ void loop() {
             if (state().ui.gDimmed) wakeScreen();
         }
         if (e.key == Key::None) {
+            keyRepeat.cancel();
 #ifdef KANIKEY_DEV
             if (state().lesson.gDevKeyTest) {
                 Serial.println("[key] test marker (all released)");
@@ -942,7 +962,22 @@ void loop() {
             state().display.gDirty = true;
             continue;
         }
+        if (e.down)
+            keyRepeat.down(e.key, now);
+        else
+            keyRepeat.up(e.key);
         onKey(e);
+    }
+
+    // REV-10: a held Backspace deletes again after 400 ms, then every 120 ms.
+    // Only an editable answer field consumes it; Enter and Esc never repeat.
+    const Key repeated = keyRepeat.poll(now);
+    if (repeated == Key::Backspace && answerFieldActive()) {
+        state().ui.gLastInputAt = now;
+        KeyEvent synthetic;
+        synthetic.key = Key::Backspace;
+        synthetic.down = true;
+        onKey(synthetic);
     }
 
     // Advance the automatic or manual sync by at most one request, then draw

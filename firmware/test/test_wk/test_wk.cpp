@@ -87,7 +87,8 @@ static void test_romaji_ime_editing() {
     TEST_ASSERT_EQUAL_STRING("たべ", ime.text().c_str());
     TEST_ASSERT_EQUAL_STRING("tabe", ime.raw().c_str());
     ime.backspace();
-    TEST_ASSERT_EQUAL_STRING("たb", ime.text().c_str());
+    TEST_ASSERT_EQUAL_STRING("た", ime.text().c_str());
+    TEST_ASSERT_EQUAL_STRING("ta", ime.raw().c_str());
     ime.clear();
     TEST_ASSERT_TRUE(ime.empty());
 }
@@ -3642,6 +3643,7 @@ void run_net_tests();
 void run_app_tests();
 void run_cache_tests();
 void run_rev_tests();
+void run_rev10_tests();
 void run_pack_tests();
 void run_http_tests();
 void run_power_tests();
@@ -3838,6 +3840,7 @@ int main(int, char**) {
     run_app_tests();
     run_cache_tests();
     run_rev_tests();
+    run_rev10_tests();
     run_pack_tests();
     run_http_tests();
     run_power_tests();

@@ -39,9 +39,12 @@ constexpr KeyAction keyAction(Key k) {
                                               : KeyAction::None;
 }
 
-// The keys that repeat while held: the arrows.
+// The keys that may repeat while held: the arrows and Backspace. App::loop()
+// feeds every key event into KeyRepeat and repeats a held Backspace in the
+// review and lesson answer fields. Enter and Esc never repeat.
 constexpr bool keyRepeats(Key k) {
-    return k == Key::Up || k == Key::Down || k == Key::Left || k == Key::Right;
+    return k == Key::Up || k == Key::Down || k == Key::Left || k == Key::Right ||
+           k == Key::Backspace;
 }
 
 // A key going down or up. Key::None going up stands for every key (the board
@@ -139,11 +142,11 @@ constexpr Modifier cardputerModifierAt(int x, int y) {
 }
 
 // ---------------------------------------------------------------- repeat
-// The arrows' auto-repeat: a held arrow acts again kKeyRepeatDelayMs after its
-// press, then every kKeyRepeatRateMs, until it comes up or another key goes
-// down (only the last key pressed repeats, as on a PC). main.cpp honours the
-// repeats on the list screens and the date stepper only; Enter and Esc never
-// repeat.
+// Auto-repeat: a key that keyRepeats() accepts acts again kKeyRepeatDelayMs
+// after its press, then every kKeyRepeatRateMs, until it comes up or another
+// key goes down (only the last key pressed repeats, as on a PC). App::loop()
+// repeats a held Backspace in the review and lesson answer fields; Enter and
+// Esc never repeat.
 constexpr uint32_t kKeyRepeatDelayMs = 400;
 constexpr uint32_t kKeyRepeatRateMs = 120;
 
