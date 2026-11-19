@@ -98,6 +98,21 @@ void finishSyncCancelled();
 
 SyncJobState& job() { return state().sync.gSyncJob; }
 
+// One TLS connection for the whole sync job (SPEED-05). It is opened just
+// before a step runs and closed whenever the job pauses or ends, so Settings
+// and other screens never sit on a live socket or on a released canvas.
+bool gSyncSessionOpen = false;
+void syncSessionBegin() {
+    if (gSyncSessionOpen) return;
+    kk::wkSessionBegin();
+    gSyncSessionOpen = true;
+}
+void syncSessionClose() {
+    if (!gSyncSessionOpen) return;
+    gSyncSessionOpen = false;
+    kk::wkSessionEnd();
+}
+
 bool runCriticalItems() {
     const uint8_t kMaxPercent = static_cast<uint8_t>(kk::settingsCriticalPercent());
     const uint16_t kMinAnswers = static_cast<uint16_t>(kk::settingsCriticalMinAnswers());
@@ -190,6 +205,7 @@ void syncRowFail(int row, const char* text) {
 }
 
 void finishSyncCancelled() {
+    syncSessionClose();
     state().sync.gSyncFinished = true;
     state().sync.gSyncScreen = false;
     state().sync.gSyncing = false;
@@ -221,6 +237,7 @@ bool syncPausedByOtherScreen() {
 
 // The Home header counts Wifi..Prefetch, including the SNTP wait.
 void finishSyncJob(bool openReview) {
+    syncSessionClose();
     SyncJobState& j = job();
     const bool full = j.kind == SyncKind::Full;
     const bool modal = j.modal;
@@ -247,6 +264,7 @@ void finishSyncJob(bool openReview) {
 }
 
 void failSyncJob(int row) {
+    syncSessionClose();
     SyncJobState& j = job();
     const bool modal = j.modal;
     j.active = false;
@@ -651,6 +669,7 @@ void startSyncJob(SyncKind kind, bool modal, bool coldBoot) {
         return;
     }
     // A manual Sync now replaces a paused automatic job.
+    syncSessionClose();
     SyncJobState& j = job();
     j = SyncJobState{};
     j.kind = kind;
@@ -946,6 +965,7 @@ void syncAdvance() {
     if (!kk::DevToken::has()) {
         // Signed out while the job waited behind Settings, or a manual job
         // lost its token: drop the job and any modal sync screen.
+        syncSessionClose();
         j = SyncJobState{};
         state().sync.gSyncing = false;
         state().sync.gSyncScreen = false;
@@ -954,9 +974,15 @@ void syncAdvance() {
         state().display.gDirty = true;
         return;
     }
-    if (syncPausedByOtherScreen()) return;
+    if (syncPausedByOtherScreen()) {
+        syncSessionClose();
+        return;
+    }
     if (j.modal) {
-        if (!state().sync.gSyncScreen) return;
+        if (!state().sync.gSyncScreen) {
+            syncSessionClose();
+            return;
+        }
         if (state().sync.gSyncCancelRequested) {
             finishSyncCancelled();
             return;
@@ -975,6 +1001,10 @@ void syncAdvance() {
         }
     }
 
+    // One socket for the steps that follow; nested batch/outbox sessions join
+    // this one instead of handshaking again.
+    syncSessionBegin();
+
     switch (j.step) {
         case SyncStep::Wifi: syncWifiStep(); break;
         case SyncStep::Time: syncTimeStep(); break;
@@ -988,6 +1018,7 @@ void syncAdvance() {
         case SyncStep::Idle:
         case SyncStep::Done:
         case SyncStep::Failed:
+            syncSessionClose();
             j.active = false;
             break;
     }

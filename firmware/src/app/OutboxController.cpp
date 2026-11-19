@@ -456,6 +456,9 @@ void flushOutbox() {
         return;
     }
     Serial.printf("[outbox] flushing %u\n", static_cast<unsigned>(state().outbox.gOutbox.size()));
+    // One TLS connection for all items (SPEED-05). The guard is a no-op when a
+    // sync job already owns a session.
+    kk::WkSessionGuard session;
     std::vector<uint32_t> seqs;
     for (const kk::OutboxItem& it : state().outbox.gOutbox)
         if (!outboxNeedsAttention(it)) seqs.push_back(it.seq);
