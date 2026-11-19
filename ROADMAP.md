@@ -139,7 +139,8 @@ Working on hardware:
 
 Last recorded build (REV-10): **release 1,614,753 B / 1,835,008 B flash
 (88.0%)**, **dev 1,682,265 B (91.7%)**, static RAM 103,088/103,200 B (31.5%).
-Removing `efontJA_16` freed ~468 KB and left ~220 KB of flash headroom. The loop task uses a 24 KiB stack;
+Removing `efontJA_16` freed ~468 KB and left ~220 KB of flash headroom. The
+loop task uses a 24 KiB stack;
 the lazy review batch keeps the lesson-fetch minimum free heap above ~44 KB in
 the 2026-11-19 logs.
 
