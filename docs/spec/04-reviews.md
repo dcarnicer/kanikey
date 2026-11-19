@@ -13,7 +13,7 @@ These twelve tasks turn the review session into a configurable, WaniKani-faithfu
 | REV-07 | Details on wrong | P3 | S | ARCH-01, ARCH-02 | 2 | todo |
 | REV-08 | More review orders | P2 | L | ARCH-01, ARCH-02, ARCH-03; SPEED-05 for option B | 2 | todo |
 | REV-09 | Back-to-back | P2 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
-| REV-10 | Input editing | P2 | M | ARCH-01 | 2 | todo |
+| REV-10 | Input editing | P2 | M | ARCH-01 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-11 | Richer session summary | P2 | M | ARCH-01, SPEED-01 | 2 | todo |
 | REV-12 | Minimal header | P3 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
 
@@ -50,6 +50,15 @@ one part already done, drops untouched items, shows `WRAP UP N` with the pruned
 counter/bar and is idempotent; it never calls the network and the summary opens
 after the last kept item. Five new native tests (338 on the merged main). The
 hardware queue/header/summary checks remain.
+
+**Implementation (2026-11-19, REV-10).** Held Backspace repeats at 400/120 ms
+only in an answer field; `Fn`/`Ctrl`+Backspace clears the active field
+including the IME raw line. `RomajiIme::backspace()` removes one kana unit
+(`たべ`→`た`, `かん`→`か`, `ん`→empty, `んや`→`ん`) and keeps `nn`/`n'`/
+`nna`/`kan`/`kann`/`tta` stable; committed kana and meaning answers are capped
+at 64 bytes, including the serial `y` path. 15 new native tests (355 on the
+merged main); release 1,614,753 B (88.0%), dev 1,682,265 B (91.7%). The hold,
+clear, kana-unit and 64-byte checks remain on hardware.
 
 ### REV-01 — Show all accepted answers on feedback
 

@@ -189,9 +189,13 @@ on Home.
 
 ### 3.4 Repeat and modifiers
 
-- The arrows repeat today (`keyRepeats()`, `KeyInput.h:42-44`): 400 ms delay,
-  then 120 ms per step (`KeyInput.h:147-148`). Backspace does **not** repeat;
-  REV-10 adds it to the repeat set (planned). Enter and Esc never repeat.
+- The arrows and Backspace repeat (`keyRepeats()`): 400 ms delay, then 120 ms
+  per step. Backspace repeats only while an answer field is active; feedback,
+  the detail card, Pause, Settings and help never consume it. Enter and Esc
+  never repeat.
+- `Fn`+Backspace or `Ctrl`+Backspace clears the active answer field, including
+  the dim romaji line. Reading Backspace removes one kana unit (`たべ`→`た`,
+  `かん`→`か`, `んや`→`ん`), and an answer is capped at 64 bytes.
 - Letters don't repeat: this avoids accidental answers from holding a key down.
 - Shift, Ctrl, Opt and Alt are tracked as state; on their own they don't
   produce a character (Shift changes the layer of the next one).

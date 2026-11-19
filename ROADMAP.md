@@ -131,17 +131,15 @@ Working on hardware:
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 340 native tests and the `cardputer-adv` build run in GitHub Actions alongside
+- 355 native tests and the `cardputer-adv` build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests; the release workflow adds
   the manifest tests and a tag-driven GitHub release.
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Last recorded build (ONB-01 + CFG-04, before GlyphPack's role status fix):
-**release 1,613,409 B / 1,835,008 B flash (87.9%)**, **dev 1,681,009 B
-(91.6%)**, static RAM 103,080/103,192 B (31.5%). The GlyphPack status fix
-shaves 32 B (release 1,613,377 B, dev 1,680,977 B). Removing `efontJA_16` freed
-~468 KB and left ~220 KB of flash headroom. The loop task uses a 24 KiB stack;
+Last recorded build (REV-10): **release 1,614,753 B / 1,835,008 B flash
+(88.0%)**, **dev 1,682,265 B (91.7%)**, static RAM 103,088/103,200 B (31.5%).
+Removing `efontJA_16` freed ~468 KB and left ~220 KB of flash headroom. The loop task uses a 24 KiB stack;
 the lazy review batch keeps the lesson-fetch minimum free heap above ~44 KB in
 the 2026-11-19 logs.
 
@@ -764,7 +762,7 @@ round 2.
 | On-device Wi-Fi | SETUP-09 | 2.4 GHz scan, manual SSID, masked password | review (2026-11-19; scan/password mask smoke) |
 | Review feedback | REV-01, REV-03 | All accepted answers, synonyms, hint line | review (2026-11-19; hardware pending) |
 | Typo policy | REV-02 | WaniKani close-answer acceptance / Strict | review (2026-11-19; hardware pending) |
-| Review options | REV-05, REV-06, REV-09, REV-12 | Wrap up, auto-advance, back-to-back, minimal header | review (2026-11-19; auto-advance smoke passed) |
+| Review options | REV-05, REV-06, REV-09, REV-10, REV-12 | Wrap up, auto-advance, back-to-back, input editing, minimal header | review (2026-11-19; auto-advance/wrap-up smokes passed) |
 | Visual pack split | ONB-01 | Font/radical v2 packs, no-token font build | review (2026-11-19; hardware pending) |
 | Background sync and prefetch | SPEED-02, SPEED-03, SPEED-04 | Quick/full plan, non-modal sync, review prefetch | review (2026-11-19; hardware partial) |
 | TLS transport | SPEED-05 | Keep-alive session, chunked bodies | review (2026-11-19: re-landed with the idle-age fix; manual sync completed with 35 reused requests) |
@@ -777,8 +775,8 @@ REM/AUD, ONB (pack and setup) and DOC (this documentation pass). ARCH-01/02 are
 merged and CFG-01/02/03, REV-01/02/03, REV-05/06/09/12, LES-01…LES-06,
 SETUP-09, ONB-01 and SPEED-02/03/04/05/07 are in review. The eight-section
 Settings menu replaces the flat list; the registry now has 48 rows after the
-Account › Wi-Fi action. Main has 340 native tests and builds at 1,613,409 B
-(87.9%) release / 1,681,009 B (91.6%) dev. No round-2 task is claimed as done
+Account › Wi-Fi action. Main has 355 native tests and builds at 1,614,753 B
+(88.0%) release / 1,682,265 B (91.7%) dev. No round-2 task is claimed as done
 here beyond the spec status above.
 
 ## 11. Bluetooth keyboard (after v1)
