@@ -61,7 +61,7 @@
 > WaniKani token with `GET /user`, sets the clock/time zone from the browser and
 > checks the visual pack. Setup makes no lesson-start calls; validation only
 > reads `/user`. `Esc` opens Pause in a review and Settings from Home; the
-> eight-section menu (47-row registry) covers review, lesson, study, sync,
+> eight-section menu (48-row registry) covers review, lesson, study, sync,
 > display, reminder and account options plus Sync now, the setup portal,
 > Firmware, About, Clear cache, Reset settings and Sign out. `S` on Home starts
 > the same manual sync. Normal boots show setup/sync states; the M0 debug screen is

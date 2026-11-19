@@ -5,11 +5,11 @@ Decision D3 turns Settings into a sectioned menu backed by the ARCH-02 registry,
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
 | CFG-01 | Sectioned settings menu | P1 | M | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware smoke partial) |
-| CFG-02 | Settings registry of record | P1 | M | ARCH-02 | 2 | review (2026-11-19: 47 rows; hardware smoke partial) |
+| CFG-02 | Settings registry of record | P1 | M | ARCH-02 | 2 | review (2026-11-19: 48 rows; hardware smoke partial) |
 | CFG-03 | Reset settings to defaults | P2 | S | CFG-02 | 2 | review (2026-11-19: reset implemented; hardware pending) |
 | CFG-04 | Key help overlay | P2 | S | CFG-01 | 2 | review (2026-11-19: merged; hardware partial) |
 
-**Implementation (2026-11-19).** 47 registry rows (39 keyed, 8 actions) with
+**Implementation (2026-11-19).** 48 registry rows (39 keyed, 9 actions) with
 the eight sections, help line, two-way cycling, review lock and Reset
 settings. R4 migrates `order` to `rv.first`; the six STUDY keys, L3, Y1–Y3,
 P5/P6 and M1–M7 are registry-backed; the old keys/defaults are preserved. 10
@@ -164,6 +164,7 @@ The tables below are the registry (one per section; `When` is `live`, or `live (
 
 | ID | Label | Choices | Default | NVS key | When | Owner |
 |---|---|---|---|---|---|---|
+| — | Wi-Fi | 2.4 GHz scan, manual SSID, masked password | action | — | — | SETUP-09 (`WifiSetupController`) |
 | — | Setup portal | Wi-Fi, token, time | action | — | — | CFG-01 (existing `startSetupPortal()`, locked in review `App.cpp:2187-2189`) |
 | — | Sign out | Shows the number of unsent reviews and offers to sync first | action | — | — | CFG-02 (count from `kk::outboxPendingCount()`, `wk/Outbox.h:47`; `drawSignOutScreen()` `ModalScreens.cpp:81-107` becomes a view with `pending` and a `Sync first` row) |
 

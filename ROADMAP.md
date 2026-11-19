@@ -123,7 +123,7 @@ Working on hardware:
   The normal first sync afterwards may flush the existing outbox.
 - Pause and settings: `Esc` in a review opens Continue / End session /
   Settings; `Esc` from Home opens Settings and `S` starts the same manual sync
-  as Settings › `Sync now`. Settings is the eight-section, 47-row registry menu
+  as Settings › `Sync now`. Settings is the eight-section, 48-row registry menu
   (review, lesson, study, sync, display, reminder and account options plus
   `Reset settings`); values persist in NVS. About shows version, build, pack,
   cache, last sync, Wi-Fi, token state, zone and heap.

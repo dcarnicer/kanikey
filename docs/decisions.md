@@ -1237,3 +1237,24 @@ update path does not require a `pack` record, but the setup page uses the
 size, free space and the v2 kind-2 structure but not the CRC. Empty-card
 download, cut Wi-Fi, valid and truncated upload, `Esc` and heap checks remain
 on hardware (see [`docs/hardware.md`](hardware.md), 2026-11-19).
+
+---
+
+## 2026-11-19 — Light sleep before deep sleep (SPEED-06)
+
+**Decision:** after the blank delay, with P5 `Light sleep` On and on battery,
+the device enters `board::lightSleep()` instead of staying awake until the deep
+sleep deadline. The keyboard INT, G0 and an optional timer wake it; a key
+restores the same screen, a timer wake falls through to the P4 deep-sleep
+check. P6 `Sleep during review` Never keeps review screens awake as before;
+After 10 min ends the session with `endReview(false)`, saves the cache and
+deep-sleeps. The dev `Z` command enters a 10 s light sleep for the spike.
+
+**Why:** the blank panel left the CPU, Wi-Fi and RAM running; a pause could not
+resume because deep sleep was the only low-power state and always cold-boots.
+
+**Implications:** `SleepPolicy` is pure and native-tested; `wokeFromSleep()`
+stays EXT1-only and `wokeFromTimer()` is separate. `powerWakeCheck()` now runs
+`powerTick()` while blank, so the P4/P6 deadlines still fire with P5 Off. The
+timer path woke on hardware; current draw, key/G0 latency, first-key, Wi-Fi
+rejoin, panel recovery, P4/P6 deadlines and USB checks remain.
