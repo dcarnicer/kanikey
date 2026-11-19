@@ -37,11 +37,14 @@ class StageTracker {
   public:
     static constexpr size_t kCapacity = kOutboxMax;
 
-    // Records seq/assignmentId/fromStage. A repeated assignmentId updates its
-    // existing entry so a re-queued item keeps one slot.
-    void record(uint32_t seq, uint32_t assignmentId, uint8_t fromStage);
+    // Records seq/assignmentId/fromStage and an optional tag (the journal
+    // handle). A repeated assignmentId updates its existing entry so a
+    // re-queued item keeps one slot.
+    void record(uint32_t seq, uint32_t assignmentId, uint8_t fromStage, uint32_t tag = 0);
     // 0 when the assignment was queued before a reboot or is unknown.
     uint8_t fromStage(uint32_t assignmentId) const;
+    // The tag recorded with the assignment, 0 when unknown.
+    uint32_t tagFor(uint32_t assignmentId) const;
     bool forget(uint32_t assignmentId);
     void clear();
     size_t size() const { return count_; }
@@ -52,6 +55,7 @@ class StageTracker {
     struct Entry {
         uint32_t seq = 0;
         uint32_t assignmentId = 0;
+        uint32_t tag = 0;
         uint8_t fromStage = 0;
     };
     Entry entries_[kCapacity];

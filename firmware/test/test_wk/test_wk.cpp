@@ -2199,8 +2199,8 @@ static void test_submit_policy_session_end() {
 
 static void test_stage_tracker_per_assignment() {
     StageTracker tracker;
-    tracker.record(11, 1001, 3);
-    tracker.record(12, 1002, 5);
+    tracker.record(11, 1001, 3, 701);
+    tracker.record(12, 1002, 5, 702);
     TEST_ASSERT_EQUAL(2, tracker.size());
     TEST_ASSERT_EQUAL_UINT32(11, tracker.seqAt(0));
     TEST_ASSERT_EQUAL_UINT32(1001, tracker.assignmentAt(0));
@@ -2208,15 +2208,20 @@ static void test_stage_tracker_per_assignment() {
     TEST_ASSERT_EQUAL_UINT32(1002, tracker.assignmentAt(1));
     TEST_ASSERT_EQUAL(3, tracker.fromStage(1001));
     TEST_ASSERT_EQUAL(5, tracker.fromStage(1002));
+    TEST_ASSERT_EQUAL_UINT32(701, tracker.tagFor(1001));
+    TEST_ASSERT_EQUAL_UINT32(702, tracker.tagFor(1002));
+    TEST_ASSERT_EQUAL_UINT32(0, tracker.tagFor(9999));
 
-    // Re-queuing the same assignment updates its stage and keeps one slot.
-    tracker.record(13, 1001, 4);
+    // Re-queuing the same assignment updates its stage/tag and keeps one slot.
+    tracker.record(13, 1001, 4, 703);
     TEST_ASSERT_EQUAL(2, tracker.size());
     TEST_ASSERT_EQUAL(4, tracker.fromStage(1001));
+    TEST_ASSERT_EQUAL_UINT32(703, tracker.tagFor(1001));
     TEST_ASSERT_EQUAL_UINT32(13, tracker.seqAt(0));
 
     TEST_ASSERT_TRUE(tracker.forget(1001));
     TEST_ASSERT_EQUAL(0, tracker.fromStage(1001));
+    TEST_ASSERT_EQUAL_UINT32(0, tracker.tagFor(1001));
     TEST_ASSERT_EQUAL(1, tracker.size());
     TEST_ASSERT_EQUAL(5, tracker.fromStage(1002));
     TEST_ASSERT_FALSE(tracker.forget(1001));

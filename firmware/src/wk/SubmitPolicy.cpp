@@ -29,12 +29,14 @@ bool submitAtSessionEnd(SubmitPolicy policy) {
     return policy != SubmitPolicy::Immediately;
 }
 
-void StageTracker::record(uint32_t seq, uint32_t assignmentId, uint8_t fromStage) {
+void StageTracker::record(uint32_t seq, uint32_t assignmentId, uint8_t fromStage,
+                          uint32_t tag) {
     if (seq == 0 || assignmentId == 0) return;
     for (size_t i = 0; i < count_; ++i) {
         if (entries_[i].assignmentId != assignmentId) continue;
         entries_[i].seq = seq;
         entries_[i].fromStage = fromStage;
+        entries_[i].tag = tag;
         return;
     }
     if (count_ == kCapacity) {
@@ -46,12 +48,19 @@ void StageTracker::record(uint32_t seq, uint32_t assignmentId, uint8_t fromStage
     entries_[count_].seq = seq;
     entries_[count_].assignmentId = assignmentId;
     entries_[count_].fromStage = fromStage;
+    entries_[count_].tag = tag;
     ++count_;
 }
 
 uint8_t StageTracker::fromStage(uint32_t assignmentId) const {
     for (size_t i = 0; i < count_; ++i)
         if (entries_[i].assignmentId == assignmentId) return entries_[i].fromStage;
+    return 0;
+}
+
+uint32_t StageTracker::tagFor(uint32_t assignmentId) const {
+    for (size_t i = 0; i < count_; ++i)
+        if (entries_[i].assignmentId == assignmentId) return entries_[i].tag;
     return 0;
 }
 

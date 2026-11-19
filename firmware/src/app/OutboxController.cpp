@@ -196,7 +196,12 @@ bool sendOutboxItem(uint32_t seq) {
     if (r.httpCode >= 200 && r.httpCode < 300) {
         const uint32_t assignmentId = item->assignmentId;
         const uint32_t subjectId = item->subjectId;
-        const bool ownJournal = state().review.gPendingJournalHandle && item->seq == state().review.gPendingSeq;
+        // SPEED-01 keeps one journal handle per queued record; the old single
+        // pending handle remains as a fallback for the last completion.
+        uint32_t journalHandle = state().review.gStageTracker.tagFor(assignmentId);
+        if (!journalHandle && item->seq == state().review.gPendingSeq)
+            journalHandle = state().review.gPendingJournalHandle;
+        const bool ownJournal = journalHandle != 0;
         kk::JsonParser rp;
         kk::JsonValue rv;
         if (rp.parse(r.body, &rv)) {
@@ -204,14 +209,15 @@ bool sendOutboxItem(uint32_t seq) {
             if (kk::parseReviewUpdate(rv, &update)) {
                 applyReviewUpdate(update);
                 if (ownJournal)
-                    kk::journalPatchSrsAfter(state().review.gPendingJournalHandle, update.srsStage);
+                    kk::journalPatchSrsAfter(journalHandle, update.srsStage);
                 Serial.printf("[review] assignment %u SRS %u -> %u\n",
                               static_cast<unsigned>(assignmentId),
                               static_cast<unsigned>(state().review.gStageChange.from),
                               static_cast<unsigned>(state().review.gStageChange.to));
             }
         }
-        if (ownJournal) state().review.gPendingJournalHandle = 0;
+        if (item->seq == state().review.gPendingSeq)
+            state().review.gPendingJournalHandle = 0;
         kk::outboxRemove(state().outbox.gOutbox, seq);
         saveOutbox();
         state().review.gStageTracker.forget(assignmentId);
@@ -437,9 +443,6 @@ bool queueReviewLocal(const kk::SessionItem& item) {
         return false;
     }
     state().review.gPendingSeq = seq;
-    // SPEED-01: remember this record's pre-review stage for every item, not
-    // only the last one, so the summary can count each move.
-    state().review.gStageTracker.record(seq, item.assignmentId, item.srsStage);
     state().review.gPendingJournalHandle = 0;
     if (state().storage.gFsOk && kk::journalOpen(currentAccountKey())) {
         kk::JournalRecord record;
@@ -455,6 +458,10 @@ bool queueReviewLocal(const kk::SessionItem& item) {
             static_cast<uint8_t>(std::min<uint16_t>(item.incorrectReading, 255));
         state().review.gPendingJournalHandle = kk::journalAppend(record);
     }
+    // SPEED-01: remember this record's pre-review stage and journal handle for
+    // every item, not only the last one, so each POST can patch its own record.
+    state().review.gStageTracker.record(seq, item.assignmentId, item.srsStage,
+                                        state().review.gPendingJournalHandle);
     saveOutbox();
     Serial.printf("[outbox] queued seq %u assignment %u\n", static_cast<unsigned>(seq),
                   static_cast<unsigned>(item.assignmentId));
