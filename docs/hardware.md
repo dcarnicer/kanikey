@@ -611,6 +611,13 @@ the dev image: 1,622,625 B / 1,835,008 B flash (88.4%), 96,336 B RAM (29.4%);
   then reflashed with the dev 0.1.0 image. The bad-first-boot/two-strike
   rollback was not run.
 
+- **SPEED auto-sync (not merged).** The non-modal SPEED-02/03/04 job from
+  `spec/SPEED-sync` joins Wi-Fi, draws Home, and then stops at
+  `SyncStep::Time` after the first pass (`sub 0`, trusted clock, no pause
+  screen; the loop stops reaching its end log). The merge was reverted from
+  `main`; the branch is being fixed. The manual modal Sync now path is the
+  stable behaviour.
+
 Remaining hardware checks: API-02 429 (native-tested; a real 429 was not
 provoked), API-03 403 (read-only token), FIX-06 slow server, FIX-07 15-minute
 AP close, FIX-14 forced small cap, FIX-20 bad-first-boot/two-strike, RAD-04

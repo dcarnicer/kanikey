@@ -5,12 +5,23 @@ The README promise is "open it, the pending review appears, type, close". Today 
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
 | SPEED-01 | Submission policy | P1 | M | FIX-10 | 2 | todo |
-| SPEED-02 | Quick and full sync | P1 | M | none | 2 | todo |
-| SPEED-03 | Background (non-modal) sync | P1 | L | SPEED-02 | 2 (after 02) | todo |
-| SPEED-04 | Prefetch the review batch | P2 | M | SPEED-02, SPEED-03 | 2 (after 02/03) | todo |
+| SPEED-02 | Quick and full sync | P1 | M | none | 2 | review (branch; hardware hang) |
+| SPEED-03 | Background (non-modal) sync | P1 | L | SPEED-02 | 2 (after 02) | review (branch; hardware hang) |
+| SPEED-04 | Prefetch the review batch | P2 | M | SPEED-02, SPEED-03 | 2 (after 02/03) | review (branch; hardware hang) |
 | SPEED-05 | TLS keep-alive (spike, then implement) | P2 | L | none | 2 | todo |
 | SPEED-06 | Light sleep before deep sleep (spike first) | P2 | M | SPEED-01 (for `endReview(send)`) | 2 | todo |
 | SPEED-07 | Home updates over time | P2 | S | none | 2 | todo |
+
+**Implementation (2026-11-19).** SPEED-02/03/04 are implemented on
+`spec/SPEED-sync`: pure `SyncPlan`/`SyncSteps`, a non-modal job with at most
+one request per loop pass, quick/full boot planning from cache times, an
+automatic prefetch, cache v12 (`lastFullAt`/`lastQuickAt`/`lastUserAt`, v11
+still loads), and the Y1/Y2/Y3 accessors (not yet in the Settings menu). 17 new
+native tests (233 on the branch). A hardware smoke found the automatic job
+stops at `SyncStep::Time` after the first pass (`sub 0`, trusted clock, no
+pause screen, no further loop passes), so the merge was reverted from `main`
+and the branch is being fixed. The manual modal Sync now path remains the
+current stable behaviour.
 
 ### SPEED-01 — Submission policy
 
