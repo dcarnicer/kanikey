@@ -9,19 +9,20 @@ someone who has not built the firmware.
 > the release manifest and check its size and SHA-256. The personal radical pack
 > can be uploaded from your phone on the same page. A computer is only needed
 > for a custom font pack or to build a radical pack from your account; see §3.
-> If the current release does not publish a font pack, the page says so and you
-> can build it in §3.2 and copy it once instead (§3.3).
+> Releases built by the release workflow include the pack. If an older release
+> does not publish one, the page says so and you can build it in §3.2 and copy
+> it once instead (§3.3).
 
 ---
 
 ## Quick start
 
 1. **Prepare the card (once).** Use a **FAT32** microSD card. It can be empty:
-   the station page can download the public font pack (when the release
-   includes it) and the setup page accepts the personal radical pack. If you
-   build packs on a computer, copy them to `/kanikey/glyphs.kgp` (font) and
-   `/kanikey/radicals.kgp` (radical); see §3. A v1 combined `glyphs.kgp` with
-   radical entries from an older build still works.
+   the station page can download the public font pack and the setup page
+   accepts the personal radical pack. If you build packs on a computer, copy
+   them to `/kanikey/glyphs.kgp` (font) and `/kanikey/radicals.kgp` (radical);
+   see §3. A v1 combined `glyphs.kgp` with radical entries from an older build
+   still works.
 2. **Charge and start.** Connect USB-C, insert the card and turn the device on.
    `No SD card` means the card is missing, not mounted or not FAT32. `Pack
    missing` means `/kanikey/glyphs.kgp` did not open; press `Enter` to open
@@ -62,9 +63,8 @@ someone who has not built the firmware.
   (or the pack replacement in §3.6 on a device that already has a working
   font); the radical pack can be uploaded from the setup page. See §3.2.
 
-The public font pack can be downloaded on the device (when the release includes
-it) and the personal radical pack can be uploaded from a phone, so a computer is
-optional for the main path.
+The public font pack can be downloaded on the device and the personal radical
+pack can be uploaded from a phone, so a computer is optional for the main path.
 
 You do not need a KaniKey account, a KaniKey password or a KaniKey app. The
 device talks to WaniKani, to its time servers and to GitHub for firmware
@@ -129,10 +129,10 @@ are drawn from two files on the card:
 ```
 
 **Public font pack.** A public `glyphs.kgp` contains glyphs rendered from an OFL
-font (Noto Sans JP by default). It has no WaniKani content and can be published
-with a release. **Personal radical pack.** `radicals.kgp` is generated from your
-own WaniKani account's subject images. It is personal: do not publish or share
-it.
+font (Noto Sans JP by default). It has no WaniKani content and is published
+with each release. **Personal radical pack.** `radicals.kgp` is generated from
+your own WaniKani account's subject images. It is personal: do not publish or
+share it.
 
 Both use the `KKGP` v2 header: glyphs at 64, 32 and 20 px in the font pack, and
 radical bitmaps in the personal pack; the body and CRC are the same as v1. A
@@ -143,8 +143,8 @@ all text working and only changes image-only radical prompts to `no glyph`.
 
 ### 3.1 Get the packs from the setup page (no computer)
 
-The setup pages can install both files on a new card when the release provides
-the public font pack. **Download pack** is offered on the **station page**
+The setup pages can install both files on a new card: the release provides the
+public font pack. **Download pack** is offered on the **station page**
 (§4.2), after the device has joined your home Wi-Fi; the `KaniKey-XXXX` setup
 network has no internet. **Upload radical pack** works on either setup page
 because the file goes directly from your phone to the device.
@@ -180,10 +180,10 @@ are listed in [docs/hardware.md](hardware.md).
 ### 3.2 Build the packs (optional, on a computer)
 
 The setup page is the normal path for the public font pack and the radical
-pack when the release includes the font pack. Build packs yourself only for a
-custom font, an offline copy, or a radical pack for your account. From a
-checkout (or the source ZIP) of this repository, the simplest path is a
-font-only split build (no token; fixed kana + JIS X 0208 set):
+pack. Build packs yourself only for a custom font, an offline copy, or a
+radical pack for your account. From a checkout (or the source ZIP) of this
+repository, the simplest path is a font-only split build (no token; fixed kana
++ JIS X 0208 set):
 
 ```sh
 uv run --with pillow python3 tools/glyph-pack/build.py --split dist
@@ -585,9 +585,9 @@ The token, cache and outbox are not affected by a Wi-Fi change.
 | Symptom | What it means | What to do |
 |---|---|---|
 | `No SD card` / `Insert a FAT32 card with /kanikey/glyphs.kgp` | Card missing, not mounted or not FAT32 | Insert it, format it as FAT32, then press `Enter: retry` |
-| `Pack missing` / setup page `pack missing` or `no pack` | `/kanikey/glyphs.kgp` is missing or could not be opened | Press `Enter` to open setup; on the station page use **Download pack** (§3.1). If the release has no pack, build it (§3.2) and copy it (§3.3), then press **Check pack again** |
+| `Pack missing` / setup page `pack missing` or `no pack` | `/kanikey/glyphs.kgp` is missing or could not be opened | Press `Enter` to open setup; on the station page use **Download pack** (§3.1). If an older release has no pack, build it (§3.2) and copy it (§3.3), then press **Check pack again** |
 | `pack: bad crc` or another `pack: ...` error | The pack file is damaged, truncated or from another format | Copy the correct pack again (§3.3) or download it again; if it keeps failing, rebuild it (§3.2) |
-| **Download pack** fails | The button needs the station page and a release manifest with a `pack font` record; an offline, TLS, HTTP, size or hash error stops the transfer | Join home Wi-Fi and try again. If the page says `The release manifest has no font pack`, build a pack (§3.2) and copy it (§3.3). A transfer failure leaves the old file in place |
+| **Download pack** fails | The button needs the station page and a release manifest with a `pack font` record; an offline, TLS, HTTP, size or hash error stops the transfer | Join home Wi-Fi and try again. If the page says `The release manifest has no font pack` (an older release), build a pack (§3.2) and copy it (§3.3). A transfer failure leaves the old file in place |
 | **Upload radical pack** says `Not a radical pack: ...` / `pack: wrong kind` | The file is not a KKGP v2 kind-2 radical pack, is truncated, or is a v1 combined file | Use `dist/radicals.kgp` from `build.py --split` with a token (§3.2) and upload it again. The old radical pack is kept |
 | Pack transfer stops when you press `Esc` on the device | The download or upload was cancelled; the `.tmp` is deleted | Start the transfer again; the old file is unchanged |
 | The Wi-Fi list is empty, or a network is missing or cannot be joined | No 2.4 GHz network was found, the network is 5 GHz-only, or its security type (WEP, 802.1X, WAPI) is not supported | Press `R` to rescan, move closer, or choose `+ Enter network name` for a hidden SSID. Use a WPA2/WPA3 network; the phone portal uses the same Wi-Fi stack |
