@@ -700,8 +700,10 @@ A150 G143 M81 E147 B586).
   wrong/warning/detail/pause/blank guards remain.
 - **CFG-04.** `?` on Home opened the `home` table with Enter/L/O/S/T/P/Esc
   rows and `Esc: close`; the normal Home hint shows
-  `Enter: reviews  L  S  Esc: menu` without clipping. The other screen tables,
-  the swallow/close path and the portal/Wi-Fi refusal remain.
+  `Enter: reviews  L  S  Esc: menu` without clipping. On Settings, `?` showed
+  Up/Down Move, Enter Open/next value, Left/Right Previous/next value and Esc
+  Back/close. The review/lesson/Outbox/Firmware tables, the swallow/close path
+  and the portal/Wi-Fi refusal remain.
 - **ONB-01.** The card still holds the v1 combined `glyphs.kgp`; Home, lessons
   and About render from it through the fallback. About shows both `Font:` and
   `Rad:` lines, and the status is now split by role so a combined pack does not
