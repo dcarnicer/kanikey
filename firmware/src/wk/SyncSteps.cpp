@@ -69,4 +69,6 @@ bool syncTimeReady(uint32_t nowEpoch, uint32_t waitedMs, uint32_t timeoutMs) {
     return waitedMs >= timeoutMs;
 }
 
+bool syncRunsWhileScreenOff(bool active, bool modal) { return active && !modal; }
+
 }  // namespace kk

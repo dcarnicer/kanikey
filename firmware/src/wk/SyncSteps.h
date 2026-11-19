@@ -42,4 +42,8 @@ SyncStep nextStep(SyncKind kind, SyncStep current, bool interrupted);
 // gets one bounded wait (the SNTP client keeps running in the background).
 bool syncTimeReady(uint32_t nowEpoch, uint32_t waitedMs, uint32_t timeoutMs);
 
+// The automatic job is a background task: it keeps making progress while the
+// panel is blank. The manual Sync screen only advances while it is visible.
+bool syncRunsWhileScreenOff(bool active, bool modal);
+
 }  // namespace kk

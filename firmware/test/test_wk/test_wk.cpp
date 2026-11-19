@@ -2659,6 +2659,14 @@ static void test_sync_time_ready_gives_up() {
     TEST_ASSERT_TRUE(kk::syncTimeReady(0, 0, 0));
 }
 
+// A blanked panel must not stop the background sync; the modal screen is only
+// driven while it is on.
+static void test_sync_runs_while_screen_off_background() {
+    TEST_ASSERT_TRUE(kk::syncRunsWhileScreenOff(true, false));
+    TEST_ASSERT_FALSE(kk::syncRunsWhileScreenOff(true, true));
+    TEST_ASSERT_FALSE(kk::syncRunsWhileScreenOff(false, false));
+}
+
 static void test_cache_corruption_is_rejected() {
     CacheSnapshot in;
     in.meta.savedAt = 1234;
@@ -3280,6 +3288,7 @@ int main(int, char**) {
     RUN_TEST(test_sync_time_ready_trusted_clock);
     RUN_TEST(test_sync_time_ready_waits_untrusted);
     RUN_TEST(test_sync_time_ready_gives_up);
+    RUN_TEST(test_sync_runs_while_screen_off_background);
     RUN_TEST(test_ota_manifest_parse);
     RUN_TEST(test_ota_manifest_edges);
     RUN_TEST(test_ota_versions);

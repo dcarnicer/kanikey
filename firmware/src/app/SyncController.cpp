@@ -290,6 +290,26 @@ void finishOutboxStep() {
     if (kk::outboxPendingCount(state().outbox.gOutbox) == 0) clearOutboxAuthIssue();
 }
 
+#ifdef KANIKEY_DEV
+const char* syncStepName(SyncStep step) {
+    switch (step) {
+        case SyncStep::Idle: return "Idle";
+        case SyncStep::Wifi: return "Wifi";
+        case SyncStep::Time: return "Time";
+        case SyncStep::Outbox: return "Outbox";
+        case SyncStep::Account: return "Account";
+        case SyncStep::Summary: return "Summary";
+        case SyncStep::Level: return "Level";
+        case SyncStep::Srs: return "Srs";
+        case SyncStep::Critical: return "Critical";
+        case SyncStep::Prefetch: return "Prefetch";
+        case SyncStep::Done: return "Done";
+        case SyncStep::Failed: return "Failed";
+    }
+    return "?";
+}
+#endif
+
 // Moves to the next step in the plan, applying the optional-step rules:
 // Account only when /user is due, Prefetch only for an automatic Full sync
 // that passes SPEED-04's predicate, and no Prefetch on the manual screen.
@@ -319,6 +339,9 @@ void jobNextStep() {
         finishSyncJob(false);
         return;
     }
+#ifdef KANIKEY_DEV
+    Serial.printf("[sync] step %s -> %s (sub 0)\n", syncStepName(j.step), syncStepName(next));
+#endif
     j.step = next;
     j.sub = 0;
     state().display.gDirty = true;
@@ -961,6 +984,19 @@ void syncAdvance() {
             j.active = false;
             break;
     }
+
+    // A long Wi-Fi join or request must not let the panel blank mid-job: the
+    // old blocking sync kept the device awake for the whole sync. The panel
+    // may still be blanked by an idle timeout between jobs.
+    if (j.active) state().ui.gLastInputAt = millis();
+#ifdef KANIKEY_DEV
+    static uint32_t lastJobLog = 0;
+    if (j.active && millis() - lastJobLog >= 1000) {
+        lastJobLog = millis();
+        Serial.printf("[sync] job %s sub %u\n", syncStepName(j.step),
+                      static_cast<unsigned>(j.sub));
+    }
+#endif
 }
 
 void drawSync() {

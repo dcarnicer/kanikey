@@ -668,6 +668,8 @@ void setup() {
                   static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL |
                                                                          MALLOC_CAP_8BIT)));
     Serial.printf("[kk] keyboard: %s\n", tgc::board::hasKeyboard() ? "yes" : "no");
+    Serial.printf("[kk] idle dim %d s, blank %d s, sleep %d s\n", kk::settingsDimSeconds(),
+                  kk::settingsBlankSeconds(), kk::settingsSleepSeconds());
 
     // Mount without formatting first: a failed mount must not wipe unsent
     // reviews. The format choice is explicit on the storage prompt.
@@ -740,7 +742,14 @@ void loop() {
 
     const uint32_t now = millis();
     firmwareTick(now);
-    if (powerWakeCheck(now)) return;
+    if (powerWakeCheck(now)) {
+        // The panel is blank. A background sync is not a screen and must not
+        // stall until the next key; the modal Sync screen only advances while
+        // it is visible (Esc still cancels it after a wake).
+        if (kk::syncRunsWhileScreenOff(state().sync.gSyncJob.active, state().sync.gSyncJob.modal))
+            syncAdvance();
+        return;
+    }
 
     bool firstKey = true;
     KeyEvent e;
