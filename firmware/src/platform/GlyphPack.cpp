@@ -119,13 +119,18 @@ bool GlyphPack::openPath(fs::FS& fs, const char* path, PackRole role, bool crcCh
     int n = 0;
     for (uint8_t i = 0; i < sizeCount_; ++i)
         n += snprintf(sizeText + n, sizeof sizeText - n, "%s%u", i ? "/" : "", sizes_[i]);
-    if (kind_ == PackKind::Radical) {
-        snprintf(status_, sizeof status_, "%u radicals", radicalCount_);
-    } else if (kind_ == PackKind::Font || radicalCount_ == 0 || sizeCount_ == 0) {
+    // Report what this role can actually draw. A v1 combined pack is opened
+    // for both roles, so printing the whole file twice would repeat the other
+    // table and overflow the About line.
+    if (role_ == PackRole::Radical) {
+        if (radicalCount_ > 0)
+            snprintf(status_, sizeof status_, "%u radicals", radicalCount_);
+        else
+            snprintf(status_, sizeof status_, "no radicals");
+    } else if (glyphCount_ > 0 && sizeCount_ > 0) {
         snprintf(status_, sizeof status_, "%u glyphs, %s px", glyphCount_, sizeText);
     } else {
-        snprintf(status_, sizeof status_, "%u glyphs, %u radicals, %s px", glyphCount_,
-                 radicalCount_, sizeText);
+        snprintf(status_, sizeof status_, "no glyphs");
     }
     return true;
 }
