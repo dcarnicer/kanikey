@@ -76,6 +76,7 @@
 #include "wk/SessionStats.h"
 #include "wk/Stats.h"
 #include "wk/SubjectText.h"
+#include "wk/Text.h"
 #include "wk/Time.h"
 #include "wk/WorkloadGuard.h"
 #include "ui/Theme.h"
@@ -682,7 +683,10 @@ void lessonQuizKey(const KeyEvent& e) {
         return;
     }
     if (e.key == Key::Backspace) {
-        if (state().lesson.gLessonQuiz.part() == kk::AnswerKind::Meaning) {
+        // REV-10: Fn or Ctrl clears the field, including the romaji raw line.
+        if (state().ui.gFn || state().ui.gCtrl) {
+            clearLessonQuizInputImpl();
+        } else if (state().lesson.gLessonQuiz.part() == kk::AnswerKind::Meaning) {
             if (!state().lesson.gLessonQuizInput.empty()) state().lesson.gLessonQuizInput.pop_back();
         }
 #ifdef KANIKEY_DEV
@@ -699,12 +703,12 @@ void lessonQuizKey(const KeyEvent& e) {
     const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
     if (c) {
         if (state().lesson.gLessonQuiz.part() == kk::AnswerKind::Meaning)
-            state().lesson.gLessonQuizInput.push_back(c);
+            kk::appendCapped(state().lesson.gLessonQuizInput, c, kk::kMaxAnswerBytes);
         else {
 #ifdef KANIKEY_DEV
             state().lesson.gLessonQuizDirectReading.clear();
 #endif
-            state().lesson.gLessonQuizIme.feed(c);
+            state().lesson.gLessonQuizIme.feedCapped(c, kk::kMaxAnswerBytes);
         }
         state().display.gDirty = true;
     }
@@ -781,7 +785,10 @@ void lessonBatchQuizKey(const KeyEvent& e) {
         return;
     }
     if (e.key == Key::Backspace) {
-        if (l.gLessonBatchQueue.part() == kk::ReviewPart::Meaning) {
+        // REV-10: Fn or Ctrl clears the field, including the romaji raw line.
+        if (state().ui.gFn || state().ui.gCtrl) {
+            clearLessonBatchInput();
+        } else if (l.gLessonBatchQueue.part() == kk::ReviewPart::Meaning) {
             if (!l.gLessonBatchInput.empty()) l.gLessonBatchInput.pop_back();
         }
 #ifdef KANIKEY_DEV
@@ -798,12 +805,12 @@ void lessonBatchQuizKey(const KeyEvent& e) {
     const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
     if (c) {
         if (l.gLessonBatchQueue.part() == kk::ReviewPart::Meaning) {
-            l.gLessonBatchInput.push_back(c);
+            kk::appendCapped(l.gLessonBatchInput, c, kk::kMaxAnswerBytes);
         } else {
 #ifdef KANIKEY_DEV
             l.gLessonBatchDirectReading.clear();
 #endif
-            l.gLessonBatchIme.feed(c);
+            l.gLessonBatchIme.feedCapped(c, kk::kMaxAnswerBytes);
         }
         state().display.gDirty = true;
     }

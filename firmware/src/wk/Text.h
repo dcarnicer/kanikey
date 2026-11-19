@@ -2,6 +2,7 @@
 // Small UTF-8/text helpers for the pure WaniKani domain modules. No Arduino.
 #include <algorithm>
 #include <cctype>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -10,6 +11,17 @@
 #include "wk/Utf8.h"
 
 namespace kk {
+
+// REV-10: answers stop at 64 bytes, typed or injected through the serial
+// helper. Readings are capped by their committed kana, not the romaji line.
+constexpr size_t kMaxAnswerBytes = 64;
+
+// Append one byte while the answer stays within `limit`; later bytes are
+// ignored. The cap is in bytes, not code points (the server compares text).
+inline void appendCapped(std::string& s, char c, size_t limit) {
+    if (s.size() >= limit) return;
+    s.push_back(c);
+}
 
 inline char asciiLower(char c) {
     return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;

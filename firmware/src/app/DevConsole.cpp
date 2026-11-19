@@ -73,6 +73,7 @@
 #include "wk/SessionStats.h"
 #include "wk/Stats.h"
 #include "wk/SubjectText.h"
+#include "wk/Text.h"
 #include "wk/Time.h"
 #include "ui/Theme.h"
 
@@ -106,6 +107,13 @@ void assetRespond(WiFiClient& client, int code, const char* reason);
 void stopAssetServer();
 void startAssetServer();
 void uploadSdFile(const String& line);
+
+// REV-10: the `y` injection is an answer input like the keyboard, so it stops
+// at the same 64-byte cap.
+void appendAnswerText(std::string& dst, const String& text) {
+    for (unsigned i = 0; i < text.length(); ++i)
+        kk::appendCapped(dst, text[i], kk::kMaxAnswerBytes);
+}
 
 // ONB-01: a serial/asset upload may replace either pack. Only a matching
 // pack file is closed for the transfer; any pack upload re-opens both because
@@ -1065,21 +1073,21 @@ void handleSerial() {
             const String text = state().ui.gSerialLine.substring(2);
             if (state().lesson.gLessonBatchQuizActive && !state().lesson.gLessonBatchFeedback) {
                 if (state().lesson.gLessonBatchQueue.part() == kk::ReviewPart::Meaning)
-                    state().lesson.gLessonBatchInput += text.c_str();
+                    appendAnswerText(state().lesson.gLessonBatchInput, text);
                 else
-                    state().lesson.gLessonBatchDirectReading += text.c_str();
+                    appendAnswerText(state().lesson.gLessonBatchDirectReading, text);
                 state().display.gDirty = true;
             } else if (state().lesson.gLessonQuizActive && !state().lesson.gLessonQuiz.feedback()) {
                 if (state().lesson.gLessonQuiz.part() == kk::AnswerKind::Meaning)
-                    state().lesson.gLessonQuizInput += text.c_str();
+                    appendAnswerText(state().lesson.gLessonQuizInput, text);
                 else
-                    state().lesson.gLessonQuizDirectReading += text.c_str();
+                    appendAnswerText(state().lesson.gLessonQuizDirectReading, text);
                 state().display.gDirty = true;
             } else if (state().review.gReviewActive && !state().review.gFeedback) {
                 if (state().review.gQueue.part() == kk::ReviewPart::Meaning)
-                    state().review.gMeaningInput += text.c_str();
+                    appendAnswerText(state().review.gMeaningInput, text);
                 else
-                    state().review.gDirectReading += text.c_str();
+                    appendAnswerText(state().review.gDirectReading, text);
                 state().display.gDirty = true;
             }
         } else if (state().ui.gSerialLine == "b") {

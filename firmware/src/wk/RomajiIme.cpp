@@ -2,6 +2,8 @@
 
 #include <cstring>
 
+#include "wk/Utf8.h"
+
 namespace kk {
 
 namespace {
@@ -65,7 +67,46 @@ bool isConsonant(char c) {
     return c >= 'a' && c <= 'z' && !isVowel(c) && c != 'n';
 }
 
+// True when `s` is exactly one UTF-8 code point.
+bool isOneCodePoint(std::string_view s) {
+    if (s.empty()) return false;
+    const char* p = s.data();
+    utf8Next(&p);
+    return p == s.data() + s.size();
+}
+
 }  // namespace
+
+// REV-10: delete one committed kana unit instead of the last raw byte. The
+// candidate is the longest raw prefix whose conversion is `text()` with its
+// last code point removed; 0 (the empty prefix) makes a one-kana answer clear
+// completely. This keeps nn, n', nna, kan, kann and tta consistent without a
+// second table. Unconverted ASCII still loses one character.
+void RomajiIme::backspace() {
+    if (raw_.empty()) return;
+    const std::string text = romajiToHiragana(raw_);
+    size_t cut = raw_.size();
+    for (size_t k = 0; k < raw_.size(); ++k) {
+        const std::string prefix = romajiToHiragana(std::string_view(raw_).substr(0, k));
+        if (prefix.size() >= text.size()) continue;
+        if (text.compare(0, prefix.size(), prefix) != 0) continue;
+        if (!isOneCodePoint(std::string_view(text).substr(prefix.size()))) continue;
+        cut = k;
+    }
+    if (cut < raw_.size())
+        raw_.erase(cut);
+    else
+        raw_.pop_back();
+}
+
+// REV-10: an answer (here its committed kana) never passes `maxBytes`.
+bool RomajiIme::feedCapped(char c, size_t maxBytes) {
+    RomajiIme next = *this;
+    next.feed(c);
+    if (next.text().size() > maxBytes) return false;
+    raw_.swap(next.raw_);
+    return true;
+}
 
 std::string romajiToHiragana(std::string_view raw) {
     std::string out;
@@ -111,7 +152,9 @@ std::string romajiToHiragana(std::string_view raw) {
         }
         if (isConsonant(c) && i + 1 < raw.size() && raw[i + 1] == c) {
             out += "っ";
-            ++i;
+            // "tta" keeps the second t for た; a trailing pair ("tt") has no
+            // vowel to start the next syllable, so it is the whole っ.
+            i += (i + 2 >= raw.size()) ? 2 : 1;
             continue;
         }
 
