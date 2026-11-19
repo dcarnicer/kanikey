@@ -285,7 +285,11 @@ bool loadCache() {
     pruneCacheOutbox();
     applySummary(effectiveNow());
     state().cache.gOffline = true;
-    state().session.gShowHome = true;
+    // Boot and retry start at Boot; the dev seed command may call this from an
+    // active screen, which must stay where it is (the old Home flag only
+    // affected the fallback behind other screens).
+    if (kk::screenBase(state().screen) == kk::Screen::Boot)
+        state().screen.screen = kk::Screen::Home;
     Serial.printf("[cache] loaded: %u cached assignments (batch lazy), %u due, saved %u\n",
                   static_cast<unsigned>(state().cache.gCachedBatchCount),
                   static_cast<unsigned>(state().session.gDueReviews), static_cast<unsigned>(state().cache.gCacheSavedAt));

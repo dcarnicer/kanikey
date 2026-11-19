@@ -84,6 +84,8 @@ namespace {
 
 using tgc::Key;
 using tgc::KeyEvent;
+using kk::Modal;
+using kk::Screen;
 using namespace kk::ui;
 
 void clearReviewInput();
@@ -224,7 +226,7 @@ int detailPageKind(int index, const kk::Subject& s) {
 // REV-04 C shortcut go through here so the bookkeeping cannot drift.
 void applyCompletion() {
     state().review.gCompletedItem = state().review.gQueue.completed().back();
-    state().review.gFeedbackCompleted = true;
+    state().review.feedbackCompleted = true;
     if (state().study.gPracticeActive) {
         state().review.gNeedsSubmit = false;
         journalPractice(state().review.gCompletedItem);
@@ -238,10 +240,8 @@ void applyCompletion() {
         if (!state().review.gNeedsSubmit) {
             // Unreachable when startReview() checked the free slots; show the
             // failure instead of silently losing the review.
-            state().review.gFeedback = false;
-            state().review.gReviewActive = false;
-            state().review.gReviewSummary = false;
-            state().session.gShowHome = false;
+            state().review.feedback = false;
+            kk::screenReset(&state().screen);
             snprintf(state().ui.gNoticeLine, sizeof state().ui.gNoticeLine,
                      "Review not saved; outbox full.");
             state().ui.gNoticeLine2[0] = 0;
@@ -286,39 +286,39 @@ const kk::Subject* subjectById(uint32_t id) {
 void showReview() {
     if (!state().display.gDisp) return;
     const kk::SessionItem* item = state().review.gQueue.current();
-    const kk::Subject* s = state().review.gFeedback ? subjectById(state().review.gFeedbackSubjectId)
+    const kk::Subject* s = state().review.feedback ? subjectById(state().review.feedbackSubjectId)
                                      : (item ? subjectById(item->subjectId) : nullptr);
     if (!s) return;
-    const kk::ReviewPart part = state().review.gFeedback ? state().review.gFeedbackPart : state().review.gQueue.part();
+    const kk::ReviewPart part = state().review.feedback ? state().review.feedbackPart : state().review.gQueue.part();
 
     ReviewView view;
     view.subject = s;
     view.part = part;
-    view.feedback = state().review.gFeedback;
+    view.feedback = state().review.feedback;
     int headerInfo = 0;
     view.minimalHeader =
         kk::settingsGetInt("rv.header", &headerInfo) && headerInfo == 1;
-    view.srsStage = state().review.gFeedbackCompleted ? state().review.gCompletedItem.srsStage : (item ? item->srsStage : 0);
+    view.srsStage = state().review.feedbackCompleted ? state().review.gCompletedItem.srsStage : (item ? item->srsStage : 0);
     view.wrapUpCount =
         state().review.gWrapUp ? static_cast<int>(state().review.gQueue.remaining()) : 0;
     view.wrongShortcuts =
-        state().review.gFeedback &&
+        state().review.feedback &&
         state().review.gCheck.status == kk::AnswerStatus::Incorrect &&
         reviewWrongActionsEnabled();
     view.total = static_cast<int>(state().review.gQueue.completedCount() + state().review.gQueue.remaining());
     view.position = static_cast<int>(state().review.gQueue.completedCount()) + 1;
-    if (state().review.gFeedback && state().review.gFeedbackCompleted)
+    if (state().review.feedback && state().review.feedbackCompleted)
         view.position = static_cast<int>(state().review.gQueue.completedCount());
     if (view.position > view.total) view.position = view.total;
     view.sending = state().review.gSending;
     view.sent = static_cast<unsigned>(state().review.gSendSent);
     view.sendTotal = static_cast<unsigned>(state().review.gSendTotal);
     if (view.sending) view.escHint = "Esc: stop";
-    if (!state().review.gFeedback) {
+    if (!state().review.feedback) {
         view.typed = reviewInput(part == kk::ReviewPart::Meaning);
         view.romaji = state().review.gIme.raw();
     } else {
-        view.typed = state().review.gFeedbackInput;
+        view.typed = state().review.feedbackInput;
         view.status = state().review.gCheck.status;
         view.message = state().review.gCheck.message;
         // A warning must not leak the answer through the feedback frame or the
@@ -346,16 +346,16 @@ int detailPageCount(const kk::Subject& s) {
 
 void showReviewDetail() {
     if (!state().display.gDisp) return;
-    uint32_t subjectId = state().review.gDetailSubjectId ? state().review.gDetailSubjectId : state().review.gFeedbackSubjectId;
+    uint32_t subjectId = state().review.detailSubjectId ? state().review.detailSubjectId : state().review.feedbackSubjectId;
     if (!subjectId && state().review.gQueue.current()) subjectId = state().review.gQueue.current()->subjectId;
     const kk::Subject* s = subjectById(subjectId);
     if (!s) return;
 
     ReviewDetailView view;
     view.subject = s;
-    view.page = state().review.gReviewDetailPage;
-    view.pages = state().review.gReviewDetailPages;
-    view.kind = detailPageKind(state().review.gReviewDetailPage, *s);
+    view.page = state().review.detailPage;
+    view.pages = state().review.detailPages;
+    view.kind = detailPageKind(state().review.detailPage, *s);
     for (uint32_t id : s->componentSubjectIds) view.components.push_back(subjectById(id));
     for (uint32_t id : s->visuallySimilarSubjectIds) view.similar.push_back(subjectById(id));
     for (uint32_t id : s->amalgamationSubjectIds) view.amalgamations.push_back(subjectById(id));
@@ -371,21 +371,22 @@ void showReviewDetail() {
 void reviewDetailKey(const KeyEvent& e) {
     if (!e.down) return;
     if (e.key == Key::Esc || e.key == Key::Tab) {
-        state().review.gReviewDetail = false;
-        if (state().review.gDetailFromCritical) {
-            state().review.gDetailFromCritical = false;
-            state().review.gDetailSubjectId = 0;
+        state().review.detail = false;
+        if (state().review.detailFromCritical) {
+            state().review.detailFromCritical = false;
+            state().review.detailSubjectId = 0;
             state().study.gCriticalListActive = true;
+            state().screen.screen = Screen::Home;
         }
         state().display.gDirty = true;
         return;
     }
     if (e.key == Key::Right ||
         (e.key == Key::Other && tgc::cardputerCharAt(e.x, e.y, false) == ' ')) {
-        if (state().review.gReviewDetailPage + 1 < state().review.gReviewDetailPages) ++state().review.gReviewDetailPage;
+        if (state().review.detailPage + 1 < state().review.detailPages) ++state().review.detailPage;
         state().display.gDirty = true;
     } else if (e.key == Key::Left || e.key == Key::Backspace) {
-        if (state().review.gReviewDetailPage > 0) --state().review.gReviewDetailPage;
+        if (state().review.detailPage > 0) --state().review.detailPage;
         state().display.gDirty = true;
     }
 }
@@ -488,7 +489,7 @@ void sendPendingSession(bool onlyLatest = false) {
     r.gSendTotal = static_cast<uint32_t>(seqs.size());
     r.gSendSent = 0;
     auto redraw = []() {
-        if (state().review.gReviewSummary)
+        if (kk::screenBase(state().screen) == Screen::ReviewSummary)
             showReviewSummary();
         else
             showReview();
@@ -520,18 +521,18 @@ void checkCurrent() {
     const bool meaning = state().review.gQueue.part() == kk::ReviewPart::Meaning;
     const std::string input = reviewInput(meaning);
     if (input.empty()) return;
-    state().review.gFeedbackSubjectId = item->subjectId;
-    state().review.gFeedbackPart = state().review.gQueue.part();
-    state().review.gFeedbackInput = input;
+    state().review.feedbackSubjectId = item->subjectId;
+    state().review.feedbackPart = state().review.gQueue.part();
+    state().review.feedbackInput = input;
     // R6: WaniKani (the default) accepts a close meaning, Strict retries it.
     int typos = 0;
     const bool typosStrict = kk::settingsGetInt("rv.typos", &typos) && typos == 1;
     state().review.gCheck = kk::checkAnswer(*s, meaning ? kk::AnswerKind::Meaning : kk::AnswerKind::Reading,
                              input, typosStrict);
-    state().review.gFeedbackCorrectAt =
+    state().review.feedbackCorrectAt =
         state().review.gCheck.status == kk::AnswerStatus::Correct ? millis() : 0;
-    state().review.gFeedback = true;
-    state().review.gFeedbackCompleted = false;
+    state().review.feedback = true;
+    state().review.feedbackCompleted = false;
     // REV-11: the summary can show the last text the user typed wrong for each
     // part. Record it before the queue moves to the other part.
     if (state().review.gCheck.status == kk::AnswerStatus::Incorrect)
@@ -542,26 +543,26 @@ void checkCurrent() {
     }
     // REV-07: R9 opens the mnemonic for the part that failed. Only here, so
     // returning from the card leaves the feedback and Tab starts at page 1.
-    if (state().review.gFeedback &&
+    if (state().review.feedback &&
         state().review.gCheck.status == kk::AnswerStatus::Incorrect &&
         reviewDetailsOnWrongEnabled() &&
-        subjectById(state().review.gFeedbackSubjectId)) {
-        state().review.gDetailSubjectId = 0;
-        state().review.gDetailFromCritical = false;
-        state().review.gReviewDetailPages = detailPageCount(*s);
-        state().review.gReviewDetailPage =
-            state().review.gFeedbackPart == kk::ReviewPart::Meaning ? 1 : 2;
-        state().review.gReviewDetail = true;
+        subjectById(state().review.feedbackSubjectId)) {
+        state().review.detailSubjectId = 0;
+        state().review.detailFromCritical = false;
+        state().review.detailPages = detailPageCount(*s);
+        state().review.detailPage =
+            state().review.feedbackPart == kk::ReviewPart::Meaning ? 1 : 2;
+        state().review.detail = true;
     }
     state().display.gDirty = true;
 }
 
 void advanceFeedback() {
-    state().review.gFeedbackCorrectAt = 0;
+    state().review.feedbackCorrectAt = 0;
     if (state().review.gCheck.status == kk::AnswerStatus::Warning) {
         // Keep the typed text (meaning string and IME raw) so Enter returns to
         // the same question ready for a correction.
-        state().review.gFeedback = false;
+        state().review.feedback = false;
         state().display.gDirty = true;
         return;
     }
@@ -571,17 +572,16 @@ void advanceFeedback() {
     // on a wrong part never retries.
     const kk::SubmitPolicy policy = reviewSubmitPolicy();
     const uint32_t completed = static_cast<uint32_t>(state().review.gQueue.completedCount());
-    if (state().review.gFeedbackCompleted && kk::submitAfterItem(policy, completed) &&
+    if (state().review.feedbackCompleted && kk::submitAfterItem(policy, completed) &&
         state().review.gStageTracker.size())
         sendPendingSession(policy == kk::SubmitPolicy::Immediately);
-    state().review.gReviewDetail = false;
-    state().review.gFeedback = false;
-    state().review.gFeedbackCompleted = false;
+    state().review.detail = false;
+    state().review.feedback = false;
+    state().review.feedbackCompleted = false;
     clearReviewInput();
     if (state().review.gQueue.empty()) {
         state().review.gReviewElapsedMs = millis() - state().review.gReviewStartMs;
-        state().review.gReviewActive = false;
-        state().review.gReviewSummary = true;
+        state().screen.screen = Screen::ReviewSummary;
         // The tail of an Every 5 session and every At session end session goes
         // out on the summary. Esc in this loop leaves the rest pending.
         if (kk::submitAtSessionEnd(policy) && state().review.gStageTracker.size())
@@ -595,14 +595,15 @@ void advanceFeedback() {
 // owns the display.
 bool reviewAutoAdvance(uint32_t now) {
     auto& r = state().review;
-    if (!r.gReviewActive || !r.gFeedback || r.gReviewDetail || r.gFeedbackCorrectAt == 0)
+    if (kk::screenBase(state().screen) != Screen::Review || !r.feedback || r.detail ||
+        r.feedbackCorrectAt == 0)
         return false;
-    if (state().ui.gPauseActive || state().ui.gSettingsActive || state().ui.gHelpActive ||
+    if (kk::screenTop(state().screen) != Modal::None || state().ui.gHelpActive ||
         state().ui.gScreenOff)
         return false;
     if (r.gCheck.status != kk::AnswerStatus::Correct) return false;
     const uint32_t delayMs = reviewAdvanceDelayMs();
-    if (!kk::autoAdvanceDue(delayMs, now - r.gFeedbackCorrectAt)) return false;
+    if (!kk::autoAdvanceDue(delayMs, now - r.feedbackCorrectAt)) return false;
     advanceFeedback();
     return true;
 }
@@ -611,7 +612,8 @@ void endReview(bool send) {
     // The summary's own loop already ran; do not retry what Esc left pending
     // when Enter/Esc closes the session. Pause/End submits the session tail
     // unless the caller (SPEED-06 sleep) asks to send nothing.
-    if (send && !state().review.gReviewSummary && state().review.gStageTracker.size())
+    if (send && kk::screenBase(state().screen) != Screen::ReviewSummary &&
+        state().review.gStageTracker.size())
         sendPendingSession();
     state().review.gNeedsSubmit = false;
     state().review.gPendingSeq = 0;
@@ -619,22 +621,14 @@ void endReview(bool send) {
     state().review.gSendSent = 0;
     state().review.gSendTotal = 0;
     state().review.gStageTracker.clear();
-    state().ui.gPauseActive = false;
-    state().ui.gSettingsActive = false;
-    state().ui.gAboutActive = false;
-    state().ui.gSignOutConfirm = false;
-    state().lesson.gLessonEmptyActive = false;
-    state().lesson.gLessonListActive = false;
-    state().lesson.gLessonQuizActive = false;
-    state().ui.gLowBatteryPrompt = false;
+    state().ui.gLowBatteryAction = 0;
     state().ui.gLowBatteryConfirmed = false;
-    state().review.gReviewActive = false;
-    state().review.gReviewSummary = false;
-    state().review.gReviewDetail = false;
-    state().review.gFeedbackCorrectAt = 0;
-    state().session.gShowHome = true;
-    state().review.gFeedback = false;
-    state().review.gFeedbackCompleted = false;
+    kk::screenReset(&state().screen);
+    state().screen.screen = Screen::Home;
+    state().review.detail = false;
+    state().review.feedbackCorrectAt = 0;
+    state().review.feedback = false;
+    state().review.feedbackCompleted = false;
     state().review.gQueue = kk::ReviewQueue{};
     state().review.gWrapUp = false;
     // REV-11: the summary rows and their typed wrong answers belong to this
@@ -649,8 +643,8 @@ void endReview(bool send) {
     state().study.gPracticeSkipped = 0;
     state().study.gStudyMenuActive = false;
     state().study.gCriticalListActive = false;
-    state().review.gDetailFromCritical = false;
-    state().review.gDetailSubjectId = 0;
+    state().review.detailFromCritical = false;
+    state().review.detailSubjectId = 0;
     // Home does not need the batch's subjects; the assignments stay on disk for
     // the next session.
     evictCachedBatch(true);
@@ -660,14 +654,14 @@ void endReview(bool send) {
 void startReview() {
     if (state().storage.gFsFormatPrompt) return;  // wait for the storage choice
     if (!state().session.gHaveSummary) return;
-    state().lesson.gLessonQuizActive = false;
+    state().lesson.quizBatch = false;
     state().study.gPracticeActive = false;
     state().study.gPracticeSubjects.clear();
     state().study.gPracticeSkipped = 0;
-    state().review.gDetailFromCritical = false;
-    state().review.gDetailSubjectId = 0;
-    state().review.gReviewDetail = false;
-    state().review.gReviewDetailPage = 0;
+    state().review.detailFromCritical = false;
+    state().review.detailSubjectId = 0;
+    state().review.detail = false;
+    state().review.detailPage = 0;
     state().review.gStageChange = StageChange{};
     state().review.gStageTracker.clear();
     state().review.gSending = false;
@@ -675,7 +669,7 @@ void startReview() {
     state().review.gSendTotal = 0;
     state().review.gStageUps = 0;
     state().review.gReviewElapsedMs = 0;
-    state().review.gFeedbackCorrectAt = 0;
+    state().review.feedbackCorrectAt = 0;
     state().review.gWrapUp = false;
     if (!state().ui.gLowBatteryConfirmed && lowBatteryNow()) {
         requestLowBatteryConfirm(1);
@@ -691,7 +685,6 @@ void startReview() {
         state().ui.gNoticeLine2[0] = 0;
         state().ui.gNoticeAction = NoticeAction::OutboxFull;
         state().ui.gNoticeActive = true;
-        state().session.gShowHome = false;
         state().display.gDirty = true;
         return;
     }
@@ -712,7 +705,6 @@ void startReview() {
             state().ui.gNoticeLine2[0] = 0;
             state().ui.gNoticeAction = NoticeAction::ReviewError;
             state().ui.gNoticeActive = true;
-            state().session.gShowHome = false;
             state().display.gDirty = true;
             return;
         }
@@ -725,7 +717,6 @@ void startReview() {
         state().ui.gNoticeLine2[0] = 0;
         state().ui.gNoticeAction = NoticeAction::ReviewError;
         state().ui.gNoticeActive = true;
-        state().session.gShowHome = false;
         state().display.gDirty = true;
         return;
     }
@@ -781,12 +772,11 @@ void startReview() {
         state().ui.gNoticeLine2[0] = 0;
         state().ui.gNoticeAction = NoticeAction::ReviewEmpty;
         state().ui.gNoticeActive = true;
-        state().session.gShowHome = false;
         state().display.gDirty = true;
         return;
     }
-    state().review.gReviewActive = true;
-    state().review.gReviewSummary = false;
+    kk::screenReset(&state().screen);
+    state().screen.screen = Screen::Review;
     state().review.gReviewStartMs = millis();
     // REV-11: a new batch starts with an empty summary and no stale rows.
     // Kept until here so a failed fetch or an outbox-full notice leaves the
@@ -795,13 +785,8 @@ void startReview() {
     state().review.gSummaryStages.clear();
     state().review.gSummaryFocus = 0;
     state().review.gSummarySelected = 0;
-    state().session.gShowHome = false;
-    state().ui.gPauseActive = false;
-    state().ui.gSettingsActive = false;
-    state().ui.gAboutActive = false;
-    state().ui.gSignOutConfirm = false;
-    state().review.gFeedback = false;
-    state().review.gFeedbackCompleted = false;
+    state().review.feedback = false;
+    state().review.feedbackCompleted = false;
     state().review.gNeedsSubmit = false;
     state().review.gPendingSeq = 0;
     clearReviewInput();
@@ -817,31 +802,31 @@ void startReview() {
 
 bool reviewKey(const KeyEvent& e) {
     if (!e.down) return false;
-    if (state().review.gReviewDetail) {
+    if (state().review.detail) {
         reviewDetailKey(e);
         return true;
     }
-    if (state().review.gFeedback) {
+    if (state().review.feedback) {
         if (e.key == Key::Enter) {
             advanceFeedback();
         } else if (e.key == Key::Esc) {
-            state().review.gFeedbackCorrectAt = 0;
+            state().review.feedbackCorrectAt = 0;
             openPause();
         } else if (e.key == Key::Tab && state().review.gCheck.status != kk::AnswerStatus::Warning) {
-            state().review.gFeedbackCorrectAt = 0;
-            const kk::Subject* detail = subjectById(state().review.gFeedbackSubjectId);
-            state().review.gReviewDetailPages = detail ? detailPageCount(*detail) : 5;
-            state().review.gDetailSubjectId = 0;
-            state().review.gDetailFromCritical = false;
-            state().review.gReviewDetail = true;
-            state().review.gReviewDetailPage = 0;
+            state().review.feedbackCorrectAt = 0;
+            const kk::Subject* detail = subjectById(state().review.feedbackSubjectId);
+            state().review.detailPages = detail ? detailPageCount(*detail) : 5;
+            state().review.detailSubjectId = 0;
+            state().review.detailFromCritical = false;
+            state().review.detail = true;
+            state().review.detailPage = 0;
             state().display.gDirty = true;
         } else if (state().review.gCheck.status == kk::AnswerStatus::Incorrect &&
                    reviewWrongActionsEnabled()) {
             // REV-04: C accepts the failed part, A puts it back without a
             // mistake. Both undo the count the queue already recorded.
             const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
-            state().review.gFeedbackCorrectAt = 0;
+            state().review.feedbackCorrectAt = 0;
             if (c == 'c' || c == 'C') {
                 if (state().review.gQueue.undoLastIncorrect()) {
                     state().review.gQueue.setWrongAnswerOverride('C');
@@ -863,13 +848,13 @@ bool reviewKey(const KeyEvent& e) {
             const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
             if (c) {
                 advanceFeedback();
-                if (state().review.gReviewActive && !state().review.gFeedback)
+                if (kk::screenBase(state().screen) == Screen::Review && !state().review.feedback)
                     feedReviewChar(c);
             } else {
-                state().review.gFeedbackCorrectAt = 0;
+                state().review.feedbackCorrectAt = 0;
             }
         } else {
-            state().review.gFeedbackCorrectAt = 0;
+            state().review.feedbackCorrectAt = 0;
         }
         return true;
     }

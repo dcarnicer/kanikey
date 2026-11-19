@@ -203,7 +203,6 @@ void openStats() {
     state().stats.gStatsActive = true;
     state().stats.gStatsPage = 0;
     state().stats.gStatsHistoryLoaded = false;
-    state().session.gShowHome = false;
     state().display.gDirty = true;
 }
 
@@ -211,7 +210,6 @@ void statsKey(const KeyEvent& e) {
     if (!e.down) return;
     if (e.key == Key::Esc) {
         state().stats.gStatsActive = false;
-        state().session.gShowHome = true;
         state().display.gDirty = true;
         return;
     }

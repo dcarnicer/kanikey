@@ -85,6 +85,8 @@ namespace {
 
 using tgc::Key;
 using tgc::KeyEvent;
+using kk::Modal;
+using kk::Screen;
 using namespace kk::ui;
 
 #ifdef KANIKEY_DEV
@@ -303,13 +305,9 @@ void seedDevLesson() {
     radical.meaningHint = "A flat line.";
     state().lesson.gLessonBatch.subjects.push_back(radical);
     state().lesson.gLessonBatch.ok = true;
-    state().lesson.gLessonActive = false;
-    state().lesson.gLessonListActive = true;
-    state().lesson.gLessonEmptyActive = false;
-    state().lesson.gLessonQuizActive = false;
-    state().lesson.gLessonBatchQuizActive = false;
-    state().lesson.gLessonStartActive = false;
-    state().session.gShowHome = false;
+    state().screen.screen = Screen::LessonList;
+    state().lesson.startConfirm = false;
+    state().lesson.quizBatch = false;
     state().lesson.gLessonBatchLimit = kk::settingsLessonBatchSize();
     state().lesson.gLessonBrowse.begin(1, state().lesson.gLessonBatchLimit);
     state().lesson.gLessonNote[0] = 0;
@@ -329,7 +327,8 @@ void clearDevCache() {
     state().session.gDueReviews = 0;
     state().session.gLessons = 0;
     state().cache.gOffline = false;
-    state().session.gShowHome = false;
+    if (kk::screenBase(state().screen) == Screen::Home)
+        state().screen.screen = Screen::Boot;
     state().session.gSyncedAt = 0;
     state().cache.gCacheSavedAt = 0;
     state().display.gDirty = true;
@@ -385,13 +384,21 @@ void seedDevRejectedOutbox() {
                           static_cast<unsigned>(seed.httpCode));
     }
     saveOutbox();
-    if (!state().review.gReviewActive && !state().review.gReviewSummary && !state().lesson.gLessonActive && !state().lesson.gLessonListActive &&
-        !state().lesson.gLessonQuizActive && !state().lesson.gLessonBatchQuizActive && !state().lesson.gLessonStartActive &&
-        !state().sync.gSyncScreen && !state().ui.gSettingsActive && !state().ui.gPauseActive &&
-        !state().setup.gPortalActive) {
-        state().ui.gOutboxScreen = false;
-        state().ui.gOutboxConfirm = false;
-        state().session.gShowHome = true;
+    const Screen base = kk::screenBase(state().screen);
+    const Modal top = kk::screenTop(state().screen);
+    const bool sessionScreen = base == Screen::Review || base == Screen::ReviewSummary ||
+                               base == Screen::LessonEmpty || base == Screen::LessonList ||
+                               base == Screen::LessonCard || base == Screen::LessonQuiz ||
+                               base == Screen::Sync || base == Screen::Setup;
+    const bool settingsBelow = top == Modal::Settings || top == Modal::Pause ||
+                               top == Modal::About || top == Modal::SignOut;
+    if (!sessionScreen && !settingsBelow) {
+        if (base == Screen::Outbox) {
+            if (top == Modal::OutboxConfirm) kk::screenPop(&state().screen);
+            state().screen.screen = Screen::Home;
+        } else if (base == Screen::Boot && top == Modal::None) {
+            state().screen.screen = Screen::Home;
+        }
     }
     state().display.gDirty = true;
 }
@@ -446,9 +453,10 @@ void stopAssetServer() {
 }
 
 void startAssetServer() {
-    if (state().review.gReviewActive || state().lesson.gLessonActive || state().lesson.gLessonListActive ||
-        state().lesson.gLessonEmptyActive || state().lesson.gLessonBatchQuizActive ||
-        state().lesson.gLessonStartActive) {
+    const Screen base = kk::screenBase(state().screen);
+    if (base == Screen::Review || base == Screen::LessonCard ||
+        base == Screen::LessonList || base == Screen::LessonEmpty ||
+        (base == Screen::LessonQuiz && state().lesson.quizBatch)) {
         Serial.println("[asset] finish the review/lesson first");
         return;
     }
@@ -951,18 +959,18 @@ void handleSerial() {
                 startLessons();
             }
         } else if (state().ui.gSerialLine == "g") {
-            if (state().lesson.gLessonActive) {
+            if (kk::screenBase(state().screen) == Screen::LessonCard) {
                 KeyEvent ev;
                 ev.down = true;
                 ev.key = Key::Right;
                 lessonKey(ev);
                 state().display.gDirty = true;
-            } else if (state().review.gReviewDetail) {
-                if (state().review.gReviewDetailPage + 1 < state().review.gReviewDetailPages) ++state().review.gReviewDetailPage;
+            } else if (state().review.detail) {
+                if (state().review.detailPage + 1 < state().review.detailPages) ++state().review.detailPage;
                 state().display.gDirty = true;
             }
         } else if (state().ui.gSerialLine == "<") {
-            if (state().lesson.gLessonActive) {
+            if (kk::screenBase(state().screen) == Screen::LessonCard) {
                 KeyEvent ev;
                 ev.down = true;
                 ev.key = Key::Left;
@@ -971,7 +979,8 @@ void handleSerial() {
             }
         } else if (state().ui.gSerialLine == "j") {
             // Mirror Space on the lesson list: toggle the current row.
-            if (state().lesson.gLessonListActive) {
+            if (kk::screenBase(state().screen) == Screen::LessonList &&
+                !state().lesson.startConfirm) {
                 KeyEvent ev;
                 ev.down = true;
                 ev.key = Key::Other;
@@ -981,15 +990,15 @@ void handleSerial() {
                 state().display.gDirty = true;
             }
         } else if (state().ui.gSerialLine == "D") {
-            if (state().review.gReviewActive && state().review.gFeedback) {
-                const kk::Subject* detail = subjectById(state().review.gFeedbackSubjectId);
-                state().review.gReviewDetailPages = detail ? detailPageCount(*detail) : 5;
-                state().review.gReviewDetail = !state().review.gReviewDetail;
-                state().review.gReviewDetailPage = 0;
+            if (kk::screenBase(state().screen) == Screen::Review && state().review.feedback) {
+                const kk::Subject* detail = subjectById(state().review.feedbackSubjectId);
+                state().review.detailPages = detail ? detailPageCount(*detail) : 5;
+                state().review.detail = !state().review.detail;
+                state().review.detailPage = 0;
                 state().display.gDirty = true;
             }
         } else if (state().ui.gSerialLine == "Q") {
-            if (state().lesson.gLessonActive) {
+            if (kk::screenBase(state().screen) == Screen::LessonCard) {
                 startLessonQuiz();
             } else {
                 Serial.println("[lesson] open a lesson card first");
@@ -1005,16 +1014,16 @@ void handleSerial() {
             KeyEvent ev;
             ev.down = true;
             ev.key = Key::Enter;
-            if (state().lesson.gLessonStartActive) {
+            const Screen base = kk::screenBase(state().screen);
+            if (base == Screen::LessonList && state().lesson.startConfirm) {
                 lessonStartKey(ev);
-            } else if (state().lesson.gLessonListActive) {
+            } else if (base == Screen::LessonList) {
                 lessonListKey(ev);
-            } else if (state().lesson.gLessonBatchQuizActive) {
+            } else if (base == Screen::LessonQuiz && state().lesson.quizBatch) {
                 lessonBatchQuizKey(ev);
-            } else if (state().lesson.gLessonQuizActive) {
+            } else if (base == Screen::LessonQuiz) {
                 if (state().lesson.gLessonQuiz.complete()) {
-                    state().lesson.gLessonQuizActive = false;
-                    state().lesson.gLessonActive = true;
+                    state().screen.screen = Screen::LessonCard;
                 } else if (state().lesson.gLessonQuiz.feedback()) {
                     state().lesson.gLessonQuiz.advance();
                     clearLessonQuizInput();
@@ -1022,68 +1031,81 @@ void handleSerial() {
                     checkLessonQuiz();
                 }
                 state().display.gDirty = true;
-            } else if (state().lesson.gLessonActive) {
+            } else if (base == Screen::LessonCard) {
                 lessonKey(ev);
-            } else if (state().review.gReviewActive) {
-                if (state().review.gFeedback) advanceFeedback();
+            } else if (base == Screen::Review) {
+                if (state().review.feedback) advanceFeedback();
                 else checkCurrent();
             }
         } else if (state().ui.gSerialLine == "q") {
-            if (state().ota.gFirmwareActive) {
-                state().ota.gFirmwareActive = false;
-                state().ui.gSettingsActive = true;
+            const Screen base = kk::screenBase(state().screen);
+            if (base == Screen::Firmware) {
+                // Same return path as Esc on the firmware screen: Settings at
+                // the firmware row, so the serial back command matches the UI.
+                state().screen = state().ota.firmwareReturn;
+                if (kk::screenTop(state().screen) != Modal::Settings) {
+                    state().screen.screen = Screen::Home;
+                    state().screen.depth = 0;
+                    kk::screenPush(&state().screen, Modal::Settings);
+                }
                 settingsSelectEntry("system.firmware");
-                state().ota.gFirmwareConfirm = false;
+                if (kk::screenTop(state().screen) == Modal::FirmwareConfirm)
+                    kk::screenPop(&state().screen);
                 state().display.gDirty = true;
-            } else if (state().ui.gSettingsActive) {
+            } else if (kk::screenTop(state().screen) == Modal::Settings) {
                 closeSettings();
-            } else if (state().lesson.gLessonEmptyActive) {
-                state().lesson.gLessonEmptyActive = false;
-                state().session.gShowHome = true;
+            } else if (kk::screenTop(state().screen) == Modal::About ||
+                       kk::screenTop(state().screen) == Modal::SignOut) {
+                // The old serial back path closed Settings while About or the
+                // sign-out confirmation was on top.
+                kk::screenPop(&state().screen);
+                closeSettings();
+            } else if (base == Screen::LessonEmpty) {
+                state().screen.screen = Screen::Home;
                 releaseLessonData();
                 state().display.gDirty = true;
-            } else if (state().lesson.gLessonListActive) {
-                state().lesson.gLessonListActive = false;
-                state().session.gShowHome = true;
+            } else if (base == Screen::LessonList && !state().lesson.startConfirm) {
+                state().screen.screen = Screen::Home;
                 releaseLessonData();
                 state().display.gDirty = true;
-            } else if (state().lesson.gLessonStartActive) {
+            } else if (base == Screen::LessonList && state().lesson.startConfirm) {
                 KeyEvent ev;
                 ev.down = true;
                 ev.key = Key::Esc;
                 lessonStartKey(ev);
-            } else if (state().lesson.gLessonBatchQuizActive) {
+            } else if (base == Screen::LessonQuiz && state().lesson.quizBatch) {
                 KeyEvent ev;
                 ev.down = true;
                 ev.key = Key::Esc;
                 lessonBatchQuizKey(ev);
-            } else if (state().lesson.gLessonQuizActive) {
-                state().lesson.gLessonQuizActive = false;
-                state().lesson.gLessonActive = true;
+            } else if (base == Screen::LessonQuiz) {
+                state().screen.screen = Screen::LessonCard;
                 state().display.gDirty = true;
-            } else if (state().lesson.gLessonActive) {
+            } else if (base == Screen::LessonCard) {
                 KeyEvent ev;
                 ev.down = true;
                 ev.key = Key::Esc;
                 lessonKey(ev);
-            } else if (state().review.gReviewActive) {
+            } else if (base == Screen::Review) {
                 endReview();
             }
         } else if (state().ui.gSerialLine.startsWith("y ")) {
             const String text = state().ui.gSerialLine.substring(2);
-            if (state().lesson.gLessonBatchQuizActive && !state().lesson.gLessonBatchFeedback) {
+            if (kk::screenBase(state().screen) == Screen::LessonQuiz &&
+                state().lesson.quizBatch && !state().lesson.gLessonBatchFeedback) {
                 if (state().lesson.gLessonBatchQueue.part() == kk::ReviewPart::Meaning)
                     appendAnswerText(state().lesson.gLessonBatchInput, text);
                 else
                     appendAnswerText(state().lesson.gLessonBatchDirectReading, text);
                 state().display.gDirty = true;
-            } else if (state().lesson.gLessonQuizActive && !state().lesson.gLessonQuiz.feedback()) {
+            } else if (kk::screenBase(state().screen) == Screen::LessonQuiz &&
+                       !state().lesson.quizBatch && !state().lesson.gLessonQuiz.feedback()) {
                 if (state().lesson.gLessonQuiz.part() == kk::AnswerKind::Meaning)
                     appendAnswerText(state().lesson.gLessonQuizInput, text);
                 else
                     appendAnswerText(state().lesson.gLessonQuizDirectReading, text);
                 state().display.gDirty = true;
-            } else if (state().review.gReviewActive && !state().review.gFeedback) {
+            } else if (kk::screenBase(state().screen) == Screen::Review && !state().review.feedback) {
                 if (state().review.gQueue.part() == kk::ReviewPart::Meaning)
                     appendAnswerText(state().review.gMeaningInput, text);
                 else
@@ -1115,7 +1137,14 @@ void handleSerial() {
         } else if (state().ui.gSerialLine == "I") {
             startFirmwareInstall();
         } else if (state().ui.gSerialLine == "V") {
-            openFirmware();
+            // A portal, sync or outbox screen owns device state; opening the
+            // firmware screen over it would abandon that flow.
+            const Screen base = kk::screenBase(state().screen);
+            if (base == Screen::Setup || base == Screen::Sync || base == Screen::Outbox) {
+                Serial.println("[ota] firmware screen unavailable now");
+            } else {
+                openFirmware();
+            }
         } else if (state().ui.gSerialLine == "s") {
             if (kk::DevWifi::connected()) {
                 Serial.println("[wifi] disconnect first");
@@ -1149,7 +1178,8 @@ void handleSerial() {
             for (kk::SummaryBucket& bucket : state().session.gSummary.reviews)
                 bucket.availableAt = now + 3600;
             state().session.gDueReviews = 0;
-            state().session.gShowHome = true;
+            if (kk::screenBase(state().screen) == Screen::Boot)
+                state().screen.screen = Screen::Home;
             state().display.gDirty = true;
             Serial.println("[summary] dev due cleared");
         } else if (state().ui.gSerialLine == "H") {
@@ -1168,7 +1198,8 @@ void handleSerial() {
             lesson.subjectIds = {1};
             state().session.gSummary.lessons.push_back(lesson);
             state().session.gLessons = 1;
-            state().session.gShowHome = true;
+            if (kk::screenBase(state().screen) == Screen::Boot)
+                state().screen.screen = Screen::Home;
             state().display.gDirty = true;
             Serial.println("[dev] cached batch dropped, one lesson bucket seeded");
         } else if (state().ui.gSerialLine.startsWith("A ")) {
@@ -1251,8 +1282,17 @@ void handleSerial() {
             String arg = state().ui.gSerialLine.substring(1);
             arg.trim();
             state().dev.gRadicalTestId = arg.length() ? static_cast<uint32_t>(arg.toInt()) : 1;
-            state().dev.gShowRadicalTest = true;
-            state().dev.gShowDebug = false;
+            // R is an overlay like Tab: remember the screen underneath so Esc
+            // reveals it again, even when Tab's debug screen was on. A portal,
+            // sync, outbox or firmware screen owns the device state, so R must
+            // not replace it; the old flag was hidden behind those screens too.
+            const Screen base = kk::screenBase(state().screen);
+            if (base != Screen::Setup && base != Screen::Sync &&
+                base != Screen::Outbox && base != Screen::Firmware) {
+                state().dev.radicalReturn =
+                    base == Screen::Debug ? state().dev.debugReturn : base;
+                state().screen.screen = Screen::RadicalTest;
+            }
             state().display.gDirty = true;
             Serial.printf("[test] radical %u\n", static_cast<unsigned>(state().dev.gRadicalTestId));
 #endif

@@ -81,6 +81,8 @@ namespace {
 
 using tgc::Key;
 using tgc::KeyEvent;
+using kk::Modal;
+using kk::Screen;
 using namespace kk::ui;
 
 bool outboxNeedsAttention(const kk::OutboxItem& item);
@@ -393,12 +395,12 @@ void discardSelectedOutboxItem() {
         if (outboxNeedsAttention(it)) remaining.push_back(it.seq);
 
     state().outbox.gOutbox = std::move(next);
-    state().ui.gOutboxConfirm = false;
+    if (kk::screenTop(state().screen) == Modal::OutboxConfirm)
+        kk::screenPop(&state().screen);
     state().outbox.gOutboxNote[0] = 0;
     if (remaining.empty()) {
-        state().ui.gOutboxScreen = false;
+        state().screen = state().outbox.returnScreen;
         state().outbox.gOutboxSelectedSeq = 0;
-        state().session.gShowHome = true;
     } else {
         if (index >= static_cast<int>(remaining.size()))
             index = static_cast<int>(remaining.size()) - 1;
@@ -500,9 +502,11 @@ void flushOutbox() {
 
 void openOutbox() {
     // The empty state explains itself, so the list opens even when nothing
-    // needs attention (Settings › Sync & data › Outbox).
-    state().ui.gOutboxScreen = true;
-    state().ui.gOutboxConfirm = false;
+    // needs attention (Settings › Sync & data › Outbox). Opening from Settings
+    // must return there, so the whole screen state is restored on Esc.
+    state().outbox.returnScreen = state().screen;
+    kk::screenReset(&state().screen);
+    state().screen.screen = Screen::Outbox;
     state().outbox.gOutboxSelectedSeq = 0;
     state().outbox.gOutboxNote[0] = 0;
     selectedOutboxItem();
@@ -529,9 +533,9 @@ void journalPractice(const kk::SessionItem& item) {
 
 void outboxKey(const KeyEvent& e) {
     if (!e.down) return;
-    if (state().ui.gOutboxConfirm) {
+    if (kk::screenTop(state().screen) == Modal::OutboxConfirm) {
         if (e.key == Key::Esc) {
-            state().ui.gOutboxConfirm = false;
+            kk::screenPop(&state().screen);
             state().outbox.gOutboxNote[0] = 0;
             state().display.gDirty = true;
         } else if (e.key == Key::Enter) {
@@ -540,10 +544,8 @@ void outboxKey(const KeyEvent& e) {
         return;
     }
     if (e.key == Key::Esc) {
-        state().ui.gOutboxScreen = false;
-        state().ui.gOutboxConfirm = false;
+        state().screen = state().outbox.returnScreen;
         state().outbox.gOutboxNote[0] = 0;
-        state().session.gShowHome = true;
         state().display.gDirty = true;
         return;
     }
@@ -555,14 +557,14 @@ void outboxKey(const KeyEvent& e) {
         moveOutboxSelection(1);
     } else if (e.key == Key::Enter) {
         if (selectedOutboxItem()) {
-            state().ui.gOutboxConfirm = true;
+            kk::screenPush(&state().screen, Modal::OutboxConfirm);
             state().outbox.gOutboxNote[0] = 0;
             state().display.gDirty = true;
         }
     } else if (e.key == Key::Other) {
         const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
         if ((c == 'd' || c == 'D') && selectedOutboxItem()) {
-            state().ui.gOutboxConfirm = true;
+            kk::screenPush(&state().screen, Modal::OutboxConfirm);
             state().outbox.gOutboxNote[0] = 0;
             state().display.gDirty = true;
         }
@@ -595,7 +597,7 @@ void drawOutbox() {
         if (item.seq == state().outbox.gOutboxSelectedSeq) view.selectedIndex = static_cast<int>(i);
     }
     if (selected) {
-        view.confirm = state().ui.gOutboxConfirm;
+        view.confirm = kk::screenTop(state().screen) == Modal::OutboxConfirm;
         if (view.confirm) {
             view.confirmLabel = outboxItemLabel(*selected);
             char reason[128];

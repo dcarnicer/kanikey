@@ -86,6 +86,8 @@ namespace {
 
 using tgc::Key;
 using tgc::KeyEvent;
+using kk::Modal;
+using kk::Screen;
 using namespace kk::ui;
 
 const kk::Subject* lessonSubjectById(uint32_t id);
@@ -125,7 +127,7 @@ const kk::Assignment* currentLessonAssignment() {
 }
 
 const kk::Subject* currentLessonSubject() {
-    if (!state().lesson.gLessonActive) return nullptr;
+    if (kk::screenBase(state().screen) != Screen::LessonCard) return nullptr;
     const kk::Assignment* a = currentLessonAssignment();
     return a ? lessonSubjectById(a->subjectId) : nullptr;
 }
@@ -192,10 +194,7 @@ std::string lessonBatchInput(bool meaning) {
 void showLessonFetchError(int httpCode, const String& error) {
     Serial.printf("[lesson] failed: %s\n", error.c_str());
     if (error == "no due lessons" || error == "no lessons") {
-        state().lesson.gLessonEmptyActive = true;
-        state().lesson.gLessonListActive = false;
-        state().lesson.gLessonActive = false;
-        state().session.gShowHome = false;
+        state().screen.screen = Screen::LessonEmpty;
         state().display.gDirty = true;
         return;
     }
@@ -208,7 +207,6 @@ void showLessonFetchError(int httpCode, const String& error) {
         lessonError = state().ui.gNetLine;
     }
     drawLoading("No lessons available", lessonError);
-    state().session.gShowHome = false;
     snprintf(state().ui.gNoticeLine, sizeof state().ui.gNoticeLine, "%s", lessonError);
     state().ui.gNoticeLine2[0] = 0;
     state().ui.gNoticeAction = NoticeAction::LessonError;
@@ -245,11 +243,9 @@ void startLessonBatchQuiz() {
         openLessonStartConfirm();
         return;
     }
-    state().lesson.gLessonQuizActive = false;
-    state().lesson.gLessonBatchQuizActive = true;
-    state().lesson.gLessonActive = false;
-    state().lesson.gLessonListActive = false;
-    state().session.gShowHome = false;
+    state().screen.screen = Screen::LessonQuiz;
+    state().lesson.quizBatch = true;
+    state().lesson.startConfirm = false;
     Serial.printf("[lesson] quiz %u items\n",
                   static_cast<unsigned>(state().lesson.gLessonBatchQueue.remaining()));
     state().display.gDirty = true;
@@ -259,23 +255,20 @@ void openLessonStartConfirm() {
     LessonState& l = state().lesson;
     l.gLessonStartPlan.build(l.gLessonBatch.assignments, l.gLessonBrowse.selected());
     if (l.gLessonStartPlan.empty()) {
-        l.gLessonBatchQuizActive = false;
-        l.gLessonActive = false;
-        l.gLessonListActive = true;
+        state().screen.screen = Screen::LessonList;
+        l.startConfirm = false;
+        l.quizBatch = false;
         snprintf(l.gLessonNote, sizeof l.gLessonNote, "Nothing to start");
         state().display.gDirty = true;
         return;
     }
-    l.gLessonStartActive = true;
+    state().screen.screen = Screen::LessonList;
+    l.startConfirm = true;
     l.gLessonStartFailed = false;
     l.gLessonStartOffline = false;
-    l.gLessonBatchQuizActive = false;
-    l.gLessonQuizActive = false;
-    l.gLessonActive = false;
-    l.gLessonListActive = false;
+    l.quizBatch = false;
     l.gLessonNote[0] = 0;
     clearLessonBatchInput();
-    state().session.gShowHome = false;
     Serial.printf("[lesson] start confirm %u\n",
                   static_cast<unsigned>(l.gLessonStartPlan.size()));
     state().display.gDirty = true;
@@ -340,7 +333,7 @@ void runLessonStart() {
     if (!canStart) {
         l.gLessonStartFailed = false;
         l.gLessonStartOffline = true;
-        l.gLessonStartActive = true;
+        l.startConfirm = true;
         state().display.gDirty = true;
         return;
     }
@@ -401,13 +394,13 @@ void runLessonStart() {
     if (l.gLessonStartPlan.allStarted()) {
         Serial.printf("[lesson] batch started %u\n",
                       static_cast<unsigned>(l.gLessonStartPlan.size()));
-        l.gLessonStartActive = false;
+        l.startConfirm = false;
         l.gLessonStartFailed = false;
         l.gLessonStartOffline = false;
-        state().session.gShowHome = true;
+        state().screen.screen = Screen::Home;
         releaseLessonData();
     } else {
-        l.gLessonStartActive = true;
+        l.startConfirm = true;
         l.gLessonStartFailed = stopped;
         l.gLessonStartOffline = false;
     }
@@ -585,8 +578,8 @@ void startLessonQuiz() {
     if (!s) return;
     state().lesson.gLessonQuiz.start(*s);
     clearLessonQuizInputImpl();
-    state().lesson.gLessonQuizActive = true;
-    state().lesson.gLessonActive = false;
+    state().screen.screen = Screen::LessonQuiz;
+    state().lesson.quizBatch = false;
     state().display.gDirty = true;
     Serial.printf("[lesson] quiz %u\n", static_cast<unsigned>(s->id));
 }
@@ -653,15 +646,13 @@ void showLessonQuiz() {
 void lessonQuizKey(const KeyEvent& e) {
     if (!e.down) return;
     if (e.key == Key::Esc) {
-        state().lesson.gLessonQuizActive = false;
-        state().lesson.gLessonActive = true;
+        state().screen.screen = Screen::LessonCard;
         state().display.gDirty = true;
         return;
     }
     if (state().lesson.gLessonQuiz.complete()) {
         if (e.key == Key::Enter) {
-            state().lesson.gLessonQuizActive = false;
-            state().lesson.gLessonActive = true;
+            state().screen.screen = Screen::LessonCard;
             state().display.gDirty = true;
         }
         return;
@@ -751,12 +742,12 @@ void lessonBatchQuizKey(const KeyEvent& e) {
     LessonState& l = state().lesson;
     if (e.key == Key::Esc) {
         // Back to the last card, batch unchanged.
-        l.gLessonBatchQuizActive = false;
+        l.quizBatch = false;
         l.gLessonBatchFeedback = false;
         l.gLessonBatchPart = kk::ReviewPart::None;
         l.gLessonBatchSubjectId = 0;
         clearLessonBatchInput();
-        l.gLessonActive = true;
+        state().screen.screen = Screen::LessonCard;
         state().display.gDirty = true;
         return;
     }
@@ -882,23 +873,23 @@ void lessonStartKey(const KeyEvent& e) {
             // (if any) still gets the last word before the fetch.
             l.gLessonWorkloadActive = false;
             l.gLessonWorkloadConfirmed = true;
-            l.gLessonStartActive = false;
+            l.startConfirm = false;
             startLessons();
         } else if (e.key == Key::Esc) {
             l.gLessonWorkloadActive = false;
             l.gLessonWorkloadConfirmed = false;
-            l.gLessonStartActive = false;
-            state().session.gShowHome = true;
+            l.startConfirm = false;
+            state().screen.screen = Screen::Home;
             releaseLessonData();
             state().display.gDirty = true;
         }
         return;
     }
     if (e.key == Key::Esc) {
-        state().lesson.gLessonStartActive = false;
-        state().lesson.gLessonStartFailed = false;
-        state().lesson.gLessonStartOffline = false;
-        state().lesson.gLessonActive = true;
+        l.startConfirm = false;
+        l.gLessonStartFailed = false;
+        l.gLessonStartOffline = false;
+        state().screen.screen = Screen::LessonCard;
         state().display.gDirty = true;
         return;
     }
@@ -922,7 +913,7 @@ void releaseLessonData() {
     l.gLessonBrowse = kk::LessonBrowse{};
     l.gLessonBatchLimit = 0;
     l.gLessonStartPlan = kk::LessonStartPlan{};
-    l.gLessonStartActive = false;
+    l.startConfirm = false;
     l.gLessonStartFailed = false;
     l.gLessonStartOffline = false;
     l.gLessonWorkloadActive = false;
@@ -933,8 +924,7 @@ void releaseLessonData() {
     l.gLessonBatchPart = kk::ReviewPart::None;
     l.gLessonBatchSubjectId = 0;
     l.gLessonBatchFeedback = false;
-    l.gLessonBatchQuizActive = false;
-    l.gLessonQuizActive = false;
+    l.quizBatch = false;
     clearLessonBatchInput();
     clearLessonQuizInputImpl();
     l.gLessonNote[0] = 0;
@@ -945,24 +935,17 @@ void startLessons() {
     LessonState& l = state().lesson;
     // A fresh entry from Home re-arms the workload guard; continuing a
     // guard/battery confirmation keeps the earlier decision.
-    if (state().session.gShowHome) l.gLessonWorkloadConfirmed = false;
+    if (kk::screenBase(state().screen) == Screen::Home) l.gLessonWorkloadConfirmed = false;
     l.gLessonWorkloadActive = false;
-    l.gLessonQuizActive = false;
-    l.gLessonBatchQuizActive = false;
-    l.gLessonStartActive = false;
+    l.quizBatch = false;
+    l.startConfirm = false;
     if (state().session.gSummary.totalLessons() == 0) {
-        l.gLessonEmptyActive = true;
-        l.gLessonListActive = false;
-        l.gLessonActive = false;
-        state().session.gShowHome = false;
+        state().screen.screen = Screen::LessonEmpty;
         state().display.gDirty = true;
         return;
     }
     // LES-05: local, non-blocking guard before any Wi-Fi join or request. The
     // battery prompt stays the last gate.
-    l.gLessonEmptyActive = false;
-    l.gLessonListActive = false;
-    l.gLessonActive = false;
     if (!l.gLessonWorkloadConfirmed) {
         kk::WorkloadThresholds limits;
         int value = 0;
@@ -987,10 +970,10 @@ void startLessons() {
             l.gLessonWorkloadDue = due;
             l.gLessonWorkloadStartedToday = started;
             l.gLessonWorkloadLimits = limits;
-            l.gLessonStartActive = true;
+            state().screen.screen = Screen::LessonList;
+            l.startConfirm = true;
             l.gLessonStartFailed = false;
             l.gLessonStartOffline = false;
-            state().session.gShowHome = false;
             Serial.printf("[lesson] workload guard %u\n", static_cast<unsigned>(reasons));
             state().display.gDirty = true;
             return;
@@ -1018,7 +1001,6 @@ void startLessons() {
     state().lesson.gLessonStartPlan = kk::LessonStartPlan{};
     state().lesson.gLessonStartFailed = false;
     state().lesson.gLessonStartOffline = false;
-    state().lesson.gLessonEmptyActive = false;
     size_t lessonLimit = static_cast<size_t>(kk::settingsLessonBatchSize());
     if (state().session.gHaveUser && state().session.gUser.lessonsBatchSize > 0)
         lessonLimit = std::min(lessonLimit, static_cast<size_t>(state().session.gUser.lessonsBatchSize));
@@ -1120,7 +1102,6 @@ void startLessons() {
         // before showing a lesson list that cannot be started.
         setSyncIssue(401, true, 0, "Lessons");
         drawLoading("No lessons available", state().ui.gNetLine);
-        state().session.gShowHome = false;
         snprintf(state().ui.gNoticeLine, sizeof state().ui.gNoticeLine, "%s", state().ui.gNetLine);
         state().ui.gNoticeLine2[0] = 0;
         state().ui.gNoticeAction = NoticeAction::LessonError;
@@ -1131,14 +1112,12 @@ void startLessons() {
     state().lesson.gLessonBatchLimit = lessonLimit;
     state().lesson.gLessonBrowse.begin(state().lesson.gLessonBatch.assignments.size(),
                                        lessonLimit);
-    state().lesson.gLessonStartActive = false;
     state().lesson.gLessonStartFailed = false;
     state().lesson.gLessonStartOffline = false;
     state().lesson.gLessonNote[0] = 0;
-    state().lesson.gLessonListActive = true;
-    state().lesson.gLessonActive = false;
-    state().lesson.gLessonBatchQuizActive = false;
-    state().session.gShowHome = false;
+    state().screen.screen = Screen::LessonList;
+    state().lesson.startConfirm = false;
+    state().lesson.quizBatch = false;
     Serial.printf("[lesson] list %u assignments, %u subjects, batch %u\n",
                   static_cast<unsigned>(state().lesson.gLessonBatch.assignments.size()),
                   static_cast<unsigned>(state().lesson.gLessonBatch.subjects.size()),
@@ -1151,15 +1130,13 @@ void lessonListKey(const KeyEvent& e) {
     LessonState& l = state().lesson;
     const size_t total = l.gLessonBatch.assignments.size();
     if (total == 0) {
-        l.gLessonListActive = false;
-        state().session.gShowHome = true;
+        state().screen.screen = Screen::Home;
         releaseLessonData();
         state().display.gDirty = true;
         return;
     }
     if (e.key == Key::Esc) {
-        l.gLessonListActive = false;
-        state().session.gShowHome = true;
+        state().screen.screen = Screen::Home;
         releaseLessonData();
         state().display.gDirty = true;
         return;
@@ -1192,10 +1169,9 @@ void lessonListKey(const KeyEvent& e) {
         l.gLessonBrowse.setCard(0);
         l.gLessonBrowse.setPageCount(1);
         l.gLessonNote[0] = 0;
-        l.gLessonQuizActive = false;
-        l.gLessonBatchQuizActive = false;
-        l.gLessonListActive = false;
-        l.gLessonActive = true;
+        state().screen.screen = Screen::LessonCard;
+        l.startConfirm = false;
+        l.quizBatch = false;
         state().display.gDirty = true;
     }
 }
@@ -1211,11 +1187,10 @@ void lessonKey(const KeyEvent& e) {
         }
     }
     if (e.key == Key::Esc) {
-        l.gLessonActive = false;
         if (l.gLessonBrowse.selectedCount() > 0) {
-            l.gLessonListActive = true;
+            state().screen.screen = Screen::LessonList;
         } else {
-            state().session.gShowHome = true;
+            state().screen.screen = Screen::Home;
             releaseLessonData();
         }
         state().display.gDirty = true;

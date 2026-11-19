@@ -3761,6 +3761,7 @@ void run_rev11_tests();
 void run_pack_tests();
 void run_http_tests();
 void run_power_tests();
+void run_screen_tests();
 
 int main(int, char**) {
     UNITY_BEGIN();
@@ -3965,5 +3966,6 @@ int main(int, char**) {
     run_pack_tests();
     run_http_tests();
     run_power_tests();
+    run_screen_tests();
     return UNITY_END();
 }

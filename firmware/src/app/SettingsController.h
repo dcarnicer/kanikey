@@ -8,7 +8,7 @@ namespace kk::app {
 
 bool lowBatteryNow();
 void requestLowBatteryConfirm(int action);
-void openSettings(SettingsOrigin origin);
+void openSettings();
 void closeSettings();
 // Selects one registry entry by id (section + row), for the Firmware screen's
 // Esc return and the serial back paths.
