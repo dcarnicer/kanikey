@@ -8,7 +8,7 @@ The documentation still describes the design mockups rather than the device: `do
 | DOC-02 | `ux.md` alignment | P2 | S | DOC-01, REV-10, LES-01…LES-04, CFG | any | review |
 | DOC-03 | `decisions.md` entries | P2 | S | REV-02, LES-01…LES-03, SPEED-06 | any | review |
 | DOC-04 | ROADMAP round 2 | P2 | S | none | any | review |
-| DOC-05 | Hardware check log template | P3 | S | none | any | review |
+| DOC-05 | Hardware check log template | P3 | S | none | any | review (2026-11-19: table filled from the v1 pass) |
 | ONB-01 | Split the visual pack | P2 | M | none | 2 (after ARCH-01) | review (2026-11-19: merged; hardware pending) |
 | ONB-02 | Pack from the setup portal | P2 | L | ONB-01, FIX-01 | 2 (after ONB-01) | review (2026-11-19: merged; hardware pending) |
 | ONB-03 | `setup.md` for non-developers | P3 | S | ONB-01, ONB-02, FIX-01 | any | review (pack flow documented; hardware pending) |

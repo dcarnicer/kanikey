@@ -768,18 +768,72 @@ A150 G143 M81 E147 B586).
 ## Round 2 hardware checks
 
 Round-2 tasks use the same device tools as the v1 passes. Record each check
-from a P0/P1 task's **Tests** line here instead of only in prose; a task stays
-in `review` until all of its P0/P1 rows are `pass` (or the owner accepts a
-`blocked` row with the reason). Rows start as `todo`; a run fills the date and
-result and may add a short dated subsection below the table with the serial
-log. Do not rewrite the dated sections above; link to them by date instead.
+from a task's **Tests** line here instead of only in prose; the P0/P1 rows are
+the gate: a task stays in `review` until they are `pass` (or the owner accepts
+a `blocked` row with the reason). P2/P3 checks are indexed when a run covered
+them or when the dated section names them as remaining; the v1 API/OTA/Wi-Fi
+rows record what the 2026-11-19 pass closed. Rows start as `todo`; a run fills
+the date and result and may add a short dated subsection below the table with
+the serial log. Do not rewrite the dated sections above; link to them by date
+instead.
 
 | Task | Check | Build | Date | Result | Evidence |
 |---|---|---|---|---|---|
-| `<ID>` | `<check from Tests>` | `cardputer-adv-dev` | — | `todo` | — |
+| `API-01/05` | OUTBOX: rejected/stuck list, confirmation with attempts/age, discard one sequence | `cardputer-adv-dev` | 2026-11-19 | `pass` | 2026-11-19 v1 pass: `J` seeded a 422, a 409 and a 50-attempt stuck item; the screen read `HTTP 422`, `HTTP 409` and `gave up`; the confirmation showed `WaniKani rejected this review (HTTP 422). 1 attempt, age 8m.`; Enter discarded only seq 1 (2 items left). |
+| `API-02` | Real 429: shared gate, `RateLimit-Reset` countdown, no immediate retry | — | — | `todo` | Native-tested only; a real 429 was not provoked (2026-11-19 v1 pass, "Remaining hardware checks"). |
+| `API-03` | 401: shared gate arms; the next request is blocked before TLS | `cardputer-adv-dev` | 2026-11-19 | `pass` | `T` saved a dev token; boot `/v2/user` returned a real 401; log `401 token rejected; blocking requests until the token changes`; a following `u` logged `[http] /v2/user blocked by auth (401)` with no TLS request. |
+| `API-03` | 403: endpoint-specific "missing permissions", not a global gate | — | — | `blocked` | Needs a read-only token (missing token permission); 403 was not run on 2026-11-19. |
+| `API-04` | Retry a truncated or parse-failed 200 once; the retry is bounded | `cardputer-adv-dev` | 2026-11-19 | `partial` | Real `/v2/assignments?...&srs_stages=1,2,3,4` returned 200 with 32,768 bytes truncated; the log showed the retry and a second parse failure. The retry path ran; a successful retry was not observed. The practice-pool stage split fixed the over-cap fetch. |
+| `FIX-24c` | Wi-Fi upload: `S` + `curl -T` 64 KB | `cardputer-adv-dev` | 2026-11-19 | `pass` | `S` plus `curl -T` wrote `/kanikey/test-upload.bin`; `[asset] done 65536/65536`. The pack-path power-cut check is separate. |
+| `FIX-20` | OTA good install: local manifest/image, install to app1, boot, first sync, reset | `cardputer-adv-dev` | 2026-11-19 | `pass` | Local v0.1.1 image/manifest over HTTP; the dev `U`/`F`/`I` path installed it into app1; it booted as 0.1.1, the first sync succeeded, and a reset stayed on 0.1.1; the device was reflashed with dev 0.1.0. |
+| `FIX-20` | Bad first boot / two-strike rollback | — | — | `todo` | Not run on 2026-11-19; needs an image that cannot do TLS and two failed boots. |
+| `SPEED-01` | Submission policy: `Sending n/12`, Esc stop, pending count, next sync | — | — | `todo` | Six native tests; the summary send loop, Esc stop, offline failure, Every-5/Immediately and heap/canvas checks remain (2026-11-19 v1 pass). |
+| `SPEED-02/03/04` | Quick/full sync, non-modal Home, prefetch | `cardputer-adv-dev` | 2026-11-19 | `partial` | Auto quick sync logged the step transitions, `/v2/summary` and `[sync] complete`; a recent cache skipped the sync; the first on-demand lesson/review fetch joined Wi-Fi. Remaining: cold vs deep-sleep request list/time to Home, Home `sync n/m`, `Esc`/`Enter` mid-sync, a full auto sync with prefetch, untrusted clock. |
+| `SPEED-05` | Keep-alive/chunked transport; idle-age underflow fix | `cardputer-adv-dev` | 2026-11-19 | `partial` | Manual `S` sync: one session, `[http] session close after 35 requests`, `reuse` and `chunked keep`; `/v2/subjects?ids=419` returned 200, 2,199 B; min free heap 22,836 B; `[power] blank after 60002 ms idle`. Remaining: TLS spike numbers, a dropped reused connection, an explicit `/summary` parse check. |
+| `SPEED-07` | Home due count/next review updates within 60 s | — | — | `todo` | Two native Summary tests; the 60 s Home tick and the offline-clock line still need the hardware run (2026-11-19 v1 pass). |
+| `CFG-01` | Eight sections, open/back, cycle both ways, review lock, scroll, origin | `cardputer-adv-dev` | 2026-11-19 | `partial` | Home → Esc showed eight sections with counts (`Reviews 12`, `Lessons 6`, …); Reviews showed 12 rows; `Batch size` cycled 20 → 30 with Right and back to 20 with Left, with the help line. Remaining: `Esc`-back chain, wrap at both ends, review lock, scroll thumb, origin return. |
+| `CFG-02` | Registry persistence, defaults, R4 upgrade | `cardputer-adv-dev` | 2026-11-19 | `partial` | 47 rows and eight sections are live in the menu; one value (`Batch size`) cycled. Remaining: one change per section plus a power cycle, a fresh-NVS default check, and the v0.1.0 `order` → `rv.first` upgrade. |
+| `CFG-03` | Reset: second Enter, Esc cancel, keeps account, brightness, review lock | — | — | `todo` | Implemented; no reset run appears in the 2026-11-19 sections. |
+| `CFG-04` | Help on Home/Settings/feedback/lesson/Outbox/Firmware; Esc closes; hint width | `cardputer-adv-dev` | 2026-11-19 | `partial` | `?` on Home opened the seven-row `home` table with `Esc: close`; Settings showed Up/Down/Enter/Left/Right/Esc; in an answer field `?` opened the `reviews` table without typing `?`; the Home hint `Enter: reviews  L  S  Esc: menu` fits. Remaining: lesson/Outbox/Firmware tables, the swallow/close path, plain `/` paging, portal/Wi-Fi refusal. |
+| `REV-01/03` | Feedback: all accepted answers/synonyms, grouped readings, hint line, lesson quiz | — | — | `todo` | 13 native tests; the hardware feedback look (multiple meanings, kanji groups, hint fallback, lesson quiz) was not run (2026-11-19 v1 pass). |
+| `REV-02` | WaniKani vs Strict typo policy | `cardputer-adv-dev` | 2026-11-19 | `partial` | Default: `tonigh` for 今夜 was CORRECT with `Close: tonight`; `tonite` (distance 3) correctly stayed NOT QUITE. Strict path and lesson quiz not run; R6 was returned to WaniKani. |
+| `REV-04` | C/A on Incorrect; warning; bar/help | `cardputer-adv-dev` | 2026-11-19 | `partial` | R7 On: wrong `banana` for 今夜's meaning + `C` moved to the `READING` question; a wrong kana reading + `A` requeued the item and advanced to 人 with no completion. Journal, warning, bar/help and practice checks remain. |
+| `REV-05` | Pause four rows; wrap-up prune/count/summary | `cardputer-adv-dev` | 2026-11-19 | `partial` | Pause showed `Continue / Wrap up / End session / Settings`; after completing 今夜's meaning, Wrap up kept the reading with `WRAP UP 1` and `1/1`. Multi-item prune, idempotence and summary checks remain. |
+| `REV-06` | Auto-advance delay, typed-key advance, guards | `cardputer-adv-dev` | 2026-11-19 | `partial` | R8 `2 s`: answering `tonight` for 今夜 advanced to the `READING` question without Enter. Back-to-back Off, minimal header and the wrong/warning/detail/pause/blank guards remain. |
+| `REV-07` | Wrong meaning/reading opens the matching detail page; return | `cardputer-adv-dev` | 2026-11-19 | `partial` | R9 On: a wrong `banana` for 今夜's meaning opened `ITEM DETAIL 2/6`, `MEANING MNEMONIC`, with `Tab/Esc: back`. Reading page, return path and empty-mnemonic state remain. |
+| `REV-08` | Order fetch/selection, visible order, fallback, cached | `cardputer-adv-dev` | 2026-11-19 | `partial` | R2 `Oldest available` fetched the full due set: 8 pages, 228,077 B, 464 assignments, 20 chosen, then a 20-item queue (`二斤`, `氏`, `出す`, …), with no reset. Visible SRS/level/type order, fallback and cached-offline checks remain. |
+| `REV-09/12` | Back-to-back Off; minimal header | — | — | `todo` | Named as remaining after the 2026-11-19 REV-06 smoke; no hardware evidence. |
+| `REV-10` | Backspace repeat, Fn/Ctrl clear, kana units, 64-byte cap | — | — | `todo` | 15 native tests; the hardware hold/clear/kana/paste checks remain (2026-11-19 v1 pass). |
+| `REV-11` | Mistakes list, navigation, `R` next batch, stage updates, layout | — | — | `todo` | Six native tests; the three-row list, `R`, stage updates during the send loop and the 240×135 layout remain. |
+| `LES-01` | Browse a 5-card batch with all keys; no `[lesson] start` | `cardputer-adv-dev` | 2026-11-19 | `partial` | `L` fetched 5 lessons and showed the `1/5` list; Enter opened the `1/5 p1/4` card; no `[lesson] start`. The full page walk with Space/Left and the five-card sequence were not recorded. |
+| `LES-02` | Batch quiz of 5 with two mistakes; requeue; no outbox growth | `cardputer-adv-dev` | 2026-11-19 | `partial` | The batch quiz opened as `LESSON QUIZ 1/5`. The two-mistake requeue run and the no-outbox-growth check remain. |
+| `LES-03` | Start 5 on Wi-Fi, offline, already-started 422 | `cardputer-adv-dev` | 2026-11-19 | `partial` | A later real batch sent 5 `PUT /start`, all 200; Home dropped from 120 to 115 lessons. Offline start, 422 and already-started-elsewhere were not run; the confirmation/progress text was not recorded. |
+| `LES-04` | L2 order; fresh level shows the radical first, whole unlock reachable | `cardputer-adv-dev` | 2026-11-19 | `partial` | Lessons showed `Order: WaniKani`; Right changed it to `Radicals>Kanji>Vocab` then `Interleave types`; Left restored WaniKani. Fresh-level radical-first and the 60-candidate checks remain. |
+| `LES-05` | L4 threshold screen + Esc; L5/L6 and multi-reason | `cardputer-adv-dev` | 2026-11-19 | `partial` | L4 100 with A150 opened `WORKLOAD CHECK — Apprentice items: 150 (limit 100)` and `Enter: continue  Esc: back`; Esc returned Home without a fetch. L5/L6 and the multi-reason guard remain. |
+| `LES-06` | Kanji/radical/vocab topic pages, long mnemonic, `p` counter | `cardputer-adv-dev` | 2026-11-19 | `partial` | First VOCAB card `1/5 p1/6`, `VOCAB L7`, 以前, `Meaning`; page 2 `READING` and page 3 continued the reading topic. Kanji/radical card sets and the Context page remain. |
+| `SETUP-09` | Wi-Fi scan, masked password, join/save/failure, hidden SSID, boot, lock | `cardputer-adv-dev` | 2026-11-19 | `partial` | Settings › Account showed `Wi-Fi scan`, `Setup portal` and `Sign out`; Wi-Fi opened a 2.4 GHz list with SSID, signal bars and `WPA2` (no 5 GHz rows); `Esc` returned to Account; the password screen masked the field with `Tab: show`. Join/save/failure, hidden SSID, boot flow, review lock and power guard remain. |
+| `ONB-01` | Split packs, v1 fallback, missing radical, About two lines | `cardputer-adv-dev` | 2026-11-19 | `partial` | The card still held the v1 combined `glyphs.kgp`; Home, lessons and About rendered through the fallback; About showed both `Font:` and `Rad:` lines split by role. Split `glyphs.kgp`/`radicals.kgp`, missing-radical boot and both upload paths remain. |
+| `ONB-02` | Portal download/upload, failure/cancel, heap | `cardputer-adv-dev` | 2026-11-19 | `partial` | Station page (code 915461) showed `Font: 7269 glyphs, 64/32/20 px`, `Radicals: 498 radicals`, `Check pack again`, `Upload radical pack` and `Card free: 29.5 GB`; `Download pack` was absent with a ready font. A 56-byte `glyphs-bad-small.kgp` returned `Not a radical pack: pack: no radicals.` and kept the 498 radicals. Empty-card download, cut Wi-Fi, valid phone upload, truncated upload, `Esc` cancel and heap checks remain. |
+| `FIX-06` | Slow/blackholed server read timeout; no resend | — | — | `todo` | Not run; needs a throttled or blackholed endpoint. |
+| `FIX-07` | AP key: new random 10-character key per portal start | `cardputer-adv-dev` | 2026-11-06 | `partial` | Two boots produced `KaniKey-AAC8` with two different random passwords; the new-key join was not separately recorded. |
+| `FIX-07` | 15-minute idle AP close | — | — | `todo` | Not run (2026-11-06); the device has a saved network, so the portal opens in station mode. The idle AP needs a separate setup. |
+| `FIX-14` | Real 32 KB truncation: fetch stages separately, save all 145 | `cardputer-adv-dev` | 2026-11-19 | `pass` | Real 32,768 B truncation on `srs_stages=1,2,3,4`; fetching stages 1–4 separately saved all 145 (12/28/54/51) with 5,768–26,157 B bodies. The subject-page 5→2→1 fallback was not triggered. |
+| `FIX-14` | Forced small cap: 5→2→1 fallback | — | — | `todo` | Not run; needs a dev build with a forced small body cap. |
+| `RAD-04` | Radical-only lesson on a low-level account | `cardputer-adv-dev` | 2026-11-06 | `blocked` | Synthetic `L` → `RAD L1 ground` card and quiz rendered the radical bitmap. A real low-level account is not available, so the real first-lesson run is blocked. |
+| `UI-05` | Real level-up notice | — | — | `todo` | No level-up occurred in the 2026-10-29 run; the `Level up!` transition still needs a real level change. |
+| `SPEED-06` | Light sleep: key wake mid-review, current, G0, first key | — | — | `todo` | Spec status `todo`; no hardware run. |
+| `REM-01/02/03` | Timer wake, reminder re-sleep, tones | — | — | `todo` | No hardware run; the REM-01 spike and the reminder/sound checks are still `todo`. |
+| `AUD-01/02/03` | Clip sizes, decoder flash/RAM/time, I2S/ES8311, cache, playback | — | — | `todo` | Parser and 880 Hz speaker path merged 2026-11-06; measurements, cache and playback checks remain. |
+| `BT-01` | BLE HID host spike | — | — | `todo` | Post-v1 spike; not started. |
+| `PD-01/02` | PaperDIY board and render spike | — | — | `todo` | Post-v1 spike; not started. |
 
-- **Result:** `todo` (not run), `pass`, `fail` or `blocked` (state the missing
-  hardware/account/permission). Status names follow
+Rows marked `partial` are not passes: the Evidence cell and the dated section
+name what is still open. The table is an index; the dated sections above remain
+the narrative.
+
+- **Result:** `todo` (not run), `pass`, `partial` (some checks in the row ran;
+  the rest of the Tests line is still open), `fail` or `blocked` (state the
+  missing hardware/account/permission). Status names follow
   [docs/spec/README.md](spec/README.md) §6: a task stays `review` until its
   P0/P1 checks are done.
 - **Evidence:** a serial line (`[pack]`, `[cache]`, `[ota]`, `[sync]`, …), a
