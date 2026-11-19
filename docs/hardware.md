@@ -702,8 +702,10 @@ A150 G143 M81 E147 B586).
   rows and `Esc: close`; the normal Home hint shows
   `Enter: reviews  L  S  Esc: menu` without clipping. On Settings, `?` showed
   Up/Down Move, Enter Open/next value, Left/Right Previous/next value and Esc
-  Back/close. The review/lesson/Outbox/Firmware tables, the swallow/close path
-  and the portal/Wi-Fi refusal remain.
+  Back/close. In a review answer field `?` opened the `reviews` table (Enter
+  Check the answer, Backspace Delete a character, Esc Pause) without typing a
+  question mark. The lesson/Outbox/Firmware tables, the swallow/close path and
+  the portal/Wi-Fi refusal remain.
 - **ONB-01.** The card still holds the v1 combined `glyphs.kgp`; Home, lessons
   and About render from it through the fallback. About shows both `Font:` and
   `Rad:` lines, and the status is now split by role so a combined pack does not
