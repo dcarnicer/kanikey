@@ -194,6 +194,8 @@ Still open:
 ### 5.3 Later
 
 - Pronunciation audio (ES8311).
+- Optional Bluetooth LE keyboard input (the built-in keyboard remains primary
+  and the only wake source).
 - Stroke order with KanjiVG.
 - Extra practice with local FSRS (doesn't affect WaniKani).
 - Review forecast, heatmap, streak.

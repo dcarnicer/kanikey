@@ -147,6 +147,7 @@ heap to ~56 KB.
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal, OTA, storage and sleep done; widgets pending | TNG-03 |
 | 9 | Technical debt, CI and release | Maintainability and shipping | Done (TECH-01…06, TECH-08); TECH-07 only if needed | TECH-07 |
 | 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | EXT-01…05 done; audio, reminders and stroke order remain | EXT-06, EXT-07, EXT-09 |
+| 11 | Bluetooth keyboard | Optional full-size input; BLE-only, shares the 2.4 GHz radio and the no-PSRAM heap | Post-v1; needs the BT-01 host-stack spike | BT-01 |
 
 ## Execution order
 
@@ -168,6 +169,7 @@ upload part of FIX-24) and the API-01…05 hardware pass.
 | 6 | UI, stats and sync | UI-07 → UI-08 (UI-01/02/03/04/05/06 done) | Polish |
 | 7 | Technical debt and release | TECH-03 → TECH-08 (done; TECH-07 optional) | Version, OTA, license and hardening |
 | 8 | Kakehashi-inspired extras | EXT-01 → EXT-09 | Practice modes, critical items, audio and stats |
+| 9 | External input (post-v1) | BT-01 → BT-04 | Optional BLE keyboard with the built-in keyboard as fallback |
 
 ## 1. Radicals and remove `efontJA_16` (v1 blocker)
 
@@ -692,6 +694,60 @@ progress features, not a second SRS.
 Out of scope for KaniKey: anime clips, NHK reader, Spotify lyrics, camera OCR,
 MyAnimeList sync, home-screen widgets, Apple Watch, community/forum, push
 notifications and a local SRS.
+
+## 11. Bluetooth keyboard (after v1)
+
+The built-in 56-key keyboard stays the primary input and the only key source
+that can wake the device from deep sleep. An optional Bluetooth LE HID keyboard
+adds a full-size input path for long sessions or accessibility. The ESP32-S3
+has Bluetooth LE only (no Classic), so Classic-only keyboards are out of scope;
+Wi-Fi and BLE share the 2.4 GHz radio, and the no-PSRAM heap is the main risk.
+BT-01 is a go/no-go spike before any library or stack is merged.
+
+| ID | Title | Priority | Size | Depends on | Status |
+|---|---|---|---|---|---|
+| BT-01 | Spike: BLE HID host on the S3 | P3 | M | none | todo |
+| BT-02 | Source-neutral key input | P3 | M | BT-01 | todo |
+| BT-03 | Pairing, settings and status | P3 | M | BT-02 | todo |
+| BT-04 | Coexistence, power and hardware pass | P3 | M | BT-03 | todo |
+
+- **BT-01 — Spike: BLE HID host on the S3.** Answer five questions with
+  throwaway probes: (a) which host stack fits the Arduino build (ESP-IDF
+  `esp_hidh` with the BLE transport vs a NimBLE-Arduino HOGP host), with flash,
+  static RAM and largest free block before/after; (b) whether standard BLE HID
+  keyboards pair and type (Just Works and passkey) on at least three models,
+  and which ones are Classic-only; (c) reconnect time after boot and after
+  deep sleep (BLE is off in deep sleep, so the built-in keyboard is the only
+  wake source); (d) key latency with Wi-Fi idle and during a TLS request; (e)
+  battery cost with the keyboard connected. No library is merged during the
+  spike; the numbers and a go/no-go go to `docs/hardware.md`.
+- **BT-02 — Source-neutral key input.** Add a second key source without
+  rewriting the screens: a BLE HID report becomes a `KeyEvent` with a
+  character and a modifier state, while the TCA8418 path keeps its x/y grid.
+  Map US-layout HID usages (letters, digits, punctuation, Space) and the keys
+  the UI uses (Enter, Esc, Tab, Backspace, arrows, Shift); unsupported keys
+  are ignored. The built-in keyboard always works, and the screen handlers see
+  one ordered queue. The pure HID-to-key mapping is native-tested.
+- **BT-03 — Pairing, settings and status.** Settings gains `Bluetooth
+  keyboard`: Off (default) / On, `Scan`, a short device list, `Pair`,
+  `Forget`, and a status line (`off`, `pairing`, `connected`, `no keyboard`).
+  Pairing starts only from Settings, never during a review or lesson, and
+  requires a confirmation on the built-in keyboard; a 6-digit passkey is shown
+  when the keyboard asks for one. Bonds live in NVS and survive reboot. The
+  token stays masked; the BLE path cannot open the setup portal by itself.
+- **BT-04 — Coexistence, power and hardware pass.** Keep the review loop
+  responsive with BLE on: measure key latency while Wi-Fi syncs and during a
+  TLS request, reconnect after wake, and battery cost. The feature ships only
+  if the spike and this pass show no TLS regression, no heap exhaustion and
+  acceptable latency; otherwise it is dropped with the measured numbers.
+  Hardware checks: three BLE keyboards, Shift/punctuation, arrows, Backspace,
+  Esc, Tab, reconnect, forget/re-pair, pairing timeout, low battery and
+  offline use. Docs: `docs/ux.md`, `docs/hardware.md`, `docs/decisions.md`,
+  `README.md` and this roadmap.
+
+Out of scope for the first pass: Classic Bluetooth, USB host, multiple
+simultaneous keyboards, macros/media keys, non-US layouts and typing while the
+device is in deep sleep.
 
 ## Definition of done for v1
 
