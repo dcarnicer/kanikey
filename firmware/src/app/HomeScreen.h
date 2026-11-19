@@ -18,10 +18,6 @@ struct HomeView {
     uint32_t lessons = 0;
     const char* nextReview = "--:--";
     const char* syncClock = "--:--";
-    // Non-zero while an automatic sync runs: the header shows `sync n/m`
-    // instead of the last successful clock (SPEED-03).
-    uint8_t syncStep = 0;
-    uint8_t syncTotal = 0;
     bool offline = false;
     kk::SrsCounts srs;
     // Status line at y=117. Empty when the app has no status to show; the

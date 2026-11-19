@@ -194,9 +194,6 @@ void saveCacheSnapshot() {
     if (state().session.gHaveUser) snapshot.user = state().session.gUser;
     snapshot.levelProgress = state().session.gLevelProgress;
     snapshot.srs = state().session.gSrs;
-    snapshot.lastFullAt = state().cache.gLastFullAt;
-    snapshot.lastQuickAt = state().cache.gLastQuickAt;
-    snapshot.lastUserAt = state().cache.gLastUserAt;
     if (state().cache.gBatch.ok) {
         snapshot.assignments = state().cache.gBatch.assignments;
     } else if (state().cache.gBatchEvicted) {
@@ -240,9 +237,6 @@ bool loadCache() {
     if (state().session.gHaveUser) state().session.gUser = std::move(snapshot.user);
     state().session.gLevelProgress = snapshot.levelProgress;
     state().session.gSrs = snapshot.srs;
-    state().cache.gLastFullAt = snapshot.lastFullAt;
-    state().cache.gLastQuickAt = snapshot.lastQuickAt;
-    state().cache.gLastUserAt = snapshot.lastUserAt;
 
     // The assignment list is cheap and only a few hundred bytes; the subjects
     // are not. Keep the count for About and let startReview() load the batch
@@ -261,10 +255,6 @@ bool loadCache() {
     Serial.printf("[cache] loaded: %u cached assignments (batch lazy), %u due, saved %u\n",
                   static_cast<unsigned>(state().cache.gCachedBatchCount),
                   static_cast<unsigned>(state().session.gDueReviews), static_cast<unsigned>(state().cache.gCacheSavedAt));
-    Serial.printf("[cache] last quick %u, full %u, user %u\n",
-                  static_cast<unsigned>(state().cache.gLastQuickAt),
-                  static_cast<unsigned>(state().cache.gLastFullAt),
-                  static_cast<unsigned>(state().cache.gLastUserAt));
     if (state().session.gSrs.valid)
         Serial.printf("[cache] srs A %u, G %u, M %u, E %u, B %u\n",
                       static_cast<unsigned>(state().session.gSrs.apprentice), static_cast<unsigned>(state().session.gSrs.guru),

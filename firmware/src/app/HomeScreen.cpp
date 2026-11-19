@@ -17,16 +17,11 @@ void drawHomeScreen(lgfx::LovyanGFX& d, const HomeView& view) {
     d.drawString("KaniKey", 6, 2);
 
     char sync[24];
-    if (view.syncTotal > 0)
-        snprintf(sync, sizeof sync, "sync %u/%u", static_cast<unsigned>(view.syncStep),
-                 static_cast<unsigned>(view.syncTotal));
-    else
-        snprintf(sync, sizeof sync, "Synced %s", view.syncClock);
+    snprintf(sync, sizeof sync, "Synced %s", view.syncClock);
     d.setTextFont(1);
     d.setTextSize(1);
     d.setTextDatum(lgfx::top_right);
-    d.setTextColor(view.syncTotal > 0 ? ui::kAccentHi : (view.offline ? ui::kWarn : ui::kDim),
-                   ui::kBg);
+    d.setTextColor(view.offline ? ui::kWarn : ui::kDim, ui::kBg);
     d.drawString(sync, 198, 5);
 
     char right[20];

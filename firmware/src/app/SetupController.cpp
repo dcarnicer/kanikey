@@ -73,7 +73,6 @@
 #include "wk/SessionStats.h"
 #include "wk/Stats.h"
 #include "wk/SubjectText.h"
-#include "wk/SyncPlan.h"
 #include "wk/Time.h"
 #include "ui/Theme.h"
 
@@ -315,29 +314,7 @@ void continueBootAfterStorage() {
         else
             startSetupPortal();
     } else {
-        // SPEED-02: a wake from deep sleep runs Quick, a cold boot runs Full
-        // when the last full sync is due. Off skips the automatic sync; a
-        // manual Sync now still runs a full sync.
-        const bool coldBoot = !tgc::board::wokeFromSleep();
-        const int mode = kk::settingsAutoSyncMode();
-        kk::SyncKind requested = kk::SyncKind::Quick;
-        if (mode == kk::kAutoSyncOff) requested = kk::SyncKind::Skip;
-        else if (mode == kk::kAutoSyncFull) requested = kk::SyncKind::Full;
-        // The plan compares real epoch times; effectiveNow() would fall back
-        // to the cache time and hide an untrusted clock.
-        const kk::SyncTimes times{static_cast<uint32_t>(time(nullptr)),
-                                  state().cache.gLastQuickAt, state().cache.gLastFullAt,
-                                  state().cache.gLastUserAt};
-        const kk::SyncKind kind = kk::planSync(
-            requested, coldBoot, times,
-            static_cast<uint32_t>(kk::settingsSyncFullEverySeconds()));
-        if (kind == kk::SyncKind::Skip) {
-            Serial.println("[sync] cache is recent; automatic sync skipped");
-        } else {
-            Serial.printf("[sync] automatic %s (cold boot %d)\n",
-                          kind == kk::SyncKind::Full ? "full" : "quick", coldBoot ? 1 : 0);
-            startSyncAuto(kind, coldBoot);
-        }
+        startSync();
     }
     state().display.gDirty = true;
     drawStatus();

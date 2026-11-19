@@ -1,6 +1,4 @@
-// The sync flow: manual (modal) and automatic (background) sync jobs plus the
-// request steps they share. Each syncAdvance() call performs at most one
-// request, so loop() keeps handling keys and Home stays visible.
+// The blocking sync flow and its screen state.
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <SD.h>
@@ -75,7 +73,6 @@
 #include "wk/SessionStats.h"
 #include "wk/Stats.h"
 #include "wk/SubjectText.h"
-#include "wk/SyncSteps.h"
 #include "wk/Time.h"
 #include "ui/Theme.h"
 
@@ -86,6 +83,8 @@ using tgc::Key;
 using tgc::KeyEvent;
 using namespace kk::ui;
 
+void runLevelProgress();
+bool runSrsCounts();
 bool runCriticalItems();
 void resetSyncScreen();
 void syncRowText(int row, const char* text);
@@ -93,9 +92,35 @@ void syncRowBegin(int row, const char* text);
 void syncRowDone(int row, const char* text);
 void syncRowWarn(int row, const char* text);
 void syncRowFail(int row, const char* text);
+// Pump the keyboard between blocking requests; Esc is the only action.
+bool syncStopRequested();
 void finishSyncCancelled();
 
-SyncJobState& job() { return state().sync.gSyncJob; }
+void runLevelProgress() {
+    if (!state().session.gHaveUser) return;
+    const kk::LevelProgress p = kk::fetchLevelProgress(kk::DevToken::load(), state().session.gUser.level);
+    if (!p.valid) return;
+    state().session.gLevelProgress = p;
+    saveCacheSnapshot();
+    char date[16];
+    localDate(state().session.gLevelProgress.unlockedAt ? state().session.gLevelProgress.unlockedAt : state().session.gLevelProgress.startedAt,
+              date, sizeof date);
+    Serial.printf("[level] %u %u%% since %s\n", static_cast<unsigned>(state().session.gLevelProgress.level),
+                  static_cast<unsigned>(kk::levelKanjiPercent(state().session.gLevelProgress.kanjiPassed,
+                                                               state().session.gLevelProgress.kanjiTotal)),
+                  date);
+}
+
+bool runSrsCounts() {
+    kk::SrsCounts counts;
+    if (!kk::fetchSrsCounts(kk::DevToken::load(), &counts)) {
+        Serial.println("[srs] distribution unavailable; keeping the cached counts");
+        return false;
+    }
+    state().session.gSrs = counts;
+    saveCacheSnapshot();
+    return true;
+}
 
 bool runCriticalItems() {
     const uint8_t kMaxPercent = static_cast<uint8_t>(kk::settingsCriticalPercent());
@@ -188,6 +213,19 @@ void syncRowFail(int row, const char* text) {
     drawSync();
 }
 
+// Pump the keyboard between blocking requests; Esc is the only action.
+bool syncStopRequested() {
+    if (state().sync.gSyncCancelRequested) return true;
+    tgc::board::update();
+    KeyEvent e;
+    while (tgc::board::nextKeyEvent(&e)) {
+        state().ui.gLastInputAt = millis();
+        updateModifier(e.x, e.y, e.down);
+        if (e.down && e.key == Key::Esc) state().sync.gSyncCancelRequested = true;
+    }
+    return state().sync.gSyncCancelRequested;
+}
+
 void finishSyncCancelled() {
     state().sync.gSyncFinished = true;
     state().sync.gSyncScreen = false;
@@ -195,445 +233,11 @@ void finishSyncCancelled() {
     state().sync.gSyncAttempted = false;
     state().sync.gSyncIssue = SyncIssue::None;
     state().sync.gOutboxAuthIssue = false;
-    state().sync.gSyncJob = SyncJobState{};
     snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "Sync cancelled");
     Serial.println("[sync] cancelled");
     state().session.gShowHome = state().session.gHaveSummary;
     state().ui.gLastInputAt = millis();
     state().display.gDirty = true;
-}
-
-// True while another screen owns the display; the automatic job waits and
-// resumes when Home returns (SPEED-03).
-bool syncPausedByOtherScreen() {
-    return state().setup.gPortalActive || state().ui.gNoticeActive ||
-           state().ui.gLowBatteryPrompt || state().ui.gSignOutConfirm ||
-           state().ui.gAboutActive || state().ui.gOutboxScreen ||
-           state().stats.gStatsActive || state().study.gStudyMenuActive ||
-           state().study.gCriticalListActive || state().ota.gFirmwareActive ||
-           state().ui.gSettingsActive || state().ui.gPauseActive ||
-           state().review.gReviewDetail || state().review.gReviewActive ||
-           state().review.gReviewSummary || state().lesson.gLessonEmptyActive ||
-           state().lesson.gLessonListActive || state().lesson.gLessonQuizActive ||
-           state().lesson.gLessonActive;
-}
-
-// The Home header counts Wifi..Prefetch, including the SNTP wait.
-void finishSyncJob(bool openReview) {
-    SyncJobState& j = job();
-    const bool full = j.kind == SyncKind::Full;
-    const bool modal = j.modal;
-    j.active = false;
-    j.step = SyncStep::Done;
-    state().sync.gSyncing = false;
-    state().sync.gSyncFinished = true;
-    if (modal) state().sync.gSyncScreen = false;
-    // A full sync that reached the end without an auth/rate gate is the new
-    // baseline for the "Full sync every" interval.
-    if (full && !kk::wkAuthBlocked() && kk::wkRateLimitWaitSeconds() == 0) {
-        state().cache.gLastFullAt = effectiveNow();
-        saveCacheSnapshot();
-    }
-    // An empty outbox cannot carry a review auth issue; an interrupted job may
-    // not have reached finishOutboxStep().
-    if (kk::outboxPendingCount(state().outbox.gOutbox) == 0) clearOutboxAuthIssue();
-    applyDeferredAuthIssue();
-    Serial.println("[sync] complete");
-    state().ui.gLastInputAt = millis();
-    if (!openReview) firmwareAfterSync();
-    state().display.gDirty = true;
-    if (openReview) startReview();
-}
-
-void failSyncJob(int row) {
-    SyncJobState& j = job();
-    const bool modal = j.modal;
-    j.active = false;
-    j.step = SyncStep::Failed;
-    state().sync.gSyncing = false;
-    state().sync.gSyncFinished = true;
-    if (modal) {
-        syncRowFail(row, state().ui.gNetLine);
-    } else {
-        if (state().sync.gSyncIssue == SyncIssue::Network) state().cache.gOffline = true;
-        Serial.printf("[sync] stopped: %s\n", state().ui.gNetLine);
-        state().display.gDirty = true;
-    }
-    state().ui.gLastInputAt = millis();
-}
-
-void formatOutboxCounts(char* out, size_t n) {
-    const size_t pending = kk::outboxPendingCount(state().outbox.gOutbox);
-    const size_t attention = kk::outboxAttentionCount(state().outbox.gOutbox);
-    if (attention && pending)
-        snprintf(out, n, "%u attention, %u pending", static_cast<unsigned>(attention),
-                 static_cast<unsigned>(pending));
-    else if (attention)
-        snprintf(out, n, "%u need attention", static_cast<unsigned>(attention));
-    else if (pending)
-        snprintf(out, n, "%u pending", static_cast<unsigned>(pending));
-    else
-        snprintf(out, n, "none");
-}
-
-void finishOutboxStep() {
-    char outbox[40];
-    formatOutboxCounts(outbox, sizeof outbox);
-    if (job().modal) {
-        if (kk::outboxAttentionCount(state().outbox.gOutbox) ||
-            kk::outboxPendingCount(state().outbox.gOutbox))
-            syncRowWarn(SyncOutbox, outbox);
-        else
-            syncRowDone(SyncOutbox, outbox);
-    }
-    if (kk::outboxPendingCount(state().outbox.gOutbox) == 0) clearOutboxAuthIssue();
-}
-
-// Moves to the next step in the plan, applying the optional-step rules:
-// Account only when /user is due, Prefetch only for an automatic Full sync
-// that passes SPEED-04's predicate, and no Prefetch on the manual screen.
-void jobNextStep() {
-    SyncJobState& j = job();
-    if (!j.active) return;
-    SyncStep next = kk::nextStep(j.kind, j.step, j.interrupted);
-    if (next == SyncStep::Account && j.kind == SyncKind::Quick) {
-        // The SNTP step has run by now: decide /user freshness with the best
-        // clock available instead of the one at boot.
-        const kk::SyncTimes times{static_cast<uint32_t>(time(nullptr)),
-                                  state().cache.gLastQuickAt, state().cache.gLastFullAt,
-                                  state().cache.gLastUserAt};
-        j.needsUser = kk::quickNeedsUser(times, j.coldBoot);
-    }
-    if (next == SyncStep::Account && !j.needsUser)
-        next = kk::nextStep(j.kind, next, false);
-    if (next == SyncStep::Prefetch) {
-        const bool want =
-            !j.modal && kk::settingsPrefetchReviews() &&
-            kk::shouldPrefetch(state().session.gDueReviews, state().cache.gCachedBatchCount,
-                               static_cast<size_t>(kk::settingsReviewBatchSize()),
-                               lowBatteryNow());
-        if (!want) next = kk::nextStep(j.kind, next, false);
-    }
-    if (next == SyncStep::Done) {
-        finishSyncJob(false);
-        return;
-    }
-    j.step = next;
-    j.sub = 0;
-    state().display.gDirty = true;
-}
-
-void syncWifiStep() {
-    SyncJobState& j = job();
-    if (!kk::DevWifi::connected()) {
-        const String ssid = kk::DevWifi::savedSsid();
-        if (j.modal) syncRowBegin(SyncWifi, ssid.c_str());
-        snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "NET: joining %s", ssid.c_str());
-        if (!kk::DevWifi::connect(30000)) {
-            state().sync.gSyncIssue = SyncIssue::Network;
-            snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "NET: join failed");
-            failSyncJob(SyncWifi);
-            return;
-        }
-    }
-    snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "NET: %s", kk::DevWifi::ip().c_str());
-    if (j.modal) syncRowDone(SyncWifi, kk::DevWifi::ip().c_str());
-    jobNextStep();
-}
-
-void syncTimeStep() {
-    SyncJobState& j = job();
-    if (j.sub == 0) {
-        // configTzTime applies the POSIX rule and starts SNTP in one step.
-        // Plain configTime() would overwrite the rule with UTC right after
-        // applying it. The wait is non-blocking: loop() checks each pass.
-        configTzTime(kk::settingsTimeZoneRule().c_str(), "pool.ntp.org", "time.cloudflare.com");
-        j.timeStartedAt = millis();
-        j.sub = 1;
-        return;
-    }
-    if (time(nullptr) < 1700000000 && millis() - j.timeStartedAt < 5000) return;
-    const uint32_t utc = static_cast<uint32_t>(time(nullptr));
-    Serial.printf("[time] %s: %u\n", utc >= 1700000000 ? "synced" : "not synced",
-                  static_cast<unsigned>(utc));
-    jobNextStep();
-}
-
-void syncOutboxStep() {
-    SyncJobState& j = job();
-    if (j.sub == 0) {
-        char outbox[40];
-        formatOutboxCounts(outbox, sizeof outbox);
-        if (j.modal) syncRowBegin(SyncOutbox, outbox);
-        j.outboxLastSeq = 0;
-        j.sub = 1;
-        return;
-    }
-    uint32_t seq = 0;
-    for (const kk::OutboxItem& item : state().outbox.gOutbox) {
-        if (item.seq <= j.outboxLastSeq) continue;
-        if (item.state == kk::OutboxState::Rejected || item.state == kk::OutboxState::Stuck)
-            continue;
-        seq = item.seq;
-        break;
-    }
-    if (!seq) {
-        finishOutboxStep();
-        jobNextStep();
-        return;
-    }
-    j.outboxLastSeq = seq;
-    sendQueuedReview(seq);
-    const kk::OutboxItem* item = kk::outboxFind(state().outbox.gOutbox, seq);
-    if (item && item->state != kk::OutboxState::Rejected &&
-        item->state != kk::OutboxState::Stuck) {
-        // The send failed on a retryable item. Like flushOutbox(), stop the
-        // outbox part here and let the rest of the sync continue.
-        finishOutboxStep();
-        jobNextStep();
-    }
-}
-
-void syncAccountStep() {
-    SyncJobState& j = job();
-    if (j.sub == 0) {
-        if (j.modal) syncRowBegin(SyncAccount, "checking");
-        j.sub = 1;
-        return;
-    }
-    runProbe();
-    if (state().sync.gSyncIssue != SyncIssue::None) {
-        failSyncJob(SyncAccount);
-        return;
-    }
-    if (j.modal) {
-        char account[40];
-        snprintf(account, sizeof account, "%s L%d", state().session.gUser.username.c_str(),
-                 state().session.gUser.level);
-        syncRowDone(SyncAccount, account);
-    }
-    jobNextStep();
-}
-
-void syncSummaryStep() {
-    SyncJobState& j = job();
-    if (j.sub == 0) {
-        if (j.modal) syncRowBegin(SyncSummary, "fetching");
-        j.sub = 1;
-    }
-    runSummary();
-    if (state().sync.gSyncIssue != SyncIssue::None) {
-        failSyncJob(SyncSummary);
-        return;
-    }
-    if (j.modal) {
-        char summary[40];
-        snprintf(summary, sizeof summary, "%u due, %u lessons",
-                 static_cast<unsigned>(state().session.gDueReviews),
-                 static_cast<unsigned>(state().session.gLessons));
-        syncRowDone(SyncSummary, summary);
-    }
-    jobNextStep();
-}
-
-// Level is three requests: the progression, then the two kanji counts.
-void syncLevelStep() {
-    SyncJobState& j = job();
-    if (!state().session.gHaveUser) {
-        if (j.modal) syncRowWarn(SyncLevel, "unavailable");
-        jobNextStep();
-        return;
-    }
-    const String token = kk::DevToken::load();
-    if (j.sub == 0) {
-        if (j.modal) syncRowBegin(SyncLevel, "fetching");
-        const kk::LevelProgress progress =
-            kk::fetchLevelProgressions(token, state().session.gUser.level);
-        if (!progress.valid) {
-            if (kk::wkAuthBlocked())
-                setSyncIssue(401, true, 0, "Level");
-            else if (kk::wkRateLimitWaitSeconds() > 0)
-                setSyncIssue(429, true, 0, "Level");
-            if (j.modal)
-                syncRowWarn(SyncLevel, kk::wkAuthBlocked()   ? "token rejected"
-                                    : kk::wkRateLimitWaitSeconds() > 0 ? "rate limited"
-                                                                       : "unavailable");
-            jobNextStep();
-            return;
-        }
-        state().session.gLevelProgress = progress;
-        saveCacheSnapshot();
-        j.sub = 1;
-        return;
-    }
-    if (j.sub == 1) {
-        const bool ok = kk::fetchLevelKanjiCount(token, state().session.gLevelProgress.level,
-                                                 false, &j.levelTotal);
-        j.sub = 2;
-        if (!ok) {
-            Serial.println("[level] kanji counts unavailable; keeping timestamps only");
-            if (j.modal) syncRowWarn(SyncLevel, "unavailable");
-            jobNextStep();
-        }
-        return;
-    }
-    const bool ok = kk::fetchLevelKanjiCount(token, state().session.gLevelProgress.level, true,
-                                             &j.levelPassed);
-    if (ok) {
-        state().session.gLevelProgress.kanjiTotal = j.levelTotal;
-        state().session.gLevelProgress.kanjiPassed = j.levelPassed;
-        saveCacheSnapshot();
-    } else {
-        Serial.println("[level] kanji counts unavailable; keeping timestamps only");
-    }
-    if (j.modal) {
-        if (ok) {
-            char level[40];
-            formatLevelProgressLine(level, sizeof level);
-            syncRowDone(SyncLevel, level);
-        } else {
-            syncRowWarn(SyncLevel, "unavailable");
-        }
-    }
-    jobNextStep();
-}
-
-// Srs is five requests, one bucket each.
-void syncSrsStep() {
-    SyncJobState& j = job();
-    if (j.sub == 0) {
-        if (j.modal) syncRowBegin(SyncSrs, "fetching");
-        j.sub = 1;
-        return;
-    }
-    const uint8_t bucket = static_cast<uint8_t>(j.sub - 1);
-    uint32_t value = 0;
-    if (!kk::fetchSrsBucket(kk::DevToken::load(), bucket, &value)) {
-        if (kk::wkAuthBlocked())
-            setSyncIssue(401, true, 0, "SRS");
-        else if (kk::wkRateLimitWaitSeconds() > 0)
-            setSyncIssue(429, true, 0, "SRS");
-        if (j.modal)
-            syncRowWarn(SyncSrs, kk::wkAuthBlocked()   ? "token rejected"
-                                : kk::wkRateLimitWaitSeconds() > 0 ? "rate limited"
-                                                                   : "unavailable");
-        jobNextStep();
-        return;
-    }
-    j.srs[bucket] = value;
-    if (j.sub < 5) {
-        ++j.sub;
-        return;
-    }
-    kk::SrsCounts counts;
-    counts.apprentice = j.srs[0];
-    counts.guru = j.srs[1];
-    counts.master = j.srs[2];
-    counts.enlightened = j.srs[3];
-    counts.burned = j.srs[4];
-    counts.valid = true;
-    state().session.gSrs = counts;
-    saveCacheSnapshot();
-    Serial.printf("[srs] A %u, G %u, M %u, E %u, B %u\n",
-                  static_cast<unsigned>(counts.apprentice), static_cast<unsigned>(counts.guru),
-                  static_cast<unsigned>(counts.master),
-                  static_cast<unsigned>(counts.enlightened),
-                  static_cast<unsigned>(counts.burned));
-    if (j.modal) {
-        char srs[40];
-        snprintf(srs, sizeof srs, "A%u G%u M%u E%u B%u", static_cast<unsigned>(counts.apprentice),
-                 static_cast<unsigned>(counts.guru), static_cast<unsigned>(counts.master),
-                 static_cast<unsigned>(counts.enlightened),
-                 static_cast<unsigned>(counts.burned));
-        syncRowDone(SyncSrs, srs);
-    }
-    jobNextStep();
-}
-
-void syncCriticalStep() {
-    SyncJobState& j = job();
-    if (j.sub == 0) {
-        if (j.modal) syncRowBegin(SyncCritical, "fetching");
-        j.sub = 1;
-    }
-    const bool ok = runCriticalItems();
-    if (kk::wkAuthBlocked())
-        setSyncIssue(401, true, 0, "Critical");
-    else if (kk::wkRateLimitWaitSeconds() > 0)
-        setSyncIssue(429, true, 0, "Critical");
-    if (j.modal) {
-        if (kk::wkAuthBlocked())
-            syncRowWarn(SyncCritical, "token rejected");
-        else if (kk::wkRateLimitWaitSeconds() > 0)
-            syncRowWarn(SyncCritical, "rate limited");
-        else if (ok) {
-            char critical[40];
-            if (state().study.gCritical.empty())
-                snprintf(critical, sizeof critical, "none");
-            else
-                snprintf(critical, sizeof critical, "%u critical items",
-                         static_cast<unsigned>(state().study.gCritical.size()));
-            syncRowDone(SyncCritical, critical);
-        } else {
-            syncRowWarn(SyncCritical, "unavailable");
-        }
-    }
-    jobNextStep();
-}
-
-void syncPrefetchStep() {
-    SyncJobState& j = job();
-    if (j.sub != 0) {
-        jobNextStep();
-        return;
-    }
-    j.sub = 1;
-    // No loading screen: Home stays up and the header keeps the last step.
-    Serial.println("[review] prefetching the review batch");
-    if (runBatch()) {
-        // The assignments and subjects are on disk; keep them out of RAM on
-        // Home (SPEED-04, acceptance: heap back to the pre-sync level).
-        evictCachedBatch(true);
-    }
-    jobNextStep();
-}
-
-// Shared entry point: manual (modal) and automatic (background). A manual Sync
-// now always runs Full, whatever Y1 says.
-void startSyncJob(SyncKind kind, bool modal, bool coldBoot) {
-    if (kind == SyncKind::Skip) return;
-    if (state().storage.gFsFormatPrompt) return;  // wait for the storage choice
-    if (!state().storage.gSdOk || !state().storage.gPack.ready() || !kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
-        state().sync.gSyncScreen = false;
-        state().display.gDirty = true;
-        return;
-    }
-    // A manual Sync now replaces a paused automatic job.
-    SyncJobState& j = job();
-    j = SyncJobState{};
-    j.kind = kind;
-    j.modal = modal;
-    j.coldBoot = coldBoot;
-    j.active = true;
-    j.step = SyncStep::Wifi;
-    j.startedAt = millis();
-    const kk::SyncTimes times{static_cast<uint32_t>(time(nullptr)),
-                              state().cache.gLastQuickAt, state().cache.gLastFullAt,
-                              state().cache.gLastUserAt};
-    j.needsUser = kind == SyncKind::Full || kk::quickNeedsUser(times, coldBoot);
-    state().sync.gSyncing = true;
-    state().sync.gSyncAttempted = true;
-    state().sync.gSyncIssue = SyncIssue::None;
-    state().sync.gOutboxAuthIssue = false;
-    state().sync.gSyncCancelRequested = false;
-    state().sync.gSyncFinished = false;
-    if (modal) {
-        resetSyncScreen();
-        drawSync();
-    } else {
-        state().sync.gSyncScreen = false;
-        state().display.gDirty = true;
-    }
 }
 
 }  // namespace
@@ -705,7 +309,6 @@ void runProbe() {
     if (r.parsed) {
         state().session.gUser = r.user;
         state().session.gHaveUser = true;
-        state().cache.gLastUserAt = effectiveNow();
         if (previousLevel && r.user.level > previousLevel) {
             state().session.gLevelUpFrom = previousLevel;
             state().session.gLevelUpTo = static_cast<uint8_t>(r.user.level);
@@ -739,7 +342,6 @@ void runSummary() {
         state().sync.gSyncIssue = SyncIssue::None;
         state().sync.gOutboxAuthIssue = false;
         state().session.gSyncedAt = now >= 1700000000u ? now : 0;
-        state().cache.gLastQuickAt = now;
         if (state().session.gSyncedAt) localHm(state().session.gSyncedAt, state().session.gSyncClock, sizeof state().session.gSyncClock);
         pruneBatchToSummary(now);
         applySummary(now);
@@ -804,19 +406,14 @@ bool runBatch() {
     }
     Serial.printf("[review] %u due, %u chosen\n", static_cast<unsigned>(due.size()),
                   static_cast<unsigned>(ids.size()));
-    const bool hadBatch = !state().cache.gBatch.assignments.empty();
     state().ui.gFreeCanvasForRequest = true;
     kk::ReviewBatch batch = kk::fetchReviewBatch(kk::DevToken::load(), ids, now, limit);
     state().ui.gFreeCanvasForRequest = false;
     if (!batch.ok) {
         Serial.printf("[review] batch failed: %s\n", batch.error.c_str());
         snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "Batch: %s", batch.error.c_str());
-        // A failed prefetch must not throw away a good cached batch. Clear the
-        // in-memory batch only when there was nothing to keep.
-        if (!hadBatch) {
-            state().cache.gBatch = kk::ReviewBatch{};
-            state().cache.gBatch.httpCode = batch.httpCode;
-        }
+        state().cache.gBatch = kk::ReviewBatch{};
+        state().cache.gBatch.httpCode = batch.httpCode;
         state().display.gDirty = true;
         return false;
     }
@@ -887,61 +484,192 @@ void syncScreenKey(const KeyEvent& e) {
     }
 }
 
-void startSync() { startSyncJob(SyncKind::Full, true, false); }
-
-void startSyncAuto(SyncKind kind, bool coldBoot) { startSyncJob(kind, false, coldBoot); }
-
-void syncAdvance() {
-    SyncJobState& j = job();
-    if (!j.active) return;
-    if (!kk::DevToken::has()) {
-        // Signed out while the job waited behind Settings, or a manual job
-        // lost its token: drop the job and any modal sync screen.
-        j = SyncJobState{};
-        state().sync.gSyncing = false;
+void startSync() {
+    if (state().storage.gFsFormatPrompt) return;  // wait for the storage choice
+    if (!state().storage.gSdOk || !state().storage.gPack.ready() || !kk::DevToken::has() || !kk::DevWifi::hasSaved()) {
         state().sync.gSyncScreen = false;
-        state().sync.gSyncFinished = true;
-        state().session.gShowHome = state().session.gHaveSummary;
         state().display.gDirty = true;
         return;
     }
-    if (syncPausedByOtherScreen()) return;
-    if (j.modal) {
-        if (!state().sync.gSyncScreen) return;
-        if (state().sync.gSyncCancelRequested) {
-            finishSyncCancelled();
+    state().sync.gSyncing = true;
+    state().sync.gSyncAttempted = true;
+    state().sync.gSyncIssue = SyncIssue::None;
+    state().sync.gOutboxAuthIssue = false;
+    resetSyncScreen();
+    drawSync();
+
+    // Wi-Fi (the only step shown before the first API call).
+    if (!kk::DevWifi::connected()) {
+        const String ssid = kk::DevWifi::savedSsid();
+        syncRowBegin(SyncWifi, ssid.c_str());
+        snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "NET: joining %s", ssid.c_str());
+        if (!kk::DevWifi::connect(30000)) {
+            state().sync.gSyncIssue = SyncIssue::Network;
+            snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "NET: join failed");
+            syncRowFail(SyncWifi, "join failed");
             return;
         }
+    } else {
+        syncRowBegin(SyncWifi, kk::DevWifi::ip().c_str());
     }
+    snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "NET: %s", kk::DevWifi::ip().c_str());
+    syncRowDone(SyncWifi, kk::DevWifi::ip().c_str());
+    if (syncStopRequested()) {
+        finishSyncCancelled();
+        return;
+    }
+
+    // configTzTime applies the POSIX rule and starts SNTP in one step. Plain
+    // configTime() would overwrite the rule with UTC right after applying it.
+    configTzTime(kk::settingsTimeZoneRule().c_str(), "pool.ntp.org", "time.cloudflare.com");
+    const uint32_t ntpStart = millis();
+    while (time(nullptr) < 1700000000 && millis() - ntpStart < 5000) delay(100);
+    const uint32_t utc = static_cast<uint32_t>(time(nullptr));
+    Serial.printf("[time] %s: %u\n", utc >= 1700000000 ? "synced" : "not synced",
+                  static_cast<unsigned>(utc));
+
+    // Outbox: keep going even if items remain pending.
+    const size_t beforePending = kk::outboxPendingCount(state().outbox.gOutbox);
+    const size_t beforeAttention = kk::outboxAttentionCount(state().outbox.gOutbox);
+    char outbox[40];
+    if (beforeAttention && beforePending)
+        snprintf(outbox, sizeof outbox, "%u attention, %u pending",
+                 static_cast<unsigned>(beforeAttention), static_cast<unsigned>(beforePending));
+    else if (beforeAttention)
+        snprintf(outbox, sizeof outbox, "%u need attention",
+                 static_cast<unsigned>(beforeAttention));
+    else if (beforePending)
+        snprintf(outbox, sizeof outbox, "%u pending", static_cast<unsigned>(beforePending));
+    else
+        snprintf(outbox, sizeof outbox, "none");
+    syncRowBegin(SyncOutbox, outbox);
+    flushOutbox();
+    const size_t afterPending = kk::outboxPendingCount(state().outbox.gOutbox);
+    const size_t afterAttention = kk::outboxAttentionCount(state().outbox.gOutbox);
+    if (afterAttention && afterPending)
+        snprintf(outbox, sizeof outbox, "%u attention, %u pending",
+                 static_cast<unsigned>(afterAttention), static_cast<unsigned>(afterPending));
+    else if (afterAttention)
+        snprintf(outbox, sizeof outbox, "%u need attention",
+                 static_cast<unsigned>(afterAttention));
+    else if (afterPending)
+        snprintf(outbox, sizeof outbox, "%u pending", static_cast<unsigned>(afterPending));
+    else
+        snprintf(outbox, sizeof outbox, "sent");
+    if (afterAttention || afterPending)
+        syncRowWarn(SyncOutbox, outbox);
+    else
+        syncRowDone(SyncOutbox, outbox);
+    if (syncStopRequested()) {
+        finishSyncCancelled();
+        return;
+    }
+
+    syncRowBegin(SyncAccount, "checking");
+    runProbe();
+    if (state().sync.gSyncIssue != SyncIssue::None) {
+        syncRowFail(SyncAccount, state().ui.gNetLine);
+        return;
+    }
+    char account[40];
+    snprintf(account, sizeof account, "%s L%d", state().session.gUser.username.c_str(), state().session.gUser.level);
+    syncRowDone(SyncAccount, account);
+    if (syncStopRequested()) {
+        finishSyncCancelled();
+        return;
+    }
+
+    syncRowBegin(SyncSummary, "fetching");
+    runSummary();
+    if (state().sync.gSyncIssue != SyncIssue::None) {
+        syncRowFail(SyncSummary, state().ui.gNetLine);
+        return;
+    }
+    char summary[40];
+    snprintf(summary, sizeof summary, "%u due, %u lessons",
+             static_cast<unsigned>(state().session.gDueReviews), static_cast<unsigned>(state().session.gLessons));
+    syncRowDone(SyncSummary, summary);
+    if (syncStopRequested()) {
+        finishSyncCancelled();
+        return;
+    }
+
+    syncRowBegin(SyncLevel, "fetching");
+    runLevelProgress();
+    if (kk::wkAuthBlocked()) {
+        setSyncIssue(401, true, 0, "Level");
+        syncRowWarn(SyncLevel, "token rejected");
+    } else if (kk::wkRateLimitWaitSeconds() > 0) {
+        // Non-critical step: keep syncing, but surface the countdown.
+        setSyncIssue(429, true, 0, "Level");
+        syncRowWarn(SyncLevel, "rate limited");
+    } else if (state().session.gLevelProgress.valid) {
+        char level[40];
+        formatLevelProgressLine(level, sizeof level);
+        syncRowDone(SyncLevel, level);
+    } else {
+        syncRowWarn(SyncLevel, "unavailable");
+    }
+    if (syncStopRequested()) {
+        finishSyncCancelled();
+        return;
+    }
+
+    syncRowBegin(SyncSrs, "fetching");
+    const bool srsOk = runSrsCounts();
+    if (kk::wkAuthBlocked()) {
+        setSyncIssue(401, true, 0, "SRS");
+        syncRowWarn(SyncSrs, "token rejected");
+    } else if (kk::wkRateLimitWaitSeconds() > 0) {
+        setSyncIssue(429, true, 0, "SRS");
+        syncRowWarn(SyncSrs, "rate limited");
+    } else if (srsOk) {
+        char srs[40];
+        snprintf(srs, sizeof srs, "A%u G%u M%u E%u B%u",
+                 static_cast<unsigned>(state().session.gSrs.apprentice), static_cast<unsigned>(state().session.gSrs.guru),
+                 static_cast<unsigned>(state().session.gSrs.master), static_cast<unsigned>(state().session.gSrs.enlightened),
+                 static_cast<unsigned>(state().session.gSrs.burned));
+        syncRowDone(SyncSrs, srs);
+    } else {
+        syncRowWarn(SyncSrs, "unavailable");
+    }
+    if (syncStopRequested()) {
+        finishSyncCancelled();
+        return;
+    }
+
+    syncRowBegin(SyncCritical, "fetching");
+    const bool criticalOk = runCriticalItems();
+    if (kk::wkAuthBlocked()) {
+        setSyncIssue(401, true, 0, "Critical");
+        syncRowWarn(SyncCritical, "token rejected");
+    } else if (kk::wkRateLimitWaitSeconds() > 0) {
+        setSyncIssue(429, true, 0, "Critical");
+        syncRowWarn(SyncCritical, "rate limited");
+    } else if (criticalOk) {
+        char critical[40];
+        if (state().study.gCritical.empty())
+            snprintf(critical, sizeof critical, "none");
+        else
+            snprintf(critical, sizeof critical, "%u critical items",
+                     static_cast<unsigned>(state().study.gCritical.size()));
+        syncRowDone(SyncCritical, critical);
+    } else {
+        syncRowWarn(SyncCritical, "unavailable");
+    }
+    if (syncStopRequested()) {
+        finishSyncCancelled();
+        return;
+    }
+
+    applyDeferredAuthIssue();
+    state().sync.gSyncing = false;
+    state().sync.gSyncFinished = true;
+    state().sync.gSyncScreen = false;
+    Serial.println("[sync] complete");
+    firmwareAfterSync();
     state().ui.gLastInputAt = millis();
-
-    // Enter during an automatic sync: at this boundary try the cached batch
-    // and start the review; if it does not load, the sync continues.
-    if (!j.modal && j.startReviewPending) {
-        j.startReviewPending = false;
-        j.interrupted = false;
-        if (loadCachedBatch()) {
-            finishSyncJob(true);
-            return;
-        }
-    }
-
-    switch (j.step) {
-        case SyncStep::Wifi: syncWifiStep(); break;
-        case SyncStep::Time: syncTimeStep(); break;
-        case SyncStep::Outbox: syncOutboxStep(); break;
-        case SyncStep::Account: syncAccountStep(); break;
-        case SyncStep::Summary: syncSummaryStep(); break;
-        case SyncStep::Level: syncLevelStep(); break;
-        case SyncStep::Srs: syncSrsStep(); break;
-        case SyncStep::Critical: syncCriticalStep(); break;
-        case SyncStep::Prefetch: syncPrefetchStep(); break;
-        case SyncStep::Idle:
-        case SyncStep::Done:
-        case SyncStep::Failed:
-            j.active = false;
-            break;
-    }
+    state().display.gDirty = true;
 }
 
 void drawSync() {
