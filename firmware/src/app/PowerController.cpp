@@ -148,6 +148,9 @@ bool powerWakeCheck(uint32_t now) {
 // Idle dim/blank/sleep. Returns true when the loop must return; deep sleep does
 // not normally come back, but keep the contract for the caller.
 bool powerTick(uint32_t now) {
+    // REV-06: the review controller owns the correct-answer timer, but the
+    // loop tick lives here so App.cpp stays untouched.
+    reviewAutoAdvance(now);
     const uint32_t dimMs = static_cast<uint32_t>(kk::settingsDimSeconds()) * 1000u;
     const uint32_t blankMs = static_cast<uint32_t>(kk::settingsBlankSeconds()) * 1000u;
     const uint32_t sleepMs = static_cast<uint32_t>(kk::settingsSleepSeconds()) * 1000u;

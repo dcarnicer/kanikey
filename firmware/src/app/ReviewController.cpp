@@ -85,6 +85,8 @@ using tgc::KeyEvent;
 using namespace kk::ui;
 
 void clearReviewInput();
+// Feed one printable character into the active question field.
+void feedReviewChar(char c);
 // The serial test helper can inject a reading directly; release builds only
 // use the romaji IME.
 std::string reviewInput(bool meaning);
@@ -97,6 +99,26 @@ void clearReviewInput() {
     state().review.gDirectReading.clear();
 #endif
     state().review.gIme.clear();
+}
+
+void feedReviewChar(char c) {
+    if (state().review.gQueue.part() == kk::ReviewPart::Meaning) {
+        state().review.gMeaningInput.push_back(c);
+    } else {
+#ifdef KANIKEY_DEV
+        state().review.gDirectReading.clear();
+#endif
+        state().review.gIme.feed(c);
+    }
+    state().display.gDirty = true;
+}
+
+// R8 is stored in milliseconds; 0 is Off. Read live so a change in pause takes
+// effect on the next feedback frame.
+uint32_t reviewAdvanceDelayMs() {
+    int value = 0;
+    if (!kk::settingsGetInt("rv.advance", &value) || value <= 0) return 0;
+    return static_cast<uint32_t>(value);
 }
 
 // The serial test helper can inject a reading directly; release builds only
@@ -148,6 +170,9 @@ void showReview() {
     view.subject = s;
     view.part = part;
     view.feedback = state().review.gFeedback;
+    int headerInfo = 0;
+    view.minimalHeader =
+        kk::settingsGetInt("rv.header", &headerInfo) && headerInfo == 1;
     view.srsStage = state().review.gFeedbackCompleted ? state().review.gCompletedItem.srsStage : (item ? item->srsStage : 0);
     view.total = static_cast<int>(state().review.gQueue.completedCount() + state().review.gQueue.remaining());
     view.position = static_cast<int>(state().review.gQueue.completedCount()) + 1;
@@ -274,6 +299,8 @@ void checkCurrent() {
     state().review.gFeedbackInput = input;
     state().review.gCheck = kk::checkAnswer(*s, meaning ? kk::AnswerKind::Meaning : kk::AnswerKind::Reading,
                              input, true);
+    state().review.gFeedbackCorrectAt =
+        state().review.gCheck.status == kk::AnswerStatus::Correct ? millis() : 0;
     state().review.gFeedback = true;
     state().review.gFeedbackCompleted = false;
     if (state().review.gCheck.status != kk::AnswerStatus::Warning) {
@@ -310,6 +337,7 @@ void checkCurrent() {
 }
 
 void advanceFeedback() {
+    state().review.gFeedbackCorrectAt = 0;
     if (state().review.gCheck.status == kk::AnswerStatus::Warning) {
         // Keep the typed text (meaning string and IME raw) so Enter returns to
         // the same question ready for a correction.
@@ -334,6 +362,22 @@ void advanceFeedback() {
     state().display.gDirty = true;
 }
 
+// REV-06: the loop tick for the correct-answer timer. Never advances wrong or
+// warning feedback, and stays idle while a modal screen or the blank panel
+// owns the display.
+bool reviewAutoAdvance(uint32_t now) {
+    auto& r = state().review;
+    if (!r.gReviewActive || !r.gFeedback || r.gReviewDetail || r.gFeedbackCorrectAt == 0)
+        return false;
+    if (state().ui.gPauseActive || state().ui.gSettingsActive || state().ui.gScreenOff)
+        return false;
+    if (r.gCheck.status != kk::AnswerStatus::Correct) return false;
+    const uint32_t delayMs = reviewAdvanceDelayMs();
+    if (!kk::autoAdvanceDue(delayMs, now - r.gFeedbackCorrectAt)) return false;
+    advanceFeedback();
+    return true;
+}
+
 void endReview() {
     if (state().review.gNeedsSubmit) {
         sendQueuedReview(state().review.gPendingSeq);
@@ -352,6 +396,7 @@ void endReview() {
     state().review.gReviewActive = false;
     state().review.gReviewSummary = false;
     state().review.gReviewDetail = false;
+    state().review.gFeedbackCorrectAt = 0;
     state().session.gShowHome = true;
     state().review.gFeedback = false;
     state().review.gFeedbackCompleted = false;
@@ -386,6 +431,7 @@ void startReview() {
     state().review.gPendingStageFrom = 0;
     state().review.gStageUps = 0;
     state().review.gReviewElapsedMs = 0;
+    state().review.gFeedbackCorrectAt = 0;
     if (!state().ui.gLowBatteryConfirmed && lowBatteryNow()) {
         requestLowBatteryConfirm(1);
         return;
@@ -449,6 +495,9 @@ void startReview() {
         if (subjectById(a.subjectId)) due.push_back(a);
     }
     state().review.gQueue.setMeaningFirst(kk::settingsMeaningFirst());
+    int backToBack = 1;
+    kk::settingsGetInt("rv.b2b", &backToBack);
+    state().review.gQueue.setBackToBack(backToBack != 0);
     state().review.gQueue.setLowerLevelsFirst(state().session.gHaveUser &&
                                state().session.gUser.reviewsOrder == kk::ReviewOrder::LowerLevelsFirst);
     if (kk::settingsCriticalFirst()) {
@@ -505,9 +554,13 @@ bool reviewKey(const KeyEvent& e) {
         return true;
     }
     if (state().review.gFeedback) {
-        if (e.key == Key::Enter) advanceFeedback();
-        else if (e.key == Key::Esc) openPause();
-        else if (e.key == Key::Tab && state().review.gCheck.status != kk::AnswerStatus::Warning) {
+        if (e.key == Key::Enter) {
+            advanceFeedback();
+        } else if (e.key == Key::Esc) {
+            state().review.gFeedbackCorrectAt = 0;
+            openPause();
+        } else if (e.key == Key::Tab && state().review.gCheck.status != kk::AnswerStatus::Warning) {
+            state().review.gFeedbackCorrectAt = 0;
             const kk::Subject* detail = subjectById(state().review.gFeedbackSubjectId);
             state().review.gReviewDetailPages = detail ? detailPageCount(*detail) : 5;
             state().review.gDetailSubjectId = 0;
@@ -515,6 +568,19 @@ bool reviewKey(const KeyEvent& e) {
             state().review.gReviewDetail = true;
             state().review.gReviewDetailPage = 0;
             state().display.gDirty = true;
+        } else if (state().review.gCheck.status == kk::AnswerStatus::Correct) {
+            // REV-06: a printable key skips the delay and starts the next
+            // answer; any other key cancels the timer for this frame.
+            const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
+            if (c) {
+                advanceFeedback();
+                if (state().review.gReviewActive && !state().review.gFeedback)
+                    feedReviewChar(c);
+            } else {
+                state().review.gFeedbackCorrectAt = 0;
+            }
+        } else {
+            state().review.gFeedbackCorrectAt = 0;
         }
         return true;
     }
@@ -542,17 +608,7 @@ bool reviewKey(const KeyEvent& e) {
         return true;
     }
     const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
-    if (c) {
-        if (state().review.gQueue.part() == kk::ReviewPart::Meaning) {
-            state().review.gMeaningInput.push_back(c);
-        } else {
-#ifdef KANIKEY_DEV
-            state().review.gDirectReading.clear();
-#endif
-            state().review.gIme.feed(c);
-        }
-        state().display.gDirty = true;
-    }
+    if (c) feedReviewChar(c);
     return true;
 }
 

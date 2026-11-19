@@ -20,6 +20,7 @@ struct ReviewView {
     const char* header = "REVIEWS";
     kk::ReviewPart part = kk::ReviewPart::Meaning;
     bool feedback = false;
+    bool minimalHeader = false;  // R10: hide the SRS/accuracy text
     bool showDetailHint = true;
     const char* escHint = "Esc: quit";
     uint8_t srsStage = 0;
