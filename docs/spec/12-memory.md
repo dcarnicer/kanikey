@@ -2,7 +2,7 @@
 
 Status: **investigation, 2026-11-20.** Four read-only audits (static RAM, runtime
 heap, TLS/Wi-Fi, peripherals) plus measurements on the owner's Cardputer ADV.
-MEM-01 (the Arduino 3 migration) is in progress; nothing else is implemented.
+MEM-01 phase 1 (the Arduino 3 migration) is merged and owner-verified (§2.2); nothing else is implemented.
 Figures are marked **M** (measured on the device with the dev `hh`/`h` commands
 or the boot/HTTP log lines), **B** (from the build/map of `9a95e38`) or **E**
 (estimate from code and struct sizes).
@@ -42,6 +42,21 @@ Home clip drain (127 KB free / 41 KB largest). All were patched case by case
 So in a review with Wi-Fi up there is no room for TLS or audio without
 borrowing the canvas. Wi-Fi off gives back 36 KB of free memory but not a
 large block (the netifs, event loop and tcpip task stay, E/B).
+
+### 2.2 Arduino 3.3.11 baseline (MEM-01, prebuilt libs, M)
+
+| Point | 2.0.17 | 3.3.11 |
+|---|---:|---:|
+| Static DRAM (B) | 108,880 B | 110,880 B |
+| Release image (B) | 1,669,264 B (53.1%) | 1,786,927 B (56.8%) |
+| Boot heap, before SD | ~200 KB free / 164 KB largest | 179,512 / 122,868 |
+| SD mount | −23,344 B | −26,104 B |
+| Home after the boot sync | ~100–106 KB | 80,972 / 31,732 (61% fragmented) |
+| First TLS request (canvas released) | — | before 114,572 / 38,900; after 71,816 / 31,732 |
+| Review feedback, Wi-Fi up, clip playing | — | 31,136 / 17,396 after the 31.6 KB alloc (no canvas borrow needed) |
+
+The prebuilt 3.3.x core uses about 20 KB more heap than 2.0.17, so MEM-02 is
+what pays for the move.
 
 ### 2.1 Where the memory goes
 
@@ -96,7 +111,7 @@ transient maximum during a flow, not steady state.
 
 | ID | Task | Saving | Risk | Depends |
 |---|---|---|---|---|
-| MEM-01 | **Arduino 3 migration, phase 1.** pioarduino `55.03.311` (Arduino 3.3.11, IDF 5.5.5, as the owner's paperdiy-reader), prebuilt libs, M5Unified/M5GFX updated and pinned, code fixed for IDF 5/mbedTLS 3 (OTA SHA-256 API, headers, watchdog). Same behaviour. **In progress (worktree `arduino3`).** | baseline only | med: OTA from 0.2.x breaks (accepted), API drift | — |
+| MEM-01 | **Arduino 3 migration, phase 1.** pioarduino `55.03.311` (Arduino 3.3.11, IDF 5.5.5, as the owner's paperdiy-reader), prebuilt libs, M5Unified `96576a1` (0.3.0) and M5GFX 0.3.0 pinned, code fixed for IDF 5/mbedTLS 3. The firmware builds with the framework's gnu++2b (gnu++17 linked part of Matter: +560 KB flash, +20 KB RAM). **Done 2026-11-20, owner-verified** (orientation, keyboard, sync, reviews, R audio). Costs ~20 KB of heap against 2.0.17 (§2.2). | baseline only (−20 KB vs 2.0.17) | OTA from 0.2.x breaks (accepted) | — |
 | MEM-02 | **`custom_sdkconfig` for memory** (pioarduino rebuilds the core; slow first build, CMake pin on macOS, cache patch script as in paperdiy-reader). Candidates, each A/B measured: `CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN=y` + `SSL_OUT_CONTENT_LEN=4096` (−12.3 KB per connection; IN stays 16384); `CONFIG_WL_SECTOR_SIZE=512` (−~17.9 KB SD mount); `CONFIG_ESP_WIFI_IRAM_OPT=n`, `CONFIG_ESP_WIFI_RX_IRAM_OPT=n` (paperdiy-reader measured ~25–30 KB on the C3; on the S3 the freed IRAM also returns to DRAM, to measure); `CONFIG_ESP_WIFI_CSI_ENABLED=n`, `CONFIG_ESP_WIFI_FTM_ENABLE=n` (−~2.8 KB static); dynamic RX 32→16 and `MGMT_SBUF_NUM` 32→16 (peak); `CONFIG_ESP_TIMER_TASK_STACK_SIZE=4096`, `CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH=2560` (−~5.5 KB); `CONFIG_ARDUINO_SELECTIVE_COMPILATION` for unused wrappers. Keep BT (BT-01 plans a BLE keyboard), keep core dumps unless space is short, keep IPv4 only if IPv6 is off without side effects (−~1.3 KB, measure). Optional: `CONFIG_MBEDTLS_DYNAMIC_BUFFER=y` (known link trouble on pioarduino; try last). | **~60–75 KB** (E, before measuring) | med: build time and CI, Wi-Fi throughput (OTA download time), one-time setup | MEM-01 |
 
 ### Track B — quick code wins (any platform)

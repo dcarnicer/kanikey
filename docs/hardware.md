@@ -899,6 +899,15 @@ WaniKani writes were authorized for this run.
   admission; the player may now borrow the 32.4 KB display canvas for the
   clip (`borrowed the canvas: 37024/21492 -> 69804/36852`), returned when the
   pieces are freed (canvasRecoveryTick retries if it cannot).
+- **Arduino 3 (MEM-01).** Dev image on pioarduino 55.03.311 (Arduino
+  3.3.11, IDF 5.5.5), M5Unified 0.3.0, flashed by USB over the same table
+  (LittleFS and NVS kept: token, Wi-Fi, cache, settings survived). Boot:
+  `board: Cardputer ADV`, `TCA8418 ready`, SD and packs mounted, boot sync
+  complete (`/v2/user` 200). The owner checked orientation, keyboard, reviews
+  and R (2646 played twice, `alloc 31616, heap 31136/17396 after`, no canvas
+  borrow). Heap: boot 179,512 free / 122,868 largest; SD −26,104; Home after
+  sync 80,972 / 31,732 — about 20 KB less than 2.0.17 (docs/spec/12-memory.md
+  §2.2). OTA, rollback, deep-sleep wake and the setup portal not re-run yet.
 - **Canvas.** After a review's send loop the canvas stayed released (direct
   drawing) because the heap was fragmented at session end; it is now retried
   every 5 s once a 34 KB block exists.
