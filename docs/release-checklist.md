@@ -79,6 +79,14 @@ otherwise.
 The device checks the manifest only when it runs a version below the release
 and the same `KANIKEY_ENV` (`cardputer-adv`). A device on v0.2.0 sees no offer.
 
+> **Arduino-ESP32 3 break (2026-11-20).** The firmware moved from Arduino-ESP32
+> 2.0.17 (ESP-IDF 4.4) to 3.3.11 (ESP-IDF 5.5.5), see `docs/decisions.md`. A
+> device that runs a 2.0.17 image (v0.1.x, v0.2.0 and the older dev images) needs
+> one USB flash of the new image. OTA from those images to this image is not
+> supported (the app has no users yet). For steps 14 to 16, use a device that
+> already runs a 3.x image: flash it over USB first, then check that it boots
+> with its token, Wi-Fi and settings.
+
 14. **v0.1.0 device (expected to fail the check).** Press `Esc` › **Settings** ›
     **Firmware** › **Check now**. It shows a failed check. That is the documented
     state (`docs/setup.md` §7.2), not a release defect. Move it with the USB

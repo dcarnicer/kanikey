@@ -1445,3 +1445,44 @@ the library's log lines from the release only; the dev images keep them.
 - `paperdiy` keeps its 16 MB table. Its level stays 1.
 - Format time, mount time and the 3 MiB OTA install are hardware numbers still
   open; see `docs/hardware.md` when the run is done.
+
+---
+
+## 2026-11-20 — Arduino-ESP32 3.3.11 on pioarduino; M5Unified and M5GFX 0.3.0 (phase 1)
+
+**Decision:** every ESP32 env builds on the pioarduino platform 55.03.311
+(Arduino-ESP32 3.3.11, ESP-IDF 5.5.5) instead of `espressif32@6.12.0`
+(Arduino-ESP32 2.0.17, ESP-IDF 4.4.7). M5Unified moves to its 0.3.0 tag, commit
+`96576a1` (the commit tangocho pins), and M5GFX is pinned to 0.3.0 in every env
+that uses M5Unified, as M5Unified 0.3.0 requires. Phase 1 adds no
+`custom_sdkconfig`; the prebuilt core is used as it is.
+
+**Why:** tangocho runs this board (Cardputer ADV) on the same M5Unified commit
+with Arduino 3, and the M5Unified 0.2.26 pin was weeks old. Breaking OTA
+compatibility with the 2.0.17 images is accepted: the app has no users yet.
+
+**Implications:**
+- A device on a 2.0.17 image (v0.1.x, v0.2.0, older dev images) needs one USB
+  flash of the new image. `docs/release-checklist.md` has the note.
+- Release `cardputer-adv` image: 1,669,264 B → 2,230,288 B (53.1% → 70.9% of a
+  3 MiB slot). Static RAM (`.dram0.data` + `.bss`): 108,880 B → 129,508 B.
+  The before figures come from the parent `espressif32@6.12.0` build (HEAD
+  d2e27e6). Most of the flash and RAM growth comes from the `-std=gnu++17` choice
+  (kept on purpose, to match the native tests and the 2.0.17 build). For
+  comparison, the same tree built with the framework's own C++20 flags gives
+  1,847,776 B and 110,880 B. With C++17 the link pulls in Matter members
+  (`libespressif__esp_matter.a`, InteractionModelEngine) that the C++20 link
+  does not. The exact referencing symbol is not identified yet.
+- Phase 2 must recover this with a rebuilt core (`custom_sdkconfig`,
+  `CONFIG_ARDUINO_SELECTIVE_*`, and `custom_component_remove` for
+  `espressif/esp_matter`, as paperdiy-reader already does). The 2.0.17 heap
+  numbers in `docs/spec/11-flash-headroom.md` do not carry over to 3.x.
+- M5GFX 0.3.0 moves the Cardputer ADV rotation numbers: rotation 0 is the upright
+  landscape view (keyboard below). The picture of the old `setRotation(0)` is now
+  `setRotation(3)`. The device has to confirm the layout. PaperDIY keeps
+  `setRotation(1)`, which M5GFX does not list among the moved boards.
+- The client timeout API changed: `setTimeout(seconds)` on a `WiFiClient` or
+  `WiFiClientSecure` is gone. The socket timeout is `setConnectionTimeout(ms)`,
+  and `Stream::setTimeout` is still the read limit (milliseconds).
+- mbedTLS 3 takes the plain `mbedtls_sha256_starts/update/finish` names; the
+  `_ret` variants are gone.

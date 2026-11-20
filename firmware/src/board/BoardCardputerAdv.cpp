@@ -11,8 +11,8 @@
 // (G38), the In_I2C pins, BtnA = G0 and the battery ADC all come from them.
 //
 // NEEDS HARDWARE CONFIRMATION (no Cardputer ADV was at hand when this was
-// written): the rotation (1, as M5Stack's Cardputer examples and M5GFX's
-// autodetect use: the keyboard below the picture), the TCA8418 setup and key
+// written): the rotation (0 on M5GFX 0.3.0, the keyboard below the picture;
+// see begin()), the TCA8418 setup and key
 // numbering (ui/KeyInput.h, after M5Stack's M5Cardputer library), the battery
 // reading, and the deep sleep's wake on a key (ext1 on G11).
 #include "board/Board.h"
@@ -28,8 +28,8 @@
 #include <driver/gpio.h>
 #include <driver/rtc_io.h>
 #include <esp_random.h>
+#include <esp_rtc_time.h>  // esp_rtc_get_time_us(); soc/esp32s3/rtc.h is deprecated on IDF 5
 #include <esp_sleep.h>
-#include <soc/esp32s3/rtc.h>
 
 namespace tgc {
 namespace board {
@@ -190,9 +190,11 @@ void begin() {
     if (M5.getBoard() != m5::board_t::board_M5CardputerADV)
         Serial.printf("board: expected a Cardputer ADV, M5Unified found board %d\n",
                       static_cast<int>(M5.getBoard()));
-    // Landscape, the keyboard below the picture. This ST7789V2 panel is
-    // configured with offset_rotation = 1, so rotation 0 is the landscape
-    // orientation (rotation 1 would turn it into 135x240 portrait).
+    // Landscape, the keyboard below the picture. M5GFX 0.3.0 makes rotation 0
+    // the upright orientation on this board (it used to start at 1, so the
+    // picture of the old setRotation(0) is now setRotation(3)). Rotation 1 is
+    // the 135x240 portrait view. tangocho runs the same M5Unified commit with
+    // this call.
     M5.Display.setRotation(0);
     // A timer wake may sleep again without showing anything (REM-02): the
     // panel then stays dark until the app sets the brightness.
@@ -278,7 +280,9 @@ int batteryPercent() {
 }
 
 // No charger status reaches the ESP32 here (M5Unified reports it unknown).
-bool isCharging() { return M5.Power.isCharging() == m5::Power_Class::is_charging; }
+// M5Unified 0.3.0: isCharging() is bool, true only while charging (it used to
+// return is_charging_t, which is deprecated).
+bool isCharging() { return M5.Power.isCharging(); }
 
 bool playTone(uint16_t frequency, uint16_t durationMs, uint8_t volume) {
     M5.Speaker.setVolume(volume);

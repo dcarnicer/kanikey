@@ -35,7 +35,7 @@
 #include <driver/rtc_io.h>
 #include <esp_random.h>
 #include <esp_sleep.h>
-#include <soc/esp32s3/rtc.h>
+#include <esp_rtc_time.h>  // esp_rtc_get_time_us(); soc/esp32s3/rtc.h is deprecated on IDF 5
 
 namespace tgc {
 namespace board {
@@ -208,7 +208,9 @@ int batteryPercent() {
 }
 
 // PM1 GPIO3 is CHG_STAT, active low (M5Unified knows the board).
-bool isCharging() { return M5.Power.isCharging() == m5::Power_Class::is_charging; }
+// M5Unified 0.3.0: isCharging() is bool, true only while charging (it used to
+// return is_charging_t, which is deprecated).
+bool isCharging() { return M5.Power.isCharging(); }
 
 // No speaker or codec on this board.
 bool playTone(uint16_t, uint16_t, uint8_t) { return false; }
