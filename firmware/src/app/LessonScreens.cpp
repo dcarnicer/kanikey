@@ -277,16 +277,21 @@ void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     // AUD-03: the card offers R while the reading line is drawn. The audio
     // hint takes the left slot next to Q; the shorter right hint leaves it
     // room, with Space/Esc: list still in the ? table.
+    // The right hint keeps `Esc` in every variant; it shortens to fit the
+    // room the left label leaves (x 5 .. 233, 8 px gap).
     const char* audio = audioHintText(view.audio);
-    if (*audio) {
-        char left[32];
+    char left[32];
+    if (*audio)
         snprintf(left, sizeof left, "Q quiz  %s", audio);
-        drawHintLeft(d, left, ui::kFaint, 5, 125);
-        drawHintRight(d, "Enter: next  Esc", ui::kFaint, 233, 125);
-    } else {
-        drawHintLeft(d, "Q quiz", ui::kFaint, 5, 125);
-        drawHintRight(d, "Enter/Space: next  Esc: list", ui::kFaint, 233, 125);
-    }
+    else
+        snprintf(left, sizeof left, "Q quiz");
+    drawHintLeft(d, left, ui::kFaint, 5, 125);
+    ui::applyFont(d, ui::UiFont::Small);
+    const int leftWidth = d.textWidth(left);
+    const char* right = ui::fitHint(
+        d, {"Enter/Space: next  Esc: list", "Enter: next  Esc: list", "Enter: next  Esc"},
+        228 - 8 - leftWidth);
+    drawHintRight(d, right, ui::kFaint, 233, 125);
 }
 
 void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,

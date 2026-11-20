@@ -7,7 +7,9 @@
 
     Vendored for KaniKey AUD-03. Local changes:
       - MINIMP3_ONLY_MP3 (MPEG Layer III only, no Layer I/II code)
-      - the mp3dec_scratch_t decode scratch is static (see the patch below)
+      - mp3dec_decode_frame() is mp3dec_decode_frame_scratch(): the
+        mp3dec_scratch_t decode scratch is a pointer argument, not a static
+        or stack local; the kk::audio wrapper owns the block (see the end)
       - a small kk::audio wrapper at the end of this file
     The file is compiled only for a firmware environment; the native test
     environment's source filter excludes src/audio/.
@@ -53,7 +55,6 @@ typedef int16_t mp3d_sample_t;
 typedef float mp3d_sample_t;
 void mp3dec_f32_to_s16(const float *in, int16_t *out, int num_samples);
 #endif /* MINIMP3_FLOAT_OUTPUT */
-int mp3dec_decode_frame(mp3dec_t *dec, const uint8_t *mp3, int mp3_bytes, mp3d_sample_t *pcm, mp3dec_frame_info_t *info);
 
 #ifdef __cplusplus
 }
@@ -1819,17 +1820,12 @@ void mp3dec_init(mp3dec_t *dec)
  *             number of consumed (or skippable) bytes, even when 0 is returned
  * @return number of PCM samples per channel, or 0 on error/EOF
  */
-int mp3dec_decode_frame(mp3dec_t *dec, const uint8_t *mp3, int mp3_bytes, mp3d_sample_t *pcm, mp3dec_frame_info_t *info)
+static int mp3dec_decode_frame_scratch(mp3dec_t *dec, const uint8_t *mp3, int mp3_bytes, mp3d_sample_t *pcm, mp3dec_frame_info_t *info, mp3dec_scratch_t *scratch)
 {
     int i = 0, igr, frame_size = 0, success = 1;
     const uint8_t *hdr;
     bs_t bs_frame[1];
-    /* KaniKey local patch: the 16,236 B decode scratch is static instead of
-       a stack local, so mp3dec_decode_frame() cannot consume the 24 KiB
-       loop stack. The decoder is non-reentrant; AudioPlayer decodes one
-       clip at a time. */
-    static mp3dec_scratch_t scratch;
-    memset(scratch.ist_pos, 0, sizeof(scratch.ist_pos)); /* avoid use-of-uninitialized-value (scfsi reuse) */
+    memset(scratch->ist_pos, 0, sizeof(scratch->ist_pos)); /* avoid use-of-uninitialized-value (scfsi reuse) */
 
     if (mp3_bytes > 4 && dec->header[0] == 0xff && hdr_compare(dec->header, mp3))
     {
@@ -1872,23 +1868,23 @@ int mp3dec_decode_frame(mp3dec_t *dec, const uint8_t *mp3, int mp3_bytes, mp3d_s
 
     if (info->layer == 3)
     {
-        int main_data_begin = L3_read_side_info(bs_frame, scratch.gr_info, hdr);
+        int main_data_begin = L3_read_side_info(bs_frame, scratch->gr_info, hdr);
         if (main_data_begin < 0 || bs_frame->pos > bs_frame->limit)
         {
             mp3dec_init(dec);
             return 0;
         }
-        success = L3_restore_reservoir(dec, bs_frame, &scratch, main_data_begin);
+        success = L3_restore_reservoir(dec, bs_frame, scratch, main_data_begin);
         if (success)
         {
             for (igr = 0; igr < (HDR_TEST_MPEG1(hdr) ? 2 : 1); igr++, pcm += 576*info->channels)
             {
-                memset(scratch.grbuf, 0, sizeof(scratch.grbuf));
-                L3_decode(dec, &scratch, scratch.gr_info + igr*info->channels, info->channels);
-                mp3d_synth_granule(dec->qmf_state, scratch.grbuf[0], 18, info->channels, pcm, scratch.syn[0]);
+                memset(scratch->grbuf, 0, sizeof(scratch->grbuf));
+                L3_decode(dec, scratch, scratch->gr_info + igr*info->channels, info->channels);
+                mp3d_synth_granule(dec->qmf_state, scratch->grbuf[0], 18, info->channels, pcm, scratch->syn[0]);
             }
         }
-        L3_save_reservoir(dec, &scratch);
+        L3_save_reservoir(dec, scratch);
     } else
     {
 #ifdef MINIMP3_ONLY_MP3
@@ -1897,15 +1893,15 @@ int mp3dec_decode_frame(mp3dec_t *dec, const uint8_t *mp3, int mp3_bytes, mp3d_s
         L12_scale_info sci[1];
         L12_read_scale_info(hdr, bs_frame, sci);
 
-        memset(scratch.grbuf, 0, sizeof(scratch.grbuf));
+        memset(scratch->grbuf, 0, sizeof(scratch->grbuf));
         for (i = 0, igr = 0; igr < 3; igr++)
         {
-            if (12 == (i += L12_dequantize_granule(scratch.grbuf[0] + i, bs_frame, sci, info->layer | 1)))
+            if (12 == (i += L12_dequantize_granule(scratch->grbuf[0] + i, bs_frame, sci, info->layer | 1)))
             {
                 i = 0;
-                L12_apply_scf_384(sci, sci->scf + igr, scratch.grbuf[0]);
-                mp3d_synth_granule(dec->qmf_state, scratch.grbuf[0], 12, info->channels, pcm, scratch.syn[0]);
-                memset(scratch.grbuf, 0, sizeof(scratch.grbuf));
+                L12_apply_scf_384(sci, sci->scf + igr, scratch->grbuf[0]);
+                mp3d_synth_granule(dec->qmf_state, scratch->grbuf[0], 12, info->channels, pcm, scratch->syn[0]);
+                memset(scratch->grbuf, 0, sizeof(scratch->grbuf));
                 pcm += 384*info->channels;
             }
             if (bs_frame->pos > bs_frame->limit)
@@ -1974,24 +1970,34 @@ void mp3dec_f32_to_s16(const float *in, int16_t *out, int num_samples)
 
 namespace kk::audio {
 namespace {
-mp3dec_t gDecoder;
+
+// Decoder state and the decode scratch share one caller-owned block (see
+// AudioPlayer): neither is static RAM and neither is a stack local.
+struct Work {
+    mp3dec_t dec;
+    mp3dec_scratch_t scratch;
+};
+
+}  // namespace
+
+size_t mp3WorkBytes() { return sizeof(Work); }
+
+void mp3Reset(void* work) {
+    // A new file must not inherit the previous file's bit reservoir or
+    // overlap state. Zeroing the whole block also clears the header bytes
+    // that mp3dec_init() would only clear for a continuous stream.
+    if (work) memset(work, 0, sizeof(Work));
 }
 
-void mp3Reset() {
-    // A new file must not inherit the previous file's bit reservoir. The
-    // upstream mp3dec_init() only clears the header byte for a continuous
-    // stream, so reset the whole state here.
-    memset(&gDecoder, 0, sizeof gDecoder);
-}
-
-int mp3DecodeFrame(const uint8_t* data, int bytes, int16_t* pcm, Mp3FrameInfo* info) {
+int mp3DecodeFrame(void* work, const uint8_t* data, int bytes, int16_t* pcm, Mp3FrameInfo* info) {
     if (!info) return 0;
     info->frameBytes = 0;
     info->channels = 0;
     info->hz = 0;
-    if (!data || bytes <= 0) return 0;
+    if (!work || !data || bytes <= 0 || !pcm) return 0;
+    Work* w = static_cast<Work*>(work);
     mp3dec_frame_info_t frame{};
-    const int samples = mp3dec_decode_frame(&gDecoder, data, bytes, pcm, &frame);
+    const int samples = mp3dec_decode_frame_scratch(&w->dec, data, bytes, pcm, &frame, &w->scratch);
     info->frameBytes = frame.frame_bytes;
     info->channels = frame.channels;
     info->hz = frame.hz;

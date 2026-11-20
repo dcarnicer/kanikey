@@ -6,6 +6,7 @@
 #include <cstdio>
 
 #include "ui/Text.h"
+#include "ui/HintBar.h"
 #include "ui/UiFont.h"
 #include "ui/Widgets.h"
 #include "wk/SessionStats.h"
@@ -559,14 +560,22 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
 
     ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kFaint, ui::kBg);
-    // Drop `/Esc` from the back hint when R: audio needs the width; Esc still
-    // closes the card, as the help-less detail frame always allowed.
+    // AUD-03: the audio part is added only when it fits beside the exit hint.
+    // Longest first; every variant keeps Tab/Esc: back, so the card still says
+    // how to leave. Widths are measured by fitHint() on the device.
     const char* audio = audioHintText(view.audio);
-    char hint[64];
-    if (*audio)
-        snprintf(hint, sizeof hint, "%s  Space: page  Tab: back", audio);
-    else
-        snprintf(hint, sizeof hint, "Space: page  Tab/Esc: back");
+    char withAudio[64];
+    char withAudioBack[32];
+    if (*audio) {
+        snprintf(withAudio, sizeof withAudio, "%s  Space: page  Tab/Esc: back", audio);
+        snprintf(withAudioBack, sizeof withAudioBack, "%s  Tab/Esc: back", audio);
+    } else {
+        withAudio[0] = '\0';
+        withAudioBack[0] = '\0';
+    }
+    const char* hint = ui::fitHint(d, {withAudio, "Space: page  Tab/Esc: back", withAudioBack,
+                                       "Tab/Esc: back"},
+                                   /* x 5 .. 233 */ 228);
     d.drawString(hint, 5, 125);
 }
 

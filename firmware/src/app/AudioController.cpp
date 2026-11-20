@@ -10,6 +10,19 @@
 
 namespace kk::app {
 
+namespace {
+
+// True once the cache was prepared for the current visit to a review or lesson
+// card screen. Cleared on leaving, so the next visit prepares again once.
+bool gPreparedForVisit = false;
+
+bool audioScreen() {
+    const Screen base = kk::screenBase(state().screen);
+    return base == Screen::Review || base == Screen::LessonCard;
+}
+
+}  // namespace
+
 uint8_t audioVoice() {
     int voice = 0;
     if (kk::settingsGetInt("rm.voice", &voice) && voice == 1) return 1;
@@ -18,20 +31,40 @@ uint8_t audioVoice() {
 
 void audioBegin() { kk::audioPlayerBegin(SD); }
 
-void audioTick() { kk::audioPlayerTick(); }
+void audioTick() {
+    if (!audioScreen()) {
+        gPreparedForVisit = false;
+        // AUD-03: no clip outlives its screen.
+        if (kk::audioPlayerIsPlaying()) audioStop();
+    } else if (!gPreparedForVisit) {
+        gPreparedForVisit = true;
+        // SD I/O on entry, not in a draw. A failure leaves the hint at `no audio`
+        // for this visit; it does not retry.
+        if (state().storage.gSdOk && kk::DevToken::has())
+            kk::audioPlayerPrepare(currentAccountKey());
+        state().display.gDirty = true;
+    }
+    kk::audioPlayerTick();
+}
 
 void audioStop() { kk::audioPlayerStop(); }
 
 kk::AudioHint audioHintFor(const kk::Subject& subject) {
     if (!kk::audioSubjectPlayable(subject.type)) return kk::AudioHint::None;
-    if (!state().storage.gSdOk || !kk::DevToken::has()) return kk::AudioHint::Missing;
-    return kk::audioPlayerHint(currentAccountKey(), subject, audioVoice());
+    if (!state().storage.gSdOk) return kk::AudioHint::Missing;
+    return kk::audioPlayerHint(subject, audioVoice());
 }
 
 bool audioPlay(const kk::Subject& subject) {
     if (!kk::audioSubjectPlayable(subject.type)) return false;
-    if (!state().storage.gSdOk || !kk::DevToken::has()) return false;
-    const bool started = kk::audioPlayerPlay(currentAccountKey(), subject, audioVoice());
+    if (!state().storage.gSdOk) return false;
+    if (!kk::audioPlayerReady()) {
+        // The screen entry normally prepared it; prepare here if it did not.
+        if (!kk::DevToken::has()) return false;
+        kk::audioPlayerPrepare(currentAccountKey());
+        if (!kk::audioPlayerReady()) return false;
+    }
+    const bool started = kk::audioPlayerPlay(subject, audioVoice());
     state().display.gDirty = true;
     return started;
 }
