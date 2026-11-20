@@ -161,6 +161,21 @@ void lowBatteryKey(const KeyEvent& e) {
     }
 }
 
+// PD-03: Home on a two-button board is a focus ring over its read-only
+// destinations. Reviews are not a target (they need a keyboard); their count
+// stays on the screen.
+void homeFocusOpen() {
+    switch (state().ui.gHomeFocus % 4) {
+        case 0: startLessons(); break;
+        case 1: openStats(); break;
+        case 2:
+            if (!state().sync.gSyncing) startSync();
+            break;
+        default: openSettings(); break;
+    }
+    state().display.gDirty = true;
+}
+
 void onKeyImpl(const KeyEvent& e) {
 #ifdef KANIKEY_DEV
     if (state().lesson.gDevKeyTest) {
@@ -331,6 +346,18 @@ void onKeyImpl(const KeyEvent& e) {
         openSettings();
         return;
     }
+    if (e.down && underBase == Screen::Home && tgc::board::buttonsOnly()) {
+        if (e.key == Key::Down || e.key == Key::Up) {
+            state().ui.gHomeFocus = static_cast<uint8_t>(
+                e.key == Key::Down ? (state().ui.gHomeFocus + 1) % 4 : (state().ui.gHomeFocus + 3) % 4);
+            state().display.gDirty = true;
+            return;
+        }
+        if (e.key == Key::Enter) {
+            homeFocusOpen();
+            return;
+        }
+    }
     if (e.down && e.key == Key::Enter) {
         if (underBase == Screen::Home && state().session.gHaveSummary) {
             if (state().session.gSummary.dueReviews(effectiveNow()) == 0) {
@@ -441,6 +468,8 @@ kk::app::HomeView buildHomeView() {
     view.outboxPending = static_cast<uint32_t>(kk::outboxPendingCount(state().outbox.gOutbox));
     // "Nearly full" starts at 96 of 128 slots; every state occupies a slot.
     view.outboxNearlyFull = state().outbox.gOutbox.size() >= (kk::kOutboxMax * 3u) / 4u;
+    view.buttonMenu = tgc::board::buttonsOnly();
+    view.focus = static_cast<uint8_t>(state().ui.gHomeFocus % 4);
 
     // Status priority: API/auth, outbox, offline cache, then notices.
     if (state().sync.gSyncIssue == SyncIssue::Auth) {
@@ -547,31 +576,31 @@ void drawBoot() {
             title = "No SD card";
             line1 = "Insert a FAT32 card with";
             line2 = "/kanikey/glyphs.kgp";
-            action = "Enter: retry";
+            action = pickHint("Enter: retry", "hold A: retry");
             break;
         case BootState::NoPack:
             title = "Pack missing";
-            line1 = "Press Enter to download it";
+            line1 = pickHint("Press Enter to download it", "Hold A to download it");
             line2 = "from the setup page";
-            action = "Enter: setup";
+            action = pickHint("Enter: setup", "hold A: setup");
             break;
         case BootState::NoToken:
             title = "Token needed";
-            line1 = "Press Enter for setup";
+            line1 = pickHint("Press Enter for setup", "Hold A for setup");
             line2 = "Wi-Fi and token from your phone";
-            action = "Enter: setup";
+            action = pickHint("Enter: setup", "hold A: setup");
             break;
         case BootState::NoWifi:
             title = "Wi-Fi needed";
-            line1 = "Set up a 2.4 GHz network here";
-            line2 = "or press P for the phone portal";
-            action = "Enter: on-device  P: phone";
+            line1 = pickHint("Set up a 2.4 GHz network here", "Set up Wi-Fi with a phone");
+            line2 = pickHint("or press P for the phone portal", "then open the setup page");
+            action = pickHint("Enter: on-device  P: phone", "hold A: setup");
             break;
         case BootState::NotSynced:
             title = "Not synced";
             line1 = state().ui.gNetLine;
-            line2 = "Press Enter to sync";
-            action = "Enter: sync";
+            line2 = pickHint("Press Enter to sync", "Hold A to sync");
+            action = pickHint("Enter: sync", "hold A: sync");
             break;
         case BootState::Syncing:
             title = "Syncing...";
@@ -582,14 +611,14 @@ void drawBoot() {
         case BootState::AuthError:
             title = "Token rejected";
             line1 = "The WaniKani token is invalid";
-            line2 = "Press Enter to open setup";
-            action = "Enter: setup";
+            line2 = pickHint("Press Enter to open setup", "Hold A to open setup");
+            action = pickHint("Enter: setup", "hold A: setup");
             break;
         case BootState::Forbidden:
             title = "Missing permissions";
             line1 = "Edit the token in WaniKani";
-            line2 = "Press Enter to open setup";
-            action = "Enter: setup";
+            line2 = pickHint("Press Enter to open setup", "Hold A to open setup");
+            action = pickHint("Enter: setup", "hold A: setup");
             break;
         case BootState::RateLimited: {
             const uint32_t wait = kk::wkRateLimitWaitSeconds();
@@ -597,29 +626,30 @@ void drawBoot() {
                 snprintf(retryLine, sizeof retryLine, "Retry in %us",
                          static_cast<unsigned>(wait));
             else
-                snprintf(retryLine, sizeof retryLine, "Press Enter to retry");
+                snprintf(retryLine, sizeof retryLine, "%s",
+                         pickHint("Press Enter to retry", "Hold A to retry"));
             title = "Rate limited";
             line1 = "WaniKani asked KaniKey to wait";
             line2 = retryLine;
-            action = "Enter: retry";
+            action = pickHint("Enter: retry", "hold A: retry");
             break;
         }
         case BootState::ServerError:
             title = "WaniKani error";
             line1 = state().ui.gNetLine;
-            line2 = "Press Enter to retry";
-            action = "Enter: retry";
+            line2 = pickHint("Press Enter to retry", "Hold A to retry");
+            action = pickHint("Enter: retry", "hold A: retry");
             break;
         case BootState::Failed:
             title = "Sync failed";
             line1 = state().ui.gNetLine;
             line2 = "Check Wi-Fi and token";
-            action = "Enter: retry";
+            action = pickHint("Enter: retry", "hold A: retry");
             break;
         case BootState::Ready:
             title = "Ready";
-            line1 = "Press Enter to open Home";
-            action = "Enter: home";
+            line1 = pickHint("Press Enter to open Home", "Hold A to open Home");
+            action = pickHint("Enter: home", "hold A: home");
             break;
     }
 

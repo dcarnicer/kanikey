@@ -33,6 +33,11 @@ struct HomeView {
     uint32_t outboxAttention = 0;
     uint32_t outboxPending = 0;
     bool outboxNearlyFull = false;  // 96 of 128 slots used
+    // PD-03: a two-button board draws the focus strip (Lessons, Stats, Sync,
+    // Settings) in place of the status line and names buttons in the hint. The
+    // status text then moves to the header's right side.
+    bool buttonMenu = false;
+    uint8_t focus = 0;
 };
 
 // Draws the Home frame into d. The caller owns startWrite()/endWrite() and

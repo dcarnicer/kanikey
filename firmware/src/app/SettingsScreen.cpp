@@ -2,6 +2,7 @@
 // startWrite()/endWrite() (the caller owns the transfer window).
 #include "app/SettingsScreen.h"
 
+#include "app/ButtonHint.h"
 #include "ui/HintBar.h"
 #include "ui/ListView.h"
 
@@ -45,7 +46,7 @@ void drawSettingsScreen(lgfx::LovyanGFX& d, const SettingsView& view) {
     d.setTextFont(1);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString(view.title.empty() ? "settings" : view.title.c_str(), 7, 22);
-    ui::drawHintRight(d, "Esc: back", ui::kFaint, 232, 5);
+    ui::drawHintRight(d, pickHint("Esc: back", "B: back"), ui::kFaint, 232, 5);
     d.drawFastHLine(4, 36, 232, ui::kLine);
 
     constexpr int kVisibleRows = 7;
@@ -61,7 +62,7 @@ void drawSettingsScreen(lgfx::LovyanGFX& d, const SettingsView& view) {
         // The focused row's registry help; a note always wins until the
         // selection moves.
         ui::drawHintLeft(d,
-                         view.help.empty() ? "Enter: change  Esc: back" : view.help.c_str(),
+                         view.help.empty() ? pickHint("Enter: change  Esc: back", "hold A: change  B: back") : view.help.c_str(),
                          ui::kFaint, 8, 123);
     }
 }

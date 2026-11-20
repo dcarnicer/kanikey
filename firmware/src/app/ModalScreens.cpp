@@ -4,6 +4,7 @@
 
 #include <cstdio>
 
+#include "app/ButtonHint.h"
 #include "ui/UiFont.h"
 
 namespace kk::app {
@@ -72,7 +73,7 @@ void drawLowBatteryScreen(lgfx::LovyanGFX& d, const LowBatteryView& view) {
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString("Connect power or continue anyway.", 8, 102);
     d.setTextColor(ui::kFaint, ui::kBg);
-    d.drawString("Enter: continue  Esc: cancel", 8, 125);
+    d.drawString(pickHint("Enter: continue  Esc: cancel", "hold A: continue  B: cancel"), 8, 125);
 }
 
 void drawWorkloadScreen(lgfx::LovyanGFX& d, const WorkloadView& view) {
@@ -95,7 +96,7 @@ void drawWorkloadScreen(lgfx::LovyanGFX& d, const WorkloadView& view) {
         y += 12;
     }
     d.setTextColor(ui::kFaint, ui::kBg);
-    d.drawString("Enter: continue  Esc: back", 8, 125);
+    d.drawString(pickHint("Enter: continue  Esc: back", "hold A: continue  B: back"), 8, 125);
 }
 
 void drawLessonStartScreen(lgfx::LovyanGFX& d, const LessonStartView& view) {
@@ -205,8 +206,8 @@ void drawSignOutScreen(lgfx::LovyanGFX& d) {
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString("Wi-Fi stays saved.", 8, 92);
     d.setTextColor(ui::kFaint, ui::kBg);
-    d.drawString("Enter: sign out", 8, 112);
-    d.drawString("Esc: cancel", 8, 125);
+    d.drawString(pickHint("Enter: sign out", "hold A: sign out"), 8, 112);
+    d.drawString(pickHint("Esc: cancel", "B: cancel"), 8, 125);
 }
 
 }  // namespace kk::app

@@ -251,6 +251,26 @@ other key until `Esc` closes it, and plain `/` remains Right.
 
 ---
 
+### 3.5 Two buttons (PaperDIY)
+
+The PaperDIY has no keyboard: two buttons, A and B, and no touch. The same
+screens run with a button map (`docs/spec/10-bluetooth-paperdiy.md` §2.4):
+
+| Button | Short tap | Hold (600 ms) |
+|---|---|---|
+| A | next (row, option, page) | open / confirm (Enter) |
+| B | back (up, close, cancel) | previous (row, option, page) |
+
+- Hints name the buttons: `A: next  hold A: open  B: settings` on Home,
+  `hold A: retry  B: home` on a notice. Keys are never named on that board.
+- Home is a focus ring over Lessons, Stats, Sync and Settings; reviews are not
+  a destination there.
+- Reviews, quizzes, lesson start and text entry are not offered. A try shows
+  `Needs a keyboard` and a button closes it. Read-only browsing (Home, lesson
+  list and card, item detail, Stats, Sync, Outbox and most of Settings) works.
+  Wi-Fi entry is on the Setup portal instead.
+- The keyboard hints and keys are unchanged on the Cardputer.
+
 ## 4. Flows
 
 ### 4.1 First setup

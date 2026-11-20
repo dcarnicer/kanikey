@@ -343,11 +343,11 @@ void drawNotice() {
     if (!state().display.gDisp) return;
     const char* header = "REVIEWS";
     const char* title = "";
-    const char* hint = "Enter: retry  Esc: home";
+    const char* hint = pickHint("Enter: retry  Esc: home", "hold A: retry  B: home");
     switch (state().ui.gNoticeAction) {
         case NoticeAction::ReviewEmpty:
             title = "No reviews now";
-            hint = "Enter: sync  Esc: home";
+            hint = pickHint("Enter: sync  Esc: home", "hold A: sync  B: home");
             break;
         case NoticeAction::ReviewError:
             title = "Could not load reviews";
@@ -359,16 +359,23 @@ void drawNotice() {
         case NoticeAction::LessonStart:
             header = "LESSONS";
             title = "Could not start lesson";
-            hint = "Enter: retry  Esc: home";
+            hint = pickHint("Enter: retry  Esc: home", "hold A: retry  B: home");
             break;
         case NoticeAction::OutboxFull:
             title = "Outbox full";
-            hint = "Enter: sync  Esc: home";
+            hint = pickHint("Enter: sync  Esc: home", "hold A: sync  B: home");
             break;
         case NoticeAction::StorageFormat:
             header = "STORAGE";
             title = "Storage unreadable";
-            hint = "Enter: format  Esc: continue";
+            hint = pickHint("Enter: format  Esc: continue", "hold A: format  B: continue");
+            break;
+        case NoticeAction::NeedsKeyboard:
+            // Only a two-button board raises it; the Cardputer image drops it.
+            if (!tgc::board::buttonsOnly()) return;
+            header = "READ-ONLY";
+            title = "Needs a keyboard";
+            hint = pickHint("Enter or Esc: back", "A or B: back");
             break;
         default:
             return;
@@ -403,8 +410,25 @@ void drawNotice() {
 #endif
 }
 
+// PD-03: a keyboard-only action refused on a two-button board. The notice is
+// only a message: any key closes it and the screen underneath stays as it was.
+void needsKeyboardNotice(const char* line) {
+    if (!tgc::board::buttonsOnly()) return;  // never raised on a keyboard board
+    snprintf(state().ui.gNoticeLine, sizeof state().ui.gNoticeLine, "%s", line);
+    state().ui.gNoticeLine2[0] = 0;
+    state().ui.gNoticeAction = NoticeAction::NeedsKeyboard;
+    state().ui.gNoticeActive = true;
+    state().display.gDirty = true;
+}
+
 void noticeKey(const KeyEvent& e) {
     if (!e.down) return;
+    if (state().ui.gNoticeAction == NoticeAction::NeedsKeyboard) {
+        state().ui.gNoticeActive = false;
+        state().ui.gNoticeAction = NoticeAction::None;
+        state().display.gDirty = true;
+        return;
+    }
     if (state().storage.gFsFormatPrompt) {
         if (e.key == Key::Esc) {
             // Continue without storage: the in-memory outbox and cache only.

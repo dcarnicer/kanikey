@@ -336,6 +336,7 @@ enum class NoticeAction : uint8_t {
     LessonStart,
     OutboxFull,
     StorageFormat,
+    NeedsKeyboard,  // PD-03: a two-button board refused a keyboard-only action
 };
 
 struct LogLine {
@@ -355,6 +356,9 @@ struct UiState {
     bool gSettingsResetConfirm = false;
     int gLowBatteryAction = 0;  // 1 = review, 2 = lessons
     bool gLowBatteryConfirmed = false;
+    // PD-03: the focused Home destination on a two-button board (Lessons, Stats,
+    // Sync, Settings; see App.cpp homeFocusOpen()).
+    uint8_t gHomeFocus = 0;
     bool gNoticeActive = false;
     NoticeAction gNoticeAction = NoticeAction::None;
     char gNoticeLine[64] = "";

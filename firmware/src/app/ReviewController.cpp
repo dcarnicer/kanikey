@@ -652,6 +652,12 @@ void endReview(bool send) {
 }
 
 void startReview() {
+    // PD-03: reviews type answers; a two-button board cannot run one. Every
+    // caller (Home, the low-battery prompt, a sync that finished) lands here.
+    if (tgc::board::buttonsOnly()) {
+        needsKeyboardNotice("Reviews need a keyboard");
+        return;
+    }
     if (state().storage.gFsFormatPrompt) return;  // wait for the storage choice
     if (!state().session.gHaveSummary) return;
     state().lesson.quizBatch = false;
