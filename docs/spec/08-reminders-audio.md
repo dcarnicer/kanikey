@@ -18,7 +18,7 @@ Decision D4 brings Kakehashi's reminders and vocabulary audio into this round. R
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
 | REM-01 | Spike: timer wake and sound | P2 | M | none | 4 | partial (2026-11-20: timer wake ×3, 544 ms wake, tone 7.9 KB heap; current/ext1 abort pending) |
-| REM-02 | Reminder wake | P2 | M | REM-01, SPEED-02, CFG (M1–M3) | 4 | todo |
+| REM-02 | Reminder wake | P2 | M | REM-01, SPEED-02, CFG (M1–M3) | 4 | review (2026-11-20: code + native tests; hardware pending) |
 | REM-03 | Sounds | P3 | S | REM-01, REM-02, CFG (M4, M5) | 4 | todo |
 | AUD-01 | Spike: vocabulary audio | P2 | M | none | 4 | partial (2026-11-06: parser + speaker) |
 | AUD-02 | Audio cache on SD | P3 | M | AUD-01, SPEED-04, CFG (M7) | 4 | partial (2026-11-06: cache/index/LRU, serial `a`) |

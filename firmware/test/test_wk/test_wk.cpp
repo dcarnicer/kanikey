@@ -25,6 +25,7 @@
 #include "wk/LessonQuiz.h"
 #include "wk/LevelProgress.h"
 #include "wk/RateLimit.h"
+#include "wk/Reminder.h"
 #include "wk/StudyMaterial.h"
 #include "wk/SubjectParser.h"
 #include "wk/Text.h"
@@ -3770,6 +3771,221 @@ void run_hid_tests();
 void run_epd_tests();
 void run_devhooks_tests();
 
+// ---------------------------------------------------------------- reminder (REM-02)
+
+namespace {
+
+uint32_t rmUtc(int y, unsigned mo, unsigned d, unsigned h, unsigned mi) {
+    return static_cast<uint32_t>(daysFromCivil(y, mo, d) * 86400 + h * 3600 + mi * 60);
+}
+
+int32_t rmZero(uint32_t) { return 0; }
+
+// Berlin: CET (+1 h) and CEST (+2 h), switching at 01:00 UTC on 2026-03-29 and
+// 2026-10-25. The fake clock's DST table; no host tzdata.
+int32_t rmBerlin(uint32_t utc) {
+    const uint32_t spring = rmUtc(2026, 3, 29, 1, 0);
+    const uint32_t autumn = rmUtc(2026, 10, 25, 1, 0);
+    return utc >= spring && utc < autumn ? 7200 : 3600;
+}
+
+Summary rmSummary(std::initializer_list<std::pair<uint32_t, uint16_t>> buckets) {
+    Summary s;
+    for (const auto& b : buckets) {
+        SummaryBucket bucket;
+        bucket.availableAt = b.first;
+        bucket.count = b.second;
+        s.reviews.push_back(bucket);
+    }
+    return s;
+}
+
+// M1 count, M2 choice (0 off, 1 22-08, 2 23-07), M3 minutes after midnight.
+ReminderRules rmRules(int minDue, int quiet, int daily) {
+    return reminderRulesFromChoices(minDue, quiet, daily);
+}
+
+}  // namespace
+
+void test_reminder_wake_at_first_bucket() {
+    const uint32_t now = rmUtc(2026, 11, 20, 9, 0);
+    const Summary s = rmSummary({{now + 3600, 3}, {now + 7200, 4}});
+    const ReminderRules r = rmRules(1, 0, 0);
+    const ReminderWake w = reminderNextWakeAt(s, now, 0, r, rmZero);
+    TEST_ASSERT_EQUAL_UINT32(now + 3600, w.at);
+    TEST_ASSERT_TRUE(w.reason == ReminderReason::Bucket);
+    TEST_ASSERT_FALSE(w.clamped);
+    TEST_ASSERT_TRUE(reminderWanted(3, w.at, r, rmZero));
+    TEST_ASSERT_FALSE(reminderWanted(0, now, r, rmZero));
+}
+
+void test_reminder_quiet_hours_across_midnight() {
+    const uint32_t now = rmUtc(2026, 11, 20, 21, 0);
+    const Summary s = rmSummary({{rmUtc(2026, 11, 20, 23, 30), 5}});
+    const ReminderRules r = rmRules(1, 1, 0);  // M2 22-08
+    const ReminderWake w = reminderNextWakeAt(s, now, 0, r, rmZero);
+    TEST_ASSERT_EQUAL_UINT32(rmUtc(2026, 11, 21, 8, 0), w.at);
+    TEST_ASSERT_TRUE(w.reason == ReminderReason::Bucket);
+
+    TEST_ASSERT_FALSE(inQuietHours(rmUtc(2026, 11, 20, 21, 59), r, rmZero));
+    TEST_ASSERT_TRUE(inQuietHours(rmUtc(2026, 11, 20, 22, 0), r, rmZero));
+    TEST_ASSERT_TRUE(inQuietHours(rmUtc(2026, 11, 20, 23, 30), r, rmZero));
+    TEST_ASSERT_TRUE(inQuietHours(rmUtc(2026, 11, 21, 7, 59), r, rmZero));
+    TEST_ASSERT_FALSE(inQuietHours(rmUtc(2026, 11, 21, 8, 0), r, rmZero));
+    TEST_ASSERT_FALSE(reminderWanted(5, rmUtc(2026, 11, 20, 23, 30), r, rmZero));
+    TEST_ASSERT_TRUE(reminderWanted(5, rmUtc(2026, 11, 21, 8, 0), r, rmZero));
+
+    // M2 23-07: 22:30 is outside the span, 23:00 and 06:59 are inside.
+    const ReminderRules r2 = rmRules(1, 2, 0);
+    TEST_ASSERT_FALSE(inQuietHours(rmUtc(2026, 11, 20, 22, 30), r2, rmZero));
+    TEST_ASSERT_TRUE(inQuietHours(rmUtc(2026, 11, 20, 23, 0), r2, rmZero));
+    TEST_ASSERT_TRUE(inQuietHours(rmUtc(2026, 11, 21, 6, 59), r2, rmZero));
+    TEST_ASSERT_FALSE(inQuietHours(rmUtc(2026, 11, 21, 7, 0), r2, rmZero));
+}
+
+void test_reminder_quiet_hours_disabled() {
+    const uint32_t now = rmUtc(2026, 11, 20, 21, 0);
+    const Summary s = rmSummary({{rmUtc(2026, 11, 20, 23, 30), 5}});
+    const ReminderRules r = rmRules(1, 0, 0);  // M2 off
+    const ReminderWake w = reminderNextWakeAt(s, now, 0, r, rmZero);
+    TEST_ASSERT_EQUAL_UINT32(rmUtc(2026, 11, 20, 23, 30), w.at);
+    TEST_ASSERT_FALSE(inQuietHours(rmUtc(2026, 11, 21, 2, 0), r, rmZero));
+    TEST_ASSERT_TRUE(reminderWanted(5, w.at, r, rmZero));
+}
+
+void test_reminder_daily_time_past_is_tomorrow() {
+    const uint32_t now = rmUtc(2026, 11, 20, 10, 0);
+    const Summary empty;
+    ReminderWake w = reminderNextWakeAt(empty, now, 0, rmRules(0, 0, 480), rmZero);  // 08:00
+    TEST_ASSERT_EQUAL_UINT32(rmUtc(2026, 11, 21, 8, 0), w.at);
+    TEST_ASSERT_TRUE(w.reason == ReminderReason::Daily);
+
+    w = reminderNextWakeAt(empty, now, 0, rmRules(0, 0, 720), rmZero);  // 12:00
+    TEST_ASSERT_EQUAL_UINT32(rmUtc(2026, 11, 20, 12, 0), w.at);
+
+    // Exactly at the daily time: that moment is not later, so tomorrow.
+    w = reminderNextWakeAt(empty, now, 0, rmRules(0, 0, 600), rmZero);  // 10:00
+    TEST_ASSERT_EQUAL_UINT32(rmUtc(2026, 11, 21, 10, 0), w.at);
+}
+
+void test_reminder_dst_spring_forward() {
+    const uint32_t now = rmUtc(2026, 3, 28, 12, 0);  // CET, 13:00 local
+    const Summary empty;
+    // 02:30 does not exist on 2026-03-29 (02:00 jumps to 03:00): it normalises
+    // to 03:30 CEST, which is 01:30 UTC.
+    ReminderWake w = reminderNextWakeAt(empty, now, 0, rmRules(0, 0, 150), rmBerlin);
+    TEST_ASSERT_EQUAL_UINT32(rmUtc(2026, 3, 29, 1, 30), w.at);
+    // 08:00 the next morning is CEST: 06:00 UTC.
+    w = reminderNextWakeAt(empty, now, 0, rmRules(0, 0, 480), rmBerlin);
+    TEST_ASSERT_EQUAL_UINT32(rmUtc(2026, 3, 29, 6, 0), w.at);
+}
+
+void test_reminder_dst_fall_back() {
+    const uint32_t now = rmUtc(2026, 10, 24, 12, 0);  // CEST, 14:00 local
+    const Summary empty;
+    // 02:30 happens twice on 2026-10-25 (00:30 UTC CEST, 01:30 UTC CET). The
+    // first occurrence is the one the wake uses.
+    const ReminderWake w = reminderNextWakeAt(empty, now, 0, rmRules(0, 0, 150), rmBerlin);
+    TEST_ASSERT_EQUAL_UINT32(rmUtc(2026, 10, 25, 0, 30), w.at);
+    TEST_ASSERT_TRUE(w.reason == ReminderReason::Daily);
+}
+
+void test_reminder_empty_forecast() {
+    const uint32_t now = rmUtc(2026, 11, 20, 9, 0);
+    const Summary empty;
+    ReminderWake w = reminderNextWakeAt(empty, now, 0, rmRules(10, 0, 0), rmZero);
+    TEST_ASSERT_EQUAL_UINT32(0, w.at);
+    TEST_ASSERT_TRUE(w.reason == ReminderReason::None);
+    TEST_ASSERT_FALSE(reminderWanted(0, now, rmRules(10, 0, 0), rmZero));
+
+    // A daily time still wakes with an empty forecast.
+    w = reminderNextWakeAt(empty, now, 0, rmRules(10, 0, 480), rmZero);
+    TEST_ASSERT_EQUAL_UINT32(rmUtc(2026, 11, 21, 8, 0), w.at);
+    TEST_ASSERT_TRUE(w.reason == ReminderReason::Daily);
+}
+
+void test_reminder_no_repeat_after_fire() {
+    const uint32_t now = rmUtc(2026, 11, 20, 8, 0);
+    // A bucket exactly at the fire time, one 30 min later, and an 08:00 daily time.
+    const Summary s = rmSummary({{now, 5}, {now + 1800, 2}});
+    const ReminderRules r = rmRules(1, 0, 480);
+
+    // Fired at `now`: the bucket at `now` is not repeated; the next one is later.
+    ReminderWake w = reminderNextWakeAt(s, now, now, r, rmZero);
+    TEST_ASSERT_EQUAL_UINT32(now + 1800, w.at);
+    TEST_ASSERT_TRUE(w.at > now);
+
+    // Fired at `now + 1800`: no bucket is left, so the daily time, tomorrow.
+    w = reminderNextWakeAt(s, now + 1800, now + 1800, r, rmZero);
+    TEST_ASSERT_EQUAL_UINT32(rmUtc(2026, 11, 21, 8, 0), w.at);
+    TEST_ASSERT_TRUE(w.reason == ReminderReason::Daily);
+    TEST_ASSERT_TRUE(w.at > now + 1800);
+
+    // The same wake point without the fired mark: the bucket at `now` is already due.
+    w = reminderNextWakeAt(s, now, 0, r, rmZero);
+    TEST_ASSERT_EQUAL_UINT32(now + 1800, w.at);
+}
+
+void test_reminder_disabled_arms_no_timer() {
+    const uint32_t now = rmUtc(2026, 11, 20, 9, 0);
+    const Summary s = rmSummary({{now + 3600, 30}});
+    const ReminderRules off = rmRules(0, 0, 0);
+    const ReminderWake w = reminderNextWakeAt(s, now, 0, off, rmZero);
+    TEST_ASSERT_EQUAL_UINT32(0, w.at);
+    TEST_ASSERT_TRUE(w.reason == ReminderReason::None);
+    TEST_ASSERT_FALSE(reminderWanted(30, now + 3600, off, rmZero));
+    // Quiet hours alone arm nothing either.
+    TEST_ASSERT_EQUAL_UINT32(0, reminderNextWakeAt(s, now, 0, rmRules(0, 1, 0), rmZero).at);
+}
+
+void test_reminder_clamp_24h() {
+    const uint32_t now = rmUtc(2026, 11, 20, 9, 0);
+    const Summary s = rmSummary({{now + 3 * 86400, 4}});
+    const ReminderWake w = reminderNextWakeAt(s, now, 0, rmRules(1, 0, 0), rmZero);
+    TEST_ASSERT_EQUAL_UINT32(now + 86400, w.at);
+    TEST_ASSERT_TRUE(w.clamped);
+    TEST_ASSERT_TRUE(w.reason == ReminderReason::Bucket);
+}
+
+void test_reminder_daily_skips_quiet() {
+    const uint32_t now = rmUtc(2026, 11, 20, 9, 0);
+    // 23:00 is inside 22-08, so the daily wake moves to 08:00 the next morning.
+    const ReminderWake w = reminderNextWakeAt(Summary{}, now, 0, rmRules(0, 1, 23 * 60), rmZero);
+    TEST_ASSERT_EQUAL_UINT32(rmUtc(2026, 11, 21, 8, 0), w.at);
+    TEST_ASSERT_TRUE(w.reason == ReminderReason::Daily);
+}
+
+void test_reminder_earliest_of_bucket_and_daily() {
+    const uint32_t now = rmUtc(2026, 11, 20, 9, 0);
+    const ReminderRules r = rmRules(1, 0, 720);  // 12:00
+    ReminderWake w = reminderNextWakeAt(rmSummary({{rmUtc(2026, 11, 20, 10, 0), 2}}), now, 0, r,
+                                        rmZero);
+    TEST_ASSERT_EQUAL_UINT32(rmUtc(2026, 11, 20, 10, 0), w.at);
+    TEST_ASSERT_TRUE(w.reason == ReminderReason::Bucket);
+    w = reminderNextWakeAt(rmSummary({{rmUtc(2026, 11, 20, 14, 0), 2}}), now, 0, r, rmZero);
+    TEST_ASSERT_EQUAL_UINT32(rmUtc(2026, 11, 20, 12, 0), w.at);
+    TEST_ASSERT_TRUE(w.reason == ReminderReason::Daily);
+}
+
+void test_reminder_rules_from_choices() {
+    const ReminderRules a = rmRules(25, 2, 1200);
+    TEST_ASSERT_EQUAL_UINT32(25, a.minDue);
+    TEST_ASSERT_TRUE(a.quiet);
+    TEST_ASSERT_EQUAL_UINT32(23, a.quietStartHour);
+    TEST_ASSERT_EQUAL_UINT32(7, a.quietEndHour);
+    TEST_ASSERT_EQUAL_UINT32(1200, a.dailyMinute);
+
+    const ReminderRules off = rmRules(0, 0, 0);
+    TEST_ASSERT_EQUAL_UINT32(0, off.minDue);
+    TEST_ASSERT_FALSE(off.quiet);
+    TEST_ASSERT_EQUAL_UINT32(0, off.dailyMinute);
+
+    // An unknown quiet choice and an out-of-range time are off.
+    const ReminderRules odd = rmRules(10, 7, 1440);
+    TEST_ASSERT_FALSE(odd.quiet);
+    TEST_ASSERT_EQUAL_UINT32(0, odd.dailyMinute);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_romaji_common_words);
@@ -3957,6 +4173,19 @@ int main(int, char**) {
     RUN_TEST(test_wifi_ssid_and_password_validation);
     RUN_TEST(test_wifi_failure_reasons);
     RUN_TEST(test_wifi_mask_text);
+    RUN_TEST(test_reminder_wake_at_first_bucket);
+    RUN_TEST(test_reminder_quiet_hours_across_midnight);
+    RUN_TEST(test_reminder_quiet_hours_disabled);
+    RUN_TEST(test_reminder_daily_time_past_is_tomorrow);
+    RUN_TEST(test_reminder_dst_spring_forward);
+    RUN_TEST(test_reminder_dst_fall_back);
+    RUN_TEST(test_reminder_empty_forecast);
+    RUN_TEST(test_reminder_no_repeat_after_fire);
+    RUN_TEST(test_reminder_disabled_arms_no_timer);
+    RUN_TEST(test_reminder_clamp_24h);
+    RUN_TEST(test_reminder_daily_skips_quiet);
+    RUN_TEST(test_reminder_earliest_of_bucket_and_daily);
+    RUN_TEST(test_reminder_rules_from_choices);
     run_queue_tests();
     run_les_tests();
     run_ota_tests();

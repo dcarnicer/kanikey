@@ -235,7 +235,10 @@ bool playTone(uint16_t, uint16_t, uint8_t) { return false; }
 // No backlight: the e-paper has nothing to dim, so the setting is a no-op.
 void setBrightness(uint8_t) {}
 
-bool wokeFromSleep() { return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT1; }
+bool wokeFromSleep() {
+    const esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+    return cause == ESP_SLEEP_WAKEUP_EXT1 || cause == ESP_SLEEP_WAKEUP_TIMER;
+}
 
 // VIN/VINOUT in the PM1's power-source bitmap means external 5 V is present.
 // TODO(PD-01): verify on the Complete Kit and decide whether a charger-only
