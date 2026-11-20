@@ -23,7 +23,7 @@ Every item below was found and reproduced in the 2026-11-01 review of the firmwa
 | FIX-17 | IME lacks common romaji aliases | P2 | S | none | 0a | done |
 | FIX-18 | `/level_progressions` parsed into a full DOM | P2 | M | none | 0a | done |
 | FIX-19 | Station setup page has no authentication | P2 | S | FIX-07 | 0a | done |
-| FIX-20 | OTA marked valid after only 10 s of loop | P2 | S | none | 0b | partial (good install/valid verified; bad first boot/two-strike not run) |
+| FIX-20 | OTA marked valid after only 10 s of loop | P2 | S | none | 0b | done (2026-11-20: two-strike rollback verified over the air after an install-record fix) |
 | FIX-21 | LittleFS formats on any mount failure | P3 | S | none | 0b | done |
 | FIX-22 | Outbox save rename order | P3 | S | none | 0a | done |
 | FIX-23 | Small UX bugs | P3 | S | none | 0b | done |

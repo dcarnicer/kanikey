@@ -295,6 +295,8 @@ void otaMarkValidIfDue(uint32_t now, const char* when) {
     const bool apiOk = kk::wkHadApiSuccess();
     if (!kk::ota::markValid()) return;
     state().ota.gOtaPending = false;
+    // FIX-20: the install record was kept through the verification window.
+    kk::ota::clearInstallRecord();
     Serial.printf("[ota] %s marked valid %s (%s)\n", kk::kFirmwareVersion, when,
                   apiOk ? "API success" : "10 min loop");
     // A good image clears the two-strike record of its own version only.
@@ -706,6 +708,14 @@ void firmwareBoot() {
                       kk::ota::buildEnv(), kk::ota::runningSlot(), kk::ota::nextSlot(),
                       static_cast<unsigned>(kk::ota::slotBytes()));
     }
+    // FIX-20: the install record must outlive the new image's verification
+    // window. If the new image cleared it here and then rolled back (a reset
+    // before markValid()), the old image would find no record, count no strike
+    // and keep offering a version that cannot start (seen on hardware
+    // 2026-11-20). A pending image keeps the record; otaMarkValidIfDue()
+    // clears it once the image is good.
+    const bool pendingNow = layout && kk::ota::pendingVerify();
+    bool keepInstallRecord = false;
     if (!state().ota.gOtaState.installing.empty()) {
         kk::ota::FirmwareVersion installed, running;
         bool same = state().ota.gOtaState.installing == kk::kFirmwareVersion;
@@ -715,6 +725,7 @@ void firmwareBoot() {
         if (same) {
             Serial.printf("[ota] %s installed over the air in %s\n",
                           state().ota.gOtaState.installing.c_str(), kk::ota::runningSlot());
+            keepInstallRecord = pendingNow;
         } else {
             Serial.printf("[ota] %s did not start in %s: back on %s\n",
                           state().ota.gOtaState.installing.c_str(), state().ota.gOtaState.installSlot.c_str(),
@@ -741,9 +752,9 @@ void firmwareBoot() {
         }
         state().ota.gOtaState.installing.clear();
         state().ota.gOtaState.installSlot.clear();
-        kk::ota::clearInstallRecord();
+        if (!keepInstallRecord) kk::ota::clearInstallRecord();
     }
-    state().ota.gOtaPending = layout && kk::ota::pendingVerify();
+    state().ota.gOtaPending = pendingNow;
     if (state().ota.gOtaPending) {
         state().ota.gOtaLoopAt = millis();
         Serial.printf("[ota] first boot of %s: valid after an API success or 10 minutes\n",
