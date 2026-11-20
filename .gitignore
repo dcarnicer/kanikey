@@ -6,6 +6,13 @@ __pycache__/
 # PlatformIO
 .pio/
 firmware/.pio/
+# Written into firmware/ by pioarduino for a memory-tuned custom_sdkconfig build
+# ([mem_tuned] in firmware/platformio.ini): scaffold, generated SDK config, deps lock.
+firmware/.dummy/
+firmware/CMakeLists.txt
+firmware/sdkconfig.*
+firmware/dependencies.lock
+firmware/managed_components/
 secrets.h
 
 # Live captures

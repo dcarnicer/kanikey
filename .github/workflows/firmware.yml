@@ -11,19 +11,24 @@ permissions:
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
+    # A cold cache rebuilds the memory-tuned Arduino core ([mem_tuned]): about
+    # 2 minutes on the developer's Mac. The runner is slower; 30 minutes leaves room.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      # ~/.platformio holds the rebuilt ESP32-S3 core (framework-arduinoespressif32-libs),
+      # so caching it is what makes a warm run skip the rebuild. The key covers the
+      # ini and the cache-check script that decide how that core is built.
       - name: Cache PlatformIO and pip
         uses: actions/cache@v4
         with:
           path: |
             ~/.platformio
             ~/.cache/pip
-          key: ${{ runner.os }}-pio-${{ hashFiles('firmware/platformio.ini') }}
+          key: ${{ runner.os }}-pio-${{ hashFiles('firmware/platformio.ini', 'firmware/scripts/patch_pioarduino_cache.py') }}
           restore-keys: |
             ${{ runner.os }}-pio-
       - name: Install PlatformIO Core
