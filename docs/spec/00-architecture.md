@@ -98,7 +98,7 @@ detail path remain to be checked.
 | `P3` Blank after | Display & power | Choice | `blank` | 60 | 0, 30, 60, 120 s |
 | `P4` Sleep after | Display & power | Choice | `sleep` | 120 | 0, 120, 300, 600 s |
 | `R1` Batch size | Reviews | Choice | `revsize` | 20 | 10, 20, 30 |
-| `R4` First question | Reviews | Toggle | `order` | 1 | 0 Reading first, 1 Meaning first (CFG-02 migrates it to `rv.first`) |
+| `R4` First question | Reviews | Choice | `rv.first` | 2 | 0 Reading first, 1 Meaning first, 2 Random (default; CFG-02 migrates the old `order` key) |
 | `L1` Batch size | Lessons | Choice | `lessonsz` | 5 | 3, 5, 10 |
 | `setup.portal` | Account | Action | — | — | opens the setup portal |
 | `sync.now` | Sync & data | Action | — | — | runs a sync |

@@ -80,7 +80,7 @@ swallow/close path and the portal/Wi-Fi refusal remain.
 - One `constexpr` table per section using ARCH-02's `SettingDef` (`wk/SettingsModel.h`); the `id` field is the ID column below (`R1`…`M7`; actions get descriptive ids such as `sync.now`). Each entry carries label, choices as (value, label) pairs, default value, NVS key, live flag, owner task (comment) and a one-line help string. Section order is the menu order CFG-01 renders.
 - Keep the existing typed getters (`settingsBrightness()` etc.) as the read API; new settings use ARCH-02's generic `settingsGetInt(nvsKey)` / `settingsSetInt(nvsKey, value)` (same `Preferences` namespace `kanikey`, same in-RAM cache). Every key stores the choice's int value, as today's keys do (seconds, brightness level, batch size), booleans as 0/1 — never a choice index, so reordering or adding choices never changes a stored meaning.
 - Validated by construction and by tests: keys unique, `<= 15` characters, `[a-z0-9._-]`; default inside the choice list; every entry has help text of at most 38 characters (one Font0 line in 228 px, the help line CFG-01 draws at `y=123`; also fits the 48-byte `gSettingsNote`, `App.cpp:220`).
-- R4 migration: read `rv.first`; if absent, map the stored `order` int (`DeviceSettings.cpp:21,46`) to Meaning (1) or Reading (0). Write `rv.first` on the next change and leave `order` in place.
+- R4 migration: read `rv.first`; if absent, map the stored `order` int (`DeviceSettings.cpp:21,46`) to Meaning (1) or Reading (0); if neither key exists the value is Random (2, the default). Write `rv.first` on the next change and leave `order` in place. The R4 values 1 Meaning, 0 Reading and 2 Random map to `kk::FirstPart` through `firstPartFromValue()` (`wk/ReviewQueue.h`); `settingsFirstPart()` reads them.
 - R1 keeps `revsize` and the 5..50 clamp (`DeviceSettings.cpp:151-157`); the menu offers 10/20/30/50. L1 keeps `lessonsz` and the WaniKani clamp in `startLessons()` (`App.cpp:1890-1892`).
 - Actions have no NVS key and no default; CFG-01 dispatches them.
 - Pure tables live under `firmware/src/wk/` so the native env compiles them (`firmware/platformio.ini:24-26`).
@@ -95,8 +95,8 @@ The tables below are the registry (one per section; `When` is `live`, or `live (
 | R1 | Batch size | 10 / 20 / 30 / 50 | 20 | `revsize` (existing) | live (next session) | CFG-02 (existing; 50 needs FIX-08) |
 | R2 | Order | Account preference / Random / Lowest level first / Current level first / SRS ascending / SRS descending / Oldest available first | Account preference | `rv.order` | live (next session) | REV-08 |
 | R3 | Type order | Off / Radical→Kanji→Vocab | Off | `rv.types` | live (next session) | REV-08 |
-| R4 | First question | Meaning / Reading / Random | Meaning | `rv.first` (migrates `order`) | live (next session) | CFG-02 |
-| R5 | Back-to-back | On / Off | On (today) | `rv.b2b` | live (next session) | REV-09 |
+| R4 | First question | Meaning / Reading / Random | Random (WaniKani) | `rv.first` (migrates `order`) | live (next session) | CFG-02, REV-09 |
+| R5 | Back-to-back | On / Off | Off (WaniKani) | `rv.b2b` | live (next session) | REV-09 |
 | R6 | Typos | WaniKani (accept close) / Strict (retry) | WaniKani | `rv.typos` | live (next session) | REV-02 |
 | R7 | Wrong answer actions | Off / On | Off | `rv.wrong` | live (next session) | REV-04 |
 | R8 | Auto-advance on correct | Off / 0.5 s / 1 s / 2 s | Off | `rv.advance` | live (next session) | REV-06 |

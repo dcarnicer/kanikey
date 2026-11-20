@@ -541,11 +541,10 @@ item_complete:
 **Implementation (2026-10-28).** `ReviewQueue` shuffles the frozen batch and
 then stable-sorts by subject level when the cached `User` says
 `lower_levels_first`; the shuffle stays inside each level. The local R4 `First
-question` setting is separate and selects meaning-first or reading-first; its
-`Random` choice is stored but has no queue effect yet. R2/R3 (review order and
-type order) are not wired yet either. R5 `Back-to-back` (On by default) changes
-only when the other part is asked; R8 auto-advance is UI-only. Neither changes
-the queue contents or the `POST /reviews` body.
+question` setting is separate and selects meaning-first, reading-first or random
+per item (Random by default, as WaniKani). R5 `Back-to-back` (Off by default)
+changes only when the other part is asked; R8 auto-advance is UI-only. Neither
+changes the queue contents or the `POST /reviews` body.
 
 The shuffled batch is a sample of the whole due set: `runBatch()` reads all due
 IDs (up to 1000 per bucket), `sampleIds()` picks the configured batch size with

@@ -846,8 +846,8 @@ void startReview() {
         if (outboxHasAssignment(a.id)) continue;
         if (subjectById(a.subjectId)) due.push_back(a);
     }
-    state().review.gQueue.setMeaningFirst(kk::settingsMeaningFirst());
-    int backToBack = 1;
+    state().review.gQueue.setFirstPart(kk::settingsFirstPart());
+    int backToBack = 0;
     kk::settingsGetInt("rv.b2b", &backToBack);
     state().review.gQueue.setBackToBack(backToBack != 0);
     const kk::ReviewOrderStrategy orderStrategy = reviewOrderStrategy();

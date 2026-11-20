@@ -3,6 +3,8 @@
 // and its display name. The setup portal writes them from the browser.
 #include <Arduino.h>
 
+#include "wk/ReviewQueue.h"
+
 namespace kk {
 
 // Kept as the fallback for devices configured before the setup portal.
@@ -33,8 +35,8 @@ bool settingsSetSleepSeconds(int seconds);
 // setter validates against the menu choices, which would turn 30 s into 120 s.
 bool settingsSetSleepSecondsDev(int seconds);
 #endif
-// Study preferences: review session size, lesson batch size and whether the
-// meaning or the reading is asked first.
+// Study preferences: review session size, lesson batch size and which part is
+// asked first.
 int settingsReviewBatchSize();
 bool settingsSetReviewBatchSize(int count);
 int settingsLessonBatchSize();
@@ -42,8 +44,8 @@ bool settingsSetLessonBatchSize(int count);
 // L3: the batch quiz is required before starting (default) or skipped.
 bool settingsLessonQuizRequired();
 bool settingsSetLessonQuizRequired(bool required);
-bool settingsMeaningFirst();
-bool settingsSetMeaningFirst(bool meaningFirst);
+// R4 `rv.first`: meaning, reading or random (default). Random is per item.
+FirstPart settingsFirstPart();
 bool settingsCriticalFirst();
 bool settingsSetCriticalFirst(bool criticalFirst);
 int settingsCriticalPercent();  // 60/70/75/80/90

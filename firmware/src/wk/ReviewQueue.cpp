@@ -141,6 +141,19 @@ const char* reviewOrderStrategyName(ReviewOrderStrategy strategy) {
     return "account";
 }
 
+FirstPart firstPartFromValue(int value) {
+    switch (value) {
+        case 1:
+            return FirstPart::Meaning;
+        case 0:
+            return FirstPart::Reading;
+        case 2:
+            return FirstPart::Random;
+        default:
+            return FirstPart::Random;
+    }
+}
+
 std::vector<uint32_t> selectDueSubjectIds(const std::vector<Assignment>& assignments,
                                           const std::vector<ReviewLevel>& levels,
                                           ReviewOrderStrategy strategy, uint8_t currentLevel,
@@ -280,7 +293,11 @@ void ReviewQueue::build(const std::vector<Assignment>& assignments,
     if (limit > 0 && items.size() > limit) items.resize(limit);
     criticalSubjectIds_.clear();
 
-    for (const SessionItem& it : items) queue_.push_back(it);
+    // R4: drawn in the final queue order, after the limit and critical split.
+    for (SessionItem& it : items) {
+        assignFirstPart(it, firstPart_);
+        queue_.push_back(it);
+    }
     if (!queue_.empty()) prepareItem(queue_.front());
 }
 
@@ -300,7 +317,6 @@ void ReviewQueue::buildPractice(const std::vector<const Subject*>& subjects, siz
     lastIncorrectAssignmentId_ = 0;
     lastIncorrectSubjectId_ = 0;
     lastIncorrectPart_ = ReviewPart::None;
-    meaningFirst_ = true;
     backToBack_ = true;
     criticalSubjectIds_.clear();
 
@@ -323,24 +339,48 @@ void ReviewQueue::buildPractice(const std::vector<const Subject*>& subjects, siz
     std::shuffle(items.begin(), items.end(), rng_);
     if (limit > 0 && items.size() > limit) items.resize(limit);
 
-    for (const SessionItem& it : items) queue_.push_back(it);
+    // The lesson batch quiz is always random per item (WaniKani's lesson quiz).
+    for (SessionItem& it : items) {
+        assignFirstPart(it, FirstPart::Random);
+        queue_.push_back(it);
+    }
     if (!queue_.empty()) prepareItem(queue_.front());
 }
 
+void ReviewQueue::assignFirstPart(SessionItem& item, FirstPart mode) {
+    switch (mode) {
+        case FirstPart::Meaning:
+            item.readingFirst = false;
+            break;
+        case FirstPart::Reading:
+            item.readingFirst = true;
+            break;
+        case FirstPart::Random:
+            // The top bit of mt19937 is the best-mixed one; a fixed seed gives
+            // the same split every run.
+            item.readingFirst = (rng_() >> 31) != 0;
+            break;
+    }
+}
+
 void ReviewQueue::setPart(SessionItem& item) {
-    if (meaningFirst_) {
-        if (item.needsMeaning && !item.meaningDone) {
-            part_ = ReviewPart::Meaning;
-        } else if (item.needsReading && !item.readingDone) {
+    // The part that is still owed. The first part is item.readingFirst, so a
+    // requeue asks whichever parts remain, in the same fixed order.
+    const bool meaningPending = item.needsMeaning && !item.meaningDone;
+    const bool readingPending = item.needsReading && !item.readingDone;
+    if (item.readingFirst) {
+        if (readingPending) {
             part_ = ReviewPart::Reading;
+        } else if (meaningPending) {
+            part_ = ReviewPart::Meaning;
         } else {
             part_ = ReviewPart::None;
         }
     } else {
-        if (item.needsReading && !item.readingDone) {
-            part_ = ReviewPart::Reading;
-        } else if (item.needsMeaning && !item.meaningDone) {
+        if (meaningPending) {
             part_ = ReviewPart::Meaning;
+        } else if (readingPending) {
+            part_ = ReviewPart::Reading;
         } else {
             part_ = ReviewPart::None;
         }

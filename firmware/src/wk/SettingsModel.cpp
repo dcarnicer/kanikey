@@ -83,7 +83,7 @@ size_t settingsInSection(const char* section, const SettingDef** out, size_t max
 int settingFirstQuestionValue(bool hasFirst, int first, bool hasOrder, int order) {
     if (hasFirst) return first;
     if (hasOrder) return order == 0 ? 0 : 1;
-    return 1;
+    return 2;  // R4 default: Random
 }
 
 void SettingsCache::load(Reader reader, void* context) {

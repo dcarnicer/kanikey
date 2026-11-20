@@ -36,7 +36,8 @@ Working on hardware:
 - 20-item review session with typed meaning/reading, romaji-to-kana, answer
   checking, feedback and requeue. The session follows WaniKani
   `reviews_presentation_order` (`shuffled` or `lower_levels_first`); the local
-  `Order` setting still selects meaning-first or reading-first.
+  `First question` setting picks meaning, reading or random per item (random
+  by default, as WaniKani).
 - `POST /v2/reviews` with a persistent LittleFS outbox. The real-account path
   online fetch → Wi-Fi off → review → reconnect → 201 is verified; the
   deliberate offline reboot and a cached review session were verified on
