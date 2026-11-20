@@ -8,8 +8,10 @@ test tone. `platform/AudioCache` stores clips under
 `/kanikey/audio/<subject>-<voice>.<mp3|ogg>`, with a `KKAU` index, a 50 MB cap
 and LRU eviction; serial `a` caches up to four clips from the current
 review/lesson batch. Clear cache and sign-out delete the directory. Playback
-(`AUD-03`) and automatic prefetch still wait for the AUD-01 decoder/I2S
-measurements; no decoder has been linked yet.
+(`AUD-03`) has a 2026-11-20 desktop decoder probe and a conditional go on
+minimp3 (MP3 only); no playback code is merged and the device measurements
+are still open. Automatic prefetch still waits for the AUD-01 hardware
+numbers.
 
 Decision D4 brings Kakehashi's reminders and vocabulary audio into this round. Reminders are device-local only: no push, no server; the device wakes itself from deep sleep, reads the cached summary and goes back to sleep. Audio is the `pronunciation_audios` path through the ES8311, cached on the user's own card. Both blocks start with a spike (wave 4) because they touch deep-sleep power, flash and the tight no-PSRAM heap. Together they replace ROADMAP EXT-09 and EXT-06.
 
@@ -20,7 +22,7 @@ Decision D4 brings Kakehashi's reminders and vocabulary audio into this round. R
 | REM-03 | Sounds | P3 | S | REM-01, REM-02, CFG (M4, M5) | 4 | todo |
 | AUD-01 | Spike: vocabulary audio | P2 | M | none | 4 | partial (2026-11-06: parser + speaker) |
 | AUD-02 | Audio cache on SD | P3 | M | AUD-01, SPEED-04, CFG (M7) | 4 | partial (2026-11-06: cache/index/LRU, serial `a`) |
-| AUD-03 | Playback | P3 | M | AUD-01, AUD-02, CFG (M6, M7) | 4 | todo |
+| AUD-03 | Playback | P3 | M | AUD-01, AUD-02, CFG (M6, M7) | 4 | partial (2026-11-20: decoder probe; playback todo) |
 
 ### REM-01 — Spike: timer wake and sound
 
@@ -174,26 +176,172 @@ Decision D4 brings Kakehashi's reminders and vocabulary audio into this round. R
 - **Depends on:** AUD-01, AUD-02, CFG (M6, M7)
 - **Touches:** new `firmware/src/platform/AudioPlayer.{h,cpp}`; `firmware/src/wk/AudioIndex.{h,cpp}` (file choice helpers); `firmware/src/app/App.cpp` (`reviewKey()` 1522-1568, `reviewDetailKey()` 950-967, `lessonKey()` 2041-2073, `checkCurrent()` 1348-1375, `advanceFeedback()` 1376-1398, `showLesson()` 1660, `loop()` 4892-4999); `firmware/src/app/ReviewScreens.{h,cpp}` (`ReviewView` 18-30, hint 196); `firmware/src/app/LessonScreens.{h,cpp}` (reading 205-217, hint 227-231); `firmware/test/test_wk/test_wk.cpp`
 - **Settings:** M6 (autoplay), M7 (voice preference)
+- **Status:** partial (2026-11-20: desktop decoder/playback probe; playback not written)
 
-**Problem / goal.** Nothing plays a cached clip: `R` is unused on reading feedback (`ReviewScreens.cpp:196`), item detail (`reviewDetailKey()`, `App.cpp:950-967`) and the lesson card (`lessonKey()`, `:2041-2073`), and there is no "missing" state. The demo case is a vocabulary review where the reading is on screen and the user hears nothing.
+**Spike result (2026-11-20, desktop cross-compile).** A real clip from the
+official WaniKani API example (`3020-subject-2467.mp3`) is 8,689 B: MPEG-1
+Layer III, 128 kbps, 44.1 kHz, mono, with an ID3v2.4 tag and 0.52 s of audio.
+The matching OGG (`3018-subject-2467.ogg`) is 8,535 B of Ogg Vorbis, 44.1 kHz,
+mono. The API documentation (`docs.api.wanikani.com/20170710`, Pronunciation
+Audio) says it delivers `audio/mpeg` and `audio/ogg`; the example carries both
+for the same subject. A host minimp3 sanity run
+decoded the MP3 as 20 frames / 23,040 samples / 0.522 s, so the ID3 tag and the
+frame loop are understood. These are desktop probe numbers, not Cardputer
+measurements.
 
-**Behaviour.** `R` replays the current subject's reading clip on reading feedback (correct or wrong), on any item-detail page, and on the lesson card when the reading line is shown. With M6 on, the clip plays automatically after a correct reading answer and once when a lesson card with a reading opens (first page only). M7 chooses the voice; if that file is missing but the other voice is cached, the other voice plays. A missing clip is silent and the hint reads `no audio` instead of `R: audio`. `R` during playback restarts the clip. Changing item, advancing feedback or leaving the screen stops playback. Kanji and radicals never offer `R`.
+The pinned build is `platform = espressif32@6.12.0` (Arduino-ESP32 2.0.17 /
+ESP-IDF 4.4.7). The probe used `board_build.arduino.memory_type = qio_qspi`
+with no PSRAM define, matching the Cardputer ADV, and a minimal Arduino sketch
+as the baseline, so the deltas below are decoder-only. Its
+`tools/sdk/esp32s3/lib` has no MP3, OGG/Vorbis, Opus or ADF decoder. The
+separately installed `framework-arduinoespressif32-esp32s3-libs` 3.3.12
+(IDF 5.5.5) does contain `libchmorgan__esp-libhelix-mp3.a` 1.0.3, but
+that package is not the one platform 6.12.0 selects, and mixing its IDF 5.5 /
+newer-toolchain objects into an IDF 4.4 build is not a drop-in. M5Unified has
+no decoder either: its `Speaker_Class` plays PCM (`playRaw`/`playWav`) and
+`tone`. The ES8311 path is already enabled (`internal_spk = true` in
+`BoardCardputerAdv.cpp` `begin()`) and the pinned M5Unified configures the
+Cardputer ADV as I2S1, BCK 41, WS 43, DATA 42, with an ES8311 enable callback.
+
+| Decoder route | Cross-compile probe (desktop) | RAM / stack | License | Verdict |
+|---|---|---|---|---|
+| Helix (libhelix-mp3 source) | +32,488 B flash | 23,816 B heap at `MP3InitDecoder`; `MP3Decode` 80 B stack, largest callee 288 B | RPSL 1.0 / RCSL 1.0 | no: license and flash |
+| minimp3 (generic) | +17,928 B flash | 6,668 B `mp3dec_t` + 16,236 B scratch; stock `mp3dec_decode_frame` uses 17,344 B stack | CC0 | possible, but stock stack is too large |
+| minimp3 `MINIMP3_ONLY_MP3`, scratch made static | +16,384 B flash | 22,904 B static (6,668 B state + 16,236 B scratch); decode stack 1,104 B | CC0 | **recommended** |
+| M5Unified Speaker | already in the firmware | PCM only; no compressed decoder | MIT | output path, not a decoder |
+| ESP-ADF / esp-audio-libs | not in the pinned core | — | — | no: separate IDF component and output path |
+| libmad | not in the pinned core | — | GPL-2.0 | no |
+| OGG / Vorbis | not in the pinned core | — | — | no: second decoder; MP3 is delivered for the same clip |
+| raw PCM | no source on the server | 46 KB per 0.52 s at 44.1 kHz mono | — | no: the API only serves MP3/OGG |
+
+The Helix heap total is 2,032 B (`MP3DecInfo`) + 56 + 328 + 284 + 4,624 + 840
++ 6,944 + 8,708 B across eight allocations. The 661,456 B archive in the
+newer package is only the on-disk form; the linked source build is the 32 KB
+above.
+
+The minimp3 figure is a one-line local patch: the 16,236 B
+`mp3dec_scratch_t` is static instead of a stack local. That makes the decoder
+non-reentrant, which is fine for one clip at a time, and drops the decode stack
+from 17,344 B to 1,104 B so it cannot consume the 24 KiB loop stack. The
+probe's 22,904 B is static RAM; if the state and scratch are allocated once on
+first play instead, the same ~22.9 KB comes from the no-PSRAM heap. Add two
+2,304 B PCM frame buffers and a 2 KB file buffer for a ~30 KB working set
+(plus M5Unified's own speaker task/DMA, which starts on first playback).
+The pinned M5Unified defaults are `dma_buf_len = 256`,
+`dma_buf_count = 8`, a speaker task stack of 1,280 + 256 × 4 = 2,304 B and
+8 × 256 × 32-bit = 8,192 B of I2S DMA; these are source values, not device
+measurements. M5Unified is already a firmware dependency and its Cardputer
+ADV speaker configuration is enabled; the decoder is the only new library.
+
+The latest BT-01 entry records 170,787 B free in the 1,835,008 B app slot; the
+2026-11-19 release pass recorded 278,019 B before later changes. Even the
+smaller figure leaves about 154 KB after the 16.4 KB decoder, before player
+code, so the 16.4 KB decoder fits. The 250 KB round budget is not the binding
+constraint; the no-PSRAM heap and the 24 KiB loop stack are.
+
+**Go/no-go.** Conditional go for the on-demand MP3 player with minimp3. No-go
+for OGG and for autoplay in the first cut. If the hardware decode misses the
+2× real-time gate, Helix is the only fallback and only if the RPSL/RCSL terms
+are accepted; if the heap/stack gates fail too, drop AUD-03 rather than ship
+a stuttering player.
+
+**Problem / goal.** Nothing plays a cached clip: `R` is unused on reading
+feedback (`ReviewScreens.cpp:196`), item detail (`reviewDetailKey()`,
+`App.cpp:950-967`) and the lesson card (`lessonKey()`, `:2041-2073`), and there
+is no "missing" state. The demo case is a vocabulary review where the reading
+is on screen and the user hears nothing.
+
+**Behaviour.** `R` replays the current subject's reading clip on reading
+feedback (correct or wrong), on any item-detail page, and on the lesson card
+when the reading line is shown. M7 chooses the voice; if that voice is missing
+but the other voice has an MP3, the other voice plays. A missing clip is silent
+and the hint reads `no audio` instead of `R: audio`. `R` during playback
+restarts the clip. Changing item, advancing feedback or leaving the screen
+stops playback before the screen changes. Kanji and radicals never offer `R`.
+The first cut is on demand only: M6 autoplay is a follow-up after the hardware
+run proves the decode time and heap, and stays Off by default.
 
 **Design.**
-- `platform/AudioPlayer`: open the file, decode with the AUD-01 decoder, feed I2S/`M5.Speaker`; pump from `loop()` with a static ≤4 KB buffer (`audioTick(now)`) so keys stay responsive and nothing large sits on the loop stack. Stop/restart on demand; never allocate per clip.
-- `wk/AudioIndex` helpers: `audioFileName(subjectId, voice, ext)` and `audioVoiceFallback(cached, preferred)` — pure and native-tested.
-- Hints: add `R: audio` only when a clip exists; drop `Tab: details` first, and list hidden keys in `?` when it still does not fit (README §2, CFG-04). Add `hasAudio` to `ReviewView`/`LessonCardView`.
-- Stop points: `advanceFeedback()`, `endReview()`, `showReview()`, `showLesson()` paging, `openPause()`.
-- Share the M5Unified Speaker with `platform/Sound` (REM-03): stop a tone before playback, mute playback when a tone starts.
+- `platform/AudioPlayer`: a small state machine over one open SD file. `begin()`
+  opens the cache for the account; `play(subjectId, voice)` chooses an MP3
+  entry, opens `/kanikey/audio/<subject>-<voice>.mp3`, reads the first chunk
+  and starts the decoder. `audioTick(now)` decodes one MP3 frame per call into
+  one of two 2,304 B mono PCM buffers (4,608 B each if a clip is stereo) and
+  queues it with `M5.Speaker.playRaw(int16_t*, samples, hz, channels == 2, 1,
+  kChannel, false)`. `stop()` calls `M5.Speaker.stop(kChannel)`, closes the
+  file and resets the stream. `isPlaying()` and `hasClip(subjectId, voice)` are the only
+  queries the UI needs. No clip is held in RAM and nothing is allocated per
+  clip.
+- Use M5Unified's buffer-release callback (pinned `e125e73`) to mark a PCM
+  buffer free. Two buffers are enough; `playRaw` keeps reading the caller's
+  buffer until the request is released, so the callback is the ownership
+  hand-off. Queue only while `M5.Speaker.isPlaying(kChannel) < 2`; never wait
+  in the tick. This keeps `audioTick()` non-blocking and the loop stack small.
+- Decoder: vendor minimp3 `MINIMP3_ONLY_MP3` (CC0) with the static scratch
+  patch; keep `mp3dec_t` and the scratch as one player-owned block, either
+  static or allocated once on the first play. If the allocation fails, return
+  false and show `no audio`; never retry in a loop and never fall back to
+  network. Do not put the decoder in the 24 KiB loop stack. The ID3v2 tag is
+  skipped by minimp3's frame finder; still test a real tagged clip.
+- MP3 only. `wk/AudioIndex` gets a playable-entry helper (or
+  `audioChooseEntry` gains an `AudioFormat` filter) that prefers the M7 voice
+  and then the other voice, but returns only `AudioFormat::Mp3`. AUD-02's
+  downloader must prefer `audio/mpeg` when a subject has both formats; an
+  OGG-only entry stays in the cache but is not offered. This avoids a Vorbis
+  decoder and keeps the hint honest.
+- Hints: add `R: audio` only when an MP3 exists; drop `Tab: details` first, and
+  list hidden keys in `?` when it still does not fit (README §2, CFG-04). Add
+  `hasAudio` to `ReviewView`/`LessonCardView`; missing means `no audio`.
+- Stop points: `advanceFeedback()`, `endReview()`, `showReview()`,
+  `showLesson()` paging, `openPause()`, and any navigation that changes the
+  subject. `R` restarts; do not let playback outlive the card.
+- Share the M5Unified Speaker with `platform/Sound` (REM-03): stop a tone
+  before playback, stop playback before a tone, and never run both.
+- Autoplay (M6), if adopted later, is one call after a correct reading answer
+  and once for the first page of a lesson card with a reading; it must use the
+  same state machine and must not fire twice for one card.
 
-**Tests.** Native: `test_audio_choice_preferred_voice`, `test_audio_choice_fallback_voice`, `test_audio_choice_missing`, `test_audio_choice_no_audio_for_kanji`, `test_audio_hint_when_missing`. Hardware: R on feedback/detail/lesson card, autoplay on and off, both voices, missing clip, R spam, screen change stops playback, heap/stack during a 3 s clip, playback while offline.
+**Hardware spike.** Run on a real Cardputer ADV with the release build, a real
+account and a real cached MP3; no device or serial access was available for
+this probe. The exact checks:
 
-**Docs.** `docs/ux.md` §5.5, §5.6, §5.9 (R and autoplay), §5.12 (M6/M7 rows); `docs/decisions.md` new dated entry (playback defaults, voice fallback); `ROADMAP.md` EXT-06 → done; `THIRD_PARTY_NOTICES.md` (decoder license); `docs/hardware.md` (playback run).
+| Check | Method | Proposed gate |
+|---|---|---|
+| `audio-clip-cache` | Cache one 0.5 s and one 1.5 s clip for the preferred voice with serial `a`; for the other voice use a probe-only dev hook or a card copy of `<id>-1.mp3` plus the index entry. Log path, bytes, content type and first MPEG sync | files exist, two voices, no network during play |
+| `audio-decode-time` | `esp_timer` around each `mp3dec_decode_frame`, 240 MHz, release build, 3 s clip | total ≤ 50% of clip duration (≥2× real time); no frame > 20 ms |
+| `audio-start-stop` | 100 `R`/stop cycles; log file open, first frame, `M5.Speaker` start and stop | no leak; first sound <100 ms; stop <50 ms |
+| `audio-i2s-stack` | `uxTaskGetStackHighWaterMark` for the loop and speaker tasks; `M5.Speaker.isPlaying`; listen for underruns | loop keeps ≥4 KB headroom; speaker task ≥512 B; no glitch |
+| `audio-latency` | Timestamp the key, the first `playRaw` and the first audible sample (scope or phone slow-motion) | first sound <100 ms; stop <50 ms |
+| `audio-heap` | Free/largest/min before, after decoder allocation, during and after playback; then a TLS request | after playback + TLS ≥8 KB free and ≥4 KB largest; TLS block still allocatable |
+| `audio-no-psram` | Allocate ballast until the decoder/speaker allocation fails; play | silent `no audio`, no panic/reboot; recovers after freeing |
+| `audio-current` | USB power meter: 5-minute idle, 3 s clip loop, speaker on vs off | record mA average/peak and mAh per clip; no brown-out; compare REM-01 |
+| `audio-ux` | `R` on feedback, detail and lesson; M6 Off; missing, OGG-only and R spam; navigate away; Wi-Fi off | stops immediately; no request; hint matches the file |
+| `audio-build` | Release `pio run -e cardputer-adv`; record `.bin` and static RAM | fits the slot with the measured free bytes; no regression |
+
+The 8,689 B / 0.52 s example is a real WaniKani clip but not necessarily the
+user's voice or length; the hardware run must use a 1–2 s clip from the test
+account. The example clip is 44.1 kHz mono; if a clip is stereo or a
+different rate, pass the frame's `channels`/`hz` to `playRaw` and note it.
+
+**Tests.** Native: `test_audio_choice_preferred_voice`,
+`test_audio_choice_fallback_voice`, `test_audio_choice_missing`,
+`test_audio_choice_prefers_mp3`, `test_audio_choice_ogg_only_missing`,
+`test_audio_choice_no_audio_for_kanji`, `test_audio_hint_when_missing`.
+Hardware: the table above, plus R on feedback/detail/lesson, both voices,
+missing clip, R spam, screen change stops playback, heap/stack during a 3 s
+clip and playback while offline.
+
+**Docs.** `docs/ux.md` §5.5, §5.6, §5.9 (R and autoplay), §5.12 (M6/M7 rows);
+`docs/decisions.md` 2026-11-20 entry (minimp3, MP3 only, on-demand first);
+`ROADMAP.md` EXT-06 only after the hardware go; `THIRD_PARTY_NOTICES.md`
+(minimp3 CC0) when it is vendored; `docs/hardware.md` for the device run.
 
 **Acceptance.**
-- [ ] R plays the right voice on feedback, item detail and the lesson card.
-- [ ] Autoplay follows M6 and never fires twice for the same card.
-- [ ] A missing clip is silent, shows `no audio`, and makes no network request.
+- [x] Desktop probe records decoder flash/RAM/license and the MP3/OGG sample (2026-11-20).
+- [ ] A real cached MP3 plays offline through the ES8311, with no PSRAM.
+- [ ] Decode is at least 2× real time and the loop keeps its stack/heap gates.
+- [ ] `R` plays the right voice on feedback, item detail and the lesson card.
+- [ ] A missing clip (including OGG-only) is silent, shows `no audio`, and makes no request.
 - [ ] Changing item, advancing or leaving a screen stops playback immediately.
-- [ ] Playback runs offline from the card and leaves the TLS heap block free.
 - [ ] Kanji and radicals show no audio hint.
+- [ ] M6 autoplay stays Off in the first cut; it is a follow-up after the hardware go.

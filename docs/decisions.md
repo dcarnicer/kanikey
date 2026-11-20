@@ -1,7 +1,7 @@
 # Decisions
 
 Short log of design decisions. Status: **accepted** (2026-10-25; round-2
-entries through 2026-11-19). Format: date, decision, why and what it implies.
+entries through 2026-11-20). Format: date, decision, why and what it implies.
 Cache versions named in dated entries are the version at that date; the current
 files are `KKCA` v12 and `KKCS` v11.
 
@@ -1284,3 +1284,32 @@ use it). The BLE transport ships only after three keyboards pair and type,
 Just Works and one passkey/numeric flow pass, reconnect/latency and 1,000-key
 tests pass, and BLE-on-TLS keeps at least 8 KB free / 4 KB largest. Details
 and the probe commands are in `docs/spec/10-bluetooth-paperdiy.md` §1.7.
+
+---
+
+## 2026-11-20 — AUD-03: minimp3, MP3 only, on-demand first
+
+**Decision:** AUD-03 is a conditional go on a vendored minimp3
+(`MINIMP3_ONLY_MP3`, CC0) with the 16,236 B decode scratch made static, and
+`M5.Speaker.playRaw()` for PCM output. Only `audio/mpeg` clips play; an
+OGG/Vorbis entry stays cached but is treated as missing. The first cut is `R`
+on demand and stops on navigation; M6 autoplay waits for the hardware run.
+
+**Why:** a desktop cross-compile probe on the pinned Arduino-ESP32 2.0.17 /
+IDF 4.4.7 toolchain added 16,384 B flash and 22,904 B static RAM for minimp3;
+Helix added 32,488 B flash and 23,816 B heap. Helix is RPSL/RCSL, not a clean
+fit for an MIT app, and the pinned core has no MP3/OGG decoder; the newer
+3.3.12 package's precompiled Helix is not selected by platform 6.12.0.
+minimp3's stock 17,344 B decode stack does not fit the 24 KiB loop stack; the
+static scratch patch drops it to 1,104 B. The API delivers MP3 and OGG for the
+same clip; the official example is 8,689 B MP3 / 8,535 B OGG, 44.1 kHz mono,
+0.52 s.
+
+**Implications:** MP3 only; the cache must prefer `audio/mpeg`, and an
+OGG-only clip shows `no audio` and makes no request. About 30 KB RAM
+(decoder, scratch, two PCM buffers, file buffer) must be measured against the
+no-PSRAM heap; the latest slot figure is 170,787 B free, so the 16.4 KB
+decoder fits. Go/no-go gates: at least 2× real time decode, at least 8 KB free
+and 4 KB largest after playback plus TLS, no underrun or key lag, first sound
+under 100 ms. Helix is the fallback only if that decode gate fails and the
+license is accepted. No decoder or playback code is merged.
