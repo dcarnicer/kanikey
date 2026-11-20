@@ -190,6 +190,8 @@ void buildFiveQueue(ReviewQueue* q, std::vector<Subject>* subjects,
 static void test_undo_after_other_part() {
     const Subject s = queueKanji(1);
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     q.build({queueAssignment(10, s)}, {s}, 1000);
 
     const uint32_t failed = q.current()->subjectId;
@@ -212,6 +214,8 @@ static void test_undo_after_requeue() {
     std::vector<Subject> subjects;
     std::vector<Assignment> assignments;
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     buildFiveQueue(&q, &subjects, &assignments, true);
     const uint32_t failed = q.current()->subjectId;
 
@@ -232,6 +236,8 @@ static void test_undo_after_requeue() {
 static void test_undo_without_incorrect_is_noop() {
     const Subject s = queueKanji(1);
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     q.build({queueAssignment(10, s)}, {s}, 1000);
 
     TEST_ASSERT_FALSE(q.undoLastIncorrect());
@@ -247,6 +253,8 @@ static void test_undo_without_incorrect_is_noop() {
 static void test_accept_marks_part_correct() {
     const Subject s = queueKanji(1);
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     q.build({queueAssignment(10, s)}, {s}, 1000);
 
     q.answer(AnswerStatus::Incorrect);  // meaning, part moves to reading
@@ -267,7 +275,9 @@ static void test_accept_marks_part_correct() {
 static void test_accept_completes_when_other_part_done() {
     const Subject s = queueKanji(1);
     ReviewQueue q;
-    q.setMeaningFirst(false);
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
+    q.setFirstPart(FirstPart::Reading);
     q.build({queueAssignment(10, s)}, {s}, 1000);
 
     AnswerOutcome o = q.answer(AnswerStatus::Correct);  // reading done
@@ -296,6 +306,8 @@ static void test_ask_again_requeues_unanswered() {
     std::vector<Subject> subjects;
     std::vector<Assignment> assignments;
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     buildFiveQueue(&q, &subjects, &assignments, false);
     const uint32_t failed = q.current()->subjectId;
 
@@ -320,6 +332,8 @@ static void test_ask_again_requeues_unanswered() {
 static void test_ask_again_keeps_other_part_done() {
     const Subject s = queueKanji(1);
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     q.build({queueAssignment(10, s)}, {s}, 1000);
 
     q.answer(AnswerStatus::Correct);  // meaning done
@@ -391,6 +405,8 @@ static void test_order_random_is_a_permutation() {
     std::vector<Subject> subjects;
     for (uint32_t id = 1; id <= 8; ++id) subjects.push_back(orderSubject(id, 3));
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     q.setOrderStrategy(ReviewOrderStrategy::Random);
     q.build(assignments, subjects, 1000, 0, 777);
     TEST_ASSERT_EQUAL(8, q.remaining());
@@ -413,6 +429,8 @@ static void test_order_lowest_level_first() {
     for (uint32_t id = 1; id <= 4; ++id) subjects.push_back(orderSubject(id, levels[id - 1].level));
     std::vector<Assignment> reversed(assignments.rbegin(), assignments.rend());
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     q.setOrderStrategy(ReviewOrderStrategy::LowestLevelFirst);
     q.build(reversed, subjects, 1000, 0, 1);
     assertOrder(got, queueIds(q));
@@ -440,6 +458,8 @@ static void test_order_srs_ascending() {
     for (uint32_t id = 1; id <= 4; ++id) subjects.push_back(orderSubject(id, 3));
     std::vector<Assignment> reversed(assignments.rbegin(), assignments.rend());
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     q.setOrderStrategy(ReviewOrderStrategy::SrsAscending);
     q.build(reversed, subjects, 1000, 0, 1);
     assertOrder(got, queueIds(q));
@@ -503,6 +523,8 @@ static void test_order_type_radical_kanji_vocab() {
         subjects.push_back(orderSubject(id, 3, type));
     }
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     q.setOrderStrategy(ReviewOrderStrategy::Random);
     q.setTypeOrder(true);
     q.build(assignments, subjects, 1000, 0, 42);
@@ -530,6 +552,8 @@ static void test_order_limit_keeps_first_n() {
     for (size_t i = 0; i < first.size(); ++i) TEST_ASSERT_EQUAL_UINT32(all[i], first[i]);
 
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     q.setOrderStrategy(ReviewOrderStrategy::LowestLevelFirst);
     q.build(assignments, subjects, 1000, 3, 1);
     assertOrder(first, queueIds(q));
@@ -543,6 +567,8 @@ static void test_order_account_lower_levels_first() {
     for (uint32_t id = 5; id >= 1; --id) assignments.push_back(orderAssignment(id, 3, 100));
 
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     q.setOrderStrategy(ReviewOrderStrategy::Account);
     q.setLowerLevelsFirst(true);
     q.build(assignments, subjects, 1000, 0, 99);
@@ -555,6 +581,8 @@ static void test_order_account_lower_levels_first() {
 
     // Account with shuffled presentation is a permutation of the same set.
     ReviewQueue shuffled;
+    shuffled.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    shuffled.setBackToBack(true);  // pinned: written for back-to-back on
     shuffled.setOrderStrategy(ReviewOrderStrategy::Account);
     shuffled.setLowerLevelsFirst(false);
     shuffled.build(assignments, subjects, 1000, 0, 99);
@@ -582,6 +610,8 @@ static void test_order_unknown_level_last() {
 static void test_session_item_copies_available_at() {
     const Subject s = orderSubject(1, 3);
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     q.build({orderAssignment(1, 3, 4242)}, {s}, 10000);
     TEST_ASSERT_EQUAL(1, q.remaining());
     TEST_ASSERT_EQUAL_UINT32(4242, q.current()->availableAt);

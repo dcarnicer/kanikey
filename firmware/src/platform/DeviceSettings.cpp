@@ -21,7 +21,7 @@ constexpr const char* kKeySleep = "sleep";
 constexpr const char* kKeyReviewSize = "revsize";
 constexpr const char* kKeyLessonSize = "lessonsz";
 constexpr const char* kKeyLessonQuiz = "ls.quiz";
-constexpr const char* kKeyMeaningFirst = "rv.first";
+constexpr const char* kKeyFirstPart = "rv.first";
 constexpr const char* kKeyCriticalFirst = "rv.critical";
 constexpr const char* kKeyCriticalPercent = "st.critpct";
 constexpr const char* kKeyCriticalMin = "st.critmin";
@@ -36,9 +36,9 @@ int readPreference(void* context, const char* key, int fallback) {
     Preferences& p = *static_cast<Preferences*>(context);
     // R4 migration: `rv.first` replaces the old `order` key. Until the user
     // changes the value, `order` (0 Reading, 1 Meaning) supplies it.
-    if (std::strcmp(key, kKeyMeaningFirst) == 0) {
-        const bool hasFirst = p.isKey(kKeyMeaningFirst);
-        const int first = p.getInt(kKeyMeaningFirst, fallback);
+    if (std::strcmp(key, kKeyFirstPart) == 0) {
+        const bool hasFirst = p.isKey(kKeyFirstPart);
+        const int first = p.getInt(kKeyFirstPart, fallback);
         return settingFirstQuestionValue(hasFirst, first, p.isKey("order"), p.getInt("order", 1));
     }
     return p.getInt(key, fallback);
@@ -222,10 +222,8 @@ bool settingsSetLessonQuizRequired(bool required) {
     return settingsSetInt(kKeyLessonQuiz, required ? 1 : 0);
 }
 
-bool settingsMeaningFirst() { return cachedSetting(kKeyMeaningFirst, 1) != 0; }
-bool settingsSetMeaningFirst(bool meaningFirst) {
-    return settingsSetInt(kKeyMeaningFirst, meaningFirst ? 1 : 0);
-}
+// R4: 1 Meaning, 0 Reading, 2 Random (the default).
+FirstPart settingsFirstPart() { return firstPartFromValue(cachedSetting(kKeyFirstPart, 2)); }
 
 bool settingsCriticalFirst() { return cachedSetting(kKeyCriticalFirst, 0) != 0; }
 bool settingsSetCriticalFirst(bool criticalFirst) {

@@ -392,8 +392,8 @@ Home ──L──► Lessons list ──Space──► select up to N
   in `Components and notes`.
 - Nothing is sent while browsing: paging, the batch quiz and `Q` never call
   `PUT /start`. After the last card the batch quiz runs unless L3 is `Skip`; it
-  covers every selected item, meaning first and reading where the subject has
-  one, and requeues a wrong part.
+  covers every selected item, asks each item's meaning or reading first at
+  random (reading where the subject has one), and requeues a wrong part.
 - The confirmation reads `Start N lessons? They join your reviews in about 4
   hours.` with `Enter: start  Esc: back`.
 - `Enter` starts the items one at a time with `Starting 2/5`. 2xx and 422
@@ -639,11 +639,14 @@ notices are separate screens that also keep the device awake.
   to `Minimal`, only the `SRS 3 86%` block is hidden; the title, counter and
   progress bar stay. **Hardware pending:** the minimal header (see
   [`docs/hardware.md`](hardware.md), 2026-11-19).
-- R5 `Back-to-back` is On by default: after one part, the other part of the
-  same item is asked immediately. Off interleaves items so parts of different
-  items alternate, but a single-item queue still asks the other part so it
-  cannot stall. These options are hardware pending (see
-  [`docs/hardware.md`](hardware.md), 2026-11-19).
+- R5 `Back-to-back` is Off by default (WaniKani): each answered part hands the
+  queue to another item, so an item's meaning and reading are usually apart.
+  On asks the other part of the same item immediately. A single-item queue
+  still asks the other part so it cannot stall. R4 `First question` is Random
+  by default (WaniKani): each item asks its meaning or its reading first at
+  random, and the other part follows. A mistake brings the failed part back
+  later, in the same order. These options are hardware pending (see
+  [`docs/hardware.md`](hardware.md), 2026-11-19 and 2026-11-20).
 - With R11 `Prioritize critical` on, due critical subjects are moved ahead of
   the rest; the chosen R2 order is preserved inside both groups and the batch
   limit is applied after the partition.
@@ -954,7 +957,8 @@ radical/vocabulary page set (see [`docs/hardware.md`](hardware.md), 2026-11-19).
   quiz after the last card is the gate by default (L3 `Required`); L3 `Skip`
   goes straight to the start confirmation.
 - Both quizzes use the review answer field: header `LESSON QUIZ`, `1/2` (or
-  `1/1` for radicals), meaning first, then reading when the subject has one.
+  `1/1` for radicals). The first part is random per item, meaning or reading,
+  and the other part follows when the subject has one (WaniKani's lesson quiz).
 - Typed answers use the same romaji-to-kana input and answer checker as reviews.
 - Wrong answers show `NOT QUITE` with a cross icon, the accepted answer list
   and are retried; a mistake count is kept. Warnings show `CHECK` (no icon)
@@ -1046,18 +1050,18 @@ radical/vocabulary page set (see [`docs/hardware.md`](hardware.md), 2026-11-19).
   reboot; nothing here calls WaniKani.
 - The registry holds 48 rows (39 keyed settings and 9 actions): Account has
   `Wi-Fi`, `Setup portal` and `Sign out`, and System has three actions. R5
-  `Back-to-back` (On), R8 `Auto-advance on correct` (Off) and R10 `Header info`
+  `Back-to-back` (Off), R8 `Auto-advance on correct` (Off) and R10 `Header info`
   (SRS+accuracy) are live and hardware pending; R6 `Typos` now selects
   WaniKani/Strict in reviews and both lesson quizzes; R7 `Wrong answer actions`
   (Off) adds C/A, R9 `Details on wrong` (Off) opens the failed mnemonic, R11
   `Prioritize critical` (Off) moves due critical items first, and R12 `Submit
   reviews` chooses when completed reviews are POSTed; R2/R3 order and group the
-  due set before the batch limit. R4's `Random` value is stored but the
-  first-question build still treats it as Meaning (the R2 `Random` order is
-  separate). L2 `Order`, L4–L6 and the other keyed rows are live where
+  due set before the batch limit. R4 `First question` (Meaning / Reading /
+  Random, default Random) picks each item's first part; Random is drawn per
+  item. L2 `Order`, L4–L6 and the other keyed rows are live where
   `03-settings.md` says so; P5–P6 still await their owner and M4–M7 are live. The
-  current build reads R1–R12 (R4 only Meaning/Reading), L1–L6, S1–S5, Y1–Y3,
-  P1–P4, M1–M3 and the nine actions.
+  current build reads R1–R12, L1–L6, S1–S5, Y1–Y3, P1–P4, M1–M3 and the nine
+  actions.
 - **M1–M3 Reminders (REM-02, 2026-11-20; hardware pending).** M1 `Reminder`
   (`Off`, `1+ due`, `10+ due`, `25+ due`, `50+ due`; default Off) sets the
   review count that reminds, and its review-bucket wake is armed only while it

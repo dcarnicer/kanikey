@@ -12,7 +12,7 @@ These twelve tasks turn the review session into a configurable, WaniKani-faithfu
 | REV-06 | Auto-advance on correct | P2 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-07 | Details on wrong | P3 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-08 | More review orders | P2 | L | ARCH-01, ARCH-02, ARCH-03; SPEED-05 for option B | 2 | review (2026-11-19: merged; hardware pending) |
-| REV-09 | Back-to-back | P2 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
+| REV-09 | Back-to-back | P2 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; 2026-11-20: R4 Random per item and R5 Off by default; hardware pending) |
 | REV-10 | Input editing | P2 | M | ARCH-01 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-11 | Richer session summary | P2 | M | ARCH-01, SPEED-01 | 2 | review (2026-11-19: merged; hardware pending) |
 | REV-12 | Minimal header | P3 | S | ARCH-01, ARCH-02 | 2 | review (2026-11-19: merged; hardware pending) |
@@ -39,7 +39,7 @@ now shown in full. Rules and keys are in [ux.md §5.5](../ux.md). 17 native test
 **Implementation (2026-11-19, REV-06/09/12).** Auto-advance is live behind R8
 `rv.advance` (Off by default; 0.5/1/2 s; a printable key advances early and
 feeds the next field; wrong/warning/detail/pause/blank never advance).
-Back-to-back is live behind R5 `rv.b2b` (On default; Off interleaves correct and
+Back-to-back is live behind R5 `rv.b2b` (Off default since 2026-11-20, as WaniKani; Off interleaves correct and
 wrong answers; a single-item queue still asks the other part). R10 `rv.header`
 `Minimal` hides only the SRS block. 293 native tests at the merge; the rest of
 the hardware checks are pending. Hardware: with R8 `2 s` and the synthetic
@@ -375,21 +375,24 @@ catalog, R3 grouping, fallback and cached checks remain on hardware.
 - **Size:** S
 - **Depends on:** ARCH-01, ARCH-02
 - **Touches:** `firmware/src/wk/ReviewQueue.h` / `ReviewQueue.cpp` (`setPart()` 60-78, `prepareItem()` 80-84, `requeueFront()` 86-94, `answer()` 96-155), `firmware/src/app/App.cpp` (`startReview()` 1487-1490), `docs/ux.md`, `firmware/test/test_wk/test_wk.cpp`
-- **Settings:** R5 "Back-to-back" — On (default, today's KaniKey behaviour) / Off (interleaved parts, closer to WaniKani's mixed queue); key `rv.b2b` (`03-settings.md`)
+- **Settings:** R5 "Back-to-back" — On / Off (default Off, WaniKani's mixed queue: interleaved parts); key `rv.b2b` (`03-settings.md`). R4 "First question" — Meaning / Reading / Random (default Random, WaniKani); key `rv.first` (`03-settings.md`)
 
 **Problem / goal.** `ReviewQueue::answer()` always asks the other part of the same item next: after a wrong answer at `ReviewQueue.cpp:118-124`, and after a correct part at `ReviewQueue.cpp:151-153`. So parts of different items never interleave, unlike WaniKani's mixed queue; R5 Off adds that mode.
 
 **Behaviour.** On keeps today's behaviour: after one part, the other part of the same item follows immediately. Off: after a part is answered, the item goes back into the queue at a random position ahead and the next item is asked; the item keeps the part that is already done. After the last required part the item completes immediately, with no requeue. A wrong answer counts, and the failed part comes back later with the other part, rather than asking the other part immediately. With only one item in the queue, the other part is still asked so the queue cannot spin.
 
 **Design.**
-- Add `void setBackToBack(bool)` and a member; default true.
+- Add `void setBackToBack(bool)` and a member; default false (R5 Off, WaniKani).
 - Add an `std::mt19937 rng_` seeded by `build()`'s `seed` (or reuse a saved engine) and an `interleaveFront()` that pops the front, reinserts it at `1 + rng_() % max(1, queue_.size())` (never the very front when more than one item exists), then sets the part for the new front.
 - In `answer(Correct)` when `!allDone && !backToBack_`, call `interleaveFront()` instead of `setPart(item)`; keep `out.advanced = true`, leave `completed` false.
 - In `answer(Incorrect)` with `otherPending && !otherAttempted`: back-to-back keeps the current branch (`part_` switches); Off calls `interleaveFront()` without resetting `attempted` flags and without completing.
 - In `requeueFront()` keep the fixed `kRequeueGap` for mistakes; the interleave path is separate so the two policies do not interfere.
 
+**First part (R4, 2026-11-20).** WaniKani asks each item's meaning or reading first at random, so a session does not run all meanings and then all readings. `ReviewQueue::setFirstPart(FirstPart)` takes `Meaning`, `Reading` or `Random` (default `Random`). Random draws one flag per item in `build()`, after the limit and critical split, from the same seeded engine; the flag is stored in `SessionItem::readingFirst`, so a fixed seed reproduces the order. The flag is drawn once per item: a requeue (mistake or `askAgain`) keeps it and asks whichever parts are still owed in that order; it is not redrawn. Radicals and any subject without a reading ask meaning only. Back-to-back On keeps both parts adjacent in that random order; Off interleaves other items between them. The lesson batch quiz (`buildPractice`) is always Random with back-to-back On. Practice (`StudyController`) reads R4 and R5 like a review.
+
 **Tests.**
 - Native: `back_to_back_on_asks_other_part`, `back_to_back_off_interleaves_two_items`, `back_to_back_off_preserves_done_part`, `back_to_back_off_last_part_completes`, `back_to_back_off_wrong_requeues_other_part`, `back_to_back_off_single_item_does_not_stall`, `back_to_back_off_same_item_not_first`.
+- Native (R4/R5, 2026-11-20): `test_queue_defaults_are_random_and_back_to_back_off`, `test_first_part_nvs_values`, `test_random_first_part_draws_both_orders`, `test_random_first_part_is_fixed_by_seed`, `test_random_each_item_asks_both_parts_once`, `test_random_back_to_back_on_keeps_parts_adjacent`, `test_random_back_to_back_off_interleaves`, `test_random_mistake_asks_failed_part_again`, `test_random_radical_asks_meaning_only`, `test_practice_is_random_and_back_to_back_regardless_of_settings`; plus `test_lesson_quiz_reading_first` and `test_lesson_quiz_reading_first_ignored_without_reading`.
 - Hardware: with two items and Off, meaning A → meaning B → reading A → reading B; with On, A meaning → A reading; a single-item session finishes.
 
 **Docs.** `docs/ux.md` §5.4 (part order); `ROADMAP.md`.

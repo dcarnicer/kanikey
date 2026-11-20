@@ -1,7 +1,8 @@
 #pragma once
-// The review session queue: freeze a batch of due assignments, ask meaning
-// then reading, requeue mistakes a few items later, and complete an item only
-// when every required part is correct. Pure C++, no Arduino.
+// The review session queue: freeze a batch of due assignments, ask each item's
+// meaning and reading in the R4 order (random per item by default), requeue
+// mistakes a few items later, and complete an item only when every required
+// part is correct. Pure C++, no Arduino.
 #include <cstdint>
 #include <deque>
 #include <random>
@@ -13,6 +14,14 @@
 namespace kk {
 
 enum class ReviewPart : uint8_t { None, Meaning, Reading };
+
+// R4 `rv.first` (03-settings.md): which part an item asks first. Random draws
+// the choice once per item when the queue is built, so a seed reproduces it.
+enum class FirstPart : uint8_t { Meaning, Reading, Random };
+
+// NVS value -> strategy: 1 Meaning, 0 Reading, 2 Random. Anything else is
+// Random, the R4 default.
+FirstPart firstPartFromValue(int value);
 
 // R2 `rv.order` (03-settings.md). The values match the NVS choice values:
 // Account keeps the `/user` presentation order and makes no extra request;
@@ -62,6 +71,9 @@ struct SessionItem {
     uint32_t availableAt = 0;
     bool needsMeaning = true;
     bool needsReading = false;
+    // R4: true when the reading is this item's first part. Fixed by build()
+    // (or by the R4 setting); requeues keep it, so the order is not redrawn.
+    bool readingFirst = false;
     bool meaningDone = false;
     bool readingDone = false;
     bool meaningAttempted = false;
@@ -88,9 +100,10 @@ public:
     void build(const std::vector<Assignment>& assignments, const std::vector<Subject>& subjects,
                uint32_t now, size_t limit = 20, uint32_t seed = 0x9E3779B9u);
 
-    // Local practice over lesson subjects: no due filter, assignmentId 0 and
-    // meaning first. Wrong parts requeue exactly like a review. `limit` 0 means
-    // every subject.
+    // Local practice over lesson subjects: no due filter and assignmentId 0.
+    // This is the lesson batch quiz: the first part is random per item and
+    // back-to-back stays on, whatever setFirstPart()/setBackToBack() say.
+    // Wrong parts requeue exactly like a review. `limit` 0 means every subject.
     void buildPractice(const std::vector<Subject>& subjects, size_t limit = 0,
                        uint32_t seed = 0x9E3779B9u);
     // Same without copying the lesson batch's subjects.
@@ -106,13 +119,16 @@ public:
     const SessionItem* current() const { return queue_.empty() ? nullptr : &queue_.front(); }
     ReviewPart part() const { return part_; }
 
-    // Order of the two parts within an item. Call before build(); defaults to
-    // meaning first. Reading-first is a user preference.
-    void setMeaningFirst(bool meaningFirst) { meaningFirst_ = meaningFirst; }
+    // R4: which part each item asks first. Call before build(); defaults to
+    // Random, WaniKani's behaviour. Random is drawn per item, not per session.
+    void setFirstPart(FirstPart firstPart) { firstPart_ = firstPart; }
+    FirstPart firstPart() const { return firstPart_; }
 
-    // REV-09: on keeps both parts of one item together; off interleaves the
-    // next item after each answered part. Call before build(); defaults to on.
+    // REV-09 / R5: on keeps both parts of one item together; off interleaves
+    // the next item after each answered part. Call before build(); defaults to
+    // off, WaniKani's behaviour.
     void setBackToBack(bool backToBack) { backToBack_ = backToBack; }
+    bool backToBack() const { return backToBack_; }
 
     // WaniKani `reviews_presentation_order`. Call before build(); shuffled is
     // the default. lower_levels_first keeps the shuffle inside each level.
@@ -172,6 +188,8 @@ public:
 
 private:
     void setPart(SessionItem& item);
+    // R4: sets item.readingFirst from `mode`; Random draws from rng_.
+    void assignFirstPart(SessionItem& item, FirstPart mode);
     void prepareItem(SessionItem& item);
     void requeueFront();
     // REV-09: move the front item to a random position after at least one
@@ -185,12 +203,12 @@ private:
     uint32_t lastIncorrectAssignmentId_ = 0;
     uint32_t lastIncorrectSubjectId_ = 0;
     ReviewPart lastIncorrectPart_ = ReviewPart::None;
-    bool meaningFirst_ = true;
+    FirstPart firstPart_ = FirstPart::Random;
     bool lowerLevelsFirst_ = false;
     ReviewOrderStrategy orderStrategy_ = ReviewOrderStrategy::Account;
     uint8_t currentLevel_ = 0;
     bool typeOrder_ = false;
-    bool backToBack_ = true;
+    bool backToBack_ = false;
     std::mt19937 rng_{0x9E3779B9u};
     std::vector<uint32_t> criticalSubjectIds_;
 };

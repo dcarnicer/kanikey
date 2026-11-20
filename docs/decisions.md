@@ -1394,6 +1394,27 @@ tone confirms an answer without the panel, and makes the reminder wake audible.
 
 ---
 
+## 2026-11-20 — WaniKani question order: R4 Random per item, R5 Off
+
+**Context:** the owner used real reviews and said KaniKey asks meaning and then
+reading in sequence, while WaniKani randomizes them. R4 `First question` had a
+`Random` choice that behaved as Meaning, and R5 `Back-to-back` defaulted On.
+
+**Decision:** R4 `Random` is implemented per item: `ReviewQueue` draws each
+item's first part once in `build()` from the seeded engine, so a seed reproduces
+it. A requeue keeps the drawn order. R4 defaults to Random and R5 defaults to Off,
+both as WaniKani. The lesson batch quiz and the single-item `Q` quiz also start
+each item at random. Practice reads R4 and R5 like a review.
+
+**Why:** WaniKani's review order is random per item and the owner asked for the
+same. Changing the defaults is safe because the app has no users; the owner's
+device is reset by the parent.
+
+**Implications:** `ReviewQueue::setMeaningFirst(bool)` and `settingsMeaningFirst()`
+are replaced by `FirstPart` / `settingsFirstPart()`. Stored `rv.first` values keep
+their meaning (1 Meaning, 0 Reading, 2 Random). Hardware check pending: a batch
+shows both orders, back-to-back On keeps the parts together, Off interleaves.
+
 ## 2026-11-20 — 8 MB table: 2 × 3 MiB app slots, 1.94 MiB LittleFS; no migration because there are no users; release logs at level 0
 
 **Decision:** `firmware/partitions/kanikey_8MB.csv` gives each OTA slot 0x300000

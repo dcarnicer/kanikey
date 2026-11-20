@@ -348,7 +348,11 @@ void startPractice(int mode) {
         }
     }
     state().review.gQueue = kk::ReviewQueue{};
-    state().review.gQueue.setMeaningFirst(kk::settingsMeaningFirst());
+    // Practice honours the same R4/R5 settings as a review.
+    state().review.gQueue.setFirstPart(kk::settingsFirstPart());
+    int backToBack = 0;
+    kk::settingsGetInt("rv.b2b", &backToBack);
+    state().review.gQueue.setBackToBack(backToBack != 0);
     state().review.gQueue.setLowerLevelsFirst(false);
     state().review.gQueue.build(practice, state().study.gPracticeSubjects, now, limit, esp_random());
     if (state().review.gQueue.empty()) {

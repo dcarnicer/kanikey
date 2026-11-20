@@ -59,7 +59,7 @@ const char* settingsSectionName(size_t index);
 
 // R4 migration: `rv.first` replaces the old `order` key. When `rv.first` has
 // never been written, a stored `order` (0 Reading first, 1 Meaning first) is
-// mapped onto the new values. Neither key present means Meaning first.
+// mapped onto the new values. Neither key present means Random (the default).
 int settingFirstQuestionValue(bool hasFirst, int first, bool hasOrder, int order);
 
 // Fixed-capacity cache of {nvsKey, value}; no heap and no NVS dependency. Load

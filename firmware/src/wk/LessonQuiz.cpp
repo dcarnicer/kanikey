@@ -2,10 +2,12 @@
 
 namespace kk {
 
-void LessonQuiz::start(const Subject& subject) {
+void LessonQuiz::start(const Subject& subject, bool readingFirst) {
     subject_ = subject;
     result_ = AnswerCheck{};
-    part_ = AnswerKind::Meaning;
+    part_ = readingFirst && subject_.needsReading() ? AnswerKind::Reading : AnswerKind::Meaning;
+    meaningDone_ = false;
+    readingDone_ = false;
     mistakes_ = 0;
     active_ = true;
     feedback_ = false;
@@ -23,8 +25,17 @@ void LessonQuiz::advance() {
     if (!active_ || !feedback_) return;
     feedback_ = false;
     if (result_.status != AnswerStatus::Correct) return;
-    if (part_ == AnswerKind::Meaning && subject_.needsReading()) {
+    if (part_ == AnswerKind::Meaning)
+        meaningDone_ = true;
+    else
+        readingDone_ = true;
+    // The other part still has to be answered: ask it next.
+    if (part_ == AnswerKind::Meaning && subject_.needsReading() && !readingDone_) {
         part_ = AnswerKind::Reading;
+        return;
+    }
+    if (part_ == AnswerKind::Reading && !meaningDone_) {
+        part_ = AnswerKind::Meaning;
         return;
     }
     active_ = false;

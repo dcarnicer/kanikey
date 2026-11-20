@@ -608,7 +608,8 @@ void startLessonQuiz() {
     audioStop();
     const kk::Subject* s = currentLessonSubject();
     if (!s) return;
-    state().lesson.gLessonQuiz.start(*s);
+    // WaniKani's lesson quiz asks meaning or reading first at random.
+    state().lesson.gLessonQuiz.start(*s, (esp_random() & 1u) != 0);
     clearLessonQuizInputImpl();
     state().screen.screen = Screen::LessonQuiz;
     state().lesson.quizBatch = false;
@@ -641,11 +642,9 @@ void showLessonQuiz() {
     const kk::Subject& s = state().lesson.gLessonQuiz.subject();
     const bool meaning = state().lesson.gLessonQuiz.part() == kk::AnswerKind::Meaning;
     const int total = state().lesson.gLessonQuiz.needsReading() ? 2 : 1;
-    int pos = 1;
-    if (state().lesson.gLessonQuiz.complete())
-        pos = total;
-    else if (state().lesson.gLessonQuiz.part() == kk::AnswerKind::Reading)
-        pos = 2;
+    // The quiz counts the parts answered, so reading-first reads "1/2" too.
+    int pos = state().lesson.gLessonQuiz.position();
+    if (state().lesson.gLessonQuiz.complete()) pos = total;
 
     LessonQuizView view;
     view.subject = &s;

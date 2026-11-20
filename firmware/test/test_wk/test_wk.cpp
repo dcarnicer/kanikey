@@ -237,7 +237,7 @@ static void test_empty_and_non_kana_readings() {
 static void test_lesson_quiz_meaning_then_reading() {
     const Subject s = kanji();
     LessonQuiz q;
-    q.start(s);
+    q.start(s, false);
     TEST_ASSERT_TRUE(q.active());
     TEST_ASSERT_FALSE(q.complete());
     TEST_ASSERT_EQUAL(AnswerKind::Meaning, q.part());
@@ -259,7 +259,7 @@ static void test_lesson_quiz_meaning_then_reading() {
 static void test_lesson_quiz_retries_wrong_and_warning() {
     const Subject s = kanji();
     LessonQuiz q;
-    q.start(s);
+    q.start(s, false);
 
     q.submit("drink");
     TEST_ASSERT_EQUAL(AnswerStatus::Incorrect, q.result().status);
@@ -292,8 +292,38 @@ static void test_lesson_quiz_retries_wrong_and_warning() {
 static void test_lesson_quiz_radical_only() {
     const Subject s = radical();
     LessonQuiz q;
-    q.start(s);
+    q.start(s, false);
     TEST_ASSERT_FALSE(q.needsReading());
+    q.submit("ground");
+    q.advance();
+    TEST_ASSERT_TRUE(q.complete());
+}
+
+static void test_lesson_quiz_reading_first() {
+    const Subject s = kanji();
+    LessonQuiz q;
+    q.start(s, true);
+    TEST_ASSERT_EQUAL(AnswerKind::Reading, q.part());
+    TEST_ASSERT_EQUAL(1, q.position());
+
+    q.submit("shoku");
+    TEST_ASSERT_EQUAL(AnswerStatus::Correct, q.result().status);
+    q.advance();
+    TEST_ASSERT_FALSE(q.complete());
+    TEST_ASSERT_EQUAL(AnswerKind::Meaning, q.part());
+    TEST_ASSERT_EQUAL(2, q.position());
+
+    q.submit("eat");
+    q.advance();
+    TEST_ASSERT_TRUE(q.complete());
+    TEST_ASSERT_EQUAL(0, q.mistakes());
+}
+
+static void test_lesson_quiz_reading_first_ignored_without_reading() {
+    const Subject s = radical();
+    LessonQuiz q;
+    q.start(s, true);
+    TEST_ASSERT_EQUAL(AnswerKind::Meaning, q.part());
     q.submit("ground");
     q.advance();
     TEST_ASSERT_TRUE(q.complete());
@@ -375,6 +405,8 @@ static Assignment assignment(uint32_t id, uint32_t subjectId, uint8_t stage, uin
 static void test_session_meaning_then_reading() {
     const Subject s = kanji();
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     q.build({assignment(10, s.id, 3, 100)}, {s}, 1000);
     TEST_ASSERT_EQUAL(1, q.remaining());
     TEST_ASSERT_EQUAL(3, q.current()->srsStage);
@@ -392,7 +424,9 @@ static void test_session_meaning_then_reading() {
 static void test_session_reading_first() {
     const Subject s = kanji();
     ReviewQueue q;
-    q.setMeaningFirst(false);
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
+    q.setFirstPart(FirstPart::Reading);
     q.build({assignment(12, s.id, 3, 100)}, {s}, 1000);
     TEST_ASSERT_EQUAL(ReviewPart::Reading, q.part());
     AnswerOutcome o = q.answer(AnswerStatus::Correct);
@@ -407,6 +441,8 @@ static void test_session_reading_first() {
 static void test_session_wrong_parts_requeue_and_count() {
     const Subject s = kanji();
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     q.build({assignment(11, s.id, 3, 100)}, {s}, 1000);
     AnswerOutcome o = q.answer(AnswerStatus::Incorrect);
     TEST_ASSERT_TRUE(o.counted);
@@ -428,6 +464,8 @@ static void test_session_wrong_parts_requeue_and_count() {
 static void test_session_warning_does_not_advance() {
     const Subject s = kanji();
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     q.build({assignment(12, s.id, 3, 100)}, {s}, 1000);
     const AnswerOutcome o = q.answer(AnswerStatus::Warning);
     TEST_ASSERT_FALSE(o.advanced);
@@ -439,6 +477,8 @@ static void test_session_warning_does_not_advance() {
 static void test_session_radical_only_meaning() {
     const Subject s = radical();
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     q.build({assignment(13, s.id, 1, 100, SubjectType::Radical)}, {s}, 1000);
     TEST_ASSERT_EQUAL(ReviewPart::Meaning, q.part());
     AnswerOutcome o = q.answer(AnswerStatus::Incorrect);
@@ -462,6 +502,8 @@ static void test_session_filters_and_limit() {
     as[5].hidden = true;
     as[6].pendingReview = true;
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     q.build(as, {s}, 1000, 0);
     TEST_ASSERT_EQUAL(2, q.remaining());
     q.build(as, {s}, 1000, 1);
@@ -481,6 +523,8 @@ static void test_queue_critical_items_first() {
     Subject c = kanji();
     c.id = 3;
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     q.setCriticalSubjectIds({2});
     q.build({assignment(1, 1, 3, 100), assignment(2, 2, 3, 100), assignment(3, 3, 3, 100)},
             {a, b, c}, 1000, 3, 7);
@@ -496,6 +540,8 @@ static void test_queue_critical_limit_keeps_only_critical() {
     Subject c = kanji();
     c.id = 3;
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     q.setCriticalSubjectIds({3});
     q.build({assignment(1, 1, 3, 100), assignment(2, 2, 3, 100), assignment(3, 3, 3, 100)},
             {a, b, c}, 1000, 1, 7);
@@ -513,10 +559,14 @@ static void test_queue_critical_preserves_normal_order() {
     std::vector<Assignment> as = {assignment(1, 1, 3, 100), assignment(2, 2, 3, 100),
                                   assignment(3, 3, 3, 100)};
     ReviewQueue base;
+    base.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    base.setBackToBack(true);  // pinned: written for back-to-back on
     base.build(as, {a, b, c}, 1000, 3, 7);
     std::vector<uint32_t> baseIds;
     queueIds(base, &baseIds);
     ReviewQueue critical;
+    critical.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    critical.setBackToBack(true);  // pinned: written for back-to-back on
     critical.setCriticalSubjectIds({2});
     critical.build(as, {a, b, c}, 1000, 3, 7);
     std::vector<uint32_t> criticalIds;
@@ -537,8 +587,12 @@ static void test_queue_without_critical_matches_previous_order() {
     b.id = 2;
     std::vector<Assignment> as = {assignment(1, 1, 3, 100), assignment(2, 2, 3, 100)};
     ReviewQueue one;
+    one.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    one.setBackToBack(true);  // pinned: written for back-to-back on
     one.build(as, {a, b}, 1000, 2, 11);
     ReviewQueue two;
+    two.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    two.setBackToBack(true);  // pinned: written for back-to-back on
     two.build(as, {a, b}, 1000, 2, 11);
     std::vector<uint32_t> oneIds;
     std::vector<uint32_t> twoIds;
@@ -550,6 +604,8 @@ static void test_queue_without_critical_matches_previous_order() {
 static void test_session_skip() {
     const Subject s = kanji();
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     q.build({assignment(20, s.id, 3, 100)}, {s}, 1000);
     q.skip();
     TEST_ASSERT_TRUE(q.empty());
@@ -576,6 +632,8 @@ static void test_session_lower_levels_first() {
         assignment(1, high.id, 3, 100), assignment(2, low.id, 3, 100),
         assignment(3, mid.id, 3, 100)};
     ReviewQueue q;
+    q.setFirstPart(FirstPart::Meaning);  // pinned: written for meaning first
+    q.setBackToBack(true);  // pinned: written for back-to-back on
     q.setLowerLevelsFirst(true);
     q.build(as, {high, low, mid}, 1000, 123);
     TEST_ASSERT_EQUAL(3, q.remaining());
@@ -3517,7 +3575,7 @@ static void test_settings_registry_defaults() {
     };
     static const Expected kExpected[] = {
         {"P1", "bright", 128},  {"P2", "dim", 30},      {"P3", "blank", 60},
-        {"P4", "sleep", 120},   {"R1", "revsize", 20},   {"R4", "rv.first", 1},
+        {"P4", "sleep", 120},   {"R1", "revsize", 20},   {"R4", "rv.first", 2},
         {"L1", "lessonsz", 5},
     };
     for (const Expected& expected : kExpected) {
@@ -3550,7 +3608,7 @@ static void test_settings_cycle_wraps() {
     TEST_ASSERT_NOT_NULL(order);
     TEST_ASSERT_EQUAL_INT(0, settingNextValue(*order, 1));
     TEST_ASSERT_EQUAL_INT(1, settingPrevValue(*order, 0));
-    TEST_ASSERT_EQUAL_INT(1, settingNextValue(*order, 7));
+    TEST_ASSERT_EQUAL_INT(2, settingNextValue(*order, 7));  // unknown -> default Random
 }
 
 static void test_settings_validate() {
@@ -3565,7 +3623,7 @@ static void test_settings_validate() {
     TEST_ASSERT_EQUAL_INT(128, settingValidate(*brightness, -1));
     TEST_ASSERT_EQUAL_INT(15, settingValidate(*dim, 15));
     TEST_ASSERT_EQUAL_INT(30, settingValidate(*dim, 45));
-    TEST_ASSERT_EQUAL_INT(1, settingValidate(*order, 5));
+    TEST_ASSERT_EQUAL_INT(2, settingValidate(*order, 5));  // unknown -> default Random
 }
 
 static void test_settings_help_width() {
@@ -3622,7 +3680,7 @@ static void test_settings_cache() {
     TEST_ASSERT_TRUE(cache.get("bright", &value));
     TEST_ASSERT_EQUAL_INT(192, value);
     TEST_ASSERT_TRUE(cache.get("rv.first", &value));
-    TEST_ASSERT_EQUAL_INT(1, value);  // reader leaves the default
+    TEST_ASSERT_EQUAL_INT(2, value);  // reader leaves the default: Random
     TEST_ASSERT_TRUE(cache.get("sleep", &value));
     TEST_ASSERT_EQUAL_INT(120, value);  // invalid stored 9999 -> default
     TEST_ASSERT_FALSE(cache.get("missing", &value));
@@ -3707,8 +3765,8 @@ static void test_settings_registry_keys_and_defaults() {
     // Every keyed row of the CFG-02 tables: key and default exactly.
     static const Expected kExpected[] = {
         {"R1", "revsize", 20},          {"R2", "rv.order", 0},
-        {"R3", "rv.types", 0},          {"R4", "rv.first", 1},
-        {"R5", "rv.b2b", 1},            {"R6", "rv.typos", 0},
+        {"R3", "rv.types", 0},          {"R4", "rv.first", 2},
+        {"R5", "rv.b2b", 0},            {"R6", "rv.typos", 0},
         {"R7", "rv.wrong", 0},          {"R8", "rv.advance", 0},
         {"R9", "rv.details", 0},        {"R10", "rv.header", 0},
         {"R11", "rv.critical", 0},      {"R12", "rv.submit", 0},
@@ -3781,8 +3839,8 @@ static void test_settings_review_defaults_match_wanikani() {
     };
     static const Expected kExpected[] = {
         {"R1", "20"},            {"R2", "Account preference"},
-        {"R3", "Off"},           {"R4", "Meaning"},
-        {"R5", "On"},            {"R6", "WaniKani"},
+        {"R3", "Off"},           {"R4", "Random"},
+        {"R5", "Off"},           {"R6", "WaniKani"},
         {"R7", "Off"},           {"R8", "Off"},
         {"R9", "Off"},           {"R10", "SRS+accuracy"},
         {"R11", "Off"},          {"R12", "At session end"},
@@ -3854,8 +3912,9 @@ static void test_settings_meaning_first_migration() {
     // No rv.first yet: a stored order reads meaning for 1 and reading for 0.
     TEST_ASSERT_EQUAL_INT(1, settingFirstQuestionValue(false, 0, true, 1));
     TEST_ASSERT_EQUAL_INT(0, settingFirstQuestionValue(false, 0, true, 0));
-    // Neither key present: WaniKani's default, meaning first.
-    TEST_ASSERT_EQUAL_INT(1, settingFirstQuestionValue(false, 0, false, 0));
+    // Neither key present: WaniKani's default, Random.
+    TEST_ASSERT_EQUAL_INT(2, settingFirstQuestionValue(false, 0, false, 0));
+    TEST_ASSERT_EQUAL_INT(2, settingValidate(*first, settingFirstQuestionValue(false, 0, false, 0)));
     // rv.first wins once written, including the new Random choice.
     TEST_ASSERT_EQUAL_INT(2, settingFirstQuestionValue(true, 2, true, 0));
     TEST_ASSERT_EQUAL_INT(1,
@@ -4449,6 +4508,8 @@ int main(int, char**) {
     RUN_TEST(test_lesson_quiz_meaning_then_reading);
     RUN_TEST(test_lesson_quiz_retries_wrong_and_warning);
     RUN_TEST(test_lesson_quiz_radical_only);
+    RUN_TEST(test_lesson_quiz_reading_first);
+    RUN_TEST(test_lesson_quiz_reading_first_ignored_without_reading);
     RUN_TEST(test_lesson_order_wanikani_level_then_position);
     RUN_TEST(test_lesson_order_ties_break_by_assignment_id);
     RUN_TEST(test_lesson_order_keeps_unknown_level_last);
