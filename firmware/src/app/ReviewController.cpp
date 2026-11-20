@@ -377,6 +377,8 @@ void showReview() {
     feedbackTraceStep(view.feedback ? "feedback frame drawn" : "question frame drawn");
     present();
     feedbackTraceStep("present returned");
+    // REV-10: only now may the review's queued file writes run (after this frame).
+    if (view.feedback) feedbackFramePresented();
 }
 
 int detailPageCount(const kk::Subject& s) {

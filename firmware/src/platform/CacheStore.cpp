@@ -71,41 +71,18 @@ bool readFile(fs::FS& fs, const char* path, size_t maxBytes, std::vector<uint8_t
     return true;
 }
 
-// Copies `from` to `to` in 512 B chunks. Returns false when a file cannot be
-// opened, a write is short or the byte count does not match; the caller keeps
-// the destination file out of use in that case.
-bool copyFile(fs::FS& fs, const char* from, const char* to) {
-    File src = fs.open(from, "r");
-    File dst = fs.open(to, "w");
-    bool ok = src && dst;
-    const size_t expected = src ? src.size() : 0;
-    size_t total = 0;
-    uint8_t buf[512];
-    while (ok) {
-        const size_t n = src.read(buf, sizeof buf);
-        if (n == 0) break;
-        if (dst.write(buf, n) != n) {
-            ok = false;
-            break;
-        }
-        total += n;
-    }
-    if (src) src.close();
-    if (dst) dst.close();
-    return ok && total == expected;
-}
-
-// Installs a closed tmp file over `path`, keeping the previous file as `bak`.
-// On LittleFS the old file is copied rather than renamed away, as OutboxStore
-// does: rename replaces the destination in one step, so a power cut leaves
-// either the previous file or the new one, never neither.
+// Installs a closed tmp file over `path` on LittleFS, keeping the previous file
+// as `bak`. Two renames instead of a copy (LittleFS rename replaces an existing
+// target): a power cut between them leaves the complete new file in `tmp`, and
+// cacheLoadSnapshot reads it from there (see also OutboxStore).
 bool installTmp(fs::FS& fs, const char* path, const char* tmp, const char* bak) {
-    if (fs.exists(path) && !copyFile(fs, path, bak)) {
-        fs.remove(bak);
+    const bool hadPath = fs.exists(path);
+    if (hadPath && !fs.rename(path, bak)) {
         fs.remove(tmp);
         return false;
     }
     if (!fs.rename(tmp, path)) {
+        if (hadPath) fs.rename(bak, path);  // put the previous file back
         fs.remove(tmp);
         return false;
     }
@@ -179,6 +156,14 @@ bool cacheLoadSnapshot(CacheSnapshot* out) {
     if (readFile(LittleFS, kSnapshotPath, kMaxSnapshotBytes, &bytes)) {
         if (decodeCacheSnapshot(bytes.data(), bytes.size(), out)) return true;
         Serial.println("[cache] snapshot CRC/format error");
+    }
+    // A save cut between its two renames leaves the complete new snapshot in tmp.
+    bytes.clear();
+    if (readFile(LittleFS, kSnapshotTmp, kMaxSnapshotBytes, &bytes)) {
+        if (decodeCacheSnapshot(bytes.data(), bytes.size(), out)) {
+            Serial.println("[cache] recovered snapshot from .tmp");
+            return true;
+        }
     }
     bytes.clear();
     if (readFile(LittleFS, kSnapshotBak, kMaxSnapshotBytes, &bytes)) {

@@ -86,12 +86,19 @@ bool writeAll(File& f, const uint8_t* data, size_t n) {
 bool outboxLoad(std::vector<OutboxItem>& items) {
     std::vector<uint8_t> bytes;
     if (!readFile(kPath, &bytes) || !parse(bytes, &items)) {
+        // A save cut between its two renames leaves the complete new outbox in
+        // .tmp (it was closed before the first rename), so that copy comes first.
         bytes.clear();
-        if (readFile(kBak, &bytes) && parse(bytes, &items)) {
-            Serial.println("[outbox] recovered from .bak");
+        if (readFile(kTmp, &bytes) && parse(bytes, &items)) {
+            Serial.println("[outbox] recovered from .tmp");
         } else {
-            items.clear();
-            return false;
+            bytes.clear();
+            if (readFile(kBak, &bytes) && parse(bytes, &items)) {
+                Serial.println("[outbox] recovered from .bak");
+            } else {
+                items.clear();
+                return false;
+            }
         }
     }
     Serial.printf("[outbox] loaded %u pending\n", static_cast<unsigned>(items.size()));
@@ -129,36 +136,19 @@ bool outboxSave(const std::vector<OutboxItem>& items) {
         LittleFS.remove(kTmp);
         return false;
     }
-    // Copy the old file instead of renaming it away: a power cut before the
-    // last rename then leaves either the previous outbox (main intact) or the
-    // new one, never neither. LittleFS rename replaces the destination in one
-    // step.
-    if (LittleFS.exists(kBak)) LittleFS.remove(kBak);
-    if (LittleFS.exists(kPath)) {
-        File src = LittleFS.open(kPath, "r");
-        File dst = LittleFS.open(kBak, "w");
-        bool copied = src && dst;
-        const size_t expected = src ? src.size() : 0;
-        size_t total = 0;
-        uint8_t buf[512];
-        while (copied) {
-            const size_t n = src.read(buf, sizeof buf);
-            if (n == 0) break;
-            if (dst.write(buf, n) != n) {
-                copied = false;
-                break;
-            }
-            total += n;
-        }
-        if (src) src.close();
-        if (dst) dst.close();
-        if (!copied || total != expected) {
-            LittleFS.remove(kBak);
-            LittleFS.remove(kTmp);
-            return false;
-        }
+    // Two renames instead of a copy of the old file. LittleFS rename replaces an
+    // existing target, and the new file is complete before the first rename:
+    //  - a power cut before the first rename keeps the previous outbox;
+    //  - between the renames the new outbox is in .tmp (outboxLoad reads it);
+    //  - after the second rename, the new outbox is in place and .bak holds the
+    //    previous one.
+    const bool hadMain = LittleFS.exists(kPath);
+    if (hadMain && !LittleFS.rename(kPath, kBak)) {
+        LittleFS.remove(kTmp);
+        return false;
     }
     if (!LittleFS.rename(kTmp, kPath)) {
+        if (hadMain) LittleFS.rename(kBak, kPath);  // put the previous outbox back
         LittleFS.remove(kTmp);
         return false;
     }

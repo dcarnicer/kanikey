@@ -187,9 +187,10 @@ void homeFocusOpen() {
 }
 
 void onKeyImpl(const KeyEvent& e) {
-    // REV-10 latency: the previous completion's writes run before this key
-    // (usually they already ran after that frame; this is the no-op path).
-    flushPendingReviewWrites();
+    // REV-10 latency: the previous completion's writes run before this key, but
+    // only once its feedback frame is on screen. A key that arrives in the same
+    // loop as the answer (its key-up included) must not flush before that frame.
+    flushReviewWritesAfterFrame();
 #ifdef KANIKEY_DEV
     if (state().lesson.gDevKeyTest) {
         Serial.printf("[key] test %s %s\n", e.key == Key::None ? "marker" : "event",
@@ -1332,6 +1333,9 @@ void loop() {
     // AUD-03: one decode/queue step per loop; it never waits for the speaker.
     audioTick();
     if (powerWakeCheck(now)) {
+        // The panel is blank, so no feedback frame can be on screen: any queued
+        // review writes run now (the end-of-loop flush below is not reached here).
+        flushPendingReviewWrites();
         // The panel is blank. A background sync is not a screen and must not
         // stall until the next key; the modal Sync screen only advances while
         // it is visible (Esc still cancels it after a wake).
@@ -1390,15 +1394,16 @@ void loop() {
         state().display.gDirty = false;
         state().display.gLastDrawMs = now;
     }
-    // REV-10 latency: a review's outbox file, journal record and cache snapshot
-    // are written here, right after the frame that showed its feedback. This
-    // runs before the sync step, the next key and the sleep check below.
-    flushPendingReviewWrites();
-    feedbackTraceEnd();
 #if defined(TGC_BOARD_PAPERDIY)
-    // E-paper: push the canvas when the settle/floor/busy policy says so.
+    // E-paper: push the canvas when the settle/floor/busy policy says so. This
+    // comes before the file writes below, so the panel is not held up by them.
     presentTick(now);
 #endif
+    // REV-10 latency: a review's outbox file, journal record and cache snapshot
+    // are written here, right after the frame that showed its feedback (and
+    // the e-paper push). This runs before the next key and the sleep check below.
+    flushReviewWritesAfterDraw();
+    feedbackTraceEnd();
     if (now - state().display.gLastStatusMs >= 1000) {
         drawStatus();
         state().display.gLastStatusMs = now;

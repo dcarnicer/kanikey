@@ -1122,6 +1122,9 @@ void startSyncAuto(SyncKind kind, bool coldBoot) { startSyncJob(kind, false, col
 
 void syncAdvance() {
     // A queued review's writes come before any sync step can read the outbox.
+    // Its feedback frame comes first: while that frame is not on screen, this
+    // step waits one loop (the end-of-loop flush then runs the writes).
+    if (reviewWritesWaitForFrame()) return;
     flushPendingReviewWrites();
     SyncJobState& j = job();
     if (!j.active) return;
