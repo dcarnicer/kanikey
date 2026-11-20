@@ -3766,6 +3766,7 @@ void run_rev11_tests();
 void run_ui_tests();
 void run_pack_tests();
 void run_http_tests();
+void run_page_tests();
 void run_power_tests();
 void run_screen_tests();
 void run_hid_tests();
@@ -4306,6 +4307,7 @@ int main(int, char**) {
     run_ui_tests();
     run_pack_tests();
     run_http_tests();
+    run_page_tests();
     run_power_tests();
     run_screen_tests();
     run_hid_tests();

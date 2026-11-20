@@ -6,8 +6,9 @@ namespace kk {
 
 namespace {
 void logAttempt(const char* result, const String& path, const WkResponse& http, bool parsed) {
-    Serial.printf("[http] %s %s (%d, %u bytes%s%s)\n", result, path.c_str(), http.httpCode,
+    Serial.printf("[http] %s %s (%d, %u bytes%s%s%s)\n", result, path.c_str(), http.httpCode,
                   static_cast<unsigned>(http.bytes), http.truncated ? ", truncated" : "",
+                  http.capOverflow ? ", cap overflow" : "",
                   http.httpCode == 200 && !parsed ? ", parse failed" : "");
 }
 
@@ -25,7 +26,13 @@ bool getParsed(const String& path, const String& token, size_t maxBodyBytes,
         reset();
         *http = wkGet(path, token, maxBodyBytes, timeoutMs);
         parsed = http->httpCode == 200 && parse(http->body);
-        if (!httpRetryable(http->httpCode, http->truncated, parsed)) break;
+        if (!httpRetryable(http->httpCode, http->truncated, parsed, http->capOverflow)) {
+            // A cap overflow lands here on the first attempt: the caller's page
+            // fallback is the recovery, not a second identical request.
+            if (http->capOverflow && http->httpCode == 200)
+                logAttempt("cap overflow, not retried", path, *http, parsed);
+            break;
+        }
         if (i + 1 < attempts) {
             logAttempt("retry", path, *http, parsed);
             delay(300);
