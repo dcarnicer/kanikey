@@ -592,7 +592,12 @@ scan/password flow on the Cardputer itself.
   prompt glyph shows `no glyph` / `no pack` / `check SD`; About reports the
   pack status.
 - **UI-08 — Palette and screenshots.** Revisit the RGB332 palette after real
-  use; keep live screenshots with user content out of the repository.
+  use; keep live screenshots with user content out of the repository. **Done
+  except the device visual check (2026-11-20):** all 16 tokens quantized and
+  audited; `kErr` moved from `0xC945` to `0xFB60` (`#FF6D00`) to clear 4.5:1,
+  and the other tokens were left alone with the rationale in
+  [design.md §8.1](docs/design.md#81-palette-and-contrast-ui-08). The mockups
+  were regenerated and `--check` passes.
 
 ## 8. Tangocho modules to port
 
