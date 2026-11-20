@@ -35,6 +35,8 @@ void soundStop() {
     gStep = 0;
 }
 
+bool soundBusy() { return gPlaying; }
+
 bool soundCue(SoundCue cue, uint32_t reviewsCompleted, bool syncing, bool portal) {
     int soundsOn = 0;
     int volume = 1;  // Medium

@@ -579,6 +579,11 @@ void checkCurrent() {
             state().review.feedbackPart == kk::ReviewPart::Meaning ? 1 : 2;
         state().review.detail = true;
     }
+    // M6: a checked reading answer (Correct or Incorrect; a Warning retypes and
+    // stays silent) asks for its clip once the answer cue has finished.
+    if (state().review.feedbackPart == kk::ReviewPart::Reading &&
+        state().review.gCheck.status != kk::AnswerStatus::Warning)
+        audioAutoplayRequest(*s);
     state().display.gDirty = true;
 }
 

@@ -192,6 +192,8 @@ void onKeyImpl(const KeyEvent& e) {
     }
 #endif
     updateModifier(e);
+    // M6: a key that arrives before a pending autoplay has started cancels it.
+    if (e.down) audioAutoplayCancel();
     if (kk::screenBase(state().screen) == Screen::Setup) {
         if (e.down && e.key == Key::Esc) {
             state().setup.gSetupPortal.end(false);

@@ -298,7 +298,8 @@ and the hint reads `no audio` instead of `R: audio`. `R` during playback
 restarts the clip. Changing item, advancing feedback or leaving the screen
 stops playback before the screen changes. Kanji and radicals never offer `R`.
 The first cut is on demand only: M6 autoplay is a follow-up after the hardware
-run proves the decode time and heap, and stays Off by default.
+run proves the decode time and heap, and stays Off by default. **M6 is now
+implemented (2026-11-20; hardware pending):** see the M6 note below.
 
 **Design.**
 - `platform/AudioPlayer`: a small state machine over one open SD file. `begin()`
@@ -339,6 +340,19 @@ run proves the decode time and heap, and stays Off by default.
 - Autoplay (M6), if adopted later, is one call after a correct reading answer
   and once for the first page of a lesson card with a reading; it must use the
   same state machine and must not fire twice for one card.
+- **M6 implementation (2026-11-20; hardware pending).** `rm.autoplay` On asks
+  for the clip at two points: a reading answer checked Correct or Incorrect on
+  review feedback (not a Warning), and the first draw of a lesson card with a
+  reading line, once per card per lesson session (the cards and their quiz;
+  paging back does not repeat it). The request is only pending. `audioTick()`
+  starts it when `audioAutoplayWanted()` (`wk/AudioPlan`) still holds: M6 On,
+  vocabulary or kana vocabulary, a cached MP3, no sync, no setup portal, and the
+  screen still a review or lesson card. It waits while the REM-03 answer cue
+  plays (`soundBusy()`), so a tone never cuts the clip and no key waits. Any key
+  cancels a pending start; leaving the screen or any `audioStop()` also does. A
+  start is tried once; a heap refusal is transient, like an explicit `R`. With M6
+  Off nothing changes. `audioPlayerPlay()` now stops a running cue first, as its
+  comment already said. Native: `test_audio_autoplay_wanted_rules`.
 
 **Hardware spike.** Run on a real Cardputer ADV with the release build, a real
 account and a real cached MP3; no device or serial access was available for

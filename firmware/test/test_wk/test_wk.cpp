@@ -1444,6 +1444,25 @@ static void test_audio_failure_marks_only_content_bad() {
     TEST_ASSERT_FALSE(audioFailureMarksBad(AudioFailure::NoHeap));
 }
 
+static void test_audio_autoplay_wanted_rules() {
+    // M6 Off (the default): nothing autoplays, whatever else holds.
+    TEST_ASSERT_FALSE(audioAutoplayWanted(false, true, SubjectType::Vocabulary, true, false, false));
+    // On: vocabulary and kana vocabulary with a cached MP3 on a reading page.
+    TEST_ASSERT_TRUE(audioAutoplayWanted(true, true, SubjectType::Vocabulary, true, false, false));
+    TEST_ASSERT_TRUE(audioAutoplayWanted(true, true, SubjectType::KanaVocabulary, true, false, false));
+    // Not a reading page: meaning feedback, the warning frame, or any other screen.
+    TEST_ASSERT_FALSE(audioAutoplayWanted(true, false, SubjectType::Vocabulary, true, false, false));
+    // Kanji and radicals never have audio.
+    TEST_ASSERT_FALSE(audioAutoplayWanted(true, true, SubjectType::Kanji, true, false, false));
+    TEST_ASSERT_FALSE(audioAutoplayWanted(true, true, SubjectType::Radical, true, false, false));
+    // No cached MP3 (missing, OGG-only, or no SD): no clip, no request.
+    TEST_ASSERT_FALSE(audioAutoplayWanted(true, true, SubjectType::Vocabulary, false, false, false));
+    // Never during a sync or with the setup portal open.
+    TEST_ASSERT_FALSE(audioAutoplayWanted(true, true, SubjectType::Vocabulary, true, true, false));
+    TEST_ASSERT_FALSE(audioAutoplayWanted(true, true, SubjectType::Vocabulary, true, false, true));
+    TEST_ASSERT_FALSE(audioAutoplayWanted(true, true, SubjectType::Vocabulary, true, true, true));
+}
+
 static void test_mp3_first_frame_channels() {
     const uint8_t mono[] = {0xFF, 0xFB, 0x90, 0xC0};
     const uint8_t stereo[] = {0xFF, 0xFB, 0x90, 0x00};
@@ -4355,6 +4374,7 @@ int main(int, char**) {
     RUN_TEST(test_audio_plan_never_for_kanji_or_radical);
     RUN_TEST(test_audio_heap_admission_rule);
     RUN_TEST(test_audio_failure_marks_only_content_bad);
+    RUN_TEST(test_audio_autoplay_wanted_rules);
     RUN_TEST(test_mp3_first_frame_channels);
     RUN_TEST(test_audio_pick_download_mp3_first);
     RUN_TEST(test_assignment_stream_matches_dom);

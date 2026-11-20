@@ -176,6 +176,6 @@ retest. The full steps and expected log lines are in
 
 ## 4. Known gaps
 
-- The in-device `[kk] commands:` line does not list `cap` or `devhost` yet, and
-  [`firmware/README.md`](../firmware/README.md)'s serial table does not list
-  `rem`, `cap` or `devhost`. This page is the reference for them.
+- Closed (2026-11-20): the dev `[kk] commands:` line lists `rem`, `cap` and
+  `devhost`, and [`firmware/README.md`](../firmware/README.md)'s serial table
+  has rows for them. The sections above remain the full reference.

@@ -263,6 +263,8 @@ bool audioPlayerPlay(const Subject& subject, uint8_t voice) {
     // not call back, so wait for the channel to drain (bounded) and only then
     // reuse the pieces. A short settle covers a late release for the last clip.
     const bool hadPieces = holdsPieces();
+    // A REM-03 cue still stepping would start its next tone over the clip.
+    kk::sound::soundStop();
     audioPlayerStop();
     if (M5.Speaker.isPlaying()) M5.Speaker.stop();
     if (!waitForIdle(kStopWaitMs) || holdsPieces()) {
