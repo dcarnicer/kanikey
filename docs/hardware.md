@@ -3,6 +3,11 @@
 Measurements from the actual M5Stack Cardputer ADV. This file is a log, not a
 promise: numbers change as the firmware grows.
 
+> Partition note (2026-11-20): the 8 MB table is now 2 × 3 MiB app slots with
+> LittleFS at 0x610000 (`firmware/partitions/kanikey_8MB.csv`). Entries dated
+> before that use the old 1,835,008 B slot and LittleFS at 0x390000; their
+> figures are not restated here.
+
 ## 2026-10-25 — M0 bring-up
 
 Build: `cardputer-adv`, app-only USB flash of the M0 firmware.

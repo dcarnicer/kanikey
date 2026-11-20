@@ -26,7 +26,29 @@ def app_image(size: int = 1024) -> bytes:
 
 class FirmwareManifestTest(unittest.TestCase):
     def test_slot_size_from_partition_table(self) -> None:
-        self.assertEqual(parse_slot_size(PARTITIONS), 0x1C0000)
+        self.assertEqual(parse_slot_size(PARTITIONS), 0x300000)
+
+    def test_partition_table_layout(self) -> None:
+        # The 8 MB table (2026-11-20): two 3 MiB OTA slots, then LittleFS to the
+        # end of the 8 MiB flash. nvs and otadata keep their offsets so NVS
+        # survives a USB upload; app0 keeps 0x10000.
+        rows = {}
+        for raw in PARTITIONS.read_text(encoding="utf-8").splitlines():
+            line = raw.split("#", 1)[0].strip()
+            if not line:
+                continue
+            name, kind, subtype, offset, size = [f.strip() for f in line.split(",")[:5]]
+            rows[name] = (kind, subtype, int(offset, 0), int(size, 0))
+        self.assertEqual(rows["nvs"], ("data", "nvs", 0x9000, 0x5000))
+        self.assertEqual(rows["otadata"], ("data", "ota", 0xE000, 0x2000))
+        self.assertEqual(rows["app0"], ("app", "ota_0", 0x10000, 0x300000))
+        self.assertEqual(rows["app1"], ("app", "ota_1", 0x310000, 0x300000))
+        self.assertEqual(rows["spiffs"], ("data", "spiffs", 0x610000, 0x1F0000))
+        # Contiguous and ends at the 8 MiB flash: no gap, no overlap.
+        ordered = sorted(rows.values(), key=lambda r: r[2])
+        for before, after in zip(ordered, ordered[1:]):
+            self.assertEqual(before[2] + before[3], after[2])
+        self.assertEqual(ordered[-1][2] + ordered[-1][3], 8 * 1024 * 1024)
 
     def test_version_header_has_one_release_literal(self) -> None:
         # Dev test images set KANIKEY_DEV_VERSION; the header itself must keep
@@ -177,7 +199,7 @@ class FirmwareManifestTest(unittest.TestCase):
     def test_rejects_image_larger_than_slot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             image = Path(tmp) / "firmware.bin"
-            image.write_bytes(app_image(0x1C0001))
+            image.write_bytes(app_image(0x300001))
             with self.assertRaises(ManifestError):
                 build_manifest(
                     version="v0.1.0",

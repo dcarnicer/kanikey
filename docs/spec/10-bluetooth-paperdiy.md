@@ -70,8 +70,9 @@ The input path BLE must join:
   `KeyEvent` has only `key`, `down`, `code`, `x`, `y`.
 - `KeyRepeat` repeats only the arrows, using `millis()`.
 
-Budget that decides the stack: the app slot is 1,835,008 B
-(`partitions/kanikey_8MB.csv`, app0/app1 at 0x1C0000); the release image is
+Budget that decides the stack (figures as of this spec; the Cardputer slot
+changed on 2026-11-20 to 3,145,728 B, see `11-flash-headroom.md`): the app slot
+was 1,835,008 B (`partitions/kanikey_8MB.csv`, app0/app1 at 0x1C0000); the release image is
 1,556,989 B (84.8%), leaving **278,019 B**. Static RAM is 96,248 B of
 327,680 B (29.4%). `README.md` §2 plans ~140 KB free internal heap; the log
 has ~225 KB after boot and ~148 KB before TLS, with the 32.4 KB canvas

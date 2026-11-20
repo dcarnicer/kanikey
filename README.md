@@ -77,7 +77,7 @@
 > checks. The deliberate offline boot, the OUTBOX screen, the 401 gate and the
 > parse-retry path are verified on hardware (2026-11-19). Firmware
 > updates arrive over HTTPS from GitHub releases with a size/SHA-256 manifest,
-> install into the spare 1.75 MiB slot and roll back on a failed first boot.
+> install into the spare 3 MiB slot (8 MB table, 2026-11-20) and roll back on a failed first boot.
 > Round-2 settings, accepted-answer feedback, the lesson batch flow, background
 > sync and the Home clock are in review; the remaining checks are tracked in
 > [docs/hardware.md](docs/hardware.md). The source is MIT-licensed.

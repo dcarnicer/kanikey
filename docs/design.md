@@ -88,7 +88,7 @@ lets you review from the cache and leaves the results in a queue.
 |---|---|
 | 240×135, landscape only | Single column or two zones; no dense tables |
 | No PSRAM | No full JSON documents, no CJK fonts in RAM, no large caches |
-| 8 MB flash, ~1.75 MB per OTA slot | Heavy content (glyphs, subjects) goes on the microSD |
+| 8 MB flash, 3 MiB per OTA slot (since 2026-11-20; 1.75 MiB before) | Heavy content (glyphs, subjects) goes on the microSD |
 | 4×14 keyboard with Fn/Shift | Real text; shortcuts must be visible and not steal letters |
 | TCA8418 + G0 | Must distinguish navigation mode from text mode |
 | Wi-Fi + TLS in ~50 KB | Sequential sync, streaming responses |
@@ -580,7 +580,7 @@ WaniKani mixes four subject types:
 - **Vocabulary:** a multi-character word.
 - **Kana vocabulary:** kana only.
 
-The Cardputer has no PSRAM and the app slot is ~1.75 MB. A full CJK font doesn't
+The Cardputer has no PSRAM and the app slot is 3 MiB (1.75 MiB before 2026-11-20). A full CJK font doesn't
 fit; rasterizing on the device is possible but expensive. On the other hand,
 WaniKani content can't be distributed with the firmware.
 

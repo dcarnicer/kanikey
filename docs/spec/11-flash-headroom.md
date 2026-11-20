@@ -1,17 +1,18 @@
 # Flash headroom
 
-Status: **spike results, 2026-11-20.** FLASH-01 (attribution and the `fs`
-probe) is done from builds. FLASH-02 has one trim applied and measured. FLASH-03
-is a proposal with a go/no-go; **the partition table is not changed here**. No
-device was used: every figure is either a build measurement (**M**) or an
-estimate from code constants or arithmetic (**E**). The hardware checks are in
-§7.
+Status: **spike results, 2026-11-20; FLASH-02 and FLASH-03 implemented the
+same day.** FLASH-01 (attribution and the `fs` probe) is done from builds.
+FLASH-02 applies the `sscanf` trim and the release log level. FLASH-03 is
+implemented as option (c) with no migration (owner decision, §8); it is not
+hardware-tested yet. No device was used for the figures below: every figure is
+either a build measurement (**M**) or an estimate from code constants or
+arithmetic (**E**). The hardware checks are in §7.
 
 | ID | What | Status | Result |
 |---|---|---|---|
-| FLASH-01 | Attribution of the release, dev and PaperDIY images; `fs` probe | done (build) | Release 1,712,269 B at baseline; ours is 27.4% of it; the WiFi/lwIP, ESP-IDF, mbedTLS and M5GFX blocks are 53% (M). Dev-only code is 32.1 KB (M). LittleFS state caps sum to about 352 KB (E). `fs` added (dev only). |
-| FLASH-02 | Behaviour-neutral trims | 1 applied, 3 measured and held back | `sscanf` removed from ISO-8601 parsing: **−9,708 B** release (M), native test vs sscanf passes. `CORE_DEBUG_LEVEL=0` would save 38,188 B (M) but drops library diagnostics: not applied. |
-| FLASH-03 | 8 MB partition change | proposal; **no-go for the USB table flip now** | The round's ≤250 KB budget does not fit the 132 KB left in the legacy slot after trims (M). Recommend 2 × 0x240000 slots with a state migration through SD; do not flash until the migration is tested on hardware. |
+| FLASH-01 | Attribution of the release, dev and PaperDIY images; `fs` probe | done (build; `fs` on hardware) | Release 1,712,269 B at baseline; ours is 27.4% of it; the WiFi/lwIP, ESP-IDF, mbedTLS and M5GFX blocks are 53% (M). Dev-only code is 32.1 KB (M). `fs` on hardware: 94,208 B used of 4,653,056 B (§2.7). `fs` added (dev only). |
+| FLASH-02 | Behaviour-neutral trims | **applied: `sscanf` removal and `CORE_DEBUG_LEVEL=0` for `cardputer-adv` (release) only** (2026-11-20); 2 held back | `sscanf` removed from ISO-8601 parsing: **−9,708 B** release (M), native test vs sscanf passes. `CORE_DEBUG_LEVEL=0` on the release saves 38,188 B (M): release 1,664,373 B now; dev, badapi keep level 1 (§8). `-fno-threadsafe-statics` and the other rows are still held back. |
+| FLASH-03 | 8 MB partition change | **implemented 2026-11-20, hardware pending** (option c: 2 × 3 MiB, LittleFS 1.94 MiB; no migration) | Table in §8. Build: release 1,664,373 B of 3,145,728 B (52.9%). Hardware checks in §7 (OTA into the 3 MiB slot, LittleFS format/mount time, `fs`, the FIX-21 prompt after the table move). |
 
 ## 1. Baseline and method
 
@@ -242,7 +243,7 @@ offsets apply to both layouts. The slots must be 64 KiB-aligned.
 | (b1) 2 × 2 MiB | 0x10000–0x210000 | 0x210000–0x410000 | 0x410000–0x800000 | 2,097,152 | 4,128,768 | +138,591 B |
 | **(b2) 2 × 2.25 MiB** | 0x10000–0x250000 | 0x250000–0x490000 | 0x490000–0x800000 | 2,359,296 | **3,604,480** | +400,735 B |
 | (b3) 2 × 2.5 MiB | 0x10000–0x290000 | 0x290000–0x510000 | 0x510000–0x800000 | 2,621,440 | 3,080,192 | +662,879 B |
-| (c) 2 × 3 MiB | 0x10000–0x310000 | 0x310000–0x610000 | 0x610000–0x800000 | 3,145,728 | 1,998,848 | +1,187,167 B |
+| (c) 2 × 3 MiB | 0x10000–0x310000 | 0x310000–0x610000 | 0x610000–0x800000 | 3,145,728 | 2,031,616 | +1,187,167 B |
 
 The "headroom" column assumes the round adds 250 KB (256,000 B) to the release
 image. The LittleFS column is what remains after each change. Against the
@@ -250,6 +251,12 @@ steady-state sum of 352,448 B and the transient peak of about 0.8 MB (§2.7),
 every option except (a) has room; LittleFS is not the constraint.
 
 ### 5.2 Recommendation and go/no-go
+
+> **Outcome (2026-11-20):** the owner chose option (c), 2 × 3 MiB, and no
+> migration: there are no users yet. The table is in §8. The (b2) recommendation
+> and the migration plan in §5.4 below are kept as the record of the options
+> considered, but they are not being built. (c) also corrects the LittleFS column:
+> 0x800000 − 0x610000 = 2,031,616 B, not 1,998,848 B.
 
 - **Recommend (b2): 2 × 0x240000 slots, LittleFS 3,604,480 B.** It gives the
   round room and leaves 10× the state caps for LittleFS. (b1) is the minimum
@@ -414,3 +421,83 @@ Map and symbol analysis: the espressif32 build writes
 by archive and by `src/<dir>/`; use `xtensa-esp32s3-elf-nm --size-sort -C -S` for
 the symbol list. The scripts used for this spike were throwaway and are not
 committed.
+
+## 8. FLASH-02 and FLASH-03 as built (2026-11-20)
+
+Decision of record (owner, 2026-11-20, `docs/decisions.md`): no users yet, so no
+migration, no bridge release and no old-table compatibility. The option is (c).
+§5.4 (the SD migration) and the second `app` row (§5.5) are **not built**.
+
+Table, `firmware/partitions/kanikey_8MB.csv` (labels unchanged; `nvs` and
+`otadata` offsets unchanged, so NVS survives a USB upload):
+
+| Name | Type | Offset | Size |
+|---|---|---:|---:|
+| `nvs` | data nvs | 0x9000 | 0x5000 |
+| `otadata` | data ota | 0xE000 | 0x2000 |
+| `app0` | app ota_0 | 0x10000 | 0x300000 (3,145,728 B) |
+| `app1` | app ota_1 | 0x310000 | 0x300000 (3,145,728 B) |
+| `spiffs` | LittleFS | 0x610000 | 0x1F0000 (2,031,616 B) |
+
+Trims: `CORE_DEBUG_LEVEL=0` for `cardputer-adv` only. `cardputer-adv-dev` and
+`cardputer-adv-badapi` set `-DCORE_DEBUG_LEVEL=1` and remove the inherited `0`
+with `build_unflags`. Verified from the compile line of `src/platform/Ota.cpp.o`
+(one define each). A `-U` flag was tried first and was wrong: it landed after
+the `-D` list and undefined the macro.
+
+Build, clean or incremental, (M):
+
+| Env | Flash used | Of 3,145,728 B | Of old 1,835,008 B | RAM |
+|---|---:|---:|---:|---:|
+| `cardputer-adv` (release) | 1,664,373 B | 52.9% | 90.7% | 105,536 B (32.2%) |
+| `cardputer-adv-dev` | 1,735,633 B | 55.2% | 94.6% | 105,912 B (32.3%) |
+| `cardputer-adv-badapi` | 1,728,969 B | 55.0% | 94.2% | 73,128 B (22.3%) |
+| `paperdiy` | 1,730,945 B of 6,291,456 B | 27.5% (own table) | n/a | 105,968 B |
+
+The release `firmware.bin` file is 1,664,816 B (the image the manifest publishes).
+The badapi RAM is 32 KB lower than dev because under `KANIKEY_DEV_FAIL_API` the
+request function returns before its 32 KB body buffer is used, so the linker
+drops it (`src/platform/WkClient.cpp`). That is expected for a test image.
+
+Code that follows the table (no change needed for the offsets):
+- `Ota.cpp` `layoutIsOurs()`, `slotBytes()` and the `TooLarge` check read the
+  running table, so the slot is 3 MiB without edits. Not compiled in the native
+  tests; checked by reading and by the device check below.
+- `tools/release/firmware_manifest.py` reads the slot from the CSV and refuses an
+  image over it. `test_partition_table_layout` locks the offsets. The release
+  image passes the builder at 3 MiB (`v0.1.0` manifest written in a temp
+  directory).
+- `.github/workflows/release.yml` needs no change: it builds `cardputer-adv` and
+  calls the manifest builder with the default CSV.
+
+Developer move from the old table: `docs/setup.md` §7.3.
+
+### Hardware checks (for the parent; none run here)
+
+1. **Move** a device on the old table: erase the new LittleFS region, then
+   `pio run -e cardputer-adv-dev -t upload` (`docs/setup.md` §7.3). Check that the
+   token and Wi-Fi are still set (NVS survived), and that the device boots to
+   `Storage unreadable` with `Enter: format  Esc: continue`.
+2. **Format:** press `Enter`; time it and the first mount after the reboot
+   (boot to Home). Record the time, since the 1.94 MiB format time is still open.
+3. **`fs`** (dev image): total must read `4,653,056` → `2,031,616` B; `/state`
+   must be empty after the format.
+4. **Skipped erase:** on a second device (or after a fresh erase), flash without
+   step 1 and record what the first boot shows. The expected result is the same
+   prompt; anything else is a finding.
+5. **OTA into the 3 MiB slot:** serve the badapi image (version 0.1.2, the
+   only build with a version above the running 0.1.0) with
+   `python3 tools/ota_local.py --bin firmware/.pio/build/cardputer-adv-badapi/firmware.bin
+   --version v0.1.2 --port 8080`, then `F` and `I` on the device. The version
+   must match the image, and the dev and release images are both 0.1.0, so they
+   cannot be used for this step. The log should name the next slot (`app1` on a
+   device running `app0`). The badapi image fails every WaniKani request, so
+   judge the install by the log and the version after reset, not by sync. Its
+   size is 1,728,969 B, which is inside the slot. Refusal of an oversize image
+   (`too large`) is checked by the manifest test; the device path is
+   `Ota.cpp` `app.bytes > slotBytes()`.
+6. **OTA from the old table:** an old-table device (1.75 MiB slot) takes the new
+   image and keeps its LittleFS state (outbox count, journal). Rollback is
+   unchanged (FIX-20 procedure).
+7. **FIX-21 prompt** after a corrupt LittleFS on the new layout: `Esc` keeps the
+   files, `Enter` formats (as before at `0x610000`).

@@ -49,8 +49,9 @@ Every task must respect these. A task that cannot should stop and report why.
   handshake needs one large contiguous block (~40 KB). The 8-bit canvas
   (32,400 B) is released around each request (`gFreeCanvasForRequest`) for that
   reason. New features must not keep large buffers alive across network calls.
-- Flash: the app slot is 1,835,008 B and the release image is ~1.46 MB
-  (79.6%). Budget for this whole round: **≤ 250 KB** of extra flash. Any task
+- Flash: since 2026-11-20 the app slot is 3,145,728 B (8 MB table; it was
+  1,835,008 B) and the release image is 1,664,816 B (52.9%). Budget for this
+  whole round: **≤ 250 KB** of extra flash. Any task
   adding a library must state its flash and RAM cost.
 - Display 240×135, RGB332 canvas. Colours come from `firmware/src/ui/Theme.h`;
   do not add colours outside it without updating it.

@@ -9,6 +9,7 @@
 #include <SPI.h>
 #include <WiFi.h>
 #include <esp_heap_caps.h>
+#include <esp_partition.h>
 #include <LittleFS.h>
 #include <esp_system.h>
 #include <time.h>
@@ -1155,6 +1156,22 @@ bool answerFieldActive() {
     return false;
 }
 
+// FLASH-03: true when the LittleFS (`spiffs`) partition's first two 4 KB
+// blocks (where LittleFS keeps its superblock pair) are fully erased, i.e. the
+// partition was never formatted. Read in small chunks to keep the stack low.
+bool littleFsPartitionErased() {
+    const esp_partition_t* part = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "spiffs");
+    if (!part || part->size < 8192) return false;
+    uint8_t buf[256];
+    for (uint32_t off = 0; off < 8192; off += sizeof buf) {
+        if (esp_partition_read(part, off, buf, sizeof buf) != ESP_OK) return false;
+        for (uint8_t b : buf)
+            if (b != 0xFF) return false;
+    }
+    return true;
+}
+
 }  // namespace
 
 void setup() {
@@ -1208,6 +1225,16 @@ void setup() {
     // Mount without formatting first: a failed mount must not wipe unsent
     // reviews. The format choice is explicit on the storage prompt.
     state().storage.gFsOk = LittleFS.begin(false);
+    if (!state().storage.gFsOk && littleFsPartitionErased()) {
+        // A never-used (erased) partition holds no reviews: a fresh install or
+        // the FLASH-03 table move. Format it without the "Storage unreadable"
+        // prompt, which is only for data that exists but cannot be read.
+        const uint32_t t0 = millis();
+        state().storage.gFsOk = LittleFS.begin(true);
+        Serial.printf("[kk] LittleFS was blank: formatted %s in %lu ms\n",
+                      state().storage.gFsOk ? "ok" : "FAILED",
+                      static_cast<unsigned long>(millis() - t0));
+    }
     if (state().storage.gFsOk) {
         kk::outboxLoad(state().outbox.gOutbox);
         Serial.printf("[outbox] pending %u\n",
