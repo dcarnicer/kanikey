@@ -54,6 +54,19 @@ inline bool hasKeyboard() { return false; }
 inline bool nextKeyEvent(KeyEvent*) { return false; }
 #endif
 
+// PD-03: true when the board's only input is its buttons, so the app shows
+// button hints and keeps to the read-only scope (no review, quiz, start or
+// text entry). Compile-time on the PaperDIY (true) and the Cardputer ADV
+// (false), so the Cardputer image drops the button paths; the M5 image asks
+// the board it found at boot.
+#if defined(TGC_BOARD_PAPERDIY)
+constexpr bool buttonsOnly() { return true; }
+#elif defined(TGC_BOARD_CARDPUTER_ADV)
+constexpr bool buttonsOnly() { return false; }
+#else
+inline bool buttonsOnly() { return !hasKeyboard(); }
+#endif
+
 // --- microSD slot --------------------------------------------------------------
 // The SPI pins of the board's microSD slot (docs/microsd.md §1), -1 for none.
 // The card has a bus of its own, SPI2 (an SPIClass on FSPI in mountSd()),
@@ -122,10 +135,13 @@ void setBrightness(uint8_t level);
 // Plays a short test tone through the ES8311. Returns false when the speaker is
 // not available in this build (PaperDIY has none).
 bool playTone(uint16_t frequency, uint16_t durationMs, uint8_t volume = 128);
+// Stops every tone and clip the speaker is playing. Returns at once (the
+// speaker task is told, not waited for). REM-03 cues and AUD-03 clips use it.
+void speakerStop();
 
 // --- Power -----------------------------------------------------------------
 // True when this boot is a wake-up from deepSleep() rather than a power-on or
-// a reset.
+// a reset: the key wake (EXT1) or the timer armed by deepSleep(timerUs) (REM-02).
 bool wokeFromSleep();
 // True when USB/external power is present; false if unknown. The app then only
 // blanks the panel when idle instead of sleeping (keeps the serial port up).

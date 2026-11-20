@@ -779,6 +779,18 @@ it, and a cache older than 24 h is shown as stale.
 
 ---
 
+### 7.3 Reminder timer wake (REM-02, 2026-11-20)
+
+- A reminder timer wake reads only the cached `summary` (the table above).
+  It makes no request: no Wi-Fi join, no TLS, no `/summary` call. The banner
+  and the next wake come from the cache and the device clock.
+- The clock across deep sleep is kept in RTC memory: the UTC time when the
+  device armed the timer and `rtcMicros()` at that moment. A timer wake
+  rebuilds `now` from those two values, and never reads `time()` before SNTP
+  has set it. With no trusted clock at arm time, no timer is armed.
+- A key during the banner continues the normal boot, which then runs the
+  usual quick sync (§5.3); the reminder path itself never syncs.
+
 ## 8. Streaming JSON parser
 
 The API returns pages of up to 1,000 subjects; a DOM does not fit. Design:

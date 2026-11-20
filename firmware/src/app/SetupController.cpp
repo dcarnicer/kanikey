@@ -4,6 +4,8 @@
 #include <SD.h>
 #include <SPI.h>
 #include <WiFi.h>
+
+#include "app/AppUi.h"
 #include <esp_heap_caps.h>
 #include <esp_system.h>
 #include <time.h>
@@ -598,7 +600,11 @@ void retryBoot() {
         return;
     }
     if (!kk::DevWifi::hasSaved()) {
-        openWifiSetup(WifiSetupOrigin::Boot);
+        // PD-03: the on-device scan list needs a password; the portal does not.
+        if (tgc::board::buttonsOnly())
+            startSetupPortal();
+        else
+            openWifiSetup(WifiSetupOrigin::Boot);
         return;
     }
     if (!state().storage.gSdOk) {

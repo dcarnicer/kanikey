@@ -2,6 +2,7 @@
 // password is kept in RAM only, and DevWifi's non-saving join runs before the
 // credentials are written. The phone portal remains the token/time path.
 #include "app/WifiSetupController.h"
+#include "app/AppUi.h"
 
 #include <Arduino.h>
 
@@ -209,6 +210,12 @@ char fieldChar(const KeyEvent& e) {
 void openWifiSetup(WifiSetupOrigin origin) {
     WifiState& wifi = state().wifi;
     if (wifi.gWifiActive) return;
+    // PD-03: the scan list ends in a password. A two-button board does Wi-Fi
+    // through the Setup portal instead.
+    if (tgc::board::buttonsOnly()) {
+        needsKeyboardNotice("Wi-Fi entry needs a keyboard");
+        return;
+    }
     clearPassword(wifi);
     wifi.gWifiActive = true;
     wifi.gWifiOrigin = origin;

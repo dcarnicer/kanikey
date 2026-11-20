@@ -4,6 +4,7 @@
 
 #include <cstdio>
 
+#include "app/ButtonHint.h"
 #include "ui/HintBar.h"
 #include "ui/Icons.h"
 #include "ui/ListView.h"
@@ -78,7 +79,7 @@ void drawOutboxScreen(lgfx::LovyanGFX& d, const OutboxView& view) {
         d.setTextFont(1);
         d.setTextColor(ui::kDim, ui::kBg);
         d.drawString("No reviews need attention", 8, 52);
-        ui::drawHintLeft(d, "Esc: back", ui::kFaint, 8, 124);
+        ui::drawHintLeft(d, pickHint("Esc: back", "B: back"), ui::kFaint, 8, 124);
         return;
     }
 
@@ -105,7 +106,8 @@ void drawOutboxScreen(lgfx::LovyanGFX& d, const OutboxView& view) {
             d.drawString(view.note.c_str(), 8, 112);
         }
 
-        ui::drawHintLeft(d, "Enter: discard  Esc: cancel", ui::kFaint, 8, 124);
+        ui::drawHintLeft(d, pickHint("Enter: discard  Esc: cancel", "hold A: discard  B: cancel"),
+                         ui::kFaint, 8, 124);
         return;
     }
 
@@ -128,7 +130,10 @@ void drawOutboxScreen(lgfx::LovyanGFX& d, const OutboxView& view) {
         d.setTextColor(ui::kErr, ui::kBg);
         d.drawString(view.note.c_str(), 8, 112);
     }
-    ui::drawHintLeft(d, "Enter: review  D: discard  Esc: back", ui::kFaint, 8, 124);
+    ui::drawHintLeft(d,
+                     pickHint("Enter: review  D: discard  Esc: back",
+                              "A: next  hold A: open  B: back"),
+                     ui::kFaint, 8, 124);
 }
 
 }  // namespace kk::app

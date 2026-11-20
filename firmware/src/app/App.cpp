@@ -54,12 +54,18 @@
 #include "platform/DevToken.h"
 #include "platform/DevWifi.h"
 #include "app/RemProbe.h"
+#include "app/ReminderController.h"
+#if defined(TGC_BOARD_PAPERDIY)
+#include "app/CadenceController.h"
+#include "wk/SyncSteps.h"
+#endif
 #include "platform/AudioCache.h"
 #include "platform/CriticalStore.h"
 #include "platform/GlyphPack.h"
 #include "platform/JournalStore.h"
 #include "platform/PracticeStore.h"
 #include "platform/SetupPortal.h"
+#include "platform/Sound.h"
 #include "platform/SubjectCatalog.h"
 #include "platform/WkProbe.h"
 #include "platform/WkReviewStatistics.h"
@@ -160,6 +166,21 @@ void lowBatteryKey(const KeyEvent& e) {
             state().screen.screen = Screen::Home;
         state().display.gDirty = true;
     }
+}
+
+// PD-03: Home on a two-button board is a focus ring over its read-only
+// destinations. Reviews are not a target (they need a keyboard); their count
+// stays on the screen.
+void homeFocusOpen() {
+    switch (state().ui.gHomeFocus % 4) {
+        case 0: startLessons(); break;
+        case 1: openStats(); break;
+        case 2:
+            if (!state().sync.gSyncing) startSync();
+            break;
+        default: openSettings(); break;
+    }
+    state().display.gDirty = true;
 }
 
 void onKeyImpl(const KeyEvent& e) {
@@ -333,6 +354,18 @@ void onKeyImpl(const KeyEvent& e) {
         openSettings();
         return;
     }
+    if (e.down && underBase == Screen::Home && tgc::board::buttonsOnly()) {
+        if (e.key == Key::Down || e.key == Key::Up) {
+            state().ui.gHomeFocus = static_cast<uint8_t>(
+                e.key == Key::Down ? (state().ui.gHomeFocus + 1) % 4 : (state().ui.gHomeFocus + 3) % 4);
+            state().display.gDirty = true;
+            return;
+        }
+        if (e.key == Key::Enter) {
+            homeFocusOpen();
+            return;
+        }
+    }
     if (e.down && e.key == Key::Enter) {
         if (underBase == Screen::Home && state().session.gHaveSummary) {
             if (state().session.gSummary.dueReviews(effectiveNow()) == 0) {
@@ -422,6 +455,10 @@ void onKeyImpl(const KeyEvent& e) {
                   c ? cs : "-", state().ui.gShift, state().ui.gFn, state().ui.gCtrl, state().ui.gOpt, state().ui.gAlt);
 }
 
+// REM-02: the due count of the banner that is on screen; 0 when none is.
+uint32_t gReminderBannerDue = 0;
+constexpr uint32_t kReminderBannerMs = 30000;
+
 kk::app::HomeView buildHomeView() {
     kk::app::HomeView view;
     view.batteryPercent = tgc::board::batteryPercent();
@@ -431,6 +468,11 @@ kk::app::HomeView buildHomeView() {
     view.dueReviews = state().session.gDueReviews;
     view.lessons = state().session.gLessons;
     view.nextReview = state().session.gNextReview;
+    if (gReminderBannerDue) {
+        view.reminderActive = true;
+        snprintf(view.reminder, sizeof view.reminder, "%u %s ready",
+                 static_cast<unsigned>(gReminderBannerDue), gReminderBannerDue == 1 ? "review" : "reviews");
+    }
     view.syncClock = state().session.gSyncClock;
     const SyncJobState& job = state().sync.gSyncJob;
     if (job.active && !job.modal) {
@@ -443,6 +485,8 @@ kk::app::HomeView buildHomeView() {
     view.outboxPending = static_cast<uint32_t>(kk::outboxPendingCount(state().outbox.gOutbox));
     // "Nearly full" starts at 96 of 128 slots; every state occupies a slot.
     view.outboxNearlyFull = state().outbox.gOutbox.size() >= (kk::kOutboxMax * 3u) / 4u;
+    view.buttonMenu = tgc::board::buttonsOnly();
+    view.focus = static_cast<uint8_t>(state().ui.gHomeFocus % 4);
 
     // Status priority: API/auth, outbox, offline cache, then notices.
     if (state().sync.gSyncIssue == SyncIssue::Auth) {
@@ -505,6 +549,175 @@ void drawHome() {
     present();
 }
 
+#if defined(TGC_BOARD_PAPERDIY)
+// PD-04: the sleeping frame is the Home frame with the sleep state in place of
+// the status line and the hint. The battery is the header's percentage and the
+// charging state is text. A full refresh is the frame that stays on the dark
+// panel; a cadence wake takes the PD-02 policy (fullRefresh false).
+void drawSleepingFrame(bool fullRefresh) {
+    if (!state().display.gDisp) return;
+    kk::app::HomeView view = buildHomeView();
+    view.asleep = true;
+    // A sync or battery problem keeps its own status line.
+    if (view.statusColor != kErr && view.statusColor != kWarn) {
+        snprintf(view.statusText, sizeof view.statusText, "%s",
+                 tgc::board::isCharging() ? "Asleep: charging" : "Asleep: on battery");
+        view.statusColor = kFaint;
+        view.levelUp = false;
+    }
+    tgc::board::setDisplayOn(true);  // the boost for this frame; deepSleep() turns it off
+    auto& d = target();
+    d.startWrite();
+    kk::app::drawHomeScreen(d, view);
+    d.endWrite();
+    if (fullRefresh)
+        presentFullNow();
+    else
+        presentNow();
+    state().display.gDisp->waitDisplay();
+}
+
+// PD-04: a button is down, or was pressed since the sync started.
+bool buttonsActive() {
+    using tgc::board::Button;
+    return tgc::board::wasPressed(Button::Select) || tgc::board::wasPressed(Button::Next) ||
+           tgc::board::isHeld(Button::Select) || tgc::board::isHeld(Button::Next);
+}
+#endif
+
+// REM-02: the reminder timer woke the chip. No Wi-Fi and no TLS: the cached
+// summary decides, and `now` is the clock rebuilt from the RTC (never time()).
+// A reminder due shows the banner for 30 s; a key in that window returns, and
+// the normal boot goes on. Otherwise the next wake is armed and the chip sleeps
+// again, the panel dark. No cached summary: no banner, the same sleep.
+void reminderTimerWake(uint32_t now) {
+    const bool haveCache = loadCache();
+    const kk::Summary* forecast = haveCache ? &state().session.gSummary : nullptr;
+    const uint32_t due = haveCache ? state().session.gSummary.dueReviews(now) : 0;
+    const bool banner = haveCache && kk::app::reminderBannerWanted(due, now);
+#ifdef KANIKEY_DEV
+    Serial.printf("[rem] timer wake: due %u, banner %s\n", static_cast<unsigned>(due),
+                  banner ? "yes" : "no");
+#endif
+    if (!banner) {
+        firmwareBeforeSleep();
+        tgc::board::deepSleep(kk::app::reminderArmAfterWake(now, forecast));
+    }
+    applySummary(now);
+    gReminderBannerDue = due;
+    kk::app::reminderNoteFired(now);
+    drawHome();
+    tgc::board::setBrightness(kk::settingsBrightness());
+    // REM-03: the reminder chime (M4) as the banner appears. loop() does not run
+    // in this wait, so the banner loop below advances the chime itself.
+    kk::sound::soundCue(kk::SoundCue::ReminderChime, 0, state().sync.gSyncing,
+                        state().setup.gSetupPortal.active());
+
+    const uint32_t shownAt = millis();
+    bool key = false;
+    while (!key && millis() - shownAt < kReminderBannerMs) {
+        tgc::board::update();
+        KeyEvent e;
+        while (tgc::board::nextKeyEvent(&e))
+            if (e.down && e.key != Key::None) key = true;
+        if (tgc::board::wasPressed(tgc::board::Button::Select)) key = true;
+        kk::sound::soundTick(millis());
+        if (!key) delay(10);
+    }
+    gReminderBannerDue = 0;
+    kk::sound::soundStop();  // a key or the expiry ends the chime before sleep or boot
+    if (key) {
+#ifdef KANIKEY_DEV
+        Serial.println("[rem] key during the banner: normal boot");
+#endif
+        return;
+    }
+    const uint32_t after = now + static_cast<uint32_t>((millis() - shownAt + 999u) / 1000u);
+    firmwareBeforeSleep();
+#if defined(TGC_BOARD_PAPERDIY)
+    drawSleepingFrame(true);  // PD-04: the banner gives way to the sleeping frame
+#endif
+    tgc::board::deepSleep(kk::app::reminderArmAfterWake(after, forecast));
+}
+
+#if defined(TGC_BOARD_PAPERDIY)
+// PD-04: a sync wake, the cadence's. The Quick job runs in the background: no
+// screen and no key. The panel changes only when the numbers did (the PD-02
+// policy), then the device sleeps again, unless a button is down or was pressed
+// (the normal boot takes that). Returns false when the normal boot must go on;
+// true when the job ran and the caller goes on (`sleepWhenDone` false, a reminder
+// is due too). With sleepWhenDone it does not return: it sleeps.
+constexpr uint32_t kCadenceSyncMaxMs = 150000;
+
+bool cadenceSyncWake(uint32_t now, bool sleepWhenDone) {
+    if (!loadCache()) {
+#ifdef KANIKEY_DEV
+        Serial.println("[pd] cadence wake: no cache; normal boot");
+#endif
+        return false;
+    }
+    // The Home numbers as they stand now, on the clock rebuilt from the RTC.
+    applySummary(now);
+    const uint32_t dueBefore = state().session.gDueReviews;
+    const uint32_t lessonsBefore = state().session.gLessons;
+    char nextBefore[sizeof state().session.gNextReview];
+    std::memcpy(nextBefore, state().session.gNextReview, sizeof nextBefore);
+
+    kk::app::startSyncAuto(kk::SyncKind::Quick, false);
+    if (!state().sync.gSyncJob.active) {
+#ifdef KANIKEY_DEV
+        Serial.println("[pd] cadence wake: sync not started; normal boot");
+#endif
+        return false;
+    }
+    bool pressed = false;
+    const uint32_t startedMs = millis();
+    while (state().sync.gSyncJob.active && millis() - startedMs < kCadenceSyncMaxMs) {
+        tgc::board::update();
+        pressed = pressed || buttonsActive();
+        syncAdvance();
+        delay(4);
+    }
+    const bool ok = !state().sync.gSyncJob.active && state().sync.gSyncJob.step == kk::SyncStep::Done;
+    const uint32_t nowAfter = now + (millis() + 999u) / 1000u;
+    cadenceNoteSync(ok, nowAfter);
+    applySummary(nowAfter);
+    const bool redraw = dueBefore != state().session.gDueReviews ||
+                        lessonsBefore != state().session.gLessons ||
+                        std::strcmp(nextBefore, state().session.gNextReview) != 0;
+    if (redraw) drawSleepingFrame(false);
+    tgc::board::update();
+    pressed = pressed || buttonsActive();
+#ifdef KANIKEY_DEV
+    Serial.printf("[pd] cadence wake: sync %s, redraw %s, awake %lu ms\n", ok ? "ok" : "fail",
+                  redraw ? "yes" : "no", static_cast<unsigned long>(millis()));
+#endif
+    if (pressed) return false;
+    if (!sleepWhenDone) return true;
+    firmwareBeforeSleep();
+    tgc::board::deepSleep(kk::app::reminderArmAfterWake(
+        nowAfter, state().session.gHaveSummary ? &state().session.gSummary : nullptr));
+}
+
+// PD-04: a timer wake on the PaperDIY. The one timer may be the sync cadence, the
+// reminder or both. A wake that serves neither (an early RTC) keeps the cadence
+// target and sleeps again.
+void paperTimerWake(uint32_t now) {
+    const bool cadence = kk::app::bootCadenceDue(now);
+    const bool reminder = kk::app::bootReminderDue(now);
+    if (cadence && !cadenceSyncWake(now, !reminder)) return;  // the normal boot
+    if (reminder) {
+        reminderTimerWake(now);  // the banner, or it sleeps again
+        return;
+    }
+    if (cadence) return;  // not reached: a sync with sleepWhenDone sleeps or returns false
+    loadCache();
+    firmwareBeforeSleep();
+    tgc::board::deepSleep(kk::app::reminderArmAfterWake(
+        now, state().session.gHaveSummary ? &state().session.gSummary : nullptr));
+}
+#endif
+
 enum class BootState : uint8_t {
     NoSd,
     NoPack,
@@ -549,31 +762,31 @@ void drawBoot() {
             title = "No SD card";
             line1 = "Insert a FAT32 card with";
             line2 = "/kanikey/glyphs.kgp";
-            action = "Enter: retry";
+            action = pickHint("Enter: retry", "hold A: retry");
             break;
         case BootState::NoPack:
             title = "Pack missing";
-            line1 = "Press Enter to download it";
+            line1 = pickHint("Press Enter to download it", "Hold A to download it");
             line2 = "from the setup page";
-            action = "Enter: setup";
+            action = pickHint("Enter: setup", "hold A: setup");
             break;
         case BootState::NoToken:
             title = "Token needed";
-            line1 = "Press Enter for setup";
+            line1 = pickHint("Press Enter for setup", "Hold A for setup");
             line2 = "Wi-Fi and token from your phone";
-            action = "Enter: setup";
+            action = pickHint("Enter: setup", "hold A: setup");
             break;
         case BootState::NoWifi:
             title = "Wi-Fi needed";
-            line1 = "Set up a 2.4 GHz network here";
-            line2 = "or press P for the phone portal";
-            action = "Enter: on-device  P: phone";
+            line1 = pickHint("Set up a 2.4 GHz network here", "Set up Wi-Fi with a phone");
+            line2 = pickHint("or press P for the phone portal", "then open the setup page");
+            action = pickHint("Enter: on-device  P: phone", "hold A: setup");
             break;
         case BootState::NotSynced:
             title = "Not synced";
             line1 = state().ui.gNetLine;
-            line2 = "Press Enter to sync";
-            action = "Enter: sync";
+            line2 = pickHint("Press Enter to sync", "Hold A to sync");
+            action = pickHint("Enter: sync", "hold A: sync");
             break;
         case BootState::Syncing:
             title = "Syncing...";
@@ -584,14 +797,14 @@ void drawBoot() {
         case BootState::AuthError:
             title = "Token rejected";
             line1 = "The WaniKani token is invalid";
-            line2 = "Press Enter to open setup";
-            action = "Enter: setup";
+            line2 = pickHint("Press Enter to open setup", "Hold A to open setup");
+            action = pickHint("Enter: setup", "hold A: setup");
             break;
         case BootState::Forbidden:
             title = "Missing permissions";
             line1 = "Edit the token in WaniKani";
-            line2 = "Press Enter to open setup";
-            action = "Enter: setup";
+            line2 = pickHint("Press Enter to open setup", "Hold A to open setup");
+            action = pickHint("Enter: setup", "hold A: setup");
             break;
         case BootState::RateLimited: {
             const uint32_t wait = kk::wkRateLimitWaitSeconds();
@@ -599,29 +812,30 @@ void drawBoot() {
                 snprintf(retryLine, sizeof retryLine, "Retry in %us",
                          static_cast<unsigned>(wait));
             else
-                snprintf(retryLine, sizeof retryLine, "Press Enter to retry");
+                snprintf(retryLine, sizeof retryLine, "%s",
+                         pickHint("Press Enter to retry", "Hold A to retry"));
             title = "Rate limited";
             line1 = "WaniKani asked KaniKey to wait";
             line2 = retryLine;
-            action = "Enter: retry";
+            action = pickHint("Enter: retry", "hold A: retry");
             break;
         }
         case BootState::ServerError:
             title = "WaniKani error";
             line1 = state().ui.gNetLine;
-            line2 = "Press Enter to retry";
-            action = "Enter: retry";
+            line2 = pickHint("Press Enter to retry", "Hold A to retry");
+            action = pickHint("Enter: retry", "hold A: retry");
             break;
         case BootState::Failed:
             title = "Sync failed";
             line1 = state().ui.gNetLine;
             line2 = "Check Wi-Fi and token";
-            action = "Enter: retry";
+            action = pickHint("Enter: retry", "hold A: retry");
             break;
         case BootState::Ready:
             title = "Ready";
-            line1 = "Press Enter to open Home";
-            action = "Enter: home";
+            line1 = pickHint("Press Enter to open Home", "Hold A to open Home");
+            action = pickHint("Enter: home", "hold A: home");
             break;
     }
 
@@ -865,6 +1079,16 @@ bool homeOwnsScreen() {
 
 }
 
+#if defined(TGC_BOARD_PAPERDIY)
+// PD-04: the idle deep sleep. The sleeping frame is drawn before the timer is
+// armed, so the timer and the RTC clock record are taken just before the sleep.
+uint64_t paperIdleSleep(const kk::Summary* summary) {
+    applySummary(effectiveNow());  // a review may have come due since the last minute tick
+    drawSleepingFrame(true);
+    return reminderArmIdle(summary);
+}
+#endif
+
 // ONB-01: the visual packs are two files. Open the font first: the radical
 // fallback checks whether glyphs.kgp is a legacy combined pack.
 bool openFontPack(bool checkCrc) {
@@ -930,12 +1154,19 @@ void setup() {
     Serial.begin(115200);
     delay(250);
 
+    // REM-02: the reminder's own timer wake is read first. Its time comes from
+    // the RTC, so nothing here touches time() or the radio.
+    uint32_t reminderNow = 0;
+    const bool reminderTimer = kk::app::reminderBootWake(&reminderNow);
+    const bool timerWake = tgc::board::wokeFromTimer();
+
     tgc::board::begin();
     state().display.gDisp = &tgc::board::display();
     // Landscape is board-specific (Cardputer ADV rotation 0, PaperDIY 1); the
-    // board owns it, so a new panel cannot be left portrait here.
+    // board owns it, so a new panel cannot be left portrait here. A timer wake
+    // keeps the panel dark until the reminder decides (see below).
     tgc::board::setOrientation(true);
-    tgc::board::setBrightness(kk::settingsBrightness());
+    if (!timerWake) tgc::board::setBrightness(kk::settingsBrightness());
     kk::settingsApplyTimeZone();
 
     ensureCanvas();
@@ -984,6 +1215,21 @@ void setup() {
     // player opens the account's audio cache lazily on the first hint/play.
     audioBegin();
     if (state().storage.gSdOk) openGlyphPacks();
+    if (timerWake) {
+        // REM-02: a reminder timer may show the banner or sleep again here,
+        // before the first draw and before any Wi-Fi. Returns only when the
+        // normal boot goes on (a key during the banner, or no reminder timer).
+        // PD-04: on the PaperDIY the timer may also be the sync cadence, which
+        // syncs and sleeps the same way (paperTimerWake).
+        if (reminderTimer) {
+#if defined(TGC_BOARD_PAPERDIY)
+            paperTimerWake(reminderNow);
+#else
+            reminderTimerWake(reminderNow);
+#endif
+        }
+        tgc::board::setBrightness(kk::settingsBrightness());
+    }
     if (state().storage.gFsFormatPrompt) {
         state().ui.gLastInputAt = millis();
         state().display.gDirty = true;
@@ -1009,6 +1255,9 @@ void setup() {
 
 void loop() {
     tgc::board::update();
+    // REM-03: advances a running sound cue. Before any early return below, so a
+    // cue finishes even while the panel is blank.
+    kk::sound::soundTick(millis());
     handleSerial();
     // The portal closes itself after 15 idle minutes; leave Screen::Setup set
     // until here so the hooks can keep their own messages.

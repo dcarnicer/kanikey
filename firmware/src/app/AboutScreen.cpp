@@ -2,6 +2,7 @@
 // startWrite()/endWrite() (the caller owns the transfer window).
 #include "app/AboutScreen.h"
 
+#include "app/ButtonHint.h"
 #include "ui/Icons.h"
 #include "ui/UiFont.h"
 
@@ -31,7 +32,7 @@ void drawAboutScreen(lgfx::LovyanGFX& d, const AboutView& view) {
     d.setTextFont(0);
     d.setTextColor(ui::kFaint, ui::kBg);
     d.setTextDatum(lgfx::top_right);
-    d.drawString("Esc: back", 232, 5);
+    d.drawString(pickHint("Esc: back", "B: back"), 232, 5);
     d.setTextDatum(lgfx::top_left);
 
     ui::applyFont(d, ui::UiFont::Base);

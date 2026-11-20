@@ -251,6 +251,26 @@ other key until `Esc` closes it, and plain `/` remains Right.
 
 ---
 
+### 3.5 Two buttons (PaperDIY)
+
+The PaperDIY has no keyboard: two buttons, A and B, and no touch. The same
+screens run with a button map (`docs/spec/10-bluetooth-paperdiy.md` §2.4):
+
+| Button | Short tap | Hold (600 ms) |
+|---|---|---|
+| A | next (row, option, page) | open / confirm (Enter) |
+| B | back (up, close, cancel) | previous (row, option, page) |
+
+- Hints name the buttons: `A: next  hold A: open  B: settings` on Home,
+  `hold A: retry  B: home` on a notice. Keys are never named on that board.
+- Home is a focus ring over Lessons, Stats, Sync and Settings; reviews are not
+  a destination there.
+- Reviews, quizzes, lesson start and text entry are not offered. A try shows
+  `Needs a keyboard` and a button closes it. Read-only browsing (Home, lesson
+  list and card, item detail, Stats, Sync, Outbox and most of Settings) works.
+  Wi-Fi entry is on the Setup portal instead.
+- The keyboard hints and keys are unchanged on the Cardputer.
+
 ## 4. Flows
 
 ### 4.1 First setup
@@ -575,6 +595,17 @@ notices are separate screens that also keep the device awake.
   screens; `Enter` retries or opens setup. `Esc` → Settings → `Sync now` retries.
 - **Low battery:** below 20% on battery, starting reviews or lessons asks for
   confirmation; USB power skips the prompt.
+- **Reminder banner (REM-02, 2026-11-20; hardware pending).** A reminder
+  timer wake (set by M1 or M3, §5.12) starts with no Wi-Fi. If the cached
+  summary has at least M1 reviews due (1 when M1 is off and M3 is set) and the
+  moment is outside quiet hours, Home opens with the next-review row replaced
+  by the accent banner `25 reviews ready` (`1 review ready` for one) and the
+  hint `any key: continue`. The banner stays for 30 s. Any key in that window
+  ends it and the normal boot goes on (the usual quick sync, the header shows
+  `sync n/m`). Otherwise the panel stays dark, the next wake is armed and the
+  chip sleeps again. Without a cached summary there is no banner.
+  **Hardware pending:** the banner text width at 240×135, the 30 s expiry and
+  the re-sleep with Wi-Fi off (see [`docs/hardware.md`](hardware.md)).
 - No side menus or cards covering the numbers are shown.
 
 ### 5.4 Review
@@ -717,6 +748,12 @@ first with the shuffle kept inside each level.
   **Hardware pending:** multiple meanings, grouped kanji readings, the hint
   fallback and the lesson-quiz layout (see [`docs/hardware.md`](hardware.md),
   2026-11-19).
+- **Sound (REM-03, 2026-11-20; hardware pending).** With M4 `Sounds` On (default
+  Off), a correct answer plays two short rising tones and a wrong answer one low
+  tone, in reviews and in both lesson quizzes. A Warning (CHECK) plays nothing.
+  Each tone is at most 120 ms, starts with the answer and never holds a key. M5
+  `Volume` sets the level (§5.12). Nothing sounds during a sync or in the setup
+  portal.
 
 ### 5.6 Item detail
 
@@ -789,6 +826,11 @@ Warning and the empty-mnemonic state (see [`docs/hardware.md`](hardware.md)).
   Home; it is absent with no due reviews and in practice. **Hardware pending:**
   the list/navigation, `R`, stage updates during the send loop and the 240×135
   layout (see [`docs/hardware.md`](hardware.md), 2026-11-19).
+
+- **Sound (REM-03, 2026-11-20; hardware pending).** With M4 On, the summary
+  plays a three-note figure once when it opens, and only after at least one
+  review was completed; an empty session is silent. It starts after the send
+  loop, so it is not held up by a POST.
 
 **Implementation note (2026-10-28).** The values use the built-in 32 px font
 and fall back to 16 px if one would cross its column. Accuracy and duration
@@ -967,9 +1009,29 @@ radical/vocabulary page set (see [`docs/hardware.md`](hardware.md), 2026-11-19).
   due set before the batch limit. R4's `Random` value is stored but the
   first-question build still treats it as Meaning (the R2 `Random` order is
   separate). L2 `Order`, L4–L6 and the other keyed rows are live where
-  `03-settings.md` says so; P5–P6 and M1–M7 still await their owners. The
+  `03-settings.md` says so; P5–P6 and M4–M7 still await their owners. The
   current build reads R1–R12 (R4 only Meaning/Reading), L1–L6, S1–S5, Y1–Y3,
-  P1–P4 and the nine actions.
+  P1–P4, M1–M3 and the nine actions.
+- **M1–M3 Reminders (REM-02, 2026-11-20; hardware pending).** M1 `Reminder`
+  (`Off`, `1+ due`, `10+ due`, `25+ due`, `50+ due`; default Off) sets the
+  review count that reminds, and its review-bucket wake is armed only while it
+  is on. M2 `Quiet hours` (`Off`, `22-08`, `23-07`; default `22-08`) keeps
+  reminders out of the span, which wraps midnight; a wake inside it moves to
+  the end of the span. M3 `Daily reminder` (`Off`, `08:00`, `12:00`, `18:00`,
+  `20:00`; default Off) adds a daily wake at that local time; with M1 Off it
+  reminds when anything is due. With M1 and M3 both Off the device arms no
+  timer and sleeps as before. The banner is described at §5.3.
+- **Implementation (2026-11-20, REM-02).** The schedule is pure
+  (`wk/Reminder`); the device side keeps the clock in RTC memory and arms the
+  timer in the idle deep sleep only. **Hardware pending:** the timer wake with
+  Wi-Fi off, the 30 s expiry, the key path and the banner text (see
+  [`docs/hardware.md`](hardware.md)).
+- **M4–M5 Sounds (REM-03, 2026-11-20; hardware pending).** M4 `Sounds` (`Off`,
+  `On`; default Off) turns on the answer tones (§5.5), the session-end figure
+  (§5.7) and the reminder chime that plays when the M1–M3 banner shows. M5
+  `Volume` (`Low`, `Medium`, `High`; default Medium) sets the level; it applies
+  to the next tone, with no reboot. Off plays nothing anywhere, and nothing
+  plays during a sync or in the setup portal.
 - R2 `Account preference` reads WaniKani's `reviews_presentation_order`; there
   is no separate toggle for that preference. The other R2 orders are
   device-side and do not change the account setting.

@@ -15,8 +15,8 @@
 // written):
 // - the panel init and rotation 1 (M5GFX's offset_rotation is 3),
 // - SD mount on the pins above,
-// - A/B polarity, hold threshold and the temporary key mapping (PD-03 owns the
-//   final mapping),
+// - A/B polarity and the hold threshold (kButtonHoldMs, the two-button mapping
+//   in wk/ButtonNav.h, PD-03),
 // - the 140 mAh cell's percentage curve (M5Unified uses its generic LiPo
 //   curve),
 // - PM1 PY_BTN wake-vs-power-cycle and whether getKeyState() reports it,
@@ -25,6 +25,7 @@
 // - the G45/G46 (EPD OE/BST_EN) and G3 strapping-pin boot behaviour.
 #include "board/Board.h"
 
+#include "wk/ButtonNav.h"
 #include "wk/RingQueue.h"
 
 #if defined(TGC_BOARD_PAPERDIY)
@@ -45,17 +46,13 @@ constexpr gpio_num_t kBtnAPin = GPIO_NUM_4;  // A, active low
 constexpr gpio_num_t kBtnBPin = GPIO_NUM_3;  // B, active low
 constexpr int kQueueLen = 16;
 
-// The key events update() read, for nextKeyEvent(). PD-03 may replace this
-// mapping; PD-01 only needs the buttons reachable while the UI is brought up.
+// The key events update() read, for nextKeyEvent().
 KeyEvent gQueue[kQueueLen];
 int gQueueHead = 0, gQueueCount = 0;
 
-// Short press fires on release, hold at kHoldMs; longSent suppresses the
-// short action when the hold already fired.
-struct PressState {
-    bool longSent = false;
-};
-PressState gA, gB;
+// The two-button mapping (wk/ButtonNav.h): A tap Down, A hold Enter, B tap
+// Esc, B hold Up; holds fire once at kButtonHoldMs, a chord sends nothing.
+ButtonNav gNav;
 
 void push(const KeyEvent& e) {
     // Same overflow rule as the Cardputer board: the oldest event goes and
@@ -65,9 +62,7 @@ void push(const KeyEvent& e) {
         lost ? KeyEvent{Key::None, false} : e;
 }
 
-// A short press is a tap (A: Next/Down, B: Back/Esc); a hold is the second
-// action (A: Confirm, B: Prev/Up). This is the map proposed in the PD spec and
-// remains TODO(PD-03): hints, repeat and the final product mapping.
+// A button key is a press and its release, the same pair a keyboard key makes.
 void emitButtonKey(Key k) {
     KeyEvent down;
     down.key = k;
@@ -80,25 +75,11 @@ void emitButtonKey(Key k) {
 }
 
 void pollButtons() {
-    if (M5.BtnA.wasPressed()) gA.longSent = false;
-    if (M5.BtnA.wasHold() && !gA.longSent) {
-        gA.longSent = true;
-        emitButtonKey(Key::Enter);
-    }
-    if (M5.BtnA.wasReleased()) {
-        if (!gA.longSent) emitButtonKey(Key::Down);
-        gA.longSent = false;
-    }
-
-    if (M5.BtnB.wasPressed()) gB.longSent = false;
-    if (M5.BtnB.wasHold() && !gB.longSent) {
-        gB.longSent = true;
-        emitButtonKey(Key::Up);
-    }
-    if (M5.BtnB.wasReleased()) {
-        if (!gB.longSent) emitButtonKey(Key::Esc);
-        gB.longSent = false;
-    }
+    const uint32_t now = millis();
+    const Key a = gNav.update(NavButton::A, M5.BtnA.isPressed(), now);
+    if (a != Key::None) emitButtonKey(a);
+    const Key b = gNav.update(NavButton::B, M5.BtnB.isPressed(), now);
+    if (b != Key::None) emitButtonKey(b);
 }
 
 // Both buttons up first, or the active-low wake level is there at once. A
@@ -148,8 +129,8 @@ void begin() {
     M5.Display.setEpdMode(lgfx::epd_quality);  // first frame; PD-02 picks modes
     Serial.printf("display: %dx%d rotation %u, M5 board %d\n", width(), height(), rotation(),
                   static_cast<int>(M5.getBoard()));
-    M5.BtnA.setHoldThresh(kHoldMs);
-    M5.BtnB.setHoldThresh(kHoldMs);
+    M5.BtnA.setHoldThresh(kButtonHoldMs);
+    M5.BtnB.setHoldThresh(kButtonHoldMs);
 }
 
 void update() {
@@ -231,11 +212,15 @@ bool isCharging() { return M5.Power.isCharging() == m5::Power_Class::is_charging
 
 // No speaker or codec on this board.
 bool playTone(uint16_t, uint16_t, uint8_t) { return false; }
+void speakerStop() {}
 
 // No backlight: the e-paper has nothing to dim, so the setting is a no-op.
 void setBrightness(uint8_t) {}
 
-bool wokeFromSleep() { return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT1; }
+bool wokeFromSleep() {
+    const esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+    return cause == ESP_SLEEP_WAKEUP_EXT1 || cause == ESP_SLEEP_WAKEUP_TIMER;
+}
 
 // VIN/VINOUT in the PM1's power-source bitmap means external 5 V is present.
 // TODO(PD-01): verify on the Complete Kit and decide whether a charger-only

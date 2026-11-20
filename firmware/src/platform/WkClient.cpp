@@ -10,6 +10,7 @@
 #include "Version.h"
 #include "wk/DevOverrides.h"
 #include "wk/HttpChunked.h"
+#include "wk/HttpRetry.h"
 #include "wk/RateLimit.h"
 
 namespace kk {
@@ -290,6 +291,7 @@ Attempt performRequest(WiFiClientSecure& client, const String& method, const Str
     bool chunkedComplete = false;
     bool truncated = false;
     bool closeDelimited = false;
+    bool capOverflow = false;
 
     if (r.httpCode == 0 || noBody) {
         bodyComplete = r.httpCode != 0;
@@ -330,17 +332,23 @@ Attempt performRequest(WiFiClientSecure& client, const String& method, const Str
         if (!chunkedComplete) {
             truncated = true;
             bodyLen = 0;
+            // Overflow: the decoded body passed the cap, or the wire bytes
+            // filled the buffer while the stream was still open. A malformed
+            // stream or a stalled short read is not an overflow.
+            capOverflow = chunkStatus == ChunkedStatus::TooLarge ||
+                          (chunkStatus == ChunkedStatus::Incomplete && rawLen >= bufferSize);
             const char* why = chunkStatus == ChunkedStatus::Malformed
                                   ? "malformed"
                                   : chunkStatus == ChunkedStatus::TooLarge ? "too large"
                                                                            : "incomplete";
-            Serial.printf("[http] %s chunked body %s (%u wire bytes)\n", path.c_str(), why,
-                          static_cast<unsigned>(rawLen));
+            Serial.printf("[http] %s chunked body %s (%u wire bytes%s)\n", path.c_str(), why,
+                          static_cast<unsigned>(rawLen), capOverflow ? ", cap overflow" : "");
         }
         bodyComplete = chunkedComplete;
     } else if (contentLength >= 0) {
         size_t want = static_cast<size_t>(contentLength);
-        if (want > cap) {
+        const bool declaredOverCap = want > cap;
+        if (declaredOverCap) {
             want = cap;
             truncated = true;
         }
@@ -363,6 +371,9 @@ Attempt performRequest(WiFiClientSecure& client, const String& method, const Str
             delay(2);
         }
         if (bodyLen < want) truncated = true;
+        // The declared length is over the cap and the cap was reached: overflow.
+        // A short read below the cap is not, and keeps its one API-04 retry.
+        capOverflow = isCapOverflow(bodyLen, cap, declaredOverCap);
         bodyComplete = !truncated && bodyLen == static_cast<size_t>(contentLength);
     } else {
         // Close-delimited response: the only safe read is until the peer closes.
@@ -370,7 +381,9 @@ Attempt performRequest(WiFiClientSecure& client, const String& method, const Str
         while (static_cast<int32_t>(millis() - t0) < static_cast<int32_t>(timeoutMs)) {
             if (client.available() > 0) {
                 if (bodyLen >= cap) {
+                    // More bytes are still arriving past the cap: overflow.
                     truncated = true;
+                    capOverflow = isCapOverflow(bodyLen, cap, true);
                     break;
                 }
                 const size_t take = std::min<size_t>(
@@ -391,6 +404,7 @@ Attempt performRequest(WiFiClientSecure& client, const String& method, const Str
     r.body = std::string_view(buffer, bodyLen);
     r.bytes = bodyLen;
     r.truncated = truncated;
+    r.capOverflow = capOverflow;
 
     // Keep the socket only for a complete, framed response that the server did
     // not ask to close. 429 closes so the retry gate starts from a fresh socket.
@@ -409,10 +423,11 @@ Attempt performRequest(WiFiClientSecure& client, const String& method, const Str
     if (closeDelimited) a.keepAlive = false;
 
     r.ms = millis() - t0;
-    Serial.printf("[http] %s -> %d, %u body bytes, %u ms, cl=%d%s%s%s\n", path.c_str(),
+    Serial.printf("[http] %s -> %d, %u body bytes, %u ms, cl=%d%s%s%s%s\n", path.c_str(),
                   r.httpCode, static_cast<unsigned>(r.bytes), static_cast<unsigned>(r.ms),
                   contentLength, chunked ? " chunked" : "",
-                  r.truncated ? " (truncated)" : "", a.keepAlive ? " keep" : "");
+                  r.truncated ? " (truncated)" : "", capOverflow ? " (cap overflow)" : "",
+                  a.keepAlive ? " keep" : "");
     if (!a.keepAlive) closeClient(client);
     return a;
 }

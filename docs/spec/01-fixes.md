@@ -428,6 +428,15 @@ Every item below was found and reproduced in the 2026-11-01 review of the firmwa
 
 **Dev hooks (procedure only).** Build and flash `cardputer-adv-dev`. `cap <bytes>` makes WkClient treat a body as truncated once it exceeds `<bytes>`; it can never raise the 32 KB buffer. `cap 0` turns it off, `cap` alone prints the value, and a reboot clears it. While it is set, each request logs `[http] dev cap <bytes>, <path> effective <n>`. Procedure: with Wi-Fi and a token, set a cap that makes a 5-subject page truncate but a smaller page fit (start near `cap 8000` and lower it until both retries appear; the value is found by trial, not computed). Then run the path that fetches subject pages: `v` (review batch) for the review fallback, `l` (lessons) for the lesson fallback. Afterwards run `cap 0`. Serial lines to read: `[review] subject page <a>-<b>: <n> bytes (truncated)` followed by `[review] subject page <a>-<b> truncated, retrying with 2` and then `… retrying with 1`; the lesson path prints `[lesson] subject page …` and `[lesson] level page … retrying with …` the same way. A later page that completes without `(truncated)` shows the fallback worked.
 
+**2026-11-20 follow-up.** The forced-cap run found two defects; both are fixed here (procedure only, no hardware result is claimed):
+
+1. **Cap overflow is not a short read.** `WkResponse::capOverflow` is set when the body reached the cap with more data still pending: the declared length is over the cap, a chunked stream passes the cap or fills the buffer, or a close-delimited body still has bytes past the cap. The rule is `isCapOverflow()` in `wk/HttpRetry.{h,cpp}`. `httpRetryable()` returns false for a 200 with `capOverflow`, so the API-04 retry is skipped and the caller's page fallback runs at once. A short read or parse failure below the cap keeps its single retry.
+2. **The page size climbs back.** `wk/PagePlan.{h,cpp}` drives every paged fetch that has a fallback: lesson assignments (30), level pages (10), lesson subject pages (3), review due pages (60) and review subject pages (5). A fallback sets the next size to the caller's smaller size. Each full page after that doubles the size, capped at the original, so one big subject costs a short run of smaller pages. A probe above the last good size that fails holds at the good size for three full pages. A plan lives for one fetch, which is the session's known-good size.
+
+Serial logs: each page line prints `size N`. A fallback still prints `truncated, retrying with N`. An overflowing 200 prints `(cap overflow)` on its `[http]` line and `cap overflow, not retried` in the retry log. Native tests: `test/test_wk/test_pages.cpp`.
+
+Verify with the procedure above (`cap 5000`, then `l`): an overflowing page should show the fallback line with no `[http] … retrying` line before it, and the pages after it should step up through the sizes (N, 2N, …, original) rather than staying at 1.
+
 ### FIX-15 — Typo tolerance uses the typed length
 
 - **Priority:** P2

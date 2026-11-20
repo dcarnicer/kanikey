@@ -1,5 +1,7 @@
 #include "app/StatsScreen.h"
 
+#include "app/ButtonHint.h"
+
 #include <algorithm>
 #include <cstdio>
 
@@ -210,7 +212,7 @@ void drawStatsScreen(lgfx::LovyanGFX& d, const StatsView& view) {
 
     ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kFaint, ui::kBg);
-    d.drawString("Esc: back  Left/Right: page", 8, 125);
+    d.drawString(pickHint("Esc: back  Left/Right: page", "A: next  hold B: prev  B: back"), 8, 125);
 }
 
 }  // namespace kk::app

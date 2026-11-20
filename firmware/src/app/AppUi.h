@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "app/AppState.h"
+#include "app/ButtonHint.h"
 
 namespace kk::app {
 
@@ -14,6 +15,9 @@ lgfx::LovyanGFX& target();
 // says so; presentNow() pushes at once, for blocking frames and the first frame.
 void present();
 void presentNow();
+// PD-04: the sleeping frame before a deep sleep: a full-quality refresh now,
+// whatever the PD-02 policy would pick, because it is the frame that stays up.
+void presentFullNow();
 void presentTick(uint32_t now);
 bool ensureCanvas();
 void releaseCanvas();
@@ -28,6 +32,10 @@ bool shift();
 void drawLoading(const char* title, const char* subtitle);
 void drawNotice();
 void noticeKey(const tgc::KeyEvent& e);
+// PD-03: refuses a keyboard-only action on a two-button board. `line` names it
+// ("Reviews need a keyboard"); any button closes the notice and nothing else
+// changes.
+void needsKeyboardNotice(const char* line);
 
 void localHm(uint32_t epoch, char* out, size_t n);
 void localDate(uint32_t epoch, char* out, size_t n);

@@ -9,6 +9,7 @@
 
 #include "audio/Minimp3.h"
 #include "platform/AudioCache.h"
+#include "platform/Sound.h"
 #include "wk/AudioPlan.h"
 
 namespace kk {
@@ -248,6 +249,9 @@ bool audioPlayerPlay(const Subject& subject, uint8_t voice) {
     // reuse the pieces. A short settle covers a late release for the last clip.
     const bool hadPieces = holdsPieces();
     audioPlayerStop();
+    // REM-03: drop a running answer/session cue too, or its next step would
+    // start a tone on top of the clip from soundTick().
+    sound::soundStop();
     if (M5.Speaker.isPlaying()) M5.Speaker.stop();
     if (!waitForIdle(kStopWaitMs) || holdsPieces()) {
         Serial.println("[audio] speaker busy; not starting");

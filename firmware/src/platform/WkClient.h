@@ -14,6 +14,11 @@ struct WkResponse {
     uint32_t ms = 0;
     size_t bytes = 0;  // body bytes
     bool truncated = false;
+    // The body hit the cap (or buffer) with more data still pending. Such a
+    // body is deterministic: a retry returns the same oversized response, so
+    // the caller falls back to a smaller page instead of retrying. A short
+    // read or header failure below the cap leaves this false.
+    bool capOverflow = false;
     String statusLine;
     // 429 details parsed from RateLimit-Reset / RateLimit-Remaining.
     uint32_t retryAfter = 0;         // seconds to wait

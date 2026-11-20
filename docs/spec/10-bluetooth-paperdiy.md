@@ -646,8 +646,8 @@ seam shipping does not claim a working Bluetooth keyboard.
 6 MiB app slots + 4032K LittleFS) and `board/BoardPaperDiy.cpp` are merged.
 `paperdiy` selects `qio_opi` and M5GFX 0.3.0 and builds at 1,696,357 B of
 6,291,456 B (27.0%); the Cardputer images moved by +28 B (rotation and
-brightness now go through the board HAL). Buttons are a temporary mapping
-(A short = Down, A hold = Enter, B short = Esc, B hold = Up) until PD-03.
+brightness now go through the board HAL). The two-button mapping is final
+with PD-03 (§2.4; it replaces the temporary PD-01 map).
 Nothing has run on a PaperDIY: panel autodetect via PM1, octal PSRAM size,
 `Panel_EPD` buffers, buttons, SD/card detect, PM1 power key and VIN detection,
 deep-sleep current, PSRAM retention in light sleep and the G3/G45/G46 strap
@@ -839,6 +839,55 @@ logged and the no-keyboard branch returns no events. PaperDIY needs:
   host-displays/numeric-comparison flows for PaperDIY; this is a BT-03
   constraint.
 
+**PD-03 status: review (2026-11-20: code; hardware pending).** The two-button
+mapping and the read-only scope are in the firmware and the native tests pass;
+no PaperDIY has run them yet (button feel, hold timing on the real switches,
+and the Home strip at 1 m are §2.6 items).
+
+**Mapping** (`wk/ButtonNav.h`, fed by `board/BoardPaperDiy.cpp` once per loop):
+
+| Input | Key sent | Action | Why |
+|---|---|---|---|
+| A tap | Down | Next (row, option, page) | the common step; one finger for lists |
+| A hold 600 ms | Enter | Confirm (open, choose) | deliberate, so scrolling does not open items |
+| B tap | Esc | Back (up a level, close) | the quick exit |
+| B hold 600 ms | Up | Prev (row, option, page) | the less frequent backward step |
+
+A hold sends one key on the threshold and never repeats; the release after a
+hold sends nothing. A press of both buttons together sends nothing until both
+are up. The same press-and-release pair a keyboard key makes goes into the
+queue, so every screen sees the same `KeyEvent`s (`source = Button`, which
+`KeyRepeat` never repeats).
+
+**Scope.** `buttonsOnly()` (`board/Board.h`) is true on PaperDIY and false on
+the Cardputer ADV (compile-time, so the Cardputer image drops the branches; the
+M5 image asks the board). When it is true:
+
+- Home is a focus ring over Lessons, Stats, Sync and Settings (A tap moves, A
+  hold opens, B opens Settings). Reviews are shown as a count, not a target.
+- Lessons: the list opens the card of the item under the cursor (no Space);
+  the card pages with A tap / B hold. Quizzes and the `PUT /start` are refused
+  with the notice `Needs a keyboard` (the card stays put; any button closes it).
+- Reviews (`startReview()`, every caller), the study menu, and Wi-Fi entry
+  (`openWifiSetup()`, the password step) are refused the same way. The boot
+  Wi-Fi path opens the Setup portal instead.
+- Settings: every row except Wi-Fi and Firmware works (Enter cycles a value or
+  runs an action). Setup portal, Sync now, Outbox, clear cache, sign out, reset
+  and About stay; firmware shows `Firmware updates: Cardputer only`.
+- Stats pages with A tap (next) and B hold (previous). Sync and Outbox use the
+  same keys as on a keyboard.
+
+**Hints.** Every hint on a reachable PaperDIY screen names buttons through
+`app/ButtonHint.h` (`pickHint(keys, buttons)`): Home `A: next  hold A: open
+B: settings`, lessons `A: next  hold B: prev  hold A: open`, notices
+`hold A: sync  B: home`, Boot `hold A: setup`. Long lines use `fitHint()` and
+its shorter fallbacks; the layout stays 240×135 (`docs/ux.md` §3.5).
+
+**Cardputer.** The keyboard hints, keys and paths are unchanged; the button
+strings are not in its image. The Cardputer ADV `firmware.bin` is 1,665,008 B
+against 1,664,545 B before PD-03 (+463 B; no button text is in it, so the
+difference is code shape in shared functions, not measured per function).
+
 ### 2.5 Power and sleep
 
 M5PM1 levels: L0 (battery/PM1 + FPC-I2S), L1 standby, L2/L3A (ESP32-S3,
@@ -861,6 +910,43 @@ The 140 mAh cell is small: at 40.95 mA the upper bound is ~3.4 h before
 Wi-Fi/TLS and refresh peaks. Treat it as a desk companion: USB for long
 sessions, timer/button wake, sync, refresh only on change, sleep. PD-04
 chooses the strategy; PD-01 needs a working deep sleep and wake path.
+
+**PD-04 status: review (2026-11-20: code; hardware pending).** The deep-sleep
+strategy (ESP32 deep sleep with both buttons and one timer, §2.5 option 1) and
+the sync cadence are in the firmware, and the native tests pass (521 cases, 21
+of them new). No PaperDIY has run them: deep-sleep current, wake-to-frame,
+refresh energy and battery life are the §2.6 measurements.
+
+**Design (proposed defaults; none is a measurement).**
+
+- *Sleeping frame.* The idle deep sleep keeps P4 (default 2 min; no new setting).
+  Before sleeping it draws the Home frame with `Asleep: on battery` or
+  `Asleep: charging` in the status (text, not colour), the hint `A or B: wake`,
+  and a full-quality refresh, then sleeps. The battery is the header percentage.
+- *One timer.* `app/ReminderController` arms the earlier of the REM-02 reminder
+  target and the cadence target (`wk/PaperCadence.h`, `planWake()`). A timer wake
+  checks which target is due, within a 60 s RTC slack. A reminder wake keeps a
+  cadence target that is still ahead; a wake that serves neither keeps it and
+  sleeps again. The Cardputer never arms a cadence.
+- *Cadence.* 30 min at ≥ 50 % battery; 60 min at 20–49 % or unknown; no sync
+  wake below 20 % (reminders still wake). A review bucket wakes the sync 60 s
+  after it opens, when that is sooner. Never sooner than 15 min after a wake. After
+  failed syncs the gap is 15, 30, then 60 min, and a WaniKani rate-limit wait is a
+  floor. M2 quiet hours move a wake to the end of the quiet span (default 22-08,
+  so the night is skipped). Y1 Off turns the cadence off; no token or saved Wi-Fi
+  means no cadence.
+- *Cadence wake.* Loads the cache without drawing, runs a Quick job in the
+  background (Wi-Fi, time, outbox, summary), redraws the sleeping frame only when
+  the due count, lessons or next review changed (PD-02 policy), then sleeps. A
+  button down or pressed during the job hands over to the normal boot. A Full sync
+  (Level, SRS, Critical, Prefetch) waits for the next button boot, so a cadence
+  wake stays short.
+- *Logs (dev builds).* `[pd] next wake <utc> in <s> s reason <bucket|periodic|reminder|lowbatt>`
+  on every arm, and `[pd] cadence wake: sync <ok|fail>, redraw <yes|no>, awake <ms> ms`.
+- *Known trade-offs.* A cadence wake with no change leaves the panel as it was, so
+  the header's `Synced HH:MM` is the last drawn frame's. PD-02's partial counter is
+  in RAM, so each deep-sleep wake starts at a full-quality refresh; an RTC-held
+  counter would allow text refreshes on cadence wakes (measure first).
 
 ### 2.6 Spike questions and measurements
 

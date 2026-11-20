@@ -6,6 +6,7 @@
 #include "platform/WkClient.h"
 #include "platform/WkJson.h"
 #include "platform/WkStudyMaterials.h"
+#include "wk/PagePlan.h"
 #include "wk/Time.h"
 
 namespace kk {
@@ -33,14 +34,14 @@ LessonAssignments fetchLessonAssignments(const String& token,
     const size_t total = std::min(maxCandidates, lessonSubjectIds.size());
     result.assignments.reserve(total);
     WkSessionGuard session;
-    size_t pageSize = 30;
+    PagePlan plan = pagePlanStart(30);
     for (size_t begin = 0; begin < total;) {
-        const size_t count = std::min(pageSize, total - begin);
+        const size_t count = std::min(plan.next, total - begin);
         const size_t end = begin + count;
         const String path = "/v2/assignments?subject_ids=" +
                             idList(lessonSubjectIds, begin, end);
-        Serial.printf("[lesson] assignment page %u-%u\n", static_cast<unsigned>(begin),
-                      static_cast<unsigned>(end));
+        Serial.printf("[lesson] assignment page %u-%u, size %u\n", static_cast<unsigned>(begin),
+                      static_cast<unsigned>(end), static_cast<unsigned>(count));
         WkAssignmentsResult ar = wkGetAssignmentsRetry(path, token, 32768, count);
         if (ar.http.httpCode != 200) {
             result.httpCode = ar.http.httpCode;
@@ -53,12 +54,13 @@ LessonAssignments fetchLessonAssignments(const String& token,
                 Serial.printf("[lesson] assignment page %u-%u truncated, retrying with %u\n",
                               static_cast<unsigned>(begin), static_cast<unsigned>(end),
                               static_cast<unsigned>(smaller));
-                pageSize = smaller;
+                pagePlanTruncated(&plan, count, smaller);
                 continue;
             }
             result.error = "assignments JSON";
             return result;
         }
+        pagePlanLoaded(&plan, count);
         for (const Assignment& a : ar.assignments) {
             if (a.hidden || a.srsStage != 0) continue;
             result.assignments.push_back(a);
@@ -161,14 +163,15 @@ SubjectLevels fetchSubjectLevels(const String& token,
     }
     result.levels.reserve(subjectIds.size());
     WkSessionGuard session;
-    size_t pageSize = 10;
+    PagePlan plan = pagePlanStart(10);
     for (size_t begin = 0; begin < subjectIds.size();) {
-        const size_t count = std::min(pageSize, subjectIds.size() - begin);
+        const size_t count = std::min(plan.next, subjectIds.size() - begin);
         const size_t end = begin + count;
         const String path = "/v2/subjects?ids=" + idList(subjectIds, begin, end);
         WkSubjectsResult sr = wkGetSubjectsRetry(path, token, 32768, false);
-        Serial.printf("[lesson] level page %u-%u: %u bytes%s\n", static_cast<unsigned>(begin),
-                      static_cast<unsigned>(end), static_cast<unsigned>(sr.http.bytes),
+        Serial.printf("[lesson] level page %u-%u, size %u: %u bytes%s\n",
+                      static_cast<unsigned>(begin), static_cast<unsigned>(end),
+                      static_cast<unsigned>(count), static_cast<unsigned>(sr.http.bytes),
                       sr.http.truncated ? " (truncated)" : "");
         if (sr.http.httpCode != 200) {
             result.httpCode = sr.http.httpCode;
@@ -181,12 +184,13 @@ SubjectLevels fetchSubjectLevels(const String& token,
                 Serial.printf("[lesson] level page %u-%u truncated, retrying with %u\n",
                               static_cast<unsigned>(begin), static_cast<unsigned>(end),
                               static_cast<unsigned>(smaller));
-                pageSize = smaller;
+                pagePlanTruncated(&plan, count, smaller);
                 continue;
             }
             result.error = "subjects JSON";
             return result;
         }
+        pagePlanLoaded(&plan, count);
         for (const Subject& s : sr.subjects)
             result.levels.push_back({s.id, s.level, s.lessonPosition});
         begin = end;
@@ -215,14 +219,15 @@ LessonBatch fetchLessonDetails(const String& token, std::vector<Assignment> assi
         if (std::find(ids.begin(), ids.end(), a.subjectId) == ids.end())
             ids.push_back(a.subjectId);
 
-    size_t pageSize = 3;
+    PagePlan plan = pagePlanStart(3);
     for (size_t begin = 0; begin < ids.size();) {
-        const size_t count = std::min(pageSize, ids.size() - begin);
+        const size_t count = std::min(plan.next, ids.size() - begin);
         const size_t end = begin + count;
         String sp = "/v2/subjects?ids=" + idList(ids, begin, end);
         WkSubjectsResult sr = wkGetSubjectsRetry(sp, token, 32768, true);
-        Serial.printf("[lesson] subject page %u-%u: %u bytes%s\n", static_cast<unsigned>(begin),
-                      static_cast<unsigned>(end), static_cast<unsigned>(sr.http.bytes),
+        Serial.printf("[lesson] subject page %u-%u, size %u: %u bytes%s\n",
+                      static_cast<unsigned>(begin), static_cast<unsigned>(end),
+                      static_cast<unsigned>(count), static_cast<unsigned>(sr.http.bytes),
                       sr.http.truncated ? " (truncated)" : "");
         if (sr.http.httpCode != 200) {
             batch.httpCode = sr.http.httpCode;
@@ -234,12 +239,13 @@ LessonBatch fetchLessonDetails(const String& token, std::vector<Assignment> assi
                 // Lesson mnemonics are large: fall back from 3 subjects to 1.
                 Serial.printf("[lesson] subject page %u-%u truncated, retrying with 1\n",
                               static_cast<unsigned>(begin), static_cast<unsigned>(end));
-                pageSize = 1;
+                pagePlanTruncated(&plan, count, 1);
                 continue;
             }
             batch.error = "subjects JSON";
             return batch;
         }
+        pagePlanLoaded(&plan, count);
         std::vector<Subject> part = std::move(sr.subjects);
         for (Subject& s : part) batch.subjects.push_back(std::move(s));
         Serial.printf("[lesson] subjects %u/%u, total %u\n", static_cast<unsigned>(end),

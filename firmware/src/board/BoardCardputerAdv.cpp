@@ -194,7 +194,9 @@ void begin() {
     // configured with offset_rotation = 1, so rotation 0 is the landscape
     // orientation (rotation 1 would turn it into 135x240 portrait).
     M5.Display.setRotation(0);
-    M5.Display.setBrightness(gBrightness);
+    // A timer wake may sleep again without showing anything (REM-02): the
+    // panel then stays dark until the app sets the brightness.
+    M5.Display.setBrightness(wokeFromTimer() ? 0 : gBrightness);
     M5.BtnA.setHoldThresh(kHoldMs);
     pinMode(kKbdIntPin, INPUT_PULLUP);
     if (setupKeyboard())
@@ -284,12 +286,18 @@ bool playTone(uint16_t frequency, uint16_t durationMs, uint8_t volume) {
     return true;
 }
 
+// M5Speaker::stop() only queues a stop request for the playback task.
+void speakerStop() { M5.Speaker.stop(); }
+
 void setBrightness(uint8_t level) {
     gBrightness = level;
     M5.Display.setBrightness(level);
 }
 
-bool wokeFromSleep() { return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT1; }
+bool wokeFromSleep() {
+    const esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+    return cause == ESP_SLEEP_WAKEUP_EXT1 || cause == ESP_SLEEP_WAKEUP_TIMER;
+}
 
 // No VBUS sense reaches the ESP32 either: a USB host is the next best thing.
 // The USB Serial/JTAG sees its start-of-frame packets every millisecond while

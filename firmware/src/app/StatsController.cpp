@@ -213,10 +213,14 @@ void statsKey(const KeyEvent& e) {
         state().display.gDirty = true;
         return;
     }
-    if (e.key == Key::Left && state().stats.gStatsPage > 0) {
+    // PD-03: a two-button board pages with Down (A tap, next) and Up (B hold,
+    // previous); there are no arrow keys.
+    const bool buttons = tgc::board::buttonsOnly();
+    if ((e.key == Key::Left || (buttons && e.key == Key::Up)) && state().stats.gStatsPage > 0) {
         --state().stats.gStatsPage;
         state().display.gDirty = true;
-    } else if (e.key == Key::Right && state().stats.gStatsPage < 3) {
+    } else if ((e.key == Key::Right || (buttons && e.key == Key::Down)) &&
+               state().stats.gStatsPage < 3) {
         ++state().stats.gStatsPage;
         state().display.gDirty = true;
     }

@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "app/ButtonHint.h"
 #include "ui/HintBar.h"
 #include "ui/ListView.h"
 #include "ui/Text.h"
@@ -168,7 +169,13 @@ void drawLessonListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         d.setTextColor(ui::kWarn, ui::kBg);
         d.drawString(view.note.c_str(), 62, 5);
     }
-    drawHintLeft(d, "Space: select  Enter: study", ui::kFaint, 6, 125);
+    if (tgc::board::buttonsOnly())
+        drawHintLeft(d,
+                     ui::fitHint(d, {"A: next  hold B: prev  hold A: open",
+                                     "A next  hold B prev  hold A open", "A: next  hold A: open"}),
+                     ui::kFaint, 6, 125);
+    else
+        drawHintLeft(d, "Space: select  Enter: study", ui::kFaint, 6, 125);
 }
 
 void drawLessonEmptyScreen(lgfx::LovyanGFX& d, const LessonEmptyView& view) {
@@ -190,7 +197,7 @@ void drawLessonEmptyScreen(lgfx::LovyanGFX& d, const LessonEmptyView& view) {
     ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kFaint, ui::kBg);
     d.drawString("New lessons unlock as you level up.", 8, 102);
-    drawHintLeft(d, "Esc: home");
+    drawHintLeft(d, pickHint("Esc: home", "B: home"));
 }
 
 void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
@@ -274,24 +281,30 @@ void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
             d.drawString(cardPage->lines[i].c_str(), 5, 96 + static_cast<int>(i) * 9);
     }
 
-    // AUD-03: the card offers R while the reading line is drawn. The audio
-    // hint takes the left slot next to Q; the shorter right hint leaves it
-    // room, with Space/Esc: list still in the ? table.
-    // The right hint keeps `Esc` in every variant; it shortens to fit the
-    // room the left label leaves (x 5 .. 233, 8 px gap).
-    const char* audio = audioHintText(view.audio);
-    char left[32];
-    if (*audio)
-        snprintf(left, sizeof left, "Q quiz  %s", audio);
-    else
-        snprintf(left, sizeof left, "Q quiz");
-    drawHintLeft(d, left, ui::kFaint, 5, 125);
-    ui::applyFont(d, ui::UiFont::Small);
-    const int leftWidth = d.textWidth(left);
-    const char* right = ui::fitHint(
-        d, {"Enter/Space: next  Esc: list", "Enter: next  Esc: list", "Enter: next  Esc"},
-        228 - 8 - leftWidth);
-    drawHintRight(d, right, ui::kFaint, 233, 125);
+    if (tgc::board::buttonsOnly()) {
+        drawHintLeft(d, pickHint("Q quiz", "B: list"), ui::kFaint, 5, 125);
+        drawHintRight(d, pickHint("Enter/Space: next  Esc: list", "hold B: prev  hold A: next"),
+                      ui::kFaint, 233, 125);
+    } else {
+        // AUD-03: the card offers R while the reading line is drawn. The audio
+        // hint takes the left slot next to Q; the shorter right hint leaves it
+        // room, with Space/Esc: list still in the ? table.
+        // The right hint keeps `Esc` in every variant; it shortens to fit the
+        // room the left label leaves (x 5 .. 233, 8 px gap).
+        const char* audio = audioHintText(view.audio);
+        char left[32];
+        if (*audio)
+            snprintf(left, sizeof left, "Q quiz  %s", audio);
+        else
+            snprintf(left, sizeof left, "Q quiz");
+        drawHintLeft(d, left, ui::kFaint, 5, 125);
+        ui::applyFont(d, ui::UiFont::Small);
+        const int leftWidth = d.textWidth(left);
+        const char* right = ui::fitHint(
+            d, {"Enter/Space: next  Esc: list", "Enter: next  Esc: list", "Enter: next  Esc"},
+            228 - 8 - leftWidth);
+        drawHintRight(d, right, ui::kFaint, 233, 125);
+    }
 }
 
 void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
@@ -333,7 +346,8 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         d.drawString(mistakes, 86, 58);
         d.setTextColor(ui::kFaint, ui::kBg);
         d.drawString("No /start sent.", 86, 76);
-        drawHintLeft(d, "Enter: lesson card  Esc: card", ui::kFaint, 5, 125);
+        drawHintLeft(d, pickHint("Enter: lesson card  Esc: card", "hold A: card  B: back"),
+                     ui::kFaint, 5, 125);
     } else if (view.feedback) {
         const bool ok = view.status == kk::AnswerStatus::Correct;
         const bool warn = view.status == kk::AnswerStatus::Warning;
@@ -346,7 +360,8 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         if (warn) {
             // Warnings keep the typed input and never show the answer.
             drawWrapped(d, view.message, 86, 40, 150, 4, ui::kFaint, ui::kBg);
-            drawHintLeft(d, "Enter: edit  Esc: card", ui::kFaint, 5, 125);
+            drawHintLeft(d, pickHint("Enter: edit  Esc: card", "hold A: edit  B: card"),
+                         ui::kFaint, 5, 125);
             return;
         }
         const bool japanese = !meaning;
