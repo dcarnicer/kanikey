@@ -302,6 +302,18 @@ const kk::Subject* subjectById(uint32_t id) {
     return nullptr;
 }
 
+// One component row of the Tab card (MEM-20): the full subject when this session
+// holds one, else the batch's compact record. An id in neither adds no row, so
+// the card shows the same rows as before the records existed.
+void addComponentRow(uint32_t id, std::vector<kk::SubjectRef>* rows) {
+    if (const kk::Subject* full = subjectById(id)) {
+        rows->push_back(kk::subjectRefFromSubject(*full));
+        return;
+    }
+    if (const kk::SubjectRef* ref = kk::findSubjectRef(state().cache.gBatch.components, id))
+        rows->push_back(*ref);
+}
+
 void showReview() {
     if (!state().display.gDisp) return;
     const kk::SessionItem* item = state().review.gQueue.current();
@@ -401,7 +413,8 @@ void showReviewDetail() {
     view.pages = state().review.detailPages;
     view.kind = detailPageKind(state().review.detailPage, *s);
     view.audio = audioHintFor(*s);
-    for (uint32_t id : s->componentSubjectIds) view.components.push_back(subjectById(id));
+    view.components.reserve(s->componentSubjectIds.size());
+    for (uint32_t id : s->componentSubjectIds) addComponentRow(id, &view.components);
     for (uint32_t id : s->visuallySimilarSubjectIds) view.similar.push_back(subjectById(id));
     for (uint32_t id : s->amalgamationSubjectIds) view.amalgamations.push_back(subjectById(id));
 

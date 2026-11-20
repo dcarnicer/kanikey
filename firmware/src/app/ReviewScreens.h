@@ -12,6 +12,7 @@
 #include "wk/AnswerChecker.h"
 #include "wk/AudioPlan.h"
 #include "wk/ReviewQueue.h"
+#include "wk/SubjectRef.h"
 #include "wk/Types.h"
 
 namespace kk::app {
@@ -68,7 +69,9 @@ struct ReviewDetailView {
     int pages = 1;
     int kind = 0;  // detailPageKind() for this page
     kk::AudioHint audio = kk::AudioHint::None;
-    std::vector<const kk::Subject*> components;
+    // Component rows (MEM-20): records, so a component need not be a full
+    // Subject. Drawn in order, at most four.
+    std::vector<kk::SubjectRef> components;
     std::vector<const kk::Subject*> similar;
     std::vector<const kk::Subject*> amalgamations;
 };

@@ -1846,7 +1846,9 @@ static void test_subject_codec_matches_cache_subject() {
     TEST_ASSERT_TRUE(encodeSubjectCache(cache, &cacheBytes));
     std::vector<uint8_t> payload;
     TEST_ASSERT_TRUE(subjectEncodePayload(cache.subjects[0], &payload));
-    TEST_ASSERT_TRUE(cacheBytes.size() == kCacheHeaderBytes + 2 + payload.size());
+    // KKCS v14: header, u16 subject count, the subject, then u16 component count
+    // (no component records here).
+    TEST_ASSERT_TRUE(cacheBytes.size() == kCacheHeaderBytes + 2 + payload.size() + 2);
     TEST_ASSERT_EQUAL_UINT8_ARRAY(payload.data(), cacheBytes.data() + kCacheHeaderBytes + 2,
                                  payload.size());
 }
@@ -4225,6 +4227,7 @@ void run_storage_tests();
 void run_net_tests();
 void run_app_tests();
 void run_cache_tests();
+void run_subject_ref_tests();
 void run_rev_tests();
 void run_rev10_tests();
 void run_rev11_tests();
@@ -4792,6 +4795,7 @@ int main(int, char**) {
     run_net_tests();
     run_app_tests();
     run_cache_tests();
+    run_subject_ref_tests();
     run_rev_tests();
     run_rev10_tests();
     run_rev11_tests();

@@ -9,6 +9,7 @@
 
 #include "wk/Assignment.h"
 #include "wk/SubjectParser.h"
+#include "wk/SubjectRef.h"
 
 namespace kk {
 
@@ -17,7 +18,13 @@ struct ReviewBatch {
     int httpCode = 0;
     String error;
     std::vector<Assignment> assignments;
+    // The reviewed subjects only (full Subjects, with study materials and
+    // statistics). The queue and the audio refill read these.
     std::vector<Subject> subjects;
+    // Compact records of the components the Tab card shows (MEM-20): one per
+    // component id, no full Subject. Read by the detail card when a component
+    // is not in `subjects`.
+    std::vector<SubjectRef> components;
     uint32_t fetchedAt = 0;
 };
 

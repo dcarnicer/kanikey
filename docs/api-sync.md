@@ -758,7 +758,7 @@ confirmation.
 
 **Implementation (2026-10-29; version 12 2026-11-19).** The Home/user/batch
 snapshot is `/state/cache.bin` (`KKCA`, version 12); the batch subjects are
-`/kanikey/cache/subjects.bin` (`KKCS`, version 11) on SD. Version 3 added the
+`/kanikey/cache/subjects.bin` (`KKCS`, version 14) on SD. Version 3 added the
 study-material notes to each cached subject, version 4 added the review
 presentation order, version 5 added the vacation timestamp, version 6 added the
 per-subject review statistics, version 7 added the level progression, version 8
@@ -775,6 +775,15 @@ files. The cached batch is started offline and completed items are removed from
 the snapshot; the outbox is pruned from the cache on boot and after a successful
 send. Settings › `Sync now` refreshes the snapshot, `Clear cache` invalidates
 it, and a cache older than 24 h is shown as stale.
+
+**Subject file versions (`KKCS`).** The subject file has its own version. Version
+13 added the two audio URLs (`Subject::audioUrl`) to each subject. Version 14
+(MEM-20, 2026-11-20) moves the review batch's component subjects out of the
+subject list: the file holds the reviewed subjects, then a `u16` count and one
+record per component: `u32` id, `u8` type, the characters and the meaning, each
+a `u16`-length string. The batch keeps the records (`SubjectRef`, 48 B in RAM),
+not full `Subject`s, for the Tab card's components page. Files of any other
+`KKCS` version are not read; the batch is fetched again.
 
 ---
 
@@ -998,7 +1007,7 @@ Both `KKCA` (LittleFS) and `KKCS` (SD) start with the same 24-byte header:
 
 ```
 0   magic         4 B   "KKCA" or "KKCS"
-4   version       u16   `KKCA` 12 / `KKCS` 11 (11 loads)
+4   version       u16   `KKCA` 12 / `KKCS` 14 (other `KKCS` versions are not read)
 6   reserved      u16   0
 8   saved_at      u32   UTC epoch; 0 when the clock was not trusted
 12  account_key   u32   FNV-1a of the API token

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <string_view>
 
 #include "ui/HintBar.h"
 #include "ui/Text.h"
@@ -422,13 +423,12 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("COMPONENTS", 86, 38);
             int row = 0;
-            for (const kk::Subject* c : view.components) {
-                if (!c) continue;
+            for (const kk::SubjectRef& c : view.components) {
                 if (row >= 4) break;
                 const int y = 50 + row * 18;
-                if (!c->characters.empty())
-                    fontPack.drawTextFit(d, c->characters, 86, y + 15, 20, 24, ui::kText, ui::kBg,
-                                     kk::ClipRect{86, y, 112, y + 17});
+                if (c.characters[0] != '\0')
+                    fontPack.drawTextFit(d, std::string_view(c.characters), 86, y + 15, 20, 24,
+                                         ui::kText, ui::kBg, kk::ClipRect{86, y, 112, y + 17});
                 else {
                     ui::applyFont(d, ui::UiFont::Small);
                     d.setTextColor(ui::kFaint, ui::kBg);
@@ -436,7 +436,7 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
                 }
                 ui::applyFont(d, ui::UiFont::Base);
                 d.setTextColor(ui::kDim, ui::kBg);
-                std::string meaning = subjectMainMeaning(*c);
+                std::string meaning(c.meaning);
                 while (meaning.size() > 1 && d.textWidth(meaning.c_str()) > 116)
                     meaning.pop_back();
                 d.drawString(meaning.c_str(), 116, y + 3);

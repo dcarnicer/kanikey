@@ -17,6 +17,7 @@
 #include "wk/LevelProgress.h"
 #include "wk/SrsCounts.h"
 #include "wk/Summary.h"
+#include "wk/SubjectRef.h"
 #include "wk/Types.h"
 #include "wk/User.h"
 
@@ -26,10 +27,12 @@ constexpr uint16_t kCacheVersion = 12;
 // v11 files stay readable: their payload has no last-sync times and decodes
 // them as meta.savedAt.
 constexpr uint16_t kCacheVersionMin = 11;
-// The subject file (KKCS) has its own version. v13 adds the two audio URLs
-// (Subject::audioUrl) to every subject; a file of any other version is not
-// read, and the batch is fetched again (the same path as a bad cache).
-constexpr uint16_t kSubjectsVersion = 13;
+// The subject file (KKCS) has its own version. v13 added the two audio URLs
+// (Subject::audioUrl) to every subject. v14 appends the review batch's component
+// records (SubjectRef, MEM-20) after the subject list. A file of any other
+// version is not read, and the batch is fetched again (the same path as a bad
+// cache).
+constexpr uint16_t kSubjectsVersion = 14;
 constexpr size_t kCacheHeaderBytes = 24;
 
 struct CacheMeta {
@@ -54,6 +57,7 @@ struct CacheSnapshot {
 struct SubjectCache {
     CacheMeta meta;
     std::vector<Subject> subjects;
+    std::vector<SubjectRef> components;  // the batch's component records (KKCS v14)
 };
 
 // Byte interfaces for the streaming subject cache. The platform layer wraps the
@@ -77,17 +81,23 @@ bool encodeCacheSnapshot(const CacheSnapshot& snapshot, std::vector<uint8_t>* ou
                          uint16_t version = kCacheVersion);
 bool decodeCacheSnapshot(const uint8_t* data, size_t size, CacheSnapshot* out);
 bool encodeSubjectCache(const SubjectCache& cache, std::vector<uint8_t>* out);
-// Same payload without copying the subjects into a SubjectCache.
+// Same payload without copying the subjects into a SubjectCache. The overload
+// without `components` writes an empty component list.
 bool encodeSubjectCache(const CacheMeta& meta, const std::vector<Subject>& subjects,
                         std::vector<uint8_t>* out);
+bool encodeSubjectCache(const CacheMeta& meta, const std::vector<Subject>& subjects,
+                        const std::vector<SubjectRef>& components, std::vector<uint8_t>* out);
 bool decodeSubjectCache(const uint8_t* data, size_t size, SubjectCache* out);
 
 // Streams the subject cache to `sink` with exactly the bytes that
 // encodeSubjectCache() produces. Two passes over the subjects count the payload
 // length and CRC first, so the 24-byte header can be written before the payload.
-// Returns false on a sink failure, an over-long string or too many subjects.
+// Returns false on a sink failure, an over-long string or too many subjects or
+// components.
 bool writeSubjectCache(const CacheMeta& meta, const std::vector<Subject>& subjects,
                        ByteSink* sink);
+bool writeSubjectCache(const CacheMeta& meta, const std::vector<Subject>& subjects,
+                       const std::vector<SubjectRef>& components, ByteSink* sink);
 // Reads a subject cache of `fileSize` bytes from `source`. On any error *out is
 // left untouched.
 bool readSubjectCache(ByteSource* source, size_t fileSize, SubjectCache* out);

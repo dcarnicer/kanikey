@@ -407,7 +407,101 @@ static void subject_cache_other_version_rejected() {
     TEST_ASSERT_TRUE(decodeSubjectCache(bytes.data(), bytes.size(), &out));
 }
 
+// MEM-20: the batch's component records follow the subjects in KKCS v14. They
+// round-trip through the vector and streaming paths with the same bytes.
+static void component_records_round_trip() {
+    SubjectRef kanji;
+    kanji.id = 2;
+    kanji.type = SubjectType::Kanji;
+    std::strcpy(kanji.characters, "食");
+    std::strcpy(kanji.meaning, "eat");
+    SubjectRef radical;  // a radical without a character: characters stay ""
+    radical.id = 4;
+    radical.type = SubjectType::Radical;
+    std::strcpy(radical.meaning, "Ground");
+    SubjectRef longest;  // the widest fields: 11 bytes of characters, 27 of meaning
+    longest.id = 0xFFFFFFF0u;
+    longest.type = SubjectType::Radical;
+    std::strcpy(longest.characters, "\xE4\xB8\x80\xE4\xB8\x80\xE4\xB8\x80");
+    std::strcpy(longest.meaning, "abcdefghijklmnopqrstuvwxyz1");
+    const std::vector<SubjectRef> components = {kanji, radical, longest};
+    const std::vector<Subject> subjects = {kanjiSubject(), vocabularySubject()};
+
+    std::vector<uint8_t> bytes;
+    TEST_ASSERT_TRUE(encodeSubjectCache(testMeta(), subjects, components, &bytes));
+    SubjectCache out;
+    TEST_ASSERT_TRUE(decodeSubjectCache(bytes.data(), bytes.size(), &out));
+    TEST_ASSERT_EQUAL(2, out.subjects.size());
+    TEST_ASSERT_EQUAL(3, out.components.size());
+    for (size_t i = 0; i < components.size(); ++i) {
+        TEST_ASSERT_EQUAL_UINT32(components[i].id, out.components[i].id);
+        TEST_ASSERT_EQUAL(static_cast<int>(components[i].type),
+                          static_cast<int>(out.components[i].type));
+        TEST_ASSERT_EQUAL_STRING(components[i].characters, out.components[i].characters);
+        TEST_ASSERT_EQUAL_STRING(components[i].meaning, out.components[i].meaning);
+    }
+
+    MemorySink sink;
+    TEST_ASSERT_TRUE(writeSubjectCache(testMeta(), subjects, components, &sink));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(bytes.data(), sink.bytes.data(), bytes.size());
+    MemorySource source(sink.bytes);
+    SubjectCache streamed;
+    TEST_ASSERT_TRUE(readSubjectCache(&source, sink.bytes.size(), &streamed));
+    TEST_ASSERT_EQUAL(3, streamed.components.size());
+    TEST_ASSERT_EQUAL_STRING("abcdefghijklmnopqrstuvwxyz1", streamed.components[2].meaning);
+    ChunkedSource chunked(sink.bytes);
+    SubjectCache chunkedOut;
+    TEST_ASSERT_TRUE(readSubjectCache(&chunked, sink.bytes.size(), &chunkedOut));
+    TEST_ASSERT_EQUAL_STRING("eat", chunkedOut.components[0].meaning);
+
+    // A file without components (v14, count 0) keeps the subjects and an empty list.
+    std::vector<uint8_t> none;
+    TEST_ASSERT_TRUE(encodeSubjectCache(testMeta(), subjects, &none));
+    SubjectCache noneOut;
+    TEST_ASSERT_TRUE(decodeSubjectCache(none.data(), none.size(), &noneOut));
+    TEST_ASSERT_TRUE(noneOut.components.empty());
+    TEST_ASSERT_EQUAL(2, noneOut.subjects.size());
+}
+
+// Recomputes the payload CRC after a test patches a byte of the payload, so the
+// record checks are what refuses the file, not the CRC.
+static void restamp_payload_crc(std::vector<uint8_t>* bytes) {
+    const uint32_t crc = kk::crc32(bytes->data() + kCacheHeaderBytes, bytes->size() - kCacheHeaderBytes);
+    setLe32(bytes->data() + 20, crc);
+}
+
+// A component record whose characters field claims 12 bytes (no room for the NUL)
+// or whose type is out of range is refused, even with a valid CRC.
+static void component_record_rejects_bad_fields() {
+    SubjectRef ref;
+    ref.id = 2;
+    ref.type = SubjectType::Kanji;
+    std::strcpy(ref.characters, "食");
+    std::strcpy(ref.meaning, "eat");
+    std::vector<uint8_t> bytes;
+    TEST_ASSERT_TRUE(encodeSubjectCache(testMeta(), {kanjiSubject()}, {ref}, &bytes));
+    SubjectCache out;
+    TEST_ASSERT_TRUE(decodeSubjectCache(bytes.data(), bytes.size(), &out));
+
+    // The record is the last 17 bytes: u16 count, u32 id, u8 type, then the
+    // characters (u16 length, 3 bytes) and the meaning (u16 length, 3 bytes).
+    const size_t record = bytes.size() - 17;
+    std::vector<uint8_t> longChars = bytes;
+    longChars[record + 7] = 12;  // characters length 3 -> 12
+    restamp_payload_crc(&longChars);
+    TEST_ASSERT_FALSE(decodeSubjectCache(longChars.data(), longChars.size(), &out));
+    MemorySource source(longChars);
+    TEST_ASSERT_FALSE(readSubjectCache(&source, longChars.size(), &out));
+
+    std::vector<uint8_t> badType = bytes;
+    badType[record + 6] = 9;  // not a SubjectType
+    restamp_payload_crc(&badType);
+    TEST_ASSERT_FALSE(decodeSubjectCache(badType.data(), badType.size(), &out));
+}
+
 void run_cache_tests() {
+    RUN_TEST(component_records_round_trip);
+    RUN_TEST(component_record_rejects_bad_fields);
     RUN_TEST(subject_audio_urls_round_trip);
     RUN_TEST(subject_audio_urls_reject_truncation);
     RUN_TEST(subject_cache_other_version_rejected);
