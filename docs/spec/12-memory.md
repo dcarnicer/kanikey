@@ -58,6 +58,22 @@ large block (the netifs, event loop and tcpip task stay, E/B).
 The prebuilt 3.3.x core uses about 20 KB more heap than 2.0.17, so MEM-02 is
 what pays for the move.
 
+### 2.4 MEM-02 on the device (2026-11-20, dev image, M)
+
+| Point | MEM-01 (prebuilt core) | MEM-02 (tuned core) |
+|---|---:|---:|
+| Boot heap, before SD | 179,512 free / 122,868 largest | 186,160 / 131,060 |
+| SD mount | −26,104 B | −8,184 B |
+| One TLS connection (first request, before → after) | 114,572 → 71,816 (−42.8 KB) | 108,588 → 78,584 (−30.0 KB) |
+| Home after the boot sync | 80,972 / 31,732 | **108,008 / 61,428** |
+| Review question, batch from the card, Wi-Fi up | ~37 KB / 21.5 KB | **49,180 / 23,540** |
+| Home after End session and the clip drain | — | 107,268 / 59,380 |
+
+The runtime gain is about 27 KB on Home and 12 KB in a review, and the largest
+block on Home doubles. A clip (39.8 KB free, 20.3 KB block) now fits in a review
+with Wi-Fi up without borrowing the canvas. The review batch (58 KB, Track C)
+is the next lever: the largest block in a review is still under 24 KB.
+
 ### 2.3 MEM-02 custom core (2026-11-20, host measurements, B)
 
 Setup: `cardputer-adv` on pioarduino 55.03.311 (Arduino 3.3.11, IDF 5.5.5), PlatformIO
@@ -194,7 +210,7 @@ transient maximum during a flow, not steady state.
 | ID | Task | Saving | Risk | Depends |
 |---|---|---|---|---|
 | MEM-01 | **Arduino 3 migration, phase 1.** pioarduino `55.03.311` (Arduino 3.3.11, IDF 5.5.5, as the owner's paperdiy-reader), prebuilt libs, M5Unified `96576a1` (0.3.0) and M5GFX 0.3.0 pinned, code fixed for IDF 5/mbedTLS 3. The firmware builds with the framework's gnu++2b (gnu++17 linked part of Matter: +560 KB flash, +20 KB RAM). **Done 2026-11-20, owner-verified** (orientation, keyboard, sync, reviews, R audio). Costs ~20 KB of heap against 2.0.17 (§2.2). | baseline only (−20 KB vs 2.0.17) | OTA from 0.2.x breaks (accepted) | — |
-| MEM-02 | **Built 2026-11-20, hardware pending.** `custom_sdkconfig` for memory (§2.3; the PlatformIO Core 6.1.19 pin, not a CMake pin, is what macOS needed). Candidates, each A/B measured: `CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN=y` + `SSL_OUT_CONTENT_LEN=4096` (−12.3 KB per connection; IN stays 16384); `CONFIG_WL_SECTOR_SIZE=512` (−~17.9 KB SD mount); `CONFIG_ESP_WIFI_IRAM_OPT=n`, `CONFIG_ESP_WIFI_RX_IRAM_OPT=n` (paperdiy-reader measured ~25–30 KB on the C3; on the S3 the freed IRAM also returns to DRAM, to measure); `CONFIG_ESP_WIFI_CSI_ENABLED=n`, `CONFIG_ESP_WIFI_FTM_ENABLE=n` (−~2.8 KB static); dynamic RX 32→16 and `MGMT_SBUF_NUM` 32→16 (peak); `CONFIG_ESP_TIMER_TASK_STACK_SIZE=4096`, `CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH=2560` (−~5.5 KB); `CONFIG_ARDUINO_SELECTIVE_COMPILATION` for unused wrappers. Keep BT (BT-01 plans a BLE keyboard), keep core dumps unless space is short, keep IPv4 only if IPv6 is off without side effects (−~1.3 KB, measure). Optional: `CONFIG_MBEDTLS_DYNAMIC_BUFFER=y` (known link trouble on pioarduino; try last). | **Static: −12.4 KB flash, −0.2 KB DRAM, heap start −1.7 KB (B). The 60–75 KB estimate is not supported by the static build; runtime gains (TLS, FatFs, task stacks, Wi-Fi buffers) are pending the device (§2.3).** | med: build time and CI, Wi-Fi throughput (OTA download time), one-time setup | MEM-01 |
+| MEM-02 | **Done 2026-11-20; device-measured (§2.4).** `custom_sdkconfig` for memory (§2.3; the PlatformIO Core 6.1.19 pin, not a CMake pin, is what macOS needed). Candidates, each A/B measured: `CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN=y` + `SSL_OUT_CONTENT_LEN=4096` (−12.3 KB per connection; IN stays 16384); `CONFIG_WL_SECTOR_SIZE=512` (−~17.9 KB SD mount); `CONFIG_ESP_WIFI_IRAM_OPT=n`, `CONFIG_ESP_WIFI_RX_IRAM_OPT=n` (paperdiy-reader measured ~25–30 KB on the C3; on the S3 the freed IRAM also returns to DRAM, to measure); `CONFIG_ESP_WIFI_CSI_ENABLED=n`, `CONFIG_ESP_WIFI_FTM_ENABLE=n` (−~2.8 KB static); dynamic RX 32→16 and `MGMT_SBUF_NUM` 32→16 (peak); `CONFIG_ESP_TIMER_TASK_STACK_SIZE=4096`, `CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH=2560` (−~5.5 KB); `CONFIG_ARDUINO_SELECTIVE_COMPILATION` for unused wrappers. Keep BT (BT-01 plans a BLE keyboard), keep core dumps unless space is short, keep IPv4 only if IPv6 is off without side effects (−~1.3 KB, measure). Optional: `CONFIG_MBEDTLS_DYNAMIC_BUFFER=y` (known link trouble on pioarduino; try last). | **Static −12.4 KB flash, heap start −1.7 KB (B); on the device +27 KB free and a 61 KB largest block on Home, +12 KB in a review, SD mount −17.9 KB, TLS −12.8 KB per connection (M, §2.4).** | med: build time and CI, Wi-Fi throughput (OTA download time), one-time setup | MEM-01 |
 
 ### Track B — quick code wins (any platform)
 

@@ -908,6 +908,13 @@ WaniKani writes were authorized for this run.
   borrow). Heap: boot 179,512 free / 122,868 largest; SD −26,104; Home after
   sync 80,972 / 31,732 — about 20 KB less than 2.0.17 (docs/spec/12-memory.md
   §2.2). OTA, rollback, deep-sleep wake and the setup portal not re-run yet.
+- **Memory-tuned core (MEM-02).** Dev image built with the custom core
+  (PlatformIO Core 6.1.19). Boot, sync (TLS), review entry and End session as
+  before. Home after the boot sync 108,008 free / 61,428 largest (prebuilt core
+  80,972 / 31,732); SD mount −8,184 B (−26,104); first TLS connection −30.0 KB
+  (−42.8 KB); review with Wi-Fi up 49,180 / 23,540. Details in
+  docs/spec/12-memory.md §2.4. OTA download time, deep-sleep wake and the
+  setup portal not re-run on this core yet.
 - **Canvas.** After a review's send loop the canvas stayed released (direct
   drawing) because the heap was fragmented at session end; it is now retried
   every 5 s once a 34 KB block exists.
