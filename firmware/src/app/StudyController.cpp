@@ -486,7 +486,7 @@ void criticalListKey(const KeyEvent& e) {
                 state().display.gDirty = true;
             }
         } else if (e.key == Key::Other) {
-            const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
+            const char c = tgc::keyChar(e, state().ui.gShift);
             if (c == 'p' || c == 'P') startPractice(2);
         }
     }

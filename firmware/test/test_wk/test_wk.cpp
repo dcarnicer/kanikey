@@ -657,6 +657,9 @@ static void test_cardputer_event_fields() {
     TEST_ASSERT_EQUAL(2, e.y);
     TEST_ASSERT_EQUAL(codeAt(2, 2), e.code);
     TEST_ASSERT_EQUAL(tgc::Key::Other, e.key);
+    TEST_ASSERT_EQUAL(tgc::KeySource::Matrix, e.source);
+    TEST_ASSERT_EQUAL_CHAR(0, e.ch);
+    TEST_ASSERT_EQUAL_UINT8(0, e.mods);
     TEST_ASSERT_TRUE(tgc::cardputerAdvEvent(static_cast<uint8_t>(codeAt(11, 2)), &e));
     TEST_ASSERT_FALSE(e.down);
     TEST_ASSERT_EQUAL(tgc::Key::Up, e.key);
@@ -3763,6 +3766,7 @@ void run_pack_tests();
 void run_http_tests();
 void run_power_tests();
 void run_screen_tests();
+void run_hid_tests();
 
 int main(int, char**) {
     UNITY_BEGIN();
@@ -3969,5 +3973,6 @@ int main(int, char**) {
     run_http_tests();
     run_power_tests();
     run_screen_tests();
+    run_hid_tests();
     return UNITY_END();
 }

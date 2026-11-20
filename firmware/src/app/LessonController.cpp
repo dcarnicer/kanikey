@@ -692,7 +692,7 @@ void lessonQuizKey(const KeyEvent& e) {
         state().display.gDirty = true;
         return;
     }
-    const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
+    const char c = tgc::keyChar(e, state().ui.gShift);
     if (c) {
         if (state().lesson.gLessonQuiz.part() == kk::AnswerKind::Meaning)
             kk::appendCapped(state().lesson.gLessonQuizInput, c, kk::kMaxAnswerBytes);
@@ -794,7 +794,7 @@ void lessonBatchQuizKey(const KeyEvent& e) {
         state().display.gDirty = true;
         return;
     }
-    const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
+    const char c = tgc::keyChar(e, state().ui.gShift);
     if (c) {
         if (l.gLessonBatchQueue.part() == kk::ReviewPart::Meaning) {
             kk::appendCapped(l.gLessonBatchInput, c, kk::kMaxAnswerBytes);
@@ -1155,7 +1155,7 @@ void lessonListKey(const KeyEvent& e) {
         l.gLessonNote[0] = 0;
         state().display.gDirty = true;
     } else if (e.key == Key::Other &&
-               tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == ' ') {
+               tgc::keyChar(e, state().ui.gShift) == ' ') {
         const size_t limit = l.gLessonBatchLimit ? l.gLessonBatchLimit : total;
         if (l.gLessonBrowse.toggle(l.gLessonBrowse.cursor(), limit)) {
             l.gLessonNote[0] = 0;
@@ -1183,7 +1183,7 @@ void lessonKey(const KeyEvent& e) {
     if (!e.down) return;
     LessonState& l = state().lesson;
     if (e.key == Key::Other) {
-        const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
+        const char c = tgc::keyChar(e, state().ui.gShift);
         if (c == 'q' || c == 'Q') {
             startLessonQuiz();
             return;
@@ -1205,7 +1205,7 @@ void lessonKey(const KeyEvent& e) {
         return;
     }
     if (e.key == Key::Right ||
-        (e.key == Key::Other && tgc::cardputerCharAt(e.x, e.y, false) == ' ')) {
+        (e.key == Key::Other && tgc::keyChar(e, false) == ' ')) {
         // Space and Right turn pages only; Enter on the last page moves on.
         if (!l.gLessonBrowse.onLastPage()) l.gLessonBrowse.nextPageOrCard();
         state().display.gDirty = true;

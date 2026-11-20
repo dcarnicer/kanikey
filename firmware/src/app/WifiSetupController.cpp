@@ -189,7 +189,7 @@ void closeWifiSetup() {
 }
 
 char typedChar(const KeyEvent& e) {
-    return tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
+    return tgc::keyChar(e, state().ui.gShift);
 }
 
 // On the Cardputer the comma, period, slash and quote keys are also the

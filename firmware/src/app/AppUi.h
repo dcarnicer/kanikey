@@ -17,7 +17,7 @@ void requestAfter();
 
 const char* keyName(tgc::Key k);
 void pushLog(const char* text);
-void updateModifier(uint8_t x, uint8_t y, bool down);
+void updateModifier(const tgc::KeyEvent& e);
 bool shift();
 
 void drawLoading(const char* title, const char* subtitle);

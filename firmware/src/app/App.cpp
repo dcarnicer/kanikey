@@ -168,7 +168,7 @@ void onKeyImpl(const KeyEvent& e) {
         if (e.key == Key::None) state().lesson.gDevKeyTest = false;
     }
 #endif
-    updateModifier(e.x, e.y, e.down);
+    updateModifier(e);
     if (kk::screenBase(state().screen) == Screen::Setup) {
         if (e.down && e.key == Key::Esc) {
             state().setup.gSetupPortal.end(false);
@@ -190,9 +190,10 @@ void onKeyImpl(const KeyEvent& e) {
         return;
     }
     // Shift + / is the Cardputer grid position 12,3. It arrives as Key::Right
-    // with gShift set; plain / must keep acting as Right, so match the chord,
-    // not Key::Other.
-    if (e.down && state().ui.gShift && e.x == 12 && e.y == 3) {
+    // with gShift set; plain / must keep acting as Right, so match the printed
+    // '?' rather than Key::Other. A BLE keyboard sends the same chord as '/'
+    // with its Shift bit set, so neither source needs the grid position.
+    if (e.down && tgc::keyChar(e, state().ui.gShift) == '?') {
         const kk::HelpScreen screen = helpScreenForState();
         if (screen != kk::HelpScreen::None) {
             state().ui.gHelpActive = true;
@@ -357,48 +358,45 @@ void onKeyImpl(const KeyEvent& e) {
         }
         return;
     }
+    // One character lookup for the Boot/Home shortcuts and the log line: for a
+    // matrix event keyChar() maps the grid once, for BLE it uses the event's
+    // own character and Shift bit.
+    const char c = tgc::keyChar(e, state().ui.gShift);
     // The boot "Wi-Fi needed" state keeps the phone portal as the fallback
     // (SETUP-09): Enter opens the on-device scan list, P opens the portal.
     if (e.down && underBase == Screen::Boot && e.key == Key::Other &&
         !state().sync.gSyncing && state().storage.gSdOk &&
         state().storage.gFontPack.ready() && !kk::DevWifi::hasSaved()) {
-        const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
         if (c == 'p' || c == 'P') {
             startSetupPortal();
             return;
         }
     }
     if (e.down && underBase == Screen::Home && e.key == Key::Other &&
-        (tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 'o' ||
-         tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 'O')) {
+        (c == 'o' || c == 'O')) {
         openOutbox();
         return;
     }
     if (e.down && underBase == Screen::Home && e.key == Key::Other &&
-        (tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 'l' ||
-         tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 'L')) {
+        (c == 'l' || c == 'L')) {
         startLessons();
         return;
     }
     if (e.down && underBase == Screen::Home && e.key == Key::Other &&
-        (tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 't' ||
-         tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 'T')) {
+        (c == 't' || c == 'T')) {
         openStats();
         return;
     }
     if (e.down && underBase == Screen::Home && e.key == Key::Other &&
-        (tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 'p' ||
-         tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 'P')) {
+        (c == 'p' || c == 'P')) {
         openStudyMenu();
         return;
     }
     if (e.down && underBase == Screen::Home && !state().sync.gSyncing && e.key == Key::Other &&
-        (tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 's' ||
-         tgc::cardputerCharAt(e.x, e.y, state().ui.gShift) == 'S')) {
+        (c == 's' || c == 'S')) {
         startSync();
         return;
     }
-    const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
 
     char line[44];
     if (c) {
@@ -1042,9 +1040,9 @@ void loop() {
             continue;
         }
         if (e.down)
-            keyRepeat.down(e.key, now);
+            keyRepeat.down(e, now);
         else
-            keyRepeat.up(e.key);
+            keyRepeat.up(e);
         onKey(e);
     }
 
