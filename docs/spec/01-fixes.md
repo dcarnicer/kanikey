@@ -17,7 +17,7 @@ Every item below was found and reproduced in the 2026-11-01 review of the firmwa
 | FIX-11 | Lesson start errors are silent | P1 | M | none | 0a+0b | done (sim) |
 | FIX-12 | Deep sleep during the lesson quiz | P2 | S | none | 0b | done (sim battery) |
 | FIX-13 | A full outbox drops reviews silently | P2 | S | none | 0b | done |
-| FIX-14 | Fixed 32 KB body cap with no fallback | P2 | M | none | 0a | partial (real 32 KB truncation fixed in the practice pool; forced cap not run) |
+| FIX-14 | Fixed 32 KB body cap with no fallback | P2 | M | none | 0a | done (2026-11-20: forced-cap fallback and page recovery verified on hardware) |
 | FIX-15 | Typo tolerance uses the typed length | P2 | S | none | 0a | done |
 | FIX-16 | Capitalised romaji in the meaning field is not recognised as a reading | P2 | S | none | 0a | done |
 | FIX-17 | IME lacks common romaji aliases | P2 | S | none | 0a | done |
