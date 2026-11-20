@@ -137,9 +137,9 @@ Working on hardware:
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Last recorded build (TNG-03 icons + BT-02): **release 1,664,473 B / 1,835,008 B
-flash (90.7%)**, **dev 1,733,137 B (94.4%)**, static RAM 105,448/105,568 B
-(32.2%).
+Last recorded build (PD-01): **release 1,664,501 B / 1,835,008 B flash
+(90.7%)**, **dev 1,733,149 B (94.4%)**, static RAM 105,448/105,568 B (32.2%);
+**PaperDIY `paperdiy` 1,696,357 B / 6,291,456 B (27.0%)**.
 Removing `efontJA_16` freed ~468 KB; the dev image now has ~111 KB of headroom.
 The loop task uses a 24 KiB stack;
 the lazy review batch keeps the lesson-fetch minimum free heap above ~44 KB in
@@ -160,7 +160,7 @@ the 2026-11-19 logs.
 | 9 | Technical debt, CI and release | Maintainability and shipping | Done (TECH-01…06, TECH-08); TECH-07 only if needed | TECH-07 |
 | 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | EXT-01…05 done; audio, reminders and stroke order remain; round 2 specified in `docs/spec` | STUDY |
 | 11 | Bluetooth keyboard | Optional full-size input; BLE-only, shares the 2.4 GHz radio and the no-PSRAM heap | Post-v1; BT-01 conditional go on NimBLE (compiled sizes); pairing/heap hardware run pending | BT-02 |
-| 12 | M5Stack PaperDIY port | Desk e-paper companion; 960×540, no keyboard/touch, two buttons | Post-v1; read-only companion first, full reviews need BT | PD-01 |
+| 12 | M5Stack PaperDIY port | Desk e-paper companion; 960×540, no keyboard/touch, two buttons | Post-v1; PD-01 target/board HAL compiles (hardware bring-up pending); PD-02 rendering next | PD-02 |
 
 ## Execution order
 
@@ -790,7 +790,8 @@ merged and CFG-01/02/03/04, REV-01/02/03/04/05/06/07/08/09/10/11/12,
 LES-01…LES-06, SETUP-09, ONB-01/02 and SPEED-01/02/03/04/05/07 are in review. The
 eight-section Settings menu replaces the flat list; the registry now has 48
 rows after the Account › Wi-Fi action. Main has 453 native tests and builds at
-1,664,473 B (90.7%) release / 1,733,137 B (94.4%) dev. No round-2 task is
+1,664,501 B (90.7%) release / 1,733,149 B (94.4%) dev; PaperDIY 1,696,357 B of
+6,291,456. No round-2 task is
 claimed as done
 here beyond the spec status above.
 
@@ -858,7 +859,7 @@ first target is a read-only companion; full reviews wait for BT-01…BT-04.
 
 | ID | Title | Priority | Size | Depends on | Status |
 |---|---|---|---|---|---|
-| PD-01 | Board HAL and build target | P3 | M | none | todo |
+| PD-01 | Board HAL and build target | P3 | M | none | review (2026-11-20: paperdiy build green; hardware pending) |
 | PD-02 | E-paper rendering and refresh | P3 | L | PD-01 | todo |
 | PD-03 | Two-button UI and read-only scope | P3 | M | PD-02 | todo |
 | PD-04 | Power, sleep and sync cadence | P3 | M | PD-03 | todo |

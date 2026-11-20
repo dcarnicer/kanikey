@@ -75,6 +75,8 @@ struct ListStyle {
     int width = 228;
     int rowHeight = 11;
     int textInset = 6;  // row content starts at x + textInset
+    int focusOffsetY = -2;  // focus fill top relative to the row top
+    int focusHeight = 0;    // 0 uses rowHeight; content rows use 19
     int trackX = 235;
     int trackHeight = 66;
     uint16_t focusBg = kSurfaceHi;
@@ -82,6 +84,19 @@ struct ListStyle {
     uint16_t track = kLine;
     uint16_t thumb = kAccentHi;
 };
+
+// The focus fill's top and height for a row whose text starts at `rowY`.
+// `focusHeight` 0 uses the full row height, which keeps the menu lists
+// unchanged; the 20 px content rows set -1/19 to keep their shorter fill.
+struct ListFocusRect {
+    int y = 0;
+    int height = 0;
+};
+
+inline ListFocusRect listFocusRect(const ListStyle& style, int rowY) {
+    return ListFocusRect{rowY + style.focusOffsetY,
+                         style.focusHeight > 0 ? style.focusHeight : style.rowHeight};
+}
 
 // Draws one row's content at (x, y); `focus` is true for the selected row.
 using ListRowFn = void (*)(lgfx::LovyanGFX& d, int index, int x, int y, int width,

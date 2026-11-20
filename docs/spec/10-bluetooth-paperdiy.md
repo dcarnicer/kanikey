@@ -1,15 +1,16 @@
 # Bluetooth keyboard and PaperDIY
 
-Status: **spike brief, 2026-11-19; BT-01 probe evidence added 2026-11-20**.
-This prepares the post-v1 spikes BT-01 (BLE HID host on the ESP32-S3) and
-PD-01/PD-02 (M5Stack PaperDIY board and e-paper rendering). It is a
-specification, not an implementation: no firmware, test, partition or library
-is changed here. §1.7 records compiled size probes and a conditional BT-02
-decision; those are desktop evidence, not a hardware run. No new number in
-this file is a KaniKey hardware measurement; build figures are from `pio
-run`, heap figures from `docs/hardware.md`, and vendor/third-party figures
-are labelled. Every measurement the spikes must take is defined here; results go
-to `docs/hardware.md` as a new dated section. Claims marked `verify` are
+Status: **spike brief, 2026-11-19; BT-01 probe evidence and BT-02 seam
+status added 2026-11-20**. This prepares the post-v1 spikes BT-01 (BLE HID host
+on the ESP32-S3) and PD-01/PD-02 (M5Stack PaperDIY board and e-paper
+rendering). It is a specification, not an implementation: no firmware, test,
+partition or library is changed here. §1.7 records compiled size probes, a
+conditional BT-02 decision and the seam's review status; those are desktop
+evidence, not a hardware run. No new number in this file is a KaniKey hardware
+measurement; build figures are from `pio run`, heap figures from
+`docs/hardware.md`, and vendor/third-party figures are labelled. Every
+measurement the spikes must take is defined here; results go to
+`docs/hardware.md` as a new dated section. Claims marked `verify` are
 unconfirmed and need a probe or a build.
 
 The Cardputer ADV stays the primary device. BT-01 is a go/no-go gate for an
@@ -288,7 +289,8 @@ in `docs/hardware.md`.
 
 Decision: **A** if it passes 1–7; **B** if A fails 1 or 2 and B passes 1–7;
 **C** only if A's API makes HOGP impossible. If both fail, BT-01 is a no-go
-with the measured reason. No library is merged; BT-02 starts only after a go.
+with the measured reason. No library is merged; BT-02's transport starts only
+after a go.
 
 The 2026-11-20 probe narrows this: both stacks need a larger slot (A 2.5 MB;
 B at least 2.25 MB, 2.5 MB recommended; the current 1.75 MiB slot cannot hold
@@ -338,37 +340,38 @@ struct KeyEvent {
 - **Order/priority.** Arrival order; no source priority. Built-in always
   works. BLE pairing starts only from Settings, never during a review/lesson
   (BT-03); BLE cannot open the setup portal by itself.
-- **Native tests (BT-02):** `hid_usage_to_key` for letters/digits/punctuation/
-  Space/Enter/Esc/Tab/Backspace/arrows; `hid_modifier_bits`;
-  `hid_report_diff` for press/release/rollover/Shift+letter/all-up;
-  `key_char_shift`; unsupported usage ignored; boot vs report layout; BLE
-  overflow does not emit a false `Key::None`.
+- **Native tests (BT-02):** `hidUsageToKey` for letters/digits/punctuation/
+  Space/Enter/Esc/Tab/Backspace/arrows; `hidModifierBits`; `HidKeyboard::diff`
+  for press/release/rollover/Shift+letter/all-up; `keyChar` Shift; unsupported
+  usage ignored; boot-report parse; `releaseAll`; the BLE repeat skip. A
+  nonstandard or common report layout is still a pair-time/transport check.
 
-**Current-code facts (2026-11-20).** `ui/KeyInput.h` still has only
-`key/down/code/x/y`; `Key` has no letter members, so a BLE letter is
-`Key::Other` plus `ch`. The seam touches every screen: `App::onKey()` and
-`syncStopRequested()` call `updateModifier(e.x, e.y, e.down)`, and
-`cardputerCharAt(e.x, e.y, state().ui.gShift)` appears in the review,
-lesson, study, outbox, Wi-Fi setup and dev paths. Five rules avoid silent
-regressions:
+**Current-code facts (2026-11-20, after the BT-02 seam).** `KeyEvent` now has
+`source/ch/mods`; matrix events keep `code/x/y` and clear `ch/mods`, while a
+BLE/button event carries its own character and modifier mask. `Key` still has
+no letter members, so a BLE letter is `Key::Other` plus `ch`. `App::onKey()`
+calls `updateModifier(e)`, and screen code calls `keyChar(e, gShift)`; the dev
+console's synthetic matrix lookup is the only remaining direct
+`cardputerCharAt` use. Five rules guided the seam; the first three are in the
+tree, the last two belong to the BLE transport:
 
-- `updateModifier` must take the event (or a `source`/`mods` pair), not
-  `x/y`: BLE events have `x=y=0`, and `gShift` must be right before the
-  first letter reaches a screen.
-- `keyChar(e, shiftHeld)` should apply Shift from `e.mods` only for
-  `Ble`/`Button`; for `Matrix` it must ignore `e.mods` and call
-  `cardputerCharAt(e.x, e.y, shiftHeld)`. Do not double-apply Shift.
-- `KeyRepeat` must skip non-matrix events: a BLE keyboard sends its own
-  repeat reports, and repeating again in `App::loop()` would duplicate
-  arrows and Backspace.
-- The ring is not thread-safe today (plain head/count). A BLE callback on
+- `updateModifier` takes the event (not `x/y`): BLE events have `x=y=0`, and
+  `gShift` must be right before the first letter reaches a screen.
+- `keyChar(e, shiftHeld)` applies Shift from `e.mods` only for
+  `Ble`/`Button`; for `Matrix` it ignores `e.mods` and calls
+  `cardputerCharAt(e.x, e.y, shiftHeld)`. Shift is applied once.
+- `KeyRepeat` skips non-matrix events: a BLE keyboard sends its own repeat
+  reports, and repeating again in `App::loop()` would duplicate arrows and
+  Backspace.
+- The ring is still not thread-safe (plain head/count). A BLE callback on
   `esp_ble_hidh_events` and `nextKeyEvent()` on the loop task need a
   `portMUX_TYPE` critical section or a FreeRTOS queue. A 64-entry
   `KeyEvent` queue is under 1 KB at the proposed size; size it from Q4.
-- On BLE disconnect, emit releases for every key the diff still holds and
-  then a `Key::None` up so modifiers cannot stick. On BLE queue overflow,
-  do not silently use `Key::None`: release the held keys explicitly or set
-  a "lost" flag for BT-03. Keep the existing matrix overflow rule.
+- On BLE disconnect, `HidKeyboard::releaseAll()` releases every key the diff
+  still holds and the transport must push a `Key::None` up so modifiers cannot
+  stick. On BLE queue overflow, do not silently use `Key::None`: release the
+  held keys explicitly or set a "lost" flag for BT-03. Keep the existing
+  matrix overflow rule.
 
 ### 1.6 BT-01 risks and open questions
 
@@ -381,7 +384,7 @@ regressions:
   point, but the flow is still unverified.
 - **TLS heap.** The last measured minimum is 22.8 KB on a smaller image; A's
   15.6 KB task-stack floor plus 20.9 KB static delta likely exhausts it, and
-  B's 8.2 KB + 6.4 KB is borderline. Measure BLE-on-TLS before BT-02.
+  B's 8.2 KB + 6.4 KB is borderline. Measure BLE-on-TLS before the BLE transport.
 - **Report protocol.** A nonstandard map may rule out a model.
 - **Reconnect UX.** Keyboards that advertise only after a keypress cannot be
   always ready; deep sleep makes it worse.
@@ -592,6 +595,38 @@ go for the NimBLE transport; no-go for Bluedroid A on the current table.**
   best-effort keyboard that loses keys or breaks TLS; the seam can still
   ship for buttons.
 
+#### BT-02 implementation status (2026-11-20): review
+
+**Status: review — seam and pure HID mapping merged; no BLE transport and no
+hardware run.** The parts that do not depend on a radio are in the tree:
+
+- `KeyEvent` carries `source`, `ch` and `mods`; matrix events keep `code/x/y`
+  and leave `ch/mods` clear, while BLE/button events carry their own character
+  and modifier mask (`ui/KeyInput.h`).
+- `keyChar(e, shiftHeld)` applies Shift exactly once: the matrix path uses the
+  live `gShift` and `cardputerCharAt`, a BLE/button event uses `e.mods`. Every
+  screen-side text/shortcut call site uses it, including the review, both lesson
+  quizzes, study, Outbox, on-device Wi-Fi and the `?` chord; the dev console's
+  synthetic matrix lookup still reverses `cardputerCharAt` to find a key for
+  injection.
+- `updateModifier(e)` replaces the modifier globals from `mods` for a non-matrix
+  event and keeps the matrix modifier-key path. `KeyRepeat` ignores non-matrix
+  down/up, so a BLE keyboard's own repeat reports are not repeated again.
+- `wk/HidKeyboard.{h,cpp}` is a pure, allocation-free mapping: boot-report
+  parse, `hidUsageToKey`/`hidUsageChar`/`hidModifierBits`, stateful
+  press/release/modifier diff, rollover and lost handling, and `releaseAll()`
+  for a disconnect. It never emits `Key::None` on a normal diff.
+- Sixteen native tests cover the mapping, diff order, rollover, disconnect and
+  the repeat skip; the branch reports 453 tests. These are host tests only.
+
+Not started: any BLE transport. No `esp_hidh`/NimBLE init, HID task, pairing
+flow, bond storage, reconnect policy or Settings entry is linked or enabled;
+the keyboard path still starts only at the TCA8418 matrix, and no code path
+produces a `KeySource::Ble` event outside `wk/HidKeyboard` and its tests.
+BT-01's conditional gates (three keyboards, pairing, reconnect, lost keys,
+BLE-on-TLS heap, coexistence, power) and every hardware check are open. The
+seam shipping does not claim a working Bluetooth keyboard.
+
 ---
 
 ## 2. PD-01/PD-02 — M5Stack PaperDIY board support
@@ -605,6 +640,20 @@ go for the NimBLE transport; no-go for Bluedroid A on the current table.**
   `firmware/src/ui/Theme.h` (grayscale variant); `docs/hardware.md`. No code
   in this change.
 - **Settings:** none; PD-03 adds button hints, PD-04 the sync/sleep cadence.
+
+**Status (2026-11-20): PD-01 review — build only; PD-02 in progress.** The
+`paperdiy`/`paperdiy-dev` environments, `partitions/kanikey_16MB.csv` (two
+6 MiB app slots + 4032K LittleFS) and `board/BoardPaperDiy.cpp` are merged.
+`paperdiy` selects `qio_opi` and M5GFX 0.3.0 and builds at 1,696,357 B of
+6,291,456 B (27.0%); the Cardputer images moved by +28 B (rotation and
+brightness now go through the board HAL). Buttons are a temporary mapping
+(A short = Down, A hold = Enter, B short = Esc, B hold = Up) until PD-03.
+Nothing has run on a PaperDIY: panel autodetect via PM1, octal PSRAM size,
+`Panel_EPD` buffers, buttons, SD/card detect, PM1 power key and VIN detection,
+deep-sleep current, PSRAM retention in light sleep and the G3/G45/G46 strap
+behaviour are all pending §2.6. `ensureCanvas()` still sizes the sprite to the
+display (960×540 RGB332 in internal RAM); PD-02 moves the 240×135 canvas to
+PSRAM with a 4× present.
 
 ### 2.1 Verified hardware
 

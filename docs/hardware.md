@@ -768,11 +768,22 @@ A150 G143 M81 E147 B586).
   normally. The full `Pause → Settings → System → About → Esc ×3` chain returned
   to Pause with Settings selected. Sleep/dim, firmware install, low battery and
   debug routes remain.
+- **PD-01.** The `paperdiy` and `paperdiy-dev` targets compile with the 16 MB
+  table, `qio_opi`, M5GFX 0.3.0 and the new board HAL (960×540, buttons, SD,
+  PM1 power/sleep); `paperdiy` is 1,696,357 B of its 6,291,456 B slot. No
+  PaperDIY hardware was available: panel/PSRAM/button/SD/PM1/EPD power and
+  strapping-pin checks remain, as does PD-02 rendering.
 - **SPEED-06.** Five native tests cover the P5/P6 policy and sleep slices. A
   bare dev `Z` entered the 10 s light-sleep test; the device was alive and
   syncing after the timer wake (`cmd h` answered, no boot). The post-wake
   serial line was lost on the USB CDC. Current draw, key/G0 wake latency,
   first-key, Wi-Fi rejoin, panel recovery, P4/P6 deadlines and USB remain.
+  After that test the dev image kept treating the cable as battery power
+  (`HWCDC::isPlugged()` can read false after a light sleep) and idled into
+  sleep repeatedly, so `/dev/cu.usbmodem*` vanished for minutes at a time.
+  Since `9290212` dev builds only light/deep sleep when `O` forces the battery
+  path; release builds keep the `externalPower()` check, so the USB-vs-battery
+  decision on a release image is still a hardware check.
 - **TNG-03.** Fifteen native tests cover the list-window math and hint
   fallbacks. Phase 2 migrated Home hints, Settings, the Wi-Fi scan list, Outbox,
   the lesson list window and Study/critical windows to the shared primitives;
@@ -781,9 +792,18 @@ A150 G143 M81 E147 B586).
   the remaining window/scroll cases are in the table. Phase 3 moved wrapping,
   ellipsis and UTF-8 trimming into `TextLayout` and added the 1bpp icon tables;
   Home and a real review feedback (answer list, faint synonyms and a two-line
-  hint with `...`) rendered correctly after flashing. Icons are not adopted in
-  screens yet. UiFont replaced 151 size-1 font pairs across the screens; the
-  pixel-identical sweep needs the device.
+  hint with `...`) rendered correctly after flashing. UiFont replaced 151
+  size-1 font pairs across the screens; a real review prompt typed through the
+  matrix path still works. TNG-03 icons were adopted afterwards: Home shows the
+  sync icon, About the Font/Rad/Token icons, and a real `NOT QUITE` feedback
+  shows the cross; the pill/answer layout stays readable. The full icon sweep
+  (Sync/Outbox/Wi-Fi/Setup, 1–3-digit counts, pill width) remains.
+- **UI-08.** The new `kErr` (`#FF6D00`) is visible as the orange `Answer` and
+  `NOT QUITE` on the real panel; the full gamma/contrast sweep across every
+  status screen remains.
+- **BT-02.** The source-neutral seam keeps matrix typing working in a real
+  review (`zzz` reached the checker and produced the expected feedback);
+  shortcuts/IME/Wi-Fi password and the BLE transport/HID reports remain.
 
 ## Round 2 hardware checks
 
@@ -841,7 +861,7 @@ instead.
 | `FIX-14` | Forced small cap: 5→2→1 fallback | — | — | `todo` | Not run; needs a dev build with a forced small body cap. |
 | `RAD-04` | Radical-only lesson on a low-level account | `cardputer-adv-dev` | 2026-11-06 | `blocked` | Synthetic `L` → `RAD L1 ground` card and quiz rendered the radical bitmap. A real low-level account is not available, so the real first-lesson run is blocked. |
 | `UI-05` | Real level-up notice | — | — | `todo` | No level-up occurred in the 2026-10-29 run; the `Level up!` transition still needs a real level change. |
-| `SPEED-06` | Light sleep: key wake mid-review, current, G0, first key | — | — | `todo` | Spec status `todo`; no hardware run. |
+| `SPEED-06` | Light sleep: key wake mid-review, current, G0, first key | `cardputer-adv-dev` | 2026-11-20 | `partial` | `Z` 10 s light-sleep test woke on the timer and kept syncing; the post-wake CDC line was lost and `isPlugged()` read false afterwards, so dev builds now sleep only with `O`. Key/G0 wake latency, first key, current and the release USB detection remain. |
 | `REM-01/02/03` | Timer wake, reminder re-sleep, tones | — | — | `todo` | No hardware run; the REM-01 spike and the reminder/sound checks are still `todo`. |
 | `AUD-01/02/03` | Clip sizes, decoder flash/RAM/time, I2S/ES8311, cache, playback | — | — | `todo` | Parser and 880 Hz speaker path merged 2026-11-06; measurements, cache and playback checks remain. |
 | `BT-01` | BLE HID host spike | — | — | `todo` | Post-v1 spike; not started. |

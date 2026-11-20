@@ -15,8 +15,9 @@ void drawList(lgfx::LovyanGFX& d, const ListWindow& window, ListRowFn row,
         const int y = style.y + r * style.rowHeight;
         const bool focus = index == window.selected;
         if (focus) {
-            d.fillRect(style.x, y - 2, style.width, style.rowHeight, style.focusBg);
-            d.fillRect(style.x, y - 2, 2, style.rowHeight, style.focusBar);
+            const ListFocusRect focusRect = listFocusRect(style, y);
+            d.fillRect(style.x, focusRect.y, style.width, focusRect.height, style.focusBg);
+            d.fillRect(style.x, focusRect.y, 2, focusRect.height, style.focusBar);
         }
         d.setTextDatum(lgfx::top_left);
         if (row) {

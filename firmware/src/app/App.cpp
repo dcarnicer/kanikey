@@ -931,10 +931,10 @@ void setup() {
 
     tgc::board::begin();
     state().display.gDisp = &tgc::board::display();
-    // The Cardputer ADV panel uses rotation 0 for landscape (offset_rotation
-    // is 1 in M5GFX's board data); see board/BoardCardputerAdv.cpp.
-    state().display.gDisp->setRotation(0);
-    state().display.gDisp->setBrightness(kk::settingsBrightness());
+    // Landscape is board-specific (Cardputer ADV rotation 0, PaperDIY 1); the
+    // board owns it, so a new panel cannot be left portrait here.
+    tgc::board::setOrientation(true);
+    tgc::board::setBrightness(kk::settingsBrightness());
     kk::settingsApplyTimeZone();
 
     ensureCanvas();
