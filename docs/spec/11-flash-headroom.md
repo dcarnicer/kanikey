@@ -165,8 +165,17 @@ audio live on SD. The steady-state caps from the code:
 | **Steady-state sum** | | | **352,448** |
 
 Transients: each atomic write keeps `.tmp` and `.bak` copies, so `cache.bin`
-can briefly occupy about 3 × 256 KB (E: about 0.8 MB worst case). Real usage
-should come from the `fs` command (§4); this is the upper bound.
+can briefly occupy about 3 × 256 KB (E: about 0.8 MB worst case).
+
+**Measured (2026-11-20, Cardputer ADV, real account after a full sync, `fs`):**
+LittleFS total 4,653,056 B, **used 94,208 B (2.0%)**, free 4,558,848 B.
+`/state` holds 7 files, 74,888 B: `journal.bin` 65,032, `practice.bin` 3,620,
+`cache.bin` 3,064 + `cache.bak` 3,064, `critical.bin` 76, `outbox.bin` 16 +
+`outbox.bak` 16. The rest of "used" is LittleFS metadata/blocks. Even the code
+caps with the worst-case transient (~0.8 MB) leave the partition mostly empty,
+so a smaller LittleFS (e.g. 2 MiB) would still keep about 2.5× headroom over
+that worst case. The same run checked the scanf-free parser on the panel:
+`Synced 12:53`, `L8 3% since 03 Feb` and `Next review now` rendered as before.
 
 ## 3. FLASH-02 — trims
 
