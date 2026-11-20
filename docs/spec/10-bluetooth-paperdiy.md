@@ -641,6 +641,20 @@ seam shipping does not claim a working Bluetooth keyboard.
   in this change.
 - **Settings:** none; PD-03 adds button hints, PD-04 the sync/sleep cadence.
 
+**Status (2026-11-20): PD-01 review — build only; PD-02 in progress.** The
+`paperdiy`/`paperdiy-dev` environments, `partitions/kanikey_16MB.csv` (two
+6 MiB app slots + 4032K LittleFS) and `board/BoardPaperDiy.cpp` are merged.
+`paperdiy` selects `qio_opi` and M5GFX 0.3.0 and builds at 1,696,357 B of
+6,291,456 B (27.0%); the Cardputer images moved by +28 B (rotation and
+brightness now go through the board HAL). Buttons are a temporary mapping
+(A short = Down, A hold = Enter, B short = Esc, B hold = Up) until PD-03.
+Nothing has run on a PaperDIY: panel autodetect via PM1, octal PSRAM size,
+`Panel_EPD` buffers, buttons, SD/card detect, PM1 power key and VIN detection,
+deep-sleep current, PSRAM retention in light sleep and the G3/G45/G46 strap
+behaviour are all pending §2.6. `ensureCanvas()` still sizes the sprite to the
+display (960×540 RGB332 in internal RAM); PD-02 moves the 240×135 canvas to
+PSRAM with a 4× present.
+
 ### 2.1 Verified hardware
 
 Sources: M5Stack PaperDIY Complete Kit/Assembly Kit pages, the PaperDIY

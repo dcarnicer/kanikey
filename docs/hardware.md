@@ -778,6 +778,12 @@ A150 G143 M81 E147 B586).
   syncing after the timer wake (`cmd h` answered, no boot). The post-wake
   serial line was lost on the USB CDC. Current draw, key/G0 wake latency,
   first-key, Wi-Fi rejoin, panel recovery, P4/P6 deadlines and USB remain.
+  After that test the dev image kept treating the cable as battery power
+  (`HWCDC::isPlugged()` can read false after a light sleep) and idled into
+  sleep repeatedly, so `/dev/cu.usbmodem*` vanished for minutes at a time.
+  Since `9290212` dev builds only light/deep sleep when `O` forces the battery
+  path; release builds keep the `externalPower()` check, so the USB-vs-battery
+  decision on a release image is still a hardware check.
 - **TNG-03.** Fifteen native tests cover the list-window math and hint
   fallbacks. Phase 2 migrated Home hints, Settings, the Wi-Fi scan list, Outbox,
   the lesson list window and Study/critical windows to the shared primitives;
@@ -855,7 +861,7 @@ instead.
 | `FIX-14` | Forced small cap: 5→2→1 fallback | — | — | `todo` | Not run; needs a dev build with a forced small body cap. |
 | `RAD-04` | Radical-only lesson on a low-level account | `cardputer-adv-dev` | 2026-11-06 | `blocked` | Synthetic `L` → `RAD L1 ground` card and quiz rendered the radical bitmap. A real low-level account is not available, so the real first-lesson run is blocked. |
 | `UI-05` | Real level-up notice | — | — | `todo` | No level-up occurred in the 2026-10-29 run; the `Level up!` transition still needs a real level change. |
-| `SPEED-06` | Light sleep: key wake mid-review, current, G0, first key | — | — | `todo` | Spec status `todo`; no hardware run. |
+| `SPEED-06` | Light sleep: key wake mid-review, current, G0, first key | `cardputer-adv-dev` | 2026-11-20 | `partial` | `Z` 10 s light-sleep test woke on the timer and kept syncing; the post-wake CDC line was lost and `isPlugged()` read false afterwards, so dev builds now sleep only with `O`. Key/G0 wake latency, first key, current and the release USB detection remain. |
 | `REM-01/02/03` | Timer wake, reminder re-sleep, tones | — | — | `todo` | No hardware run; the REM-01 spike and the reminder/sound checks are still `todo`. |
 | `AUD-01/02/03` | Clip sizes, decoder flash/RAM/time, I2S/ES8311, cache, playback | — | — | `todo` | Parser and 880 Hz speaker path merged 2026-11-06; measurements, cache and playback checks remain. |
 | `BT-01` | BLE HID host spike | — | — | `todo` | Post-v1 spike; not started. |
