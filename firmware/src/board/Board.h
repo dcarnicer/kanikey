@@ -1,20 +1,21 @@
 // From Tamagotcho (MIT, Copyright (c) 2026 Tamagotcho contributors).
 #pragma once
 // Board HAL: one implementation per target, selected by build flag
-// (TGC_BOARD_STICKS3 / TGC_BOARD_TDISPLAY_S3 / TGC_BOARD_CARDPUTER_ADV), or
-// TGC_BOARD_M5: the StickS3 and the Cardputer ADV in one image, the board
-// chosen at boot (board/BoardM5.cpp). UI code is written against the
-// LovyanGFX API only, so it is identical on every board.
+// (TGC_BOARD_STICKS3 / TGC_BOARD_TDISPLAY_S3 / TGC_BOARD_CARDPUTER_ADV /
+// TGC_BOARD_PAPERDIY), or TGC_BOARD_M5: the StickS3 and the Cardputer ADV in
+// one image, the board chosen at boot (board/BoardM5.cpp). UI code is written
+// against the LovyanGFX API only, so it is identical on every board.
 #include <cstdint>
 
 #include "ui/KeyInput.h"
 
-#if defined(TGC_BOARD_STICKS3) || defined(TGC_BOARD_CARDPUTER_ADV) || defined(TGC_BOARD_M5)
+#if defined(TGC_BOARD_STICKS3) || defined(TGC_BOARD_CARDPUTER_ADV) || defined(TGC_BOARD_PAPERDIY) || \
+    defined(TGC_BOARD_M5)
 #include <M5GFX.h>
 #elif defined(TGC_BOARD_TDISPLAY_S3)
 #include <LovyanGFX.hpp>
 #else
-#error "Define TGC_BOARD_STICKS3, TGC_BOARD_TDISPLAY_S3, TGC_BOARD_CARDPUTER_ADV or TGC_BOARD_M5"
+#error "Define TGC_BOARD_STICKS3, TGC_BOARD_TDISPLAY_S3, TGC_BOARD_CARDPUTER_ADV, TGC_BOARD_PAPERDIY or TGC_BOARD_M5"
 #endif
 
 namespace tgc {
@@ -23,24 +24,26 @@ namespace board {
 enum class Button : uint8_t {
     Next,    // StickS3: side button (B). T-Display-S3: GPIO14. Cardputer ADV: none
              // (never down; its keyboard has the actions, see nextKeyEvent()).
+             // PaperDIY: B (G3).
     Select,  // StickS3: front button (A). T-Display-S3: GPIO0 (BOOT). Cardputer
-             // ADV: the G0 button.
+             // ADV: the G0 button. PaperDIY: A (G4).
 };
 
 // --- Capabilities and keyboard ------------------------------------------------
 // fixedLandscape(): the panel is used one way only (Cardputer ADV: landscape,
-// rotation 0, over the keyboard), so the app has no Orientation setting.
-// hasKeyboard(): the board has a keyboard (Cardputer ADV); the hint bar names
-// keys and nextKeyEvent() delivers them.
+// rotation 0, over the keyboard; PaperDIY: landscape, rotation 1), so the app
+// has no Orientation setting.
+// hasKeyboard(): the board has a full keyboard (Cardputer ADV); the hint bar
+// names keys and nextKeyEvent() delivers them. PaperDIY has no keyboard, but
+// its A/B buttons arrive through the same queue as KeySource::Button.
 // nextKeyEvent(): the next key event update() read, oldest first; false when
-// there is none (always on a board without a keyboard). Key::None going up
-// means every key is up (events were lost).
-#if defined(TGC_BOARD_CARDPUTER_ADV) || defined(TGC_BOARD_M5)
+// there is none. Key::None going up means every key is up (events were lost).
+#if defined(TGC_BOARD_CARDPUTER_ADV) || defined(TGC_BOARD_M5) || defined(TGC_BOARD_PAPERDIY)
 bool fixedLandscape();
 bool hasKeyboard();
 bool nextKeyEvent(KeyEvent* out);
 #ifdef KANIKEY_DEV
-// Test hook: append an event to the same ring queue the TCA8418 fills, so the
+// Test hook: append an event to the same ring queue the board fills, so the
 // overflow-marker order can be checked without a physical key storm.
 void devPushKeyEvent(const KeyEvent& e);
 #endif
@@ -63,7 +66,7 @@ struct SdPins {
     int8_t sck = -1, miso = -1, mosi = -1, cs = -1;
     int8_t otherCs = -1;
 };
-#if defined(TGC_BOARD_CARDPUTER_ADV) || defined(TGC_BOARD_M5)
+#if defined(TGC_BOARD_CARDPUTER_ADV) || defined(TGC_BOARD_M5) || defined(TGC_BOARD_PAPERDIY)
 bool sdPins(SdPins* out);
 #else
 inline bool sdPins(SdPins*) { return false; }
@@ -83,8 +86,9 @@ int height();  // height of the current rotation
 
 // Display rotation. Landscape is the default (begin() sets it); portrait swaps
 // the panel's width and height (e.g. 240x135 -> 135x240). width()/height()
-// follow the current rotation.
-void setOrientation(bool landscape);  // setRotation(landscape ? 0 : 1)
+// follow the current rotation. The landscape rotation is board-specific:
+// Cardputer ADV 0, PaperDIY 1.
+void setOrientation(bool landscape);
 bool landscape();
 // Rotation 0-3 as LovyanGFX's setRotation(): the top of the picture is at the
 // panel's top (0, native portrait), right (1, landscape), bottom (2) or left
@@ -113,9 +117,10 @@ int batteryPercent();
 // Whether external power / charging is detected; false if unknown.
 bool isCharging();
 
-void setBrightness(uint8_t level);  // 0..255
+// 0..255. PaperDIY has no backlight; the level is ignored.
+void setBrightness(uint8_t level);
 // Plays a short test tone through the ES8311. Returns false when the speaker is
-// not available in this build.
+// not available in this build (PaperDIY has none).
 bool playTone(uint16_t frequency, uint16_t durationMs, uint8_t volume = 128);
 
 // --- Power -----------------------------------------------------------------
@@ -128,14 +133,16 @@ bool externalPower();
 // Panel and backlight on/off without sleeping; off keeps the frame buffer.
 void setDisplayOn(bool on);
 // Blanks the panel and puts the chip in deep sleep. The Select button wakes it
-// (on the Cardputer ADV any key too, which is not delivered as a key event),
-// and the chip then boots through setup() again. Never returns.
+// (on the Cardputer ADV any key too, which is not delivered as a key event;
+// on PaperDIY both A and B), and the chip then boots through setup() again.
+// Never returns.
 [[noreturn]] void deepSleep();
 // Blanks the panel, turns Wi-Fi off and enters light sleep. RAM and the current
-// screen stay; the Select button and the keyboard's INT line wake it, and with
-// maxMs > 0 a timer does too (0 = key only). The panel is on again when this
-// returns. True when a key/button woke it, false on the timer; the key that
-// woke the chip is consumed, exactly like the blank-panel wake path.
+// screen stay; the Select button and the keyboard's INT line wake it
+// (PaperDIY: A and B), and with maxMs > 0 a timer does too (0 = key only). The
+// panel is on again when this returns. True when a key/button woke it, false on
+// the timer; the key that woke the chip is consumed, exactly like the
+// blank-panel wake path.
 bool lightSleep(uint32_t maxMs);
 // True when the last sleep was ended by its timer. A key wake from deepSleep()
 // is EXT1 and is reported by wokeFromSleep(), not here.
@@ -147,10 +154,11 @@ uint64_t rtcMicros();
 // "save and sleep now". StickS3: begin() disables the M5PM1's single-click
 // reset (which cuts the chip's power and with it the RTC timer) and this polls
 // the PM1's press flag; the double-click power-off stays as the hardware
-// escape hatch. False when the PM1 is missing, unknown or failed to configure
-// (the button then keeps its factory behaviour), and always on the
-// T-Display-S3. A press does not wake the chip from deepSleep(); only Select
-// does.
+// escape hatch. PaperDIY: the same PM1 flag for the PY_BTN power button; the
+// wake-vs-power-cycle behaviour is unverified (PD-01 TODO). False when the PM1
+// is missing, unknown or failed to configure (the button then keeps its
+// factory behaviour), and always on the T-Display-S3. A press does not wake
+// the chip from deepSleep(); only Select (PaperDIY: A/B) does.
 bool powerButtonClicked();
 
 // Hardware random seed.
