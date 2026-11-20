@@ -97,13 +97,13 @@ bool readLine(WiFiClientSecure& client, String& line, uint32_t deadline) {
     return false;
 }
 
-// WiFiClientSecure::stop() memsets sslclient_context and leaves its socket at
-// 0 instead of -1. A second stop on the same object then closes fd 0, which
-// may by then belong to another lwIP socket. Force the sentinel back after
-// every close so a reused static client cannot close an unrelated descriptor.
+// A reused static client must never close an fd it does not own. The 2.x
+// stop() left the socket at 0, so a second stop could close fd 0 (now another
+// socket). 3.x stop_ssl_socket() closes the fd and sets it to -1 itself; the
+// socket() accessor still forces the sentinel as a cheap guard.
 void closeClient(WiFiClientSecure& client) {
     client.stop();
-    client.socket();  // the library accessor sets sslclient->socket = -1
+    client.socket();  // sets sslclient->socket = -1
 }
 
 struct Endpoint {
@@ -148,7 +148,8 @@ Attempt performRequest(WiFiClientSecure& client, const String& method, const Str
         else
             client.setCACert(tgc::kRootCaPem);
         client.setHandshakeTimeout(kHandshakeTimeoutS);
-        client.setTimeout(timeoutMs / 1000);
+        // 3.x: setConnectionTimeout() takes milliseconds (the 2.x setTimeout(seconds) is gone).
+        client.setConnectionTimeout(timeoutMs);
 #ifdef KANIKEY_DEV
         if (endpoint.insecure)
             Serial.printf("[http] dev host %s:%u, certificate check off\n", endpoint.host,
@@ -168,10 +169,11 @@ Attempt performRequest(WiFiClientSecure& client, const String& method, const Str
                       static_cast<unsigned>(millis() - t0));
     }
     r.connected = true;
-    // WiFiClientSecure::setTimeout() hides Stream::setTimeout(): the former
-    // sets the socket options, the latter the readStringUntil() limit, which
-    // would otherwise stay at the 1 s default.
-    client.setTimeout(timeoutMs / 1000);
+    // setConnectionTimeout() (ms) sets the socket send/receive timeouts; the
+    // Stream::setTimeout() below is the readStringUntil() limit, which would
+    // otherwise stay at the 1 s default. On 3.x there is no setTimeout() member
+    // to hide Stream's, so both calls are explicit.
+    client.setConnectionTimeout(timeoutMs);
     // Header lines are short; a dead keep-alive socket must not sit on the
     // full request timeout before the one retry can happen.
     static_cast<Stream&>(client).setTimeout(std::min<uint32_t>(timeoutMs, 5000));

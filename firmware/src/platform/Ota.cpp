@@ -4,6 +4,10 @@
 #include <Preferences.h>
 #include <SD.h>
 #include <Update.h>
+// Arduino-ESP32 3.x: WiFiClientSecure.h no longer pulls in WiFiClient.h.
+// mbedTLS 3 (IDF 5): the SHA-256 *_ret functions are now the plain names
+// (mbedtls_sha256_starts/update/finish, same arguments and int results).
+#include <WiFiClient.h>
 #include <WiFiClientSecure.h>
 #include <esp_heap_caps.h>
 #include <esp_ota_ops.h>
@@ -160,11 +164,14 @@ FetchStatus request(const String& startUrl, long* contentLength, int* httpCode, 
             secure.reset(new WiFiClientSecure());
             secure->setCACert(tgc::kRootCaPem);
             secure->setHandshakeTimeout(kHandshakeTimeoutS);
-            secure->setTimeout(timeoutMs / 1000);
+            // 3.x: NetworkClient::setConnectionTimeout() takes milliseconds and
+            // sets the connect and socket timeouts. The 2.x setTimeout(seconds)
+            // is gone, and on 3.x it resolves to Stream::setTimeout (ms).
+            secure->setConnectionTimeout(timeoutMs);
             client = secure.get();
         } else {
             plain.reset(new WiFiClient());
-            plain->setTimeout(timeoutMs / 1000);
+            plain->setConnectionTimeout(timeoutMs);
             client = plain.get();
         }
         if (!client->connect(url.host.c_str(), url.port)) {
@@ -177,7 +184,7 @@ FetchStatus request(const String& startUrl, long* contentLength, int* httpCode, 
         // The connect timeout above only covers the socket and handshake;
         // readStringUntil() uses Stream's own read timeout, which is still at
         // the 1 s default until it is set here.
-        client->setTimeout(timeoutMs / 1000);
+        client->setConnectionTimeout(timeoutMs);
         static_cast<Stream&>(*client).setTimeout(timeoutMs);
         client->print("GET ");
         client->print(url.path);
@@ -418,7 +425,7 @@ FetchResult downloadToFile(const String& url, uint32_t expectedBytes,
 
     mbedtls_sha256_context sha;
     mbedtls_sha256_init(&sha);
-    mbedtls_sha256_starts_ret(&sha, 0);
+    mbedtls_sha256_starts(&sha, 0);
     size_t written = 0;
     unsigned char digest[32] = {};
     bool bodyDone = false;
@@ -453,7 +460,7 @@ FetchResult downloadToFile(const String& url, uint32_t expectedBytes,
                             failure = FetchStatus::WriteFailed;
                             return false;
                         }
-                        mbedtls_sha256_update_ret(&sha, buf, static_cast<size_t>(n));
+                        mbedtls_sha256_update(&sha, buf, static_cast<size_t>(n));
                         written += static_cast<size_t>(n);
                         lastData = millis();
                         // One callback per 4 KB chunk: the App redraws only
@@ -484,7 +491,7 @@ FetchResult downloadToFile(const String& url, uint32_t expectedBytes,
     } else if (!bodyDone || written != expectedBytes) {
         result.status = FetchStatus::SizeMismatch;
     } else {
-        mbedtls_sha256_finish_ret(&sha, digest);
+        mbedtls_sha256_finish(&sha, digest);
         const std::string hash = hexDigest(digest);
         if (!sameHex(hash, expectedSha256)) {
             Serial.printf("[pack] sha256 %s, expected %s\n", hash.c_str(),
@@ -550,7 +557,7 @@ FetchResult install(const AppImage& app, ProgressFn progress, void* progressCtx,
 
     mbedtls_sha256_context sha;
     mbedtls_sha256_init(&sha);
-    mbedtls_sha256_starts_ret(&sha, 0);
+    mbedtls_sha256_starts(&sha, 0);
     bool updateBegun = false;
     size_t written = 0;
     unsigned char digest[32] = {};
@@ -594,7 +601,7 @@ FetchResult install(const AppImage& app, ProgressFn progress, void* progressCtx,
                                           static_cast<unsigned>(written), Update.errorString());
                             return false;
                         }
-                        mbedtls_sha256_update_ret(&sha, buf, static_cast<size_t>(n));
+                        mbedtls_sha256_update(&sha, buf, static_cast<size_t>(n));
                         written += static_cast<size_t>(n);
                         lastData = millis();
                         if (written - lastProgress >= 32768 || written == app.bytes) {
@@ -625,7 +632,7 @@ FetchResult install(const AppImage& app, ProgressFn progress, void* progressCtx,
     } else if (!bodyDone || written != app.bytes) {
         result.status = FetchStatus::SizeMismatch;
     } else {
-        mbedtls_sha256_finish_ret(&sha, digest);
+        mbedtls_sha256_finish(&sha, digest);
         const std::string hash = hexDigest(digest);
         if (!sameHex(hash, app.sha256)) {
             Serial.printf("[ota] sha256 %s, expected %s\n", hash.c_str(), app.sha256.c_str());

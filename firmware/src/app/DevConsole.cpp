@@ -682,9 +682,13 @@ void showRadicalTest() {
 
 void serviceAssetServer() {
     if (!state().storage.gAssetServerActive) return;
-    WiFiClient client = state().storage.gAssetServer.available();
+    // 3.x: accept() replaces the deprecated available().
+    WiFiClient client = state().storage.gAssetServer.accept();
     if (!client) return;
-    client.setTimeout(10);
+    // 2.x setTimeout(10) meant a 10 s socket timeout (seconds). On 3.x a plain
+    // setTimeout(10) would be Stream's 10 ms line timeout, so use the
+    // connection timeout in ms. The line read keeps Stream's 1 s default.
+    client.setConnectionTimeout(10000);
     client.setNoDelay(true);
 
     String request = client.readStringUntil('\n');
