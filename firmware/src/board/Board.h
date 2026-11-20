@@ -125,7 +125,7 @@ bool playTone(uint16_t frequency, uint16_t durationMs, uint8_t volume = 128);
 
 // --- Power -----------------------------------------------------------------
 // True when this boot is a wake-up from deepSleep() rather than a power-on or
-// a reset.
+// a reset: the key wake (EXT1) or the timer armed by deepSleep(timerUs) (REM-02).
 bool wokeFromSleep();
 // True when USB/external power is present; false if unknown. The app then only
 // blanks the panel when idle instead of sleeping (keeps the serial port up).

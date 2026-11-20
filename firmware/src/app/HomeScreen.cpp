@@ -67,12 +67,17 @@ void drawHomeScreen(lgfx::LovyanGFX& d, const HomeView& view) {
     d.drawString("LESSONS", 164, 73);
 
     ui::applyFont(d, ui::UiFont::Base);
-    d.setTextColor(view.offline ? ui::kWarn : ui::kDim, ui::kBg);
-    d.drawString("Next review", 8, 86);
-    d.setTextDatum(lgfx::top_right);
-    d.setTextColor(ui::kText, ui::kBg);
-    d.drawString(view.nextReview, 232, 86);
-    d.setTextDatum(lgfx::top_left);
+    if (view.reminderActive) {
+        d.setTextColor(ui::kAccentHi, ui::kBg);
+        d.drawString(view.reminder, 8, 86);
+    } else {
+        d.setTextColor(view.offline ? ui::kWarn : ui::kDim, ui::kBg);
+        d.drawString("Next review", 8, 86);
+        d.setTextDatum(lgfx::top_right);
+        d.setTextColor(ui::kText, ui::kBg);
+        d.drawString(view.nextReview, 232, 86);
+        d.setTextDatum(lgfx::top_left);
+    }
 
     // SRS distribution: one segment per stage group, then A/G/M/E/B counts.
     ui::applyFont(d, ui::UiFont::Small);
@@ -127,7 +132,9 @@ void drawHomeScreen(lgfx::LovyanGFX& d, const HomeView& view) {
         d.drawString(view.levelLine, 8, 117);
     }
     const char* hint;
-    if (view.outboxAttention) {
+    if (view.reminderActive) {
+        hint = ui::fitHint(d, {"any key: continue", "any key"});
+    } else if (view.outboxAttention) {
         hint = ui::fitHint(d, {"O: outbox  Enter  S  Esc: menu",
                                "O  Enter  S  Esc: menu", "O  S  Esc: menu"});
     } else {

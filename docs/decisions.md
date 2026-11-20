@@ -1313,3 +1313,46 @@ decoder fits. Go/no-go gates: at least 2× real time decode, at least 8 KB free
 and 4 KB largest after playback plus TLS, no underrun or key lag, first sound
 under 100 ms. Helix is the fallback only if that decode gate fails and the
 license is accepted. No decoder or playback code is merged.
+
+---
+
+## 2026-11-20 — REM-02: device-local reminder wake, no push
+
+**Decision:** the reminder is the device's own timer. Before the idle deep
+sleep the device computes the next wake from the cached summary: the first
+review bucket after now (only when M1 is on) and the next M3 time, each moved
+past quiet hours (M2) and capped at 24 h. A timer wake starts no Wi-Fi and no
+TLS. It shows the banner `N reviews ready` for 30 s when the cached due count
+meets M1 (or any due review when only M3 is on) and the moment is outside quiet
+hours; a key in that window continues the normal boot, and otherwise the chip
+arms the next wake and sleeps again. The Home banner replaces the
+next-review row, not the header.
+
+**Why:** the server cannot push to a device with no Wi-Fi at rest, and an
+extra request on each wake would spend the battery the reminder is meant to
+save. The cache already holds the buckets, so a wake needs only the local
+clock.
+
+**Clock across deep sleep:** RTC memory keeps the UTC time at the moment the
+timer is armed and `rtcMicros()` at that moment; a timer wake rebuilds the time
+as their sum with the elapsed RTC time. `time()` is never read before SNTP, and
+a device without a trusted clock arms no timer. The local offset comes from the
+POSIX TZ rule through `localtime_r`. DST is handled in the pure module: a 02:30
+daily time in the spring gap normalises to 03:30, and in the autumn overlap it
+takes the first occurrence. A DST change during sleep can move one wake by up
+to an hour, and the next recompute corrects it.
+
+**Implications:**
+- Both M1 and M3 at their Off defaults arm nothing and read no clock, so a
+  release device with defaults sleeps exactly as before.
+- M1 Off does not disable the M3 time: it reminds when any review is due.
+- The reminder wakes at the first future bucket, not at the first bucket that
+  reaches M1. A high M1 can cost several timer wakes a day; the wakes are cheap
+  because they do not join Wi-Fi.
+- The reminder never fires on USB power: the idle deep sleep is battery only.
+- The reminder re-arms without writing the cache, since nothing changed on a
+  timer wake. A key during the banner runs the normal quick sync after boot.
+- The fired time lives in one boot only. The next wake is always strictly later
+  than the fired one, so a reminder cannot repeat at the same moment.
+- Hardware numbers (wake cost, the 30 s expiry, the banner width) are still
+  open; see `docs/hardware.md` when the run is done.

@@ -53,6 +53,7 @@
 #include "platform/DevToken.h"
 #include "platform/DevWifi.h"
 #include "app/RemProbe.h"
+#include "app/ReminderController.h"
 #include "platform/AudioCache.h"
 #include "platform/CriticalStore.h"
 #include "platform/GlyphPack.h"
@@ -420,6 +421,10 @@ void onKeyImpl(const KeyEvent& e) {
                   c ? cs : "-", state().ui.gShift, state().ui.gFn, state().ui.gCtrl, state().ui.gOpt, state().ui.gAlt);
 }
 
+// REM-02: the due count of the banner that is on screen; 0 when none is.
+uint32_t gReminderBannerDue = 0;
+constexpr uint32_t kReminderBannerMs = 30000;
+
 kk::app::HomeView buildHomeView() {
     kk::app::HomeView view;
     view.batteryPercent = tgc::board::batteryPercent();
@@ -429,6 +434,11 @@ kk::app::HomeView buildHomeView() {
     view.dueReviews = state().session.gDueReviews;
     view.lessons = state().session.gLessons;
     view.nextReview = state().session.gNextReview;
+    if (gReminderBannerDue) {
+        view.reminderActive = true;
+        snprintf(view.reminder, sizeof view.reminder, "%u %s ready",
+                 static_cast<unsigned>(gReminderBannerDue), gReminderBannerDue == 1 ? "review" : "reviews");
+    }
     view.syncClock = state().session.gSyncClock;
     const SyncJobState& job = state().sync.gSyncJob;
     if (job.active && !job.modal) {
@@ -501,6 +511,52 @@ void drawHome() {
     kk::app::drawHomeScreen(d, view);
     d.endWrite();
     present();
+}
+
+// REM-02: the reminder timer woke the chip. No Wi-Fi and no TLS: the cached
+// summary decides, and `now` is the clock rebuilt from the RTC (never time()).
+// A reminder due shows the banner for 30 s; a key in that window returns, and
+// the normal boot goes on. Otherwise the next wake is armed and the chip sleeps
+// again, the panel dark. No cached summary: no banner, the same sleep.
+void reminderTimerWake(uint32_t now) {
+    const bool haveCache = loadCache();
+    const kk::Summary* forecast = haveCache ? &state().session.gSummary : nullptr;
+    const uint32_t due = haveCache ? state().session.gSummary.dueReviews(now) : 0;
+    const bool banner = haveCache && kk::app::reminderBannerWanted(due, now);
+#ifdef KANIKEY_DEV
+    Serial.printf("[rem] timer wake: due %u, banner %s\n", static_cast<unsigned>(due),
+                  banner ? "yes" : "no");
+#endif
+    if (!banner) {
+        firmwareBeforeSleep();
+        tgc::board::deepSleep(kk::app::reminderArmAfterWake(now, forecast));
+    }
+    applySummary(now);
+    gReminderBannerDue = due;
+    kk::app::reminderNoteFired(now);
+    drawHome();
+    tgc::board::setBrightness(kk::settingsBrightness());
+
+    const uint32_t shownAt = millis();
+    bool key = false;
+    while (!key && millis() - shownAt < kReminderBannerMs) {
+        tgc::board::update();
+        KeyEvent e;
+        while (tgc::board::nextKeyEvent(&e))
+            if (e.down && e.key != Key::None) key = true;
+        if (tgc::board::wasPressed(tgc::board::Button::Select)) key = true;
+        if (!key) delay(10);
+    }
+    gReminderBannerDue = 0;
+    if (key) {
+#ifdef KANIKEY_DEV
+        Serial.println("[rem] key during the banner: normal boot");
+#endif
+        return;
+    }
+    const uint32_t after = now + static_cast<uint32_t>((millis() - shownAt + 999u) / 1000u);
+    firmwareBeforeSleep();
+    tgc::board::deepSleep(kk::app::reminderArmAfterWake(after, forecast));
 }
 
 enum class BootState : uint8_t {
@@ -911,12 +967,19 @@ void setup() {
     Serial.begin(115200);
     delay(250);
 
+    // REM-02: the reminder's own timer wake is read first. Its time comes from
+    // the RTC, so nothing here touches time() or the radio.
+    uint32_t reminderNow = 0;
+    const bool reminderTimer = kk::app::reminderBootWake(&reminderNow);
+    const bool timerWake = tgc::board::wokeFromTimer();
+
     tgc::board::begin();
     state().display.gDisp = &tgc::board::display();
     // Landscape is board-specific (Cardputer ADV rotation 0, PaperDIY 1); the
-    // board owns it, so a new panel cannot be left portrait here.
+    // board owns it, so a new panel cannot be left portrait here. A timer wake
+    // keeps the panel dark until the reminder decides (see below).
     tgc::board::setOrientation(true);
-    tgc::board::setBrightness(kk::settingsBrightness());
+    if (!timerWake) tgc::board::setBrightness(kk::settingsBrightness());
     kk::settingsApplyTimeZone();
 
     ensureCanvas();
@@ -962,6 +1025,13 @@ void setup() {
 
     state().storage.gSdOk = mountSd();
     if (state().storage.gSdOk) openGlyphPacks();
+    if (timerWake) {
+        // REM-02: a reminder timer may show the banner or sleep again here,
+        // before the first draw and before any Wi-Fi. Returns only when the
+        // normal boot goes on (a key during the banner, or no reminder timer).
+        if (reminderTimer) reminderTimerWake(reminderNow);
+        tgc::board::setBrightness(kk::settingsBrightness());
+    }
     if (state().storage.gFsFormatPrompt) {
         state().ui.gLastInputAt = millis();
         state().display.gDirty = true;

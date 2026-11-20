@@ -575,6 +575,17 @@ notices are separate screens that also keep the device awake.
   screens; `Enter` retries or opens setup. `Esc` → Settings → `Sync now` retries.
 - **Low battery:** below 20% on battery, starting reviews or lessons asks for
   confirmation; USB power skips the prompt.
+- **Reminder banner (REM-02, 2026-11-20; hardware pending).** A reminder
+  timer wake (set by M1 or M3, §5.12) starts with no Wi-Fi. If the cached
+  summary has at least M1 reviews due (1 when M1 is off and M3 is set) and the
+  moment is outside quiet hours, Home opens with the next-review row replaced
+  by the accent banner `25 reviews ready` (`1 review ready` for one) and the
+  hint `any key: continue`. The banner stays for 30 s. Any key in that window
+  ends it and the normal boot goes on (the usual quick sync, the header shows
+  `sync n/m`). Otherwise the panel stays dark, the next wake is armed and the
+  chip sleeps again. Without a cached summary there is no banner.
+  **Hardware pending:** the banner text width at 240×135, the 30 s expiry and
+  the re-sleep with Wi-Fi off (see [`docs/hardware.md`](hardware.md)).
 - No side menus or cards covering the numbers are shown.
 
 ### 5.4 Review
@@ -967,9 +978,23 @@ radical/vocabulary page set (see [`docs/hardware.md`](hardware.md), 2026-11-19).
   due set before the batch limit. R4's `Random` value is stored but the
   first-question build still treats it as Meaning (the R2 `Random` order is
   separate). L2 `Order`, L4–L6 and the other keyed rows are live where
-  `03-settings.md` says so; P5–P6 and M1–M7 still await their owners. The
+  `03-settings.md` says so; P5–P6 and M4–M7 still await their owners. The
   current build reads R1–R12 (R4 only Meaning/Reading), L1–L6, S1–S5, Y1–Y3,
-  P1–P4 and the nine actions.
+  P1–P4, M1–M3 and the nine actions.
+- **M1–M3 Reminders (REM-02, 2026-11-20; hardware pending).** M1 `Reminder`
+  (`Off`, `1+ due`, `10+ due`, `25+ due`, `50+ due`; default Off) sets the
+  review count that reminds, and its review-bucket wake is armed only while it
+  is on. M2 `Quiet hours` (`Off`, `22-08`, `23-07`; default `22-08`) keeps
+  reminders out of the span, which wraps midnight; a wake inside it moves to
+  the end of the span. M3 `Daily reminder` (`Off`, `08:00`, `12:00`, `18:00`,
+  `20:00`; default Off) adds a daily wake at that local time; with M1 Off it
+  reminds when anything is due. With M1 and M3 both Off the device arms no
+  timer and sleeps as before. The banner is described at §5.3.
+- **Implementation (2026-11-20, REM-02).** The schedule is pure
+  (`wk/Reminder`); the device side keeps the clock in RTC memory and arms the
+  timer in the idle deep sleep only. **Hardware pending:** the timer wake with
+  Wi-Fi off, the 30 s expiry, the key path and the banner text (see
+  [`docs/hardware.md`](hardware.md)).
 - R2 `Account preference` reads WaniKani's `reviews_presentation_order`; there
   is no separate toggle for that preference. The other R2 orders are
   device-side and do not change the account setting.

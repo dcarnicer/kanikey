@@ -28,6 +28,7 @@
 #include "app/OutboxController.h"
 #include "app/OutboxScreen.h"
 #include "app/PowerController.h"
+#include "app/ReminderController.h"
 #include "app/ReviewController.h"
 #include "app/ReviewScreens.h"
 #include "app/SettingsController.h"
@@ -309,7 +310,10 @@ bool powerTick(uint32_t now) {
         }
         saveCacheSnapshot();
         firmwareBeforeSleep();
-        tgc::board::deepSleep();
+        // REM-02: a reminder timer when M1 or M3 is set. Both off (the defaults)
+        // arms nothing and this is the same key-only deep sleep as before.
+        tgc::board::deepSleep(kk::app::reminderArmIdle(
+            state().session.gHaveSummary ? &state().session.gSummary : nullptr));
         return true;
     }
     return false;
