@@ -18,22 +18,24 @@ const char* kStudyLabels[kStudyRows] = {"Recent mistakes", "Recent lessons", "Cr
 // The 22x20 prompt box of a critical-list row. Like the lesson list it shows
 // the first character only (a whole word cannot fit 20 px, and the full-size
 // missing-glyph block spilled over the next rows on hardware, 2026-11-20); a
-// failure is a small "?" that stays inside the box.
+// failure is a small "?" that stays inside the box. `chip` is the subject's
+// type colour (WaniKani-style); the glyph is drawn on it, and a failure puts
+// the dark box back under the "?".
 void drawPrompt(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack, kk::GlyphPack& radicalPack,
-                const kk::Subject* s, int cx, int cy) {
+                const kk::Subject* s, int cx, int cy, uint16_t chip) {
     const kk::ClipRect clip{cx - 10, cy - 9, cx + 10, cy + 9};
     bool drawn = false;
     if (s && s->type == kk::SubjectType::Radical)
-        drawn = radicalPack.drawRadical(d, s->id, cx, cy, 18, 18, ui::kText, ui::kSurface, clip);
+        drawn = radicalPack.drawRadical(d, s->id, cx, cy, 18, 18, ui::kText, chip, clip);
     if (!drawn && s && !s->characters.empty()) {
         std::string first = s->characters;
         const char* p = first.c_str();
         kk::utf8Next(&p);
         first.resize(static_cast<size_t>(p - first.c_str()));
-        drawn = fontPack.drawTextCentered(d, first, 20, cx, cy, 20, 20, ui::kText, ui::kSurface,
-                                          clip);
+        drawn = fontPack.drawTextCentered(d, first, 20, cx, cy, 20, 20, ui::kText, chip, clip);
     }
     if (!drawn) {
+        d.fillRect(cx - 10, cy - 9, 20, 18, ui::kSurface);
         ui::applyFont(d, ui::UiFont::Base);
         d.setTextColor(ui::kWarn, ui::kSurface);
         d.setTextDatum(lgfx::middle_center);
@@ -70,9 +72,10 @@ void drawCriticalRow(lgfx::LovyanGFX& d, int index, int x, int y, int width, boo
     (void)width;
     const CriticalListCtx& list = *static_cast<const CriticalListCtx*>(ctx);
     const CriticalRowView& item = list.view->rows[static_cast<size_t>(index)];
-    d.fillRect(x, y, 22, 20, ui::kSurface);
+    const uint16_t chip = item.subject ? ui::subjectTypeColor(item.subject->type) : ui::kSurface;
+    d.fillRect(x, y, 22, 20, chip);
     d.drawRect(x, y, 22, 20, ui::kLine);
-    drawPrompt(d, *list.fontPack, *list.radicalPack, item.subject, x + 11, y + 10);
+    drawPrompt(d, *list.fontPack, *list.radicalPack, item.subject, x + 11, y + 10, chip);
 
     char label[72];
     snprintf(label, sizeof label, "%s", item.meaning.c_str());

@@ -63,6 +63,9 @@
 | `err-bg` | `#351A1C` | Wrong background |
 | `warn` | `#FBBF24` | Warnings, offline, low battery |
 | `gold` | `#F5C451` | Level |
+| `radical` | `#00AAFF` | Radical prompt panel and list chip (8-bit `#00B6FF`) |
+| `kanji` | `#FF00AA` | Kanji prompt panel and list chip (8-bit `#FF00AA`) |
+| `vocab` | `#AA00FF` | Vocabulary and kana vocabulary panel and chip (8-bit `#B600FF`) |
 
 The hex column is the design value. The firmware stores each token as an
 RGB565 constant in `firmware/src/ui/Theme.h` (for example `kSurface` `0x0108`);
@@ -73,8 +76,18 @@ header too. (The Home/Stats level label uses M5GFX's `TFT_GOLD`, which
 quantizes to the same `#FFDB00` as `warn`.) The full quantized table and the
 UI-08 contrast audit are in [design.md §8.1](design.md#81-palette-and-contrast-ui-08).
 
-The palette is its own: warm black, indigo and coral. WaniKani's colors,
-illustrations and components are not copied.
+The palette is its own: warm black, indigo and coral. The three subject type
+colours (`radical`, `kanji`, `vocab`) follow WaniKani's convention: light blue
+for radicals, pink for kanji and purple for vocabulary. Only those hues are
+used. WaniKani's artwork, fonts and components are not copied.
+
+Subject type colour rule (2026-11-20, hardware pending): a prompt panel is
+filled with its subject's type colour and the glyph is drawn in `text` on it;
+a list row has a 20–22 px chip of the same colour behind its glyph. The
+`MEANING`/`READING` and `CORRECT`/`NOT QUITE` colours are unchanged. The type
+word (`VOCAB`, `KANJI`, `RADICAL`) always stays as text, so the colour is never
+the only cue. paperdiy has no hue: its panels and chips keep the `surface` gray
+(see §5.4 and [design.md §8.1](design.md#81-palette-and-contrast-ui-08)).
 
 ### 2.2 Typography
 
@@ -381,10 +394,15 @@ Home ──L──► Lessons list ──Space──► select up to N
                                                           └─ PUT /assignments/{id}/start per item
 ```
 
+- Each row's 22×20 prompt box is filled with the type colour (white glyph);
+  the `RAD`/`KANJI`/`VOCAB` label stays text. A missing glyph returns the box to
+  `surface` with the `?`.
 - The list opens with the first N rows selected (LES-01; N = L1 `Batch size`,
   clamped to the account's `lessons_batch_size`). `Space` toggles a row and
   says `batch full` when N are selected; `Enter` studies the selection; `Esc`
   returns Home.
+- The character panel (x 4–78, y 20–84) uses the type colour and the §5.4 rules,
+  with the `KANJI L5`-style pill as on the review.
 - The card pages by topic (LES-06): `Meaning`, `Reading` (skipped when the
   subject needs none), `Components and notes`, and `Context` when parts of
   speech or context sentences exist. A long topic continues on further pages
@@ -650,9 +668,15 @@ notices are separate screens that also keep the device awake.
 - With R11 `Prioritize critical` on, due critical subjects are moved ahead of
   the rest; the chosen R2 order is preserved inside both groups and the batch
   limit is applied after the partition.
-- Left panel 88×88:
-  - 64 px kanji/radical, centered.
-  - Pill `KANJI L5` or `RADICAL L3` below.
+- Left panel 88×88 (x 4–92, y 20–108):
+  - Fill: the type colour (`radical` `#00AAFF`, `kanji` `#FF00AA`, `vocab`
+    `#AA00FF`; 8-bit `#00B6FF`, `#FF00AA`, `#B600FF`), 1 px `line` border.
+  - 64 px kanji/radical in `text` (white), centered; anti-aliased against the
+    panel colour.
+  - Pill `KANJI L5` or `RADICAL L3` below: a dark `surface-hi` chip with `dim`
+    text, so it reads on every type colour.
+  - Missing glyph: the panel goes back to `surface` and the `?`/`no glyph` state
+    is drawn on it, so that warning keeps its contrast.
   - Vocabulary: the word scales to 64/32/20 px to fit the 78×80 panel; if none
     fits, the prompt shows the missing-glyph state.
   - Radical without Unicode: bitmap from the visual pack.
@@ -808,7 +832,8 @@ first with the shuffle kept inside each level.
 ### 5.6 Item detail
 
 - Header `ITEM DETAIL` with the page counter; type and level sit in the pill.
-- Character/radical on the left; meanings and readings on the right.
+- Character/radical on the left, on the type-colour panel of §5.4 (x 4–78,
+  y 20–84; the missing-glyph state as there); meanings and readings on the right.
 - Pages with `←` `→` or `Space`:
   1. Meanings, readings and synonyms.
   2. Meaning mnemonic + hint.
@@ -870,7 +895,10 @@ Warning and the empty-mnemonic state (see [`docs/hardware.md`](hardware.md)).
 - **REV-11 mistakes list (2026-11-19).** The summary footer is
   `Enter: home  R: next batch` while due reviews remain; `Down`/`Tab` opens a
   three-row list (`1-3/7`) with the prompt character, primary meaning and
-  reading, wrong counts or the last wrong text and `SRS 3->4`/`pending`.
+  reading, wrong counts or the last wrong text and `SRS 3->4`/`pending`. Each
+  row's prompt sits on a 20×20 chip in its type colour (x+2–x+22, y+2–y+22 in
+  the 24 px row; the selected row keeps its `surface-hi` band). paperdiy draws
+  no chip.
   `Up`/`Down` wrap, `Esc` returns to the stats and `Enter` still goes Home; an
   empty list reads `No mistakes`. `R` starts another batch without returning
   Home; it is absent with no due reviews and in practice. **Hardware pending:**
@@ -960,6 +988,8 @@ radical/vocabulary page set (see [`docs/hardware.md`](hardware.md), 2026-11-19).
 - `Q` on a lesson card opens the optional single-item local quiz. The batch
   quiz after the last card is the gate by default (L3 `Required`); L3 `Skip`
   goes straight to the start confirmation.
+- The prompt panel (x 4–78, y 20–84) uses the type colour and the §5.4 rules
+  while the question is open; the `CORRECT`/`NOT QUITE` pills are unchanged.
 - Both quizzes use the review answer field: header `LESSON QUIZ`, `1/2` (or
   `1/1` for radicals). The first part is random per item, meaning or reading,
   and the other part follows when the subject has one (WaniKani's lesson quiz).
@@ -1212,7 +1242,8 @@ radical/vocabulary page set (see [`docs/hardware.md`](hardware.md), 2026-11-19).
   The pool is refreshed on sync, so both modes work offline; if it is empty and
   Wi-Fi is available they fetch once and save it.
 - `Critical items` opens `CRITICAL ITEMS`, worst first, with prompt, main
-  meaning and percentage. Up/Down scrolls, `Enter` opens the detail card,
+  meaning and percentage. Each prompt sits on a 22×20 chip in its type colour
+  (white glyph; the dark box with `?` on a missing glyph). Up/Down scrolls, `Enter` opens the detail card,
   `P` starts practice, `Esc` returns to the menu.
 - Practice reuses the review UI. It never writes the outbox, never calls
   `POST /reviews` or `PUT /start`, and never changes due counts or SRS. Each

@@ -50,6 +50,22 @@ bool drawSubjectPrompt(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     return false;
 }
 
+void drawSubjectPanel(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack, kk::GlyphPack& radicalPack,
+                      const kk::Subject& s, int x, int y, int w, int h, int cx, int cy,
+                      int maxWidth, int maxHeight, int radicalMaxSide) {
+    const uint16_t panel = subjectTypeColor(s.type);
+    const kk::ClipRect clip{x + 2, y + 2, x + w - 2, y + h - 2};
+    d.fillRect(x, y, w, h, panel);
+    d.drawRect(x, y, w, h, kLine);
+    if (drawSubjectPrompt(d, fontPack, radicalPack, s, cx, cy, maxWidth, maxHeight,
+                          radicalMaxSide, kText, panel, clip))
+        return;
+    // The "?" state sits on the dark panel, where its colours were chosen.
+    d.fillRect(x, y, w, h, kSurface);
+    d.drawRect(x, y, w, h, kLine);
+    drawMissingGlyph(d, fontPack, radicalPack, cx, cy);
+}
+
 void drawMissingGlyph(lgfx::LovyanGFX& d, const kk::GlyphPack& fontPack,
                       const kk::GlyphPack& radicalPack, int cx, int cy) {
     const bool noFont = !fontPack.ready();

@@ -3,6 +3,8 @@
 // value is quantized to that palette. See docs/design.md §8.1 for the audit.
 #include <cstdint>
 
+#include "wk/Types.h"
+
 #if defined(TGC_BOARD_PAPERDIY)
 #include "ui/EpdPalette.h"
 #endif
@@ -47,5 +49,31 @@ constexpr uint16_t kErr = 0xFB60; // #FF6D00, 8-bit red-orange (was 0xC945)
 constexpr uint16_t kErrBg = 0x3882;
 constexpr uint16_t kWarn = 0xFE26;
 #endif
+
+// Subject type colours, WaniKani-style: the prompt panel is filled with the
+// type colour and the subject is drawn in kText on it; list rows carry a small
+// chip of the same colour. Design values: radical #00AAFF, kanji #FF00AA,
+// vocabulary #AA00FF (kana vocabulary takes the vocabulary colour). The 8-bit
+// canvas shows #00B6FF, #FF00AA and #B600FF (docs/design.md §8.1).
+//
+// paperdiy has no hue: every type keeps the panel surface, so its screens look
+// as they did, and kTypeColours tells the row code to skip the extra chip.
+#if defined(TGC_BOARD_PAPERDIY)
+constexpr bool kTypeColours = false;
+constexpr uint16_t kRadical = kSurface;
+constexpr uint16_t kKanji = kSurface;
+constexpr uint16_t kVocab = kSurface;
+#else
+constexpr bool kTypeColours = true;
+constexpr uint16_t kRadical = 0x055F;  // #00AAFF; 8-bit #00B6FF
+constexpr uint16_t kKanji = 0xF815;    // #FF00AA; 8-bit #FF00AA
+constexpr uint16_t kVocab = 0xA81F;    // #AA00FF; 8-bit #B600FF
+#endif
+
+constexpr uint16_t subjectTypeColor(kk::SubjectType type) {
+    return type == kk::SubjectType::Radical ? kRadical
+           : type == kk::SubjectType::Kanji ? kKanji
+                                            : kVocab;
+}
 
 }  // namespace kk::ui

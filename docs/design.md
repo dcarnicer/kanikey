@@ -361,6 +361,13 @@ and color distances in the findings are CIE76 ΔE.
 | `err` | `0xFB60` | `0xEC` | `#FF6D00` |
 | `err-bg` | `0x3882` | `0x20` | `#240000` |
 | `warn` | `0xFE26` | `0xF8` | `#FFDB00` |
+| `kRadical` | `0x055F` | `0x17` | `#00B6FF` |
+| `kKanji` | `0xF815` | `0xE2` | `#FF00AA` |
+| `kVocab` | `0xA81F` | `0xA3` | `#B600FF` |
+
+`kRadical`, `kKanji` and `kVocab` are the subject type colours (design
+`#00AAFF`, `#FF00AA`, `#AA00FF`; WaniKani's hues). Kana vocabulary uses
+`kVocab`. On paperdiy they all equal `kSurface`, so that board keeps its gray.
 
 `gold` is not a `Theme.h` token: Home/Stats use M5GFX's `TFT_GOLD`, which
 quantizes to the same `#FFDB00` as `warn`.
@@ -380,6 +387,30 @@ Contrast of the text and semantic tokens on the three main backgrounds:
 | `warn` | 15.38 | 11.12 | 10.55 |
 
 `ok` on `ok-bg` is 9.58:1 and `err` on `err-bg` is 6.92:1.
+
+The type colours carry the white `text` glyph of the prompt panel, and they
+are the panel fill, not the text colour. Their contrast is `text` on the
+panel, and the panel against the `surface`, `surface-hi` and `bg` it sits on:
+
+| Panel | `text` on panel | panel on `surface` | panel on `surface-hi` | panel on `bg` |
+|---|---:|---:|---:|---:|
+| `kRadical` `#00B6FF` | 2.30 | 6.60 | 6.26 | 9.14 |
+| `kKanji` `#FF00AA` | 3.60 | 4.22 | 4.00 | 5.83 |
+| `kVocab` `#B600FF` | 4.74 | 3.20 | 3.04 | 4.43 |
+
+**Type colour findings (2026-11-20).**
+
+- The radical panel is the weak point: white on `#00B6FF` is 2.30:1, below
+  the 3:1 floor for large text. The glyph is 60–80 px, so it is still
+  readable, but it is the lowest-contrast pair in the app. It is the owner's
+  WaniKani-style colour and was kept; a deeper blue would raise the ratio.
+- Kanji (3.60) and vocabulary (4.74) clear 3:1 for the large glyph.
+- Lesson/critical chips and mistake-row chips are 20–22 px boxes of the same
+  colours. Their glyph is `text` on the chip, and a selected row sits on
+  `surface-hi`: vocabulary is 3.04:1 there, the others are higher.
+- The type word (`VOCAB`, `KANJI`, `RADICAL`) stays in text next to the colour,
+  and the dark `surface-hi` pill inside the review panel keeps the `dim` label
+  readable on any type colour.
 
 **Findings and decisions.**
 
