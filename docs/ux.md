@@ -695,15 +695,16 @@ first with the shuffle kept inside each level.
   - `You typed` and the answer in gray.
   - `Answer` lists every accepted meaning or reading joined by ` / `; kanji
     readings are grouped on'yomi first and kunyomi second, and user synonyms
-    follow in faint. The list fits two lines and ends in `…` when tokens are
-    dropped.
+    follow in faint after `+`. Nothing is cut: the list is part of the scrolling
+    body below.
   - `Enter: next`, `Tab: details`.
 - Wrong:
   - `NOT QUITE` pill in red with a cross icon after the word.
   - `You typed` and the user's answer.
   - `Answer` with the accepted list, same layout as Correct.
-  - The first sentence of the part's hint, else the user's note; never the
-    generic `Incorrect meaning` / `Incorrect reading` line.
+  - The first sentence of the part's hint, else the user's note, shown in full
+    (wrapped, scrollable); never the generic `Incorrect meaning` /
+    `Incorrect reading` line.
 - **REV-02 typo policy (2026-11-19).** With R6 `Typos = WaniKani` (default), a
   close meaning of at least four characters is **Correct**, with
   `Close: <answer>` on the note line and no mistake; the part completes and R8
@@ -730,7 +731,8 @@ first with the shuffle kept inside each level.
 - Feedback doesn't last a fixed time by default: it waits for `Enter`. With R8
   `Auto-advance on correct` set to 0.5 s, 1 s or 2 s, a CORRECT answer advances
   after that delay. Typing a printable key during CORRECT feedback advances
-  immediately and feeds the key into the next field; wrong and warning
+  immediately and feeds the key into the next field (`;` and `.` are the
+  scroll keys and do not advance; `,` and `/` still do); wrong and warning
   feedback, the detail card, pause, Settings and the blank screen never
   advance. R8 is Off by default, so the current Enter-only behaviour stays.
   **Hardware pending** (see [`docs/hardware.md`](hardware.md), 2026-11-19).
@@ -748,6 +750,33 @@ first with the shuffle kept inside each level.
   **Hardware pending:** multiple meanings, grouped kanji readings, the hint
   fallback and the lesson-quiz layout (see [`docs/hardware.md`](hardware.md),
   2026-11-19).
+- **Feedback body (REV-01/03, 2026-11-20; hardware pending).** The typed text,
+  the answers, the synonyms and the note lines form one body under the pill:
+  x 100 to 236 (x 86 to 236 in the lesson quiz), y 36 to 118, above the hint
+  bar. The left prompt panel and the header do not change.
+  - Layout: each section starts a new row (`You typed`, the typed text,
+    `Answer`; for a reading `Y` and `A`), then the answers, then the notes. No
+    line is cut and no `...` is added.
+  - Latin wraps between words; a word wider than the box splits by character.
+    Japanese (readings and kana answers, at 20 px) wraps between characters.
+    A row never mixes Latin and Japanese.
+  - Answers keep their ` / ` separators; the on'yomi and kun'yomi groups of a
+    kanji are four spaces apart; synonyms follow `+`. A Japanese piece the pack
+    cannot draw shows `no glyph`.
+  - Up/Down (`;` up, `.` down) scroll one 8 px line per press, clamped to the
+    content. The scroll starts at the top for each new answer and survives a
+    trip to the detail card.
+  - A 2 px track at x 238 (the list style) shows only when the body overflows.
+  - Hint bar: `;/. scroll` is added only when the body overflows, with the
+    answer keys kept first: `Enter: next  ;/. scroll`,
+    `C ok  A later  ;/. scroll` (R7 On), `Enter: edit  ;/. scroll` (CHECK), and
+    in the lesson quiz `Enter: continue  ;/. scroll  Esc: card`. When the card's
+    longer form does not fit, the short form shows.
+  - Auto-advance (REV-06): an Up or Down on CORRECT feedback cancels the timer
+    for that frame, as any other non-printable key does, so the answer waits for
+    `Enter`. Scroll keys never advance. C/A, R, Tab, Enter and Esc are unchanged.
+  - The layout is `wk/FeedbackLayout` (pure, native-tested with Latin, Japanese
+    and mixed text at fixed widths); the drawing is `ui::drawFeedbackBody`.
 - **Sound (REM-03, 2026-11-20; hardware pending).** With M4 `Sounds` On (default
   Off), a correct answer plays two short rising tones and a wrong answer one low
   tone, in reviews and in both lesson quizzes. A Warning (CHECK) plays nothing.
@@ -919,6 +948,9 @@ radical/vocabulary page set (see [`docs/hardware.md`](hardware.md), 2026-11-19).
   reads `Enter: edit  Esc: card`, and the typed text (meaning string and IME
   raw buffer) is kept for the retry. A completed part keeps the same `CORRECT`
   pill and check icon as §5.5.
+- The quiz feedback body is the same scrolling body as §5.5 (x 86, 150 px wide),
+  with Up/Down to scroll and `;/. scroll` in the hint when it overflows. The
+  quiz has no auto-advance, so scrolling changes nothing else.
 - In the batch quiz, a wrong part requeues until every required part is correct;
   `Esc` returns to the last card with the batch unchanged. After the last part
   the start confirmation follows.

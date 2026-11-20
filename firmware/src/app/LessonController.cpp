@@ -68,6 +68,7 @@
 #include "platform/WkSrsCounts.h"
 #include "wk/AnswerChecker.h"
 #include "wk/AnswerDisplay.h"
+#include "wk/FeedbackLayout.h"
 #include "wk/IdSample.h"
 #include "wk/LessonOrder.h"
 #include "wk/LessonPages.h"
@@ -571,6 +572,7 @@ void showLessonBatchQuiz() {
     view.showDetailHint = false;
     view.escHint = "Esc: card";
     view.srsStage = 0;
+    view.feedbackScroll = &state().lesson.gLessonBatchScroll;
     view.position = position;
     view.total = std::max(1, total);
     if (view.feedback) {
@@ -622,6 +624,7 @@ void checkLessonQuiz() {
     // R6: the lesson quiz follows the same typo policy as reviews.
     int typos = 0;
     const bool typosStrict = kk::settingsGetInt("rv.typos", &typos) && typos == 1;
+    state().lesson.gLessonQuizScroll = 0;  // a new answer starts at the top
     state().lesson.gLessonQuiz.submit(input, typosStrict);
     // REM-03: the same answer tones as reviews (a Warning is silent).
     kk::sound::soundAnswer(state().lesson.gLessonQuiz.result().status, state().sync.gSyncing,
@@ -650,6 +653,7 @@ void showLessonQuiz() {
     view.feedback = state().lesson.gLessonQuiz.feedback();
     view.meaning = meaning;
     view.mistakes = state().lesson.gLessonQuiz.mistakes();
+    view.feedbackScroll = &state().lesson.gLessonQuizScroll;
     view.position = pos;
     view.total = total;
     if (view.feedback) {
@@ -698,6 +702,11 @@ void lessonQuizKey(const KeyEvent& e) {
             // A warning retries the same part; keep the typed text so the user
             // can correct it instead of retyping.
             if (!warning) clearLessonQuizInputImpl();
+            state().display.gDirty = true;
+        } else if (e.key == Key::Up || e.key == Key::Down) {
+            // REV-01/03: Up/Down scroll the feedback body; there is no timer here.
+            state().lesson.gLessonQuizScroll =
+                kk::feedbackScrollKey(state().lesson.gLessonQuizScroll, e.key == Key::Down);
             state().display.gDirty = true;
         }
         return;
@@ -758,6 +767,7 @@ void checkLessonBatchQuiz() {
         kk::checkAnswer(*s, meaning ? kk::AnswerKind::Meaning : kk::AnswerKind::Reading,
                         input, typosStrict);
     l.gLessonBatchFeedback = true;
+    l.gLessonBatchScroll = 0;  // a new answer starts at the top
     if (l.gLessonBatchCheck.status != kk::AnswerStatus::Warning) {
         // Lesson completions are local: no outbox record, no POST /reviews and
         // no cache write.
@@ -799,6 +809,11 @@ void lessonBatchQuizKey(const KeyEvent& e) {
                     openLessonStartConfirm();
                 }
             }
+            state().display.gDirty = true;
+        } else if (e.key == Key::Up || e.key == Key::Down) {
+            // REV-01/03: Up/Down scroll the feedback body, as on the single quiz.
+            l.gLessonBatchScroll =
+                kk::feedbackScrollKey(l.gLessonBatchScroll, e.key == Key::Down);
             state().display.gDirty = true;
         }
         return;

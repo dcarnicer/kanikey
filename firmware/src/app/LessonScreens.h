@@ -80,6 +80,9 @@ struct LessonQuizView {
     uint16_t mistakes = 0;
     int position = 1;
     int total = 1;
+    // REV-01/03: the feedback body's Up/Down offset (px); read and clamped by
+    // the draw, owned by the controller. Null outside feedback.
+    int* feedbackScroll = nullptr;
 };
 
 // Draws the lesson practice quiz into d.

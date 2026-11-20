@@ -9,6 +9,7 @@
 #include "platform/GlyphPack.h"
 #include "ui/Icons.h"
 #include "ui/Theme.h"
+#include "wk/FeedbackLayout.h"
 #include "wk/Types.h"
 
 namespace kk::ui {
@@ -42,12 +43,15 @@ bool drawJapaneseFit(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const std::string&
                      int right, int y, int maxWidth, uint16_t fg, uint16_t bg,
                      const kk::ClipRect& clip);
 
-// Accepted reading tokens at 20 px, wrapping on token and group boundaries into
-// at most maxLines lines whose top is `y`. An empty token starts a new group
-// (drawn with a wider gap). Returns the number of lines drawn, 0 when there is
-// nothing to draw and -1 when the pack lacks a glyph.
-int drawReadingTokens(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
-                      const std::vector<std::string>& tokens, int x, int y, int maxWidth,
-                      int maxLines, uint16_t fg, uint16_t bg, const kk::ClipRect& clip);
+// The feedback body (REV-01/03) for the review and lesson quiz feedback frames:
+// the pieces wrapped to the box (x, y, w, h) and clipped to it. `scroll` is the
+// Up/Down offset in px, in and out: it is clamped to the content here, so the
+// key handler may add past the end. A content taller than the box draws a 2 px
+// scroll track at x + w + 2 (ListView's style). A Japanese piece the pack
+// cannot draw shows `no glyph` in the warning tone. Returns true when the body
+// scrolls, which is when the hint bar names the scroll keys.
+bool drawFeedbackBody(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
+                      const std::vector<kk::FeedbackPiece>& pieces, int x, int y, int w, int h,
+                      int* scroll, uint16_t bg);
 
 }  // namespace kk::ui

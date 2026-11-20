@@ -4006,6 +4006,7 @@ void run_rev_tests();
 void run_rev10_tests();
 void run_rev11_tests();
 void run_ui_tests();
+void run_feedback_tests();
 void run_pack_tests();
 void run_http_tests();
 void run_page_tests();
@@ -4560,6 +4561,7 @@ int main(int, char**) {
     run_rev10_tests();
     run_rev11_tests();
     run_ui_tests();
+    run_feedback_tests();
     run_pack_tests();
     run_http_tests();
     run_page_tests();

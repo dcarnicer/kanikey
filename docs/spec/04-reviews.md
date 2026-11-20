@@ -26,6 +26,16 @@ merge; 285 with CFG/SPEED-07). Release at merge 1,584,233 B (86.3%), dev
 1,651,793 B (90.0%). Hardware feedback checks (multiple meanings, grouped
 readings, hint fallback, lesson quiz) remain.
 
+**Implementation (2026-11-20, REV-01/03 follow-up).** The owner's reviews showed
+the answers, the readings and the hint sentence cut to two lines with `...`.
+The feedback body is now one shared, scrollable block for reviews, the batch
+quiz and the lesson quiz (`wk/FeedbackLayout`, drawn by `ui::drawFeedbackBody`):
+nothing is cut, Up/Down scroll it, and the hint names the scroll keys only when
+it overflows. Up/Down on CORRECT cancel the REV-06 timer for that frame. The
+hint sentence is still the first sentence (REV-03's rule is unchanged); it is
+now shown in full. Rules and keys are in [ux.md §5.5](../ux.md). 17 native tests
+(`test_feedback.cpp`). Hardware pending.
+
 **Implementation (2026-11-19, REV-06/09/12).** Auto-advance is live behind R8
 `rv.advance` (Off by default; 0.5/1/2 s; a printable key advances early and
 feeds the next field; wrong/warning/detail/pause/blank never advance).
