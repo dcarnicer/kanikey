@@ -20,8 +20,10 @@ struct RemWake {
     uint32_t bootMs;   // millis() when this wake went back to sleep; 0 = not yet
 };
 
-// RTC memory keeps this through deep sleep and a software reset; a power cut
-// clears it, and the magic tells a cold power-on apart.
+// RTC_NOINIT memory keeps this through deep sleep and through a software or
+// USB-triggered system reset (opening the USB CDC port resets the board, and
+// RTC_DATA_ATTR would be re-initialised then, losing the run before the host
+// can read it). A power cut leaves garbage, which the magic rejects.
 struct RemState {
     uint32_t magic;
     uint32_t seq;        // probe sleeps entered since the power-on (never reset by a run)
@@ -34,7 +36,7 @@ struct RemState {
     RemWake hist[kRemMaxWakes];
 };
 
-RTC_DATA_ATTR RemState gRem;
+RTC_NOINIT_ATTR RemState gRem;
 
 bool recordValid() { return gRem.magic == kRemMagic; }
 

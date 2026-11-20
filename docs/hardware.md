@@ -867,7 +867,8 @@ instead.
 | `RAD-04` | Radical-only lesson on a low-level account | `cardputer-adv-dev` | 2026-11-06 | `blocked` | Synthetic `L` → `RAD L1 ground` card and quiz rendered the radical bitmap. A real low-level account is not available, so the real first-lesson run is blocked. |
 | `UI-05` | Real level-up notice | — | — | `todo` | No level-up occurred in the 2026-10-29 run; the `Level up!` transition still needs a real level change. |
 | `SPEED-06` | Light sleep: key wake mid-review, current, G0, first key | `cardputer-adv-dev` | 2026-11-20 | `partial` | `Z` 10 s light-sleep test woke on the timer and kept syncing; the post-wake CDC line was lost and `isPlugged()` read false afterwards, so dev builds now sleep only with `O`. Key/G0 wake latency, first key, current and the release USB detection remain. |
-| `REM-01/02/03` | Timer wake, reminder re-sleep, tones | — | — | `todo` | No hardware run; the REM-01 spike and the reminder/sound checks are still `todo`. |
+| `REM-01` | Timer wake, wake cost, tone heap, LED | `cardputer-adv-dev` | 2026-11-20 | `partial` | `rem 20 3`: three timer wakes, `slept_ms 20545` each, probe wake boot→sleep 544 ms with no Wi-Fi; first `playTone` keeps 7,880 B of heap (largest unchanged), a second tone none. The record moved to `RTC_NOINIT_ATTR` after the USB-open reset wiped an `RTC_DATA_ATTR` one. Sleep current (needs a meter) and the EXT1 key abort remain. Details in `docs/spec/08-reminders-audio.md`. |
+| `REM-02/03` | Reminder re-sleep, tones | — | — | `todo` | No hardware run. |
 | `AUD-01/02/03` | Clip sizes, decoder flash/RAM/time, I2S/ES8311, cache, playback | — | — | `todo` | Parser and 880 Hz speaker path merged 2026-11-06; measurements, cache and playback checks remain. |
 | `BT-01` | BLE HID host spike | — | — | `todo` | Post-v1 spike; not started. |
 | `PD-01/02` | PaperDIY board and render spike | — | — | `todo` | Post-v1 spike; not started. |

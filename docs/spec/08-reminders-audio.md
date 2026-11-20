@@ -17,7 +17,7 @@ Decision D4 brings Kakehashi's reminders and vocabulary audio into this round. R
 
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
-| REM-01 | Spike: timer wake and sound | P2 | M | none | 4 | partial (2026-11-20: dev probe; hardware run pending) |
+| REM-01 | Spike: timer wake and sound | P2 | M | none | 4 | partial (2026-11-20: timer wake ×3, 544 ms wake, tone 7.9 KB heap; current/ext1 abort pending) |
 | REM-02 | Reminder wake | P2 | M | REM-01, SPEED-02, CFG (M1–M3) | 4 | todo |
 | REM-03 | Sounds | P3 | S | REM-01, REM-02, CFG (M4, M5) | 4 | todo |
 | AUD-01 | Spike: vocabulary audio | P2 | M | none | 4 | partial (2026-11-06: parser + speaker) |
@@ -63,12 +63,34 @@ Log lines to collect (serial, 115200):
 - `[rem] hist i seq n slept_ms ms boot_ms ms` — the run's wakes, printed once the run ends. USB drops while the chip sleeps, so read this line after the run, not the per-wake lines.
 - `[rem] tone heap before free F largest L min M; after free F largest L min M (played 1)`.
 
+The record is `RTC_NOINIT_ATTR`: opening the USB CDC port resets the board,
+and an `RTC_DATA_ATTR` record was re-initialised by that reset before the host
+could read it (first run, 2026-11-20).
+
+#### Results (2026-11-20, Cardputer ADV, dev image, on USB)
+
+| Check | Result |
+|---|---|
+| `timer-wake-cause` | `rem 20 3`: three timer wakes in a row (port gone/back at 20.4 s and 61.5 s); history `seq 1..3`, each `slept_ms 20545` for a 20 s timer; the last wake continued into the normal boot. The EXT1 key-abort path was not exercised (no one at the keys). |
+| `wake-boot-ms` | Probe wake, boot → sleep with no storage/Wi-Fi: **544 ms** (both repeat wakes). Normal boot to the first draw: 941–1,069 ms. |
+| `sleep-current-ext1` / `-ext1-timer` | **Not measured**: no meter in series with the battery. Energy per wake stays `current × 0.54 s`. |
+| `tone-flash-ram` | Flash: no delta to measure, `internal_spk` has been on since AUD-01. Heap: the first `playTone(880,150)` took **7,880 B** that stay allocated (speaker task + I2S DMA; free 104,732 → 96,852 B), the largest block was unchanged (53,236 B); a second tone changed nothing. |
+| `led-present` | M5Unified board data lists one RGB LED for `board_M5CardputerADV` on G21 (`M5Unified.inl:259`, `_setup_led()` one-LED RMT strip). Not checked visually; the repo drives no LED. |
+
+**Go/no-go.** REM-02: **conditional go** — the timer coexists with the key
+wake, sleep time is measured across deep sleep and a probe wake costs about
+half a second with the radio off; daily energy waits for a meter, so the
+default stays Off (M1 = 0). REM-03: **go** — the speaker is already
+initialised, a tone costs a one-off 7.9 KB of heap and no largest-block
+change; keep `internal_spk = true`. Both share the speaker with AUD-03, whose
+36 KB decode block must be refused when the heap is short.
+
 **Acceptance.**
-- [ ] `ext1` + timer wake works repeatedly; both causes are logged.
-- [ ] Deep-sleep current and wake cost are recorded with units and method.
-- [ ] Speaker flash/RAM cost and a short tone's heap use are recorded.
-- [ ] The RGB LED question is answered from M5Unified board data (present/absent).
-- [ ] A go/no-go for REM-02 and REM-03 is written; a no-go says what changes.
+- [ ] `ext1` + timer wake works repeatedly; both causes are logged. (Timer: yes; ext1 abort not run.)
+- [ ] Deep-sleep current and wake cost are recorded with units and method. (Wake time yes; current needs a meter.)
+- [x] Speaker flash/RAM cost and a short tone's heap use are recorded.
+- [x] The RGB LED question is answered from M5Unified board data (present/absent).
+- [x] A go/no-go for REM-02 and REM-03 is written; a no-go says what changes.
 
 ### REM-02 — Reminder wake
 
