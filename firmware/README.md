@@ -137,13 +137,48 @@ pio run -e cardputer-adv-dev
 The build uses two 3 MiB OTA slots (0x300000 each) and 1.94 MiB LittleFS
 (`partitions/kanikey_8MB.csv`, since 2026-11-20). `Version.h` is the release
 version and must match the `vX.Y.Z` tag; `platformio.ini` sets
-`KANIKEY_ENV="cardputer-adv"` for the OTA row. The release image is 1,664,816 B
-(52.9% of the slot) and logs at `CORE_DEBUG_LEVEL=0`; the dev image adds the
-serial remote and debug screens, keeps library logs at level 1 and is 1,735,633 B.
+`KANIKEY_ENV="cardputer-adv"` for the OTA row. The release image is 1,774,559 B
+(56.4% of the slot) and logs at `CORE_DEBUG_LEVEL=0`; the dev image adds the
+serial remote and debug screens, keeps library logs at level 1 and is 1,864,643 B
+(59.3%). Both are the memory-tuned core build of 2026-11-20 (the release image was
+1,786,927 B on the prebuilt core).
 
 The release image keeps a small serial console (`h`, `i`, `p`, `S`, `up`, `r`);
 build `cardputer-adv-dev` for the full remote. The loop task uses a 24 KiB
 stack, enough for the lesson fetch and OTA install paths.
+
+### Custom core (memory-tuned Arduino core)
+
+The Cardputer envs (`cardputer-adv`, `-dev`, `-badapi`) use the `[mem_tuned]`
+section of `platformio.ini` (MEM-02, [docs/spec/12-memory.md](../docs/spec/12-memory.md)).
+PlatformIO rebuilds the ESP32-S3 Arduino core libraries with that section's
+`custom_sdkconfig` and `custom_component_remove`, and reuses them afterwards.
+
+- **First build:** a cold build of the core and the firmware took about 2 min
+  (Apple silicon, 8+ cores, 2026-11-20). The rebuilt core is stored in
+  `~/.platformio/packages/framework-arduinoespressif32-libs/esp32s3`.
+- **Cached build:** about 40 s for `cardputer-adv` when nothing changed.
+- **Switching to PaperDIY costs a rebuild.** PaperDIY (octal PSRAM) uses the
+  prebuilt libs. The core is one directory per chip, so every switch between
+  `cardputer-adv` and `paperdiy` reinstalls or rebuilds it: about 1 min 40 s for
+  `paperdiy` and 2 min 20 s to come back. Build one family at a time.
+- **Use PlatformIO Core 6.1.19**, the CI pin (`pip install platformio==6.1.19`).
+  Without touching a global 6.2 install: `uvx --from platformio==6.1.19 pio run -e cardputer-adv`.
+  The platform needs `>=6.1.19`. PlatformIO Core 6.2.0 fails at the ESP32-S3 link
+  with `No module named 'SCons.Tool.FortranCommon'` (seen on macOS, 2026-11-20).
+  PlatformIO 6.2 loads its own SCons outside the penv path, and the platform's
+  `penv_setup.py` removes that path.
+- **macOS CMake:** the first-build CMake configure needed no pin here. It uses the
+  platform's bundled `tool-cmake` (4.0.3), not Homebrew's CMake.
+- **Stale scaffold:** if an interrupted rebuild fails with
+  `multiple definition of 'app_main'`, remove the generated files and rebuild:
+
+  ```sh
+  cd firmware
+  rm -rf .dummy CMakeLists.txt sdkconfig.defaults .pio/build/<env>
+  ```
+
+  Do not use `git clean -fdX`: it removes ignored local files too.
 
 ## Flash
 

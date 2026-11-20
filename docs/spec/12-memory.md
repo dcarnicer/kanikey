@@ -2,7 +2,7 @@
 
 Status: **investigation, 2026-11-20.** Four read-only audits (static RAM, runtime
 heap, TLS/Wi-Fi, peripherals) plus measurements on the owner's Cardputer ADV.
-MEM-01 phase 1 (the Arduino 3 migration) is merged and owner-verified (§2.2); nothing else is implemented.
+MEM-01 phase 1 (the Arduino 3 migration) is merged and owner-verified (§2.2). MEM-02 (custom core) is built on the host, hardware pending (§2.3); nothing else is implemented.
 Figures are marked **M** (measured on the device with the dev `hh`/`h` commands
 or the boot/HTTP log lines), **B** (from the build/map of `9a95e38`) or **E**
 (estimate from code and struct sizes).
@@ -58,6 +58,88 @@ large block (the netifs, event loop and tcpip task stay, E/B).
 The prebuilt 3.3.x core uses about 20 KB more heap than 2.0.17, so MEM-02 is
 what pays for the move.
 
+### 2.3 MEM-02 custom core (2026-11-20, host measurements, B)
+
+Setup: `cardputer-adv` on pioarduino 55.03.311 (Arduino 3.3.11, IDF 5.5.5), PlatformIO
+Core 6.1.19 (the CI pin). `[mem_tuned]` in `firmware/platformio.ini`. The effective
+values were read from the generated `firmware/sdkconfig.cardputer-adv`, and each
+was checked against its default.
+
+**Effective settings** (one line each: why)
+
+| Setting | Effective | Why |
+|---|---|---|
+| `CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN=y`, `SSL_IN_CONTENT_LEN=16384`, `SSL_OUT_CONTENT_LEN=4096` | yes | Output records are small requests; input keeps 16 KB servers may send. IDF estimate −12.3 KB per connection (E, runtime). |
+| `CONFIG_WL_SECTOR_SIZE_512=y`, `CONFIG_WL_SECTOR_SIZE_4096=n` | yes | `WL_SECTOR_SIZE` is a Kconfig choice; `CONFIG_WL_SECTOR_SIZE=512` alone stayed at 4096 (the base template's `_4096=y` line came after the custom lines). `ffconf.h` takes `FF_MAX_SS = max(512, WL)`, so this fixes the FatFs buffers at 512 (per `FIL`, FATFS: −3.5 KB each, E, runtime). Needs `-D_MAX_SS=512` (below). No FFat or wear-levelled partition is used. |
+| `CONFIG_ESP_WIFI_IRAM_OPT=n`, `RX_IRAM_OPT=n`, `EXTRA_IRAM_OPT=n` | yes | Wrapper hot paths go to flash; the freed SRAM goes to the heap. Only 1.6 KB moved (see analysis); the Wi-Fi blobs keep their IRAM. |
+| `CONFIG_ESP_WIFI_CSI_ENABLED=n`, `CONFIG_ESP_WIFI_FTM_ENABLE=n` | yes | Unused. Arduino's `initiateFTM()` is not guarded by the option, but the link succeeded. |
+| `CONFIG_ESP_WIFI_MGMT_SBUF_NUM=16` | yes | Management frame buffers, 32 → 16. Not overridden by Arduino. |
+| `CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=16` | **not applied, left out** | Arduino overrides `dynamic_rx_buf_num = 32` (and `dynamic_tx_buf_num = 32`) in `WiFiGeneric.cpp:280-287` at `wifiLowLevelInit`. The Kconfig value has no effect. A framework patch would be needed; not done. |
+| `CONFIG_ESP_TIMER_TASK_STACK_SIZE=4096`, `CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH=2560` | yes | The same high-water measurements as the paperdiy reader (esp_timer under 1 KB of 8 KB; timer service under 1 KB of 4 KB). These are runtime heap, not static. |
+| `CONFIG_ARDUINO_SELECTIVE_COMPILATION=y` + 23 wrappers `=n` | yes | Disabled only where `firmware/src` and the M5Unified/M5GFX sources (not examples) do not include the library: ArduinoOTA, BLE, BluetoothSerial, DNSServer, EEPROM, ESPmDNS, ESP_SR, ESP_Video, Ethernet, FFat, HTTPClient, Insights, Matter, NetBIOS, OpenThread, PPP, RainMaker, SD_MMC, SPIFFS, SimpleBLE, Ticker, WiFiProv, Zigbee. Kept: SD, LittleFS, FS, WiFi, WiFiClientSecure, WebServer, Update, Preferences, SPI, Wire (M5GFX's ESP32 platform includes SPI and Wire). |
+| `CONFIG_BT_ENABLED=y` | yes | BT-01 plans a BLE keyboard. The Arduino BLE and SimpleBLE wrappers are off; NimBLE-Arduino does not need them. |
+| `custom_component_remove`: insights, rainmaker, diagnostics, diag_data_store, cbor, zboss-lib, zigbee-lib, esp-sr | removed | Cloud and Zigbee components the framework lists in `idf_component.yml`. esp-sr is S3-only and unused. |
+| Core dumps, IPv4 | unchanged | Prebuilt values (`ESP_COREDUMP_ENABLE=y`). |
+| `CONFIG_LWIP_IPV6` (kept `y`), `CONFIG_MBEDTLS_DYNAMIC_BUFFER` (kept unset) | optional, not enabled | IPv6 off: about 1.3 KB (E, not measured). Dynamic buffers allocate the SSL record buffers only while a connection is active, so they reclaim the full record buffers between connections. Known link trouble on pioarduino (§3, MEM-02). Commented in the ini. |
+
+**Build settings that are not sdkconfig** (each needed for this build):
+- `-D_MAX_SS=512` (cardputer envs): with a fixed 512-byte FatFs there is no
+  `FATFS::ssize` field, and Arduino's `SD.cpp` reads it unless `_MAX_SS` is 512.
+- `build_src_flags = -Isrc` instead of `build_flags`: as a build flag, `-Isrc` reached
+  the managed libsodium component, where `#include "version.h"` matched
+  `src/Version.h` on macOS's case-insensitive filesystem.
+- `pre:scripts/patch_pioarduino_cache.py` (copied from paperdiy-reader; its cache
+  check is what keeps the global core from being reused for the wrong env).
+- PlatformIO Core **6.1.19**. PlatformIO 6.2.0 fails at the link with
+  `No module named 'SCons.Tool.FortranCommon'`. Core 6.2 loads its own SCons from a
+  `site-packages` path, and the platform's `penv_setup.py` removes that path
+  from `sys.path`. Not a CMake issue: the bundled CMake 4.0.3 configured fine.
+
+**Numbers** (`cardputer-adv` release, MEM-01 prebuilt → MEM-02):
+
+| | MEM-01 | MEM-02 | Δ |
+|---|---:|---:|---:|
+| Flash image (B) | 1,786,927 | 1,774,559 | −12,368 |
+| Static RAM, `.data`+`.bss` (B) | 110,880 | 110,668 | −212 |
+| `.iram0.text` (B) | 81,799 | 80,187 | −1,612 |
+| `.dram0.dummy` (IRAM mirror, B) | 66,560 | 65,024 | −1,536 |
+| `.dram0.data` / `.bss` (B) | 23,528 / 87,352 | 23,436 / 87,232 | −92 / −120 |
+| Heap start, offset from `0x3FC88000` (B) | 177,440 | 175,696 | −1,744 |
+| Flash `.flash.text` (B) | 1,387,008 | 1,377,180 | −9,828 |
+
+Other envs: `cardputer-adv-dev` 1,864,643 B flash, 110,988 B static RAM; `-badapi`
+1,857,731 B, 78,204 B (its 32 KB `gBodyBuffer` is dropped by the linker on the fail-API
+path, so its RAM is not comparable). `paperdiy` stays on the prebuilt core: 1,874,187 B,
+111,548 B (not re-baselined against MEM-01; its config path is unchanged). Native tests:
+621 pass.
+
+**Build times** (Apple silicon, 8+ cores): cold build of the core and firmware about
+1 min 54 s; cached `cardputer-adv` 41 s; `-dev` 44 s; `-badapi` 49 s; `paperdiy`
+1 min 43 s; switching back to `cardputer-adv` 2 min 22 s (rebuilds the core).
+
+**IRAM and heap.** On the S3 the 512 KB internal SRAM is one physical pool. Code in
+IRAM, static data, and the heap all come from it. The linker's `.dram0.dummy` reserves
+in DRAM address space the bytes IRAM sections occupy, because the two aliases map the
+same SRAM. Anything moved out of IRAM to flash therefore enlarges the heap. Here only
+1.6 KB moved: the Wi-Fi blobs (`libnet80211`, `libpp`) are prebuilt with IRAM placement
+and are not recompiled by the custom core, which rebuilds only IDF's wrapper sources.
+So the 25–30 KB the paperdiy reader measured on the C3 does not appear here; the S3
+heap gains 1.7 KB statically. The runtime gains come from the allocations, not the
+linker: TLS record buffers (about 12 KB per connection), FatFs `FIL`/`FATFS` buffers
+(the SD mount), the two task stacks, and the Wi-Fi buffer counts. None of these is in the
+static numbers above.
+
+**Pending on hardware (parent).** Repeat §5 points 1–7 on the MEM-02 image and compare
+with MEM-01 §2.2. Check in particular:
+- `[sd] mounted … heap a -> b`: expect the mount to take noticeably less than the
+  26.1 KB of MEM-01 (FatFs buffers at 512).
+- `[http] before/after` at the first TLS connect: expect about 12 KB more free per
+  connection.
+- Boot heap after the boot sync (`hh`): the 80,972 B / 31,732 B baseline.
+- A clip playing (`[audio] alloc … heap a/b after`) and Wi-Fi throughput during an OTA
+  download (IRAM_OPT=n costs some throughput).
+- Any `ESP_WIFI` or FatFs misbehaviour, and that Bluetooth and core dumps behave as before.
+
 ### 2.1 Where the memory goes
 
 **Static DRAM, 108.9 KB (B).** Our code 58.6 KB, Wi-Fi libs 14.8 KB, IDF/lwIP/
@@ -112,7 +194,7 @@ transient maximum during a flow, not steady state.
 | ID | Task | Saving | Risk | Depends |
 |---|---|---|---|---|
 | MEM-01 | **Arduino 3 migration, phase 1.** pioarduino `55.03.311` (Arduino 3.3.11, IDF 5.5.5, as the owner's paperdiy-reader), prebuilt libs, M5Unified `96576a1` (0.3.0) and M5GFX 0.3.0 pinned, code fixed for IDF 5/mbedTLS 3. The firmware builds with the framework's gnu++2b (gnu++17 linked part of Matter: +560 KB flash, +20 KB RAM). **Done 2026-11-20, owner-verified** (orientation, keyboard, sync, reviews, R audio). Costs ~20 KB of heap against 2.0.17 (§2.2). | baseline only (−20 KB vs 2.0.17) | OTA from 0.2.x breaks (accepted) | — |
-| MEM-02 | **`custom_sdkconfig` for memory** (pioarduino rebuilds the core; slow first build, CMake pin on macOS, cache patch script as in paperdiy-reader). Candidates, each A/B measured: `CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN=y` + `SSL_OUT_CONTENT_LEN=4096` (−12.3 KB per connection; IN stays 16384); `CONFIG_WL_SECTOR_SIZE=512` (−~17.9 KB SD mount); `CONFIG_ESP_WIFI_IRAM_OPT=n`, `CONFIG_ESP_WIFI_RX_IRAM_OPT=n` (paperdiy-reader measured ~25–30 KB on the C3; on the S3 the freed IRAM also returns to DRAM, to measure); `CONFIG_ESP_WIFI_CSI_ENABLED=n`, `CONFIG_ESP_WIFI_FTM_ENABLE=n` (−~2.8 KB static); dynamic RX 32→16 and `MGMT_SBUF_NUM` 32→16 (peak); `CONFIG_ESP_TIMER_TASK_STACK_SIZE=4096`, `CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH=2560` (−~5.5 KB); `CONFIG_ARDUINO_SELECTIVE_COMPILATION` for unused wrappers. Keep BT (BT-01 plans a BLE keyboard), keep core dumps unless space is short, keep IPv4 only if IPv6 is off without side effects (−~1.3 KB, measure). Optional: `CONFIG_MBEDTLS_DYNAMIC_BUFFER=y` (known link trouble on pioarduino; try last). | **~60–75 KB** (E, before measuring) | med: build time and CI, Wi-Fi throughput (OTA download time), one-time setup | MEM-01 |
+| MEM-02 | **Built 2026-11-20, hardware pending.** `custom_sdkconfig` for memory (§2.3; the PlatformIO Core 6.1.19 pin, not a CMake pin, is what macOS needed). Candidates, each A/B measured: `CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN=y` + `SSL_OUT_CONTENT_LEN=4096` (−12.3 KB per connection; IN stays 16384); `CONFIG_WL_SECTOR_SIZE=512` (−~17.9 KB SD mount); `CONFIG_ESP_WIFI_IRAM_OPT=n`, `CONFIG_ESP_WIFI_RX_IRAM_OPT=n` (paperdiy-reader measured ~25–30 KB on the C3; on the S3 the freed IRAM also returns to DRAM, to measure); `CONFIG_ESP_WIFI_CSI_ENABLED=n`, `CONFIG_ESP_WIFI_FTM_ENABLE=n` (−~2.8 KB static); dynamic RX 32→16 and `MGMT_SBUF_NUM` 32→16 (peak); `CONFIG_ESP_TIMER_TASK_STACK_SIZE=4096`, `CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH=2560` (−~5.5 KB); `CONFIG_ARDUINO_SELECTIVE_COMPILATION` for unused wrappers. Keep BT (BT-01 plans a BLE keyboard), keep core dumps unless space is short, keep IPv4 only if IPv6 is off without side effects (−~1.3 KB, measure). Optional: `CONFIG_MBEDTLS_DYNAMIC_BUFFER=y` (known link trouble on pioarduino; try last). | **Static: −12.4 KB flash, −0.2 KB DRAM, heap start −1.7 KB (B). The 60–75 KB estimate is not supported by the static build; runtime gains (TLS, FatFs, task stacks, Wi-Fi buffers) are pending the device (§2.3).** | med: build time and CI, Wi-Fi throughput (OTA download time), one-time setup | MEM-01 |
 
 ### Track B — quick code wins (any platform)
 
