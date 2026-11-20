@@ -131,14 +131,14 @@ Working on hardware:
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 437 native tests and the `cardputer-adv` build run in GitHub Actions alongside
+- 453 native tests and the `cardputer-adv` build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests; the release workflow adds
   the manifest tests and a tag-driven GitHub release.
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Last recorded build (UI-08 palette): **release 1,663,181 B / 1,835,008 B
-flash (90.6%)**, **dev 1,731,641 B (94.4%)**, static RAM 105,400/105,520 B
+Last recorded build (TNG-03 icons + BT-02): **release 1,664,473 B / 1,835,008 B
+flash (90.7%)**, **dev 1,733,137 B (94.4%)**, static RAM 105,448/105,568 B
 (32.2%).
 Removing `efontJA_16` freed ~468 KB; the dev image now has ~111 KB of headroom.
 The loop task uses a 24 KiB stack;
@@ -156,7 +156,7 @@ the 2026-11-19 logs.
 | 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Code and docs done; OUTBOX (API-01/05), 401 (API-03) and parse retry (API-04) verified 2026-11-19; 429 (API-02) and 403 still pending | — |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | v1 done; SETUP-09 on-device Wi-Fi is in review 2026-11-19 (scan/password mask smoked; join paths pending) | SETUP-09 |
 | 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen, item detail, level progress and the Stats screen are live | UI palette audited 2026-11-20; device visual check pending | UI-08 |
-| 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal, OTA, storage and sleep done; ListView/HintBar/TextLayout/Icons/UiFont added, most screens use UiFont; icon adoption and remaining custom rows pending | TNG-03 |
+| 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal, OTA, storage and sleep done; ListView/HintBar/TextLayout/Icons/UiFont added and adopted; panel visual sweep pending | TNG-03 |
 | 9 | Technical debt, CI and release | Maintainability and shipping | Done (TECH-01…06, TECH-08); TECH-07 only if needed | TECH-07 |
 | 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | EXT-01…05 done; audio, reminders and stroke order remain; round 2 specified in `docs/spec` | STUDY |
 | 11 | Bluetooth keyboard | Optional full-size input; BLE-only, shares the 2.4 GHz radio and the no-PSRAM heap | Post-v1; BT-01 conditional go on NimBLE (compiled sizes); pairing/heap hardware run pending | BT-02 |
@@ -789,8 +789,8 @@ REM/AUD, ONB (pack and setup) and DOC (this documentation pass). ARCH-01/02 are
 merged and CFG-01/02/03/04, REV-01/02/03/04/05/06/07/08/09/10/11/12,
 LES-01…LES-06, SETUP-09, ONB-01/02 and SPEED-01/02/03/04/05/07 are in review. The
 eight-section Settings menu replaces the flat list; the registry now has 48
-rows after the Account › Wi-Fi action. Main has 437 native tests and builds at
-1,663,181 B (90.6%) release / 1,731,641 B (94.4%) dev. No round-2 task is
+rows after the Account › Wi-Fi action. Main has 453 native tests and builds at
+1,664,473 B (90.7%) release / 1,733,137 B (94.4%) dev. No round-2 task is
 claimed as done
 here beyond the spec status above.
 
@@ -806,7 +806,7 @@ BT-01 is a go/no-go spike before any library or stack is merged.
 | ID | Title | Priority | Size | Depends on | Status |
 |---|---|---|---|---|---|
 | BT-01 | Spike: BLE HID host on the S3 | P3 | M | none | review (2026-11-20: conditional go on NimBLE; hardware pairing/heap pending) |
-| BT-02 | Source-neutral key input | P3 | M | BT-01 | todo (seam can start; BLE transport gated) |
+| BT-02 | Source-neutral key input | P3 | M | BT-01 | review (2026-11-20: seam + HID mapping merged; BLE transport gated) |
 | BT-03 | Pairing, settings and status | P3 | M | BT-02 | todo |
 | BT-04 | Coexistence, power and hardware pass | P3 | M | BT-03 | todo |
 
