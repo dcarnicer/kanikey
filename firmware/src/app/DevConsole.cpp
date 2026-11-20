@@ -15,6 +15,7 @@
 #include "app/App.h"
 #include "app/AppState.h"
 #include "app/AppUi.h"
+#include "app/AudioController.h"
 #include "app/BootScreen.h"
 #include "app/CacheController.h"
 #include "app/DebugScreens.h"
@@ -1274,10 +1275,9 @@ void handleSerial() {
             } else {
                 const std::vector<kk::Subject>& subjects =
                     !state().cache.gBatch.subjects.empty() ? state().cache.gBatch.subjects : state().lesson.gLessonBatch.subjects;
-                const kk::AudioPrefetchStats stats =
-                    kk::audioCachePrefetch(SD, subjects, 0, 8000, 32768);
-                Serial.printf("[audio] cache %s, %u clips, %u bytes\n",
-                              stats.downloaded ? "updated" : "unchanged",
+                // Queues the batch and drains inline under the usual gates.
+                audioPrefetchBatch(subjects, /*drainNow=*/true);
+                Serial.printf("[audio] cache %u clips, %u bytes\n",
                               static_cast<unsigned>(kk::audioCacheCount()),
                               static_cast<unsigned>(kk::audioCacheBytes()));
             }

@@ -244,122 +244,89 @@ bool audioCacheOpen(fs::FS& sd, uint32_t accountKey) {
 
 constexpr size_t kClipChunkBytes = 4096;
 
-AudioPrefetchStats audioCachePrefetch(fs::FS& sd, const std::vector<Subject>& subjects,
-                                      uint8_t voice, uint32_t budgetMs, size_t minLargestHeap) {
-    AudioPrefetchStats stats;
-    const uint32_t start = millis();
-    if (!gAudio.open) return stats;
+namespace {
 
-    // Wanted: the MP3 clip of each vocabulary subject that is not on the card
-    // yet. OGG-only subjects are skipped; the pointers stay inside `subjects`.
-    struct Want {
-        const Subject* subject;
-        size_t clip;
-    };
-    std::vector<Want> wanted;
-    for (const Subject& subject : subjects) {
-        if (subject.type != SubjectType::Vocabulary) continue;
-        size_t index = 0;
-        if (!audioPickDownload(subject.audios, voice, &index)) continue;
-        const AudioClip& clip = subject.audios[index];
-        if (AudioEntry* existing = findEntry(subject.id, clip.voice, AudioFormat::Mp3)) {
-            char path[80];
-            audioPath(*existing, path, sizeof path);
-            if (sd.exists(path)) {
-                existing->usedAt = nowSeconds();
-                continue;
-            }
-        }
-        wanted.push_back({&subject, index});
-    }
-    stats.wanted = wanted.size();
-
-    // The 4 KB stream chunk is one heap allocation per batch, not a stack array.
-    uint8_t* chunk = nullptr;
-    if (!wanted.empty()) {
-        chunk = static_cast<uint8_t*>(heap_caps_malloc(kClipChunkBytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-        if (!chunk) stats.stopped = "heap";
-    }
-
-    for (const Want& w : wanted) {
-        if (!chunk) break;
-        const uint32_t elapsed = millis() - start;
-        if (elapsed >= budgetMs) {
-            stats.stopped = "budget";
-            break;
-        }
-        if (heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) <
-            minLargestHeap) {
-            stats.stopped = "heap";
-            break;
-        }
-        const AudioClip& clip = w.subject->audios[w.clip];
-        AudioEntry entry;
-        entry.subjectId = w.subject->id;
-        entry.voice = clip.voice;
-        entry.format = AudioFormat::Mp3;
-        // A missing file left an index entry behind: drop it before the new one.
+// Evicts the least recently used clips until the cache is under its cap.
+void trimToCap(fs::FS& sd) {
+    while (gAudio.bytes > kAudioCacheMaxBytes) {
+        std::vector<AudioEntry> victims = audioEvict(gAudio.entries, gAudio.bytes, 0);
+        if (victims.empty()) break;
+        const AudioEntry victim = victims.front();
+        char path[80];
+        audioPath(victim, path, sizeof path);
+        sd.remove(path);
+        gAudio.bytes = gAudio.bytes > victim.bytes ? gAudio.bytes - victim.bytes : 0;
         gAudio.entries.erase(std::remove_if(gAudio.entries.begin(), gAudio.entries.end(),
-                                            [&entry](const AudioEntry& e) {
-                                                return e.subjectId == entry.subjectId &&
-                                                       e.voice == entry.voice &&
-                                                       e.format == entry.format;
+                                            [&victim](const AudioEntry& e) {
+                                                return e.subjectId == victim.subjectId &&
+                                                       e.voice == victim.voice &&
+                                                       e.format == victim.format;
                                             }),
                              gAudio.entries.end());
-        entry.usedAt = nowSeconds();
-        // The handshake gets the rest of the budget (at least 2 s); the body
-        // reads keep their own 5 s stall limit.
-        const uint32_t remainingSec = std::max<uint32_t>(2, (budgetMs - elapsed) / 1000);
-        String error;
-        if (!downloadClip(sd, entry, String(clip.url.c_str()), remainingSec, chunk,
-                          kClipChunkBytes, &error)) {
-            Serial.printf("[audio] %u: %s\n", static_cast<unsigned>(entry.subjectId), error.c_str());
-            continue;
-        }
-        char path[80];
-        audioPath(entry, path, sizeof path);
-        File file = sd.open(path, "r");
-        entry.bytes = file ? static_cast<uint32_t>(file.size()) : 0;
-        if (file) file.close();
-        if (entry.bytes == 0) {
-            sd.remove(path);
-            continue;
-        }
-        gAudio.entries.push_back(entry);
-        gAudio.bytes += entry.bytes;
-        stats.bytes += entry.bytes;
-        ++stats.downloaded;
-        Serial.printf("[audio] cached %u %s (%u bytes)\n", static_cast<unsigned>(entry.subjectId),
-                      path, static_cast<unsigned>(entry.bytes));
+        Serial.printf("[audio] evicted %u\n", static_cast<unsigned>(victim.subjectId));
     }
-    if (chunk) heap_caps_free(chunk);
-    if (stats.downloaded) {
-        while (gAudio.bytes > kAudioCacheMaxBytes) {
-            std::vector<AudioEntry> victims = audioEvict(gAudio.entries, gAudio.bytes, 0);
-            if (victims.empty()) break;
-            const AudioEntry victim = victims.front();
-            char path[80];
-            audioPath(victim, path, sizeof path);
-            sd.remove(path);
-            gAudio.bytes = gAudio.bytes > victim.bytes ? gAudio.bytes - victim.bytes : 0;
-            gAudio.entries.erase(std::remove_if(gAudio.entries.begin(), gAudio.entries.end(),
-                                                [&victim](const AudioEntry& e) {
-                                                    return e.subjectId == victim.subjectId &&
-                                                           e.voice == victim.voice &&
-                                                           e.format == victim.format;
-                                                }),
-                                 gAudio.entries.end());
-            Serial.printf("[audio] evicted %u\n", static_cast<unsigned>(victim.subjectId));
-        }
-        writeIndex(sd);
+}
+
+}  // namespace
+
+bool audioCacheHasMp3(fs::FS& sd, uint32_t subjectId, uint8_t voice) {
+    if (!gAudio.open) return false;
+    const AudioEntry* entry = findEntry(subjectId, voice, AudioFormat::Mp3);
+    if (!entry) return false;
+    char path[80];
+    audioPath(*entry, path, sizeof path);
+    return sd.exists(path);
+}
+
+uint32_t audioCacheFetchClip(fs::FS& sd, uint32_t subjectId, uint8_t voice,
+                             const std::string& url, uint32_t handshakeSec,
+                             std::string* error) {
+    if (!gAudio.open) {
+        if (error) *error = "cache closed";
+        return 0;
     }
-    stats.ms = millis() - start;
-    Serial.printf("[audio] batch prefetch %u/%u clips, %u bytes, %u ms%s%s%s\n",
-                  static_cast<unsigned>(stats.downloaded), static_cast<unsigned>(stats.wanted),
-                  static_cast<unsigned>(stats.bytes), static_cast<unsigned>(stats.ms),
-                  stats.stopped ? " (stopped: " : "", stats.stopped ? stats.stopped : "",
-                  stats.stopped ? ")" : "");
-    return stats;
+    uint8_t* chunk = static_cast<uint8_t*>(
+        heap_caps_malloc(kClipChunkBytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    if (!chunk) {
+        if (error) *error = "heap";
+        return 0;
+    }
+    AudioEntry entry;
+    entry.subjectId = subjectId;
+    entry.voice = voice;
+    entry.format = AudioFormat::Mp3;
+    // A missing file left an index entry behind: drop it before the new one.
+    gAudio.entries.erase(std::remove_if(gAudio.entries.begin(), gAudio.entries.end(),
+                                        [&entry](const AudioEntry& e) {
+                                            return e.subjectId == entry.subjectId &&
+                                                   e.voice == entry.voice &&
+                                                   e.format == entry.format;
+                                        }),
+                         gAudio.entries.end());
+    entry.usedAt = nowSeconds();
+    String reason;
+    const bool ok = downloadClip(sd, entry, String(url.c_str()), handshakeSec, chunk,
+                                 kClipChunkBytes, &reason);
+    heap_caps_free(chunk);
+    if (!ok) {
+        if (error) *error = reason.c_str();
+        return 0;
+    }
+    char path[80];
+    audioPath(entry, path, sizeof path);
+    File file = sd.open(path, "r");
+    entry.bytes = file ? static_cast<uint32_t>(file.size()) : 0;
+    if (file) file.close();
+    if (entry.bytes == 0) {
+        sd.remove(path);
+        if (error) *error = "audio empty";
+        return 0;
+    }
+    gAudio.entries.push_back(entry);
+    gAudio.bytes += entry.bytes;
+    trimToCap(sd);
+    writeIndex(sd);
+    return entry.bytes;
 }
 
 size_t audioCacheCount() { return gAudio.open ? gAudio.entries.size() : 0; }
