@@ -4,11 +4,11 @@
 // mistakes a few items later, and complete an item only when every required
 // part is correct. Pure C++, no Arduino.
 #include <cstdint>
-#include <random>
 #include <vector>
 
 #include "wk/AnswerChecker.h"
 #include "wk/Types.h"
+#include "wk/Xorshift.h"
 
 namespace kk {
 
@@ -212,7 +212,8 @@ private:
     uint8_t currentLevel_ = 0;
     bool typeOrder_ = false;
     bool backToBack_ = false;
-    std::mt19937 rng_{0x9E3779B9u};
+    // xorshift32 (MEM-11): 4 bytes, not std::mt19937's ~2.5 KB. Seeded by build().
+    Xorshift32 rng_{0x9E3779B9u};
     std::vector<uint32_t> criticalSubjectIds_;
 };
 

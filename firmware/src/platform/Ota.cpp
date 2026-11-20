@@ -444,14 +444,27 @@ FetchResult downloadToFile(const String& url, uint32_t expectedBytes,
                 failure = FetchStatus::Cancelled;
                 return false;
             }
+            // MEM-12: the 4 KB copy block is on the heap, not the loop stack.
+            // Allocated here, after the connection is up, and freed when the
+            // callback returns.
+            constexpr size_t kCopyBlock = 4096;
+            std::unique_ptr<uint8_t, void (*)(void*)> copyBuf(
+                static_cast<uint8_t*>(heap_caps_malloc(kCopyBlock, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+                heap_caps_free);
+            if (!copyBuf) {
+                Serial.printf("[pack] no heap for the %u B copy block\n",
+                              static_cast<unsigned>(kCopyBlock));
+                failure = FetchStatus::WriteFailed;
+                return false;
+            }
+            uint8_t* const buf = copyBuf.get();
             const uint32_t started = millis();
             uint32_t lastData = started;
-            uint8_t buf[4096];
             while (written < expectedBytes && millis() - started < totalTimeoutMs) {
                 const int avail = client.available();
                 if (avail > 0) {
                     const size_t take = std::min<size_t>(
-                        sizeof buf,
+                        kCopyBlock,
                         std::min<size_t>(static_cast<size_t>(avail), expectedBytes - written));
                     const int n = client.read(buf, take);
                     if (n > 0) {
@@ -573,6 +586,19 @@ FetchResult install(const AppImage& app, ProgressFn progress, void* progressCtx,
                 failure = FetchStatus::SizeMismatch;
                 return false;
             }
+            // MEM-12: the 4 KB copy block is on the heap, not the loop stack.
+            // Taken before Update.begin, so a failure here leaves no update open.
+            constexpr size_t kCopyBlock = 4096;
+            std::unique_ptr<uint8_t, void (*)(void*)> copyBuf(
+                static_cast<uint8_t*>(heap_caps_malloc(kCopyBlock, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+                heap_caps_free);
+            if (!copyBuf) {
+                Serial.printf("[ota] no heap for the %u B copy block\n",
+                              static_cast<unsigned>(kCopyBlock));
+                failure = FetchStatus::WriteFailed;
+                return false;
+            }
+            uint8_t* const buf = copyBuf.get();
             if (!Update.begin(app.bytes)) {
                 const uint8_t e = Update.getError();
                 failure = e == UPDATE_ERROR_SIZE           ? FetchStatus::TooLarge
@@ -584,12 +610,11 @@ FetchResult install(const AppImage& app, ProgressFn progress, void* progressCtx,
             updateBegun = true;
             const uint32_t started = millis();
             uint32_t lastData = started;
-            uint8_t buf[4096];
             while (written < app.bytes && millis() - started < totalTimeoutMs) {
                 const int avail = client.available();
                 if (avail > 0) {
                     const size_t take = std::min<size_t>(
-                        sizeof buf, std::min<size_t>(static_cast<size_t>(avail), app.bytes - written));
+                        kCopyBlock, std::min<size_t>(static_cast<size_t>(avail), app.bytes - written));
                     const int n = client.read(buf, take);
                     if (n > 0) {
                         if (Update.write(buf, static_cast<size_t>(n)) !=

@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <memory>
 
 #include "app/AboutScreen.h"
 #include "app/App.h"
@@ -413,15 +414,26 @@ void dumpCanvas() {
         return;
     }
     static const char kHex[] = "0123456789abcdef";
-    static char line[16 + 4 * 240 + 2];
     const int w = state().display.gCanvas->width();
     const int h = state().display.gCanvas->height();
+    // MEM-10: the row buffer is allocated for this dump only (it was a static
+    // 978 B in the release). A row is a "#r yyy " prefix plus 4 hex digits per
+    // pixel (the rgb565 case), then the newline.
+    const size_t lineBytes = 16 + 4 * static_cast<size_t>(w) + 2;
+    std::unique_ptr<char, void (*)(void*)> lineBuf(
+        static_cast<char*>(heap_caps_malloc(lineBytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+        heap_caps_free);
+    if (!lineBuf) {
+        Serial.printf("[shot] no heap for a %u B row buffer\n", static_cast<unsigned>(lineBytes));
+        return;
+    }
+    char* const line = lineBuf.get();
     // The sprite buffer is RGB332 (one byte per pixel); dump it raw.
     const bool rgb332 = state().display.gCanvas->getColorDepth() == lgfx::rgb332_1Byte;
     const uint8_t* px = static_cast<const uint8_t*>(state().display.gCanvas->getBuffer());
     Serial.printf("\n#shot %d %d %s\n", w, h, rgb332 ? "rgb332" : "rgb565");
     for (int y = 0; y < h; ++y) {
-        int n = snprintf(line, sizeof line, "#r %d ", y);
+        int n = snprintf(line, lineBytes, "#r %d ", y);
         for (int x = 0; x < w; ++x) {
             if (rgb332) {
                 const uint8_t v = px[static_cast<size_t>(y) * w + x];
@@ -493,6 +505,18 @@ void uploadSdFile(const String& line) {
         return;
     }
 
+    // MEM-10: the transfer block is allocated for this upload only (it was a
+    // static 8 KB buffer, and the loop never reads more than the 2 KiB chunk).
+    // Taken before any SD work, so a short heap leaves the card untouched.
+    constexpr size_t kUploadBlock = 2048;
+    std::unique_ptr<uint8_t, void (*)(void*)> upBuf(
+        static_cast<uint8_t*>(heap_caps_malloc(kUploadBlock, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+        heap_caps_free);
+    if (!upBuf) {
+        Serial.printf("[up] no heap for a %u B block\n", static_cast<unsigned>(kUploadBlock));
+        return;
+    }
+
     const int slash = path.lastIndexOf('/');
     if (slash > 0) {
         const String dir = path.substring(0, slash);
@@ -514,7 +538,7 @@ void uploadSdFile(const String& line) {
 
     drawLoading("Writing SD...", path.c_str());
     Serial.printf("[up] ready %s %u\n", path.c_str(), static_cast<unsigned>(size));
-    static uint8_t buf[8192];
+    uint8_t* const buf = upBuf.get();
     uint32_t got = 0;
     bool writeOk = true;
     uint32_t lastLog = millis();
@@ -523,7 +547,7 @@ void uploadSdFile(const String& line) {
         // 4 KiB, and tools/device.py waits for one ack per chunk. A larger
         // `want` made both sides wait for each other (5 s timeout, then the
         // transfer failed on anything over 2 KiB).
-        const size_t want = std::min<size_t>(2048, size - got);
+        const size_t want = std::min<size_t>(kUploadBlock, size - got);
         size_t have = 0;
         uint32_t lastByte = millis();
         while (have < want) {

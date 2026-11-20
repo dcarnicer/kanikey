@@ -9,6 +9,7 @@
 #include "platform/RootCerts.h"
 #include "Version.h"
 #include "wk/DevOverrides.h"
+#include "wk/HeaderLine.h"
 #include "wk/HttpChunked.h"
 #include "wk/HttpRetry.h"
 #include "wk/RateLimit.h"
@@ -82,13 +83,29 @@ void logHeap(const char* when) {
                   static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL)));
 }
 
-// Reads one CRLF-terminated line. Returns false on EOF or the deadline instead
-// of letting readStringUntil() sit on Stream's timeout when the peer is gone.
-bool readLine(WiFiClientSecure& client, String& line, uint32_t deadline) {
-    line = "";
+// Reads one CRLF-terminated line into a fixed buffer (MEM-17; it was a String,
+// one heap realloc per 16 characters). Returns false on EOF or the deadline
+// before any byte arrives, as before. After the first byte the line is read up
+// to '\n', or until the socket closes or `gapMs` passes with no byte: the limit
+// readStringUntil() had through Stream::setTimeout(). Bytes past the buffer are
+// read and dropped, so the next line still starts in the right place.
+bool readLine(WiFiClientSecure& client, kk::HeaderLine& line, uint32_t deadline,
+              uint32_t gapMs) {
+    line.clear();
     while (static_cast<int32_t>(deadline - millis()) > 0) {
         if (client.available() > 0) {
-            line = client.readStringUntil('\n');
+            uint32_t gapStart = millis();
+            while (true) {
+                if (client.available() > 0) {
+                    const int c = client.read();
+                    if (c < 0 || c == '\n') break;
+                    line.push(static_cast<char>(c));
+                    gapStart = millis();
+                    continue;
+                }
+                if (!client.connected() || millis() - gapStart > gapMs) break;
+                delay(1);
+            }
             return true;
         }
         if (!client.connected()) return false;
@@ -226,16 +243,19 @@ Attempt performRequest(WiFiClientSecure& client, const String& method, const Str
         return a;
     }
 
-    String status;
-    if (!readLine(client, status, t0 + timeoutMs)) {
+    // Header lines are read with the same limits as before (the first-byte
+    // deadline, and a per-byte gap of the request timeout up to 5 s).
+    const uint32_t lineGapMs = std::min<uint32_t>(timeoutMs, 5000);
+    kk::HeaderLine statusLine;
+    if (!readLine(client, statusLine, t0 + timeoutMs, lineGapMs)) {
         r.ms = millis() - t0;
         Serial.printf("[http] %s no status line\n", path.c_str());
         a.retryable = method == "GET";
         closeClient(client);
         return a;
     }
-    status.trim();
-    r.statusLine = status;
+    statusLine.trim();
+    r.statusLine = statusLine.c_str();
     const bool http11 = r.statusLine.startsWith("HTTP/1.1");
     if (r.statusLine.startsWith("HTTP/")) {
         const int sp = r.statusLine.indexOf(' ');
@@ -249,25 +269,24 @@ Attempt performRequest(WiFiClientSecure& client, const String& method, const Str
     bool connectionKeepAlive = false;
     bool headerFailed = false;
     while (true) {
-        String line;
-        if (!readLine(client, line, t0 + timeoutMs)) {
+        kk::HeaderLine line;
+        if (!readLine(client, line, t0 + timeoutMs, lineGapMs)) {
             headerFailed = true;
             break;
         }
-        if (line == "\r" || line.isEmpty()) break;
-        String header = line;
-        header.toLowerCase();
-        if (header.startsWith("content-length:")) {
-            contentLength = header.substring(15).toInt();
-        } else if (header.startsWith("transfer-encoding:")) {
-            if (header.indexOf("chunked") >= 0) chunked = true;
-        } else if (header.startsWith("connection:")) {
-            if (header.indexOf("close") >= 0) connectionClose = true;
-            if (header.indexOf("keep-alive") >= 0) connectionKeepAlive = true;
-        } else if (header.startsWith("ratelimit-reset:")) {
-            r.rateLimitReset = static_cast<uint32_t>(header.substring(16).toInt());
-        } else if (header.startsWith("ratelimit-remaining:")) {
-            r.rateLimitRemaining = header.substring(20).toInt();
+        if (line.blank()) break;
+        line.toLower();
+        if (line.hasPrefix("content-length:")) {
+            contentLength = static_cast<int>(line.valueFrom(15));
+        } else if (line.hasPrefix("transfer-encoding:")) {
+            if (line.contains("chunked")) chunked = true;
+        } else if (line.hasPrefix("connection:")) {
+            if (line.contains("close")) connectionClose = true;
+            if (line.contains("keep-alive")) connectionKeepAlive = true;
+        } else if (line.hasPrefix("ratelimit-reset:")) {
+            r.rateLimitReset = static_cast<uint32_t>(line.valueFrom(16));
+        } else if (line.hasPrefix("ratelimit-remaining:")) {
+            r.rateLimitRemaining = static_cast<int32_t>(line.valueFrom(20));
         }
     }
     if (headerFailed) {

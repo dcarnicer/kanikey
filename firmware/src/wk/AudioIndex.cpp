@@ -133,7 +133,10 @@ bool decodeAudioIndex(const uint8_t* data, size_t size, uint32_t accountKey,
     if (get32(data + 8) != accountKey) return false;
     if (get32(data + payloadBytes) != crc32(data, payloadBytes)) return false;
     out->clear();
-    out->reserve(count);
+    // MEM-18: count plus slack, so the clips downloaded later do not reallocate
+    // the whole index (capped at the index's own maximum).
+    constexpr size_t kLoadSlack = 8;
+    out->reserve(std::min<size_t>(static_cast<size_t>(count) + kLoadSlack, kAudioIndexMaxEntries));
     for (uint16_t i = 0; i < count; ++i) {
         const uint8_t* p = data + kHeaderBytes + static_cast<size_t>(i) * kEntryBytes;
         AudioEntry entry;

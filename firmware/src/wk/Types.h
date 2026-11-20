@@ -71,7 +71,7 @@ struct Subject {
     std::string readingNote;
     std::vector<std::string> partsOfSpeech;       // vocabulary details
     std::vector<ContextSentence> contextSentences;  // vocabulary details
-    std::vector<AudioClip> audios;                  // pronunciation_audios, transient
+    std::vector<AudioClip> audios;                  // pronunciation_audios; empty once audioUrl is chosen (MEM-13)
     // The MP3 URL chosen per voice (index = voice), primary reading first; ""
     // when the voice has no clip. Set when the subject is parsed and persisted
     // in the subject cache (KKCS v13), so a batch loaded from the card can queue

@@ -171,7 +171,7 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
         const size_t count = std::min(plan.next, ids.size() - begin);
         const size_t end = begin + count;
         String sp = "/v2/subjects?ids=" + idList(ids, begin, end);
-        WkSubjectsResult sr = wkGetSubjectsRetry(sp, token, 32768, true);
+        WkSubjectsResult sr = wkGetSubjectsRetry(sp, token, 32768, true, 12000, 2, count);
         Serial.printf("[review] subject page %u-%u, size %u: %u bytes%s\n",
                       static_cast<unsigned>(begin), static_cast<unsigned>(end),
                       static_cast<unsigned>(count), static_cast<unsigned>(sr.http.bytes),

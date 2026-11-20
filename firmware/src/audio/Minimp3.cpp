@@ -69,12 +69,17 @@ void mp3dec_f32_to_s16(const float *in, int16_t *out, int num_samples);
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_FREE_FORMAT_FRAME_SIZE  2304    /* more than ISO spec's */
+/* MEM-16: 2304 -> 1440. The largest frame of a standard MPEG-1/2 Layer III stream
+ * is 1440 B (320 kbit/s at 32 kHz); the free-format search stops there too. The
+ * static_assert below keeps the AudioPlayer window in step with this value. */
+#define MAX_FREE_FORMAT_FRAME_SIZE  1440
 #ifndef MAX_FRAME_SYNC_MATCHES
 #define MAX_FRAME_SYNC_MATCHES      10
 #endif /* MAX_FRAME_SYNC_MATCHES */
 
 #define MAX_L3_FRAME_PAYLOAD_BYTES  MAX_FREE_FORMAT_FRAME_SIZE /* MUST be >= 320000/8/32000*1152 = 1440 */
+static_assert(MAX_FREE_FORMAT_FRAME_SIZE == kk::audio::kMp3MaxFrameBytes,
+              "the decoder's frame limit and the player's window must agree");
 
 #define MAX_BITRESERVOIR_BYTES      511
 #define SHORT_BLOCK_TYPE            2

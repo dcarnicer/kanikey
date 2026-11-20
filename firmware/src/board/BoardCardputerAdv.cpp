@@ -190,6 +190,14 @@ void begin() {
     if (M5.getBoard() != m5::board_t::board_M5CardputerADV)
         Serial.printf("board: expected a Cardputer ADV, M5Unified found board %d\n",
                       static_cast<int>(M5.getBoard()));
+    // MEM-15: the speaker's I2S ring is four 128-byte buffers instead of the
+    // default eight 256-byte ones (4 KB -> 512 B). Read-modify-write keeps the
+    // pins M5Unified set. The first begin() reads it; the speaker is ended while
+    // idle (platform/SpeakerPower.cpp).
+    auto spk = M5.Speaker.config();
+    spk.dma_buf_count = 4;
+    spk.dma_buf_len = 128;
+    M5.Speaker.config(spk);
     // Landscape, the keyboard below the picture. M5GFX 0.3.0 makes rotation 0
     // the upright orientation on this board (it used to start at 1, so the
     // picture of the old setRotation(0) is now setRotation(3)). Rotation 1 is

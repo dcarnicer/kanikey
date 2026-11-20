@@ -68,7 +68,7 @@ bool audioAutoplayWanted(bool settingOn, bool onReadingPage, SubjectType type, b
 
 // Bytes taken by a leading ID3v2 tag (header, body and optional footer), or 0
 // when p[0..n) does not start with one. Needs only the 10-byte header: a tag
-// can be far longer than the 4 KB playback window (a WaniKani clip started
+// can be far longer than the 2,880 B playback window (a WaniKani clip started
 // with an ID3v2.4 tag and was refused as corrupt, 2026-11-20), so the player
 // seeks past it before looking for the first frame.
 size_t mp3Id3v2TagBytes(const uint8_t* p, size_t n);
@@ -99,7 +99,8 @@ bool audioPickVoiceClip(const std::vector<AudioClip>& clips, uint8_t voice,
 
 // Fills subject.audioUrl[0..1] from subject.audios with audioPickVoiceClip().
 // Vocabulary and kana vocabulary only; other types get two empty URLs. The
-// parsers call it once a subject is complete.
+// parsers call it once a subject is complete, and it then clears subject.audios
+// (MEM-13), so call it once per subject and only after the clips are in.
 void audioChooseSubjectUrls(Subject& subject);
 
 // The clip to queue for `preferredVoice`: its own URL, or when that is empty the

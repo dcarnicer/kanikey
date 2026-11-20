@@ -70,6 +70,7 @@
 #include "platform/PracticeStore.h"
 #include "platform/SetupPortal.h"
 #include "platform/Sound.h"
+#include "platform/SpeakerPower.h"
 #include "platform/SubjectCatalog.h"
 #include "platform/WkProbe.h"
 #include "platform/WkReviewStatistics.h"
@@ -1303,6 +1304,8 @@ void loop() {
     // REM-03: advances a running sound cue. Before any early return below, so a
     // cue finishes even while the panel is blank.
     kk::sound::soundTick(millis());
+    // MEM-15: ends the speaker after kIdleMs with no clip or cue (same placement).
+    kk::speaker::tick(millis(), kk::audioPlayerIsPlaying() || kk::sound::soundBusy());
     canvasRecoveryTick(millis());
     handleSerial();
     // The portal closes itself after 15 idle minutes; leave Screen::Setup set
