@@ -53,6 +53,14 @@ inline constexpr size_t kAudioAdmitFreeMargin = 24 * 1024;
 inline constexpr size_t kAudioAdmitLargestMargin = 4 * 1024;
 bool audioAdmitsPieces(size_t freeTotal, size_t largest, const size_t* pieces, size_t count);
 
+// M6 Autoplay audio: may a clip start on its own at this point? True only when
+// M6 is On, the point is a reading page (the reading part's feedback that was
+// checked Correct or Incorrect, or a lesson card with a reading line), the
+// subject type has audio, a cached MP3 exists, and no sync or setup portal is
+// running. The caller starts the clip once the answer cue has finished.
+bool audioAutoplayWanted(bool settingOn, bool onReadingPage, SubjectType type, bool hasClip,
+                         bool syncing, bool portal);
+
 // Channels (1 or 2) of the first MPEG-1/2/2.5 Layer III frame header in
 // p[0..n), after an optional leading ID3v2 tag. 0 when no such header is in
 // the window. The checks are the ones that matter here: sync, a non-reserved

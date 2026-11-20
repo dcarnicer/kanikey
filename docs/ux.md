@@ -1009,7 +1009,7 @@ radical/vocabulary page set (see [`docs/hardware.md`](hardware.md), 2026-11-19).
   due set before the batch limit. R4's `Random` value is stored but the
   first-question build still treats it as Meaning (the R2 `Random` order is
   separate). L2 `Order`, L4–L6 and the other keyed rows are live where
-  `03-settings.md` says so; P5–P6 and M4–M7 still await their owners. The
+  `03-settings.md` says so; P5–P6 still await their owner and M4–M7 are live. The
   current build reads R1–R12 (R4 only Meaning/Reading), L1–L6, S1–S5, Y1–Y3,
   P1–P4, M1–M3 and the nine actions.
 - **M1–M3 Reminders (REM-02, 2026-11-20; hardware pending).** M1 `Reminder`
@@ -1032,6 +1032,17 @@ radical/vocabulary page set (see [`docs/hardware.md`](hardware.md), 2026-11-19).
   `Volume` (`Low`, `Medium`, `High`; default Medium) sets the level; it applies
   to the next tone, with no reboot. Off plays nothing anywhere, and nothing
   plays during a sync or in the setup portal.
+- **M6 Autoplay audio (AUD-03, 2026-11-20; hardware pending).** M6 `Autoplay
+  audio` (`Off`, `On`; default Off) plays a vocabulary clip once on its own at
+  two points: the reading feedback after a checked answer (Correct or Incorrect;
+  the typo Warning stays silent), and the lesson card's first view of a subject
+  that has a reading. It plays the same clip as `R` (M7 voice, the other voice
+  as fallback). With no cached MP3 nothing plays and nothing is requested, and
+  nothing plays during a sync or in the setup portal. When M4 Sounds is on, the
+  clip starts after the answer tone ends; a tone never cuts it off and no key
+  waits for it. Any key stops or cancels it, as with `R`. A clip the speaker
+  cannot start (low heap) is skipped for that view, without `no audio`; `R`
+  still tries. Off changes nothing.
 - R2 `Account preference` reads WaniKani's `reviews_presentation_order`; there
   is no separate toggle for that preference. The other R2 orders are
   device-side and do not change the account setting.

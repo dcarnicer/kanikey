@@ -239,6 +239,12 @@ release binary.
 | `O` | dev | Toggle forced battery for the idle-sleep test |
 | `Z <seconds>` | dev | Set the sleep timeout (`0` = never) |
 | `G <n>` | dev | Push `n` events into the real key queue (overflow-marker test) |
+| `rem <s> [n]` | dev | REM-01 timer-wake probe: sleep `s` seconds (timer and key wake), `n` times |
+| `rem` | dev | Print the REM-01 probe record |
+| `rem tone` | dev | Measure the heap a tone takes |
+| `cap <bytes>` | dev | FIX-14 body cap: a response body is treated as truncated after `bytes`; `cap 0` turns it off, `cap` alone prints it |
+| `devhost <host> <port>` | dev | FIX-06: send every WkClient request to `host:port` with certificate checks off (RAM only, never for real writes) |
+| `devhost off` | dev | Restore `api.wanikani.com:443`; `devhost` alone prints the target |
 
 The last group was added for the 2026-11-06 hardware pass. For a multi-command
 sequence use `tools/session.py`: opening the USB port resets the board, so

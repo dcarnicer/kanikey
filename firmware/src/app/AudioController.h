@@ -33,4 +33,20 @@ bool audioPlay(const kk::Subject& subject);
 // the TLS need. Never OGG; no retry; no UI beyond the hint refresh.
 void audioPrefetchBatch(const std::vector<kk::Subject>& subjects);
 
+// M6 autoplay. A request is made at a reading point (a checked reading answer
+// on review feedback, or a lesson card's first draw for its subject). Does
+// nothing while M6 is Off. audioTick() starts the clip once the answer cue has
+// finished and every rule in wk/AudioPlan audioAutoplayWanted() still holds; it
+// tries once and never retries a refused start.
+void audioAutoplayRequest(const kk::Subject& subject);
+
+// Lesson card: called from the card's draw. Requests autoplay on the first draw
+// of each card with a reading during a lesson session (the cards and their
+// quiz); paging back to a card does not repeat it. In memory only; the draw
+// does no I/O.
+void audioLessonCardShown(const kk::Subject& subject, bool hasReading);
+
+// Drops a pending autoplay without starting it. Any key calls this.
+void audioAutoplayCancel();
+
 }  // namespace kk::app

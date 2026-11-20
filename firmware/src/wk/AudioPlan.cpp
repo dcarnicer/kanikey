@@ -44,6 +44,12 @@ bool audioAdmitsPieces(size_t freeTotal, size_t largest, const size_t* pieces, s
            largest >= biggest + kAudioAdmitLargestMargin;
 }
 
+bool audioAutoplayWanted(bool settingOn, bool onReadingPage, SubjectType type, bool hasClip,
+                         bool syncing, bool portal) {
+    return settingOn && onReadingPage && audioSubjectPlayable(type) && hasClip && !syncing &&
+           !portal;
+}
+
 int mp3FirstFrameChannels(const uint8_t* p, size_t n) {
     if (!p) return 0;
     size_t start = 0;

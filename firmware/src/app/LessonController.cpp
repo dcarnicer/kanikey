@@ -528,6 +528,8 @@ void showLesson() {
     // AUD-03: R appears only when the card draws a reading; kanji/radicals
     // resolve to None in the audio policy.
     view.audio = reading.empty() ? kk::AudioHint::None : audioHintFor(*s);
+    // M6: the first draw of a card with a reading asks for autoplay, once.
+    audioLessonCardShown(*s, !reading.empty());
     view.header = header;
     view.pages = std::move(pages);
     view.page = state().lesson.gLessonBrowse.page();

@@ -26,4 +26,8 @@ void soundTick(uint32_t now);
 // it starts a clip (platform/AudioPlayer.cpp audioPlayerPlay()).
 void soundStop();
 
+// True while a cue still has steps to sound (until its last step's duration has
+// passed). M6 autoplay waits for this to clear before it starts a clip.
+bool soundBusy();
+
 }  // namespace kk::sound
