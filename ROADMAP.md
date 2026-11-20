@@ -137,6 +137,9 @@ Working on hardware:
 - OTA uses the second 3 MiB slot (8 MB table, 2026-11-20) with a size/SHA-256
   manifest and bootloader rollback; Settings › Firmware and About expose it.
 
+Released **v0.2.0** on 2026-11-20 (`docs/releases/v0.2.0.md`); OTA from
+GitHub verified on the device.
+
 Last recorded build (FLASH-03 8 MB table, release log level 0, 2026-11-20; the
 basis is the 3,145,728 B slot): **release 1,664,373 B / 3,145,728 B (52.9%)**
 (was 1,702,545 B of 1,835,008 B, 92.8%), **dev 1,735,633 B (55.2%)**,
