@@ -56,6 +56,7 @@
 #include "platform/Ota.h"
 #include "platform/PracticeStore.h"
 #include "platform/SetupPortal.h"
+#include "platform/Sound.h"
 #include "platform/SubjectCatalog.h"
 #include "platform/WkClient.h"
 #include "platform/WkLessons.h"
@@ -607,6 +608,9 @@ void checkLessonQuiz() {
     int typos = 0;
     const bool typosStrict = kk::settingsGetInt("rv.typos", &typos) && typos == 1;
     state().lesson.gLessonQuiz.submit(input, typosStrict);
+    // REM-03: the same answer tones as reviews (a Warning is silent).
+    kk::sound::soundAnswer(state().lesson.gLessonQuiz.result().status, state().sync.gSyncing,
+                           state().setup.gSetupPortal.active());
     const char* status = state().lesson.gLessonQuiz.result().status == kk::AnswerStatus::Correct ? "correct"
                          : state().lesson.gLessonQuiz.result().status == kk::AnswerStatus::Warning ? "warning"
                                                                                     : "incorrect";
@@ -748,6 +752,9 @@ void checkLessonBatchQuiz() {
                   l.gLessonBatchCheck.status == kk::AnswerStatus::Correct ? "correct"
                   : l.gLessonBatchCheck.status == kk::AnswerStatus::Warning ? "warning"
                                                                             : "incorrect");
+    // REM-03: the same answer tones as reviews (a Warning is silent).
+    kk::sound::soundAnswer(l.gLessonBatchCheck.status, state().sync.gSyncing,
+                           state().setup.gSetupPortal.active());
     state().display.gDirty = true;
 }
 

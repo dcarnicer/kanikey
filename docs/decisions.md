@@ -332,6 +332,10 @@ review already justifies the device.
 **Implications:** the design leaves room for them (item card, settings, visual
 pack) but does not promise them.
 
+**Superseded for device tones (2026-11-20, REM-03):** the device now plays
+short answer and reminder tones through its speaker; see that entry. Stroke
+order and pronunciation audio stay out of v1 (audio is AUD-03).
+
 ---
 
 ## 2026-10-28 — efontJA_16 removed; missing glyphs are explicit
@@ -1356,3 +1360,34 @@ to an hour, and the next recompute corrects it.
   than the fired one, so a reminder cannot repeat at the same moment.
 - Hardware numbers (wake cost, the 30 s expiry, the banner width) are still
   open; see `docs/hardware.md` when the run is done.
+
+---
+
+## 2026-11-20 — REM-03: device tones on the speaker, off by default
+
+**Decision:** the device plays short tones through its speaker (the ES8311 the
+board already initialises). M4 `Sounds` (Off by default, On) gates four cues:
+the reminder chime when the REM-02 banner shows (two equal tones), a correct
+answer (two tones, rising), a wrong answer (one low tone) and the session end
+(a three-note figure, only after at least one completed review). Correct and
+wrong apply to reviews and to both lesson quizzes. M5 `Volume` maps Low, Medium
+and High to a master level of 64, 128 and 255. Each tone is at most 120 ms. This
+supersedes "2026-10-25 — Audio and stroke order out of v1" for device tones;
+stroke order and pronunciation audio stay out (audio is AUD-03).
+
+**Why:** the REM-01 spike measured the cost: the speaker is already initialised,
+and the first tone keeps 7,880 B of heap with the largest block unchanged. A
+tone confirms an answer without the panel, and makes the reminder wake audible.
+
+**Implications:**
+- Cues are queued and advanced from `loop()` (`platform/Sound`): no tone blocks
+  a key, and a new cue stops the running one. Stopping the speaker is a request,
+  not a wait.
+- Nothing sounds during a sync or in the setup portal. A Warning (retype) is
+  silent, and a quiz completion or an empty session has no tone.
+- The chime plays only while the banner shows, and a key ends it.
+- PaperDIY has no speaker: the cues compile and do nothing there.
+- AUD-03 must call `soundStop()` before a clip starts, so the two never share
+  the speaker.
+- Latency and heap after a session are hardware numbers still open; see
+  `docs/hardware.md` when the run is done.

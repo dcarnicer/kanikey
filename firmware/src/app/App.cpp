@@ -60,6 +60,7 @@
 #include "platform/JournalStore.h"
 #include "platform/PracticeStore.h"
 #include "platform/SetupPortal.h"
+#include "platform/Sound.h"
 #include "platform/SubjectCatalog.h"
 #include "platform/WkProbe.h"
 #include "platform/WkReviewStatistics.h"
@@ -565,6 +566,10 @@ void reminderTimerWake(uint32_t now) {
     kk::app::reminderNoteFired(now);
     drawHome();
     tgc::board::setBrightness(kk::settingsBrightness());
+    // REM-03: the reminder chime (M4) as the banner appears. loop() does not run
+    // in this wait, so the banner loop below advances the chime itself.
+    kk::sound::soundCue(kk::SoundCue::ReminderChime, 0, state().sync.gSyncing,
+                        state().setup.gSetupPortal.active());
 
     const uint32_t shownAt = millis();
     bool key = false;
@@ -574,9 +579,11 @@ void reminderTimerWake(uint32_t now) {
         while (tgc::board::nextKeyEvent(&e))
             if (e.down && e.key != Key::None) key = true;
         if (tgc::board::wasPressed(tgc::board::Button::Select)) key = true;
+        kk::sound::soundTick(millis());
         if (!key) delay(10);
     }
     gReminderBannerDue = 0;
+    kk::sound::soundStop();  // a key or the expiry ends the chime before sleep or boot
     if (key) {
 #ifdef KANIKEY_DEV
         Serial.println("[rem] key during the banner: normal boot");
@@ -1087,6 +1094,9 @@ void setup() {
 
 void loop() {
     tgc::board::update();
+    // REM-03: advances a running sound cue. Before any early return below, so a
+    // cue finishes even while the panel is blank.
+    kk::sound::soundTick(millis());
     handleSerial();
     // The portal closes itself after 15 idle minutes; leave Screen::Setup set
     // until here so the hooks can keep their own messages.

@@ -212,6 +212,7 @@ bool isCharging() { return M5.Power.isCharging() == m5::Power_Class::is_charging
 
 // No speaker or codec on this board.
 bool playTone(uint16_t, uint16_t, uint8_t) { return false; }
+void speakerStop() {}
 
 // No backlight: the e-paper has nothing to dim, so the setting is a no-op.
 void setBrightness(uint8_t) {}
