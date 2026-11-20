@@ -22,6 +22,10 @@ namespace {
 // card screen. Cleared on leaving, so the next visit prepares again once.
 bool gPreparedForVisit = false;
 
+// A batch prefetch that had to wait for the WkClient session to close.
+enum class PrefetchSource : uint8_t { None, Review, Lesson };
+PrefetchSource gPrefetchPending = PrefetchSource::None;
+
 // M6: one pending autoplay. Only the id and type are kept; the clip is looked
 // up when it starts, so a stale subject pointer is never used.
 struct AutoplayPending {
@@ -147,6 +151,13 @@ void audioTick() {
     }
     autoplayTick();
     kk::audioPlayerTick();
+    if (gPrefetchPending != PrefetchSource::None && !kk::wkSessionActive()) {
+        const PrefetchSource source = gPrefetchPending;
+        gPrefetchPending = PrefetchSource::None;
+        Serial.println("[audio] running the deferred prefetch");
+        audioPrefetchBatch(source == PrefetchSource::Lesson ? state().lesson.gLessonBatch.subjects
+                                                            : state().cache.gBatch.subjects);
+    }
 }
 
 void audioStop() {
@@ -176,6 +187,17 @@ bool audioPlay(const kk::Subject& subject) {
 
 void audioPrefetchBatch(const std::vector<kk::Subject>& subjects) {
     if (!state().storage.gSdOk || !kk::DevToken::has()) return;
+    // A keep-alive WkClient session (the sync job, the batch fetch) still holds
+    // its TLS context; a second handshake for the clip host then runs out of
+    // heap (hardware 2026-11-20: `RSA - BIGNUM - Memory allocation failed`,
+    // 0/12 clips). Defer to audioTick(), which runs it once the session ends.
+    if (kk::wkSessionActive()) {
+        gPrefetchPending = &subjects == &state().lesson.gLessonBatch.subjects
+                               ? PrefetchSource::Lesson
+                               : PrefetchSource::Review;
+        Serial.println("[audio] prefetch deferred until the API session closes");
+        return;
+    }
     if (kk::wkAuthBlocked() || kk::wkRateLimitWaitSeconds() > 0) {
         Serial.println("[audio] prefetch skipped: token blocked or rate limited");
         return;
