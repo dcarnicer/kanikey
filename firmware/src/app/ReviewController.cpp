@@ -868,10 +868,11 @@ void startReview() {
         for (const kk::CriticalItem& item : state().study.gCritical) ids.push_back(item.subjectId);
         state().review.gQueue.setCriticalSubjectIds(ids);
     }
-    // Random gets a fresh seed per session; the deterministic strategies ignore
-    // it. Account keeps the historical fixed seed so today's order is intact.
-    const uint32_t seed =
-        orderStrategy == kk::ReviewOrderStrategy::Random ? esp_random() : 0x9E3779B9u;
+    // A fresh seed per session: it shuffles Random/Account orders and draws R4's
+    // per-item first part and the R5 interleave positions, which a fixed seed
+    // would repeat for the same batch (2026-11-20). Deterministic strategies
+    // ignore it for the due-set order.
+    const uint32_t seed = esp_random();
     state().review.gQueue.build(due, state().cache.gBatch.subjects, now, reviewLimit, seed);
     Serial.printf("[review] order %s, types %d, current level %u, account %s\n",
                   kk::reviewOrderStrategyName(orderStrategy), typeOrder ? 1 : 0,
