@@ -66,8 +66,10 @@ void drawLessonRow(lgfx::LovyanGFX& d, int index, int x, int y, int width, bool 
             const char* p = first.c_str();
             kk::utf8Next(&p);
             first.resize(static_cast<size_t>(p - first.c_str()));
+            // drawTextCentered(text, prefer, cx, cy, maxW, maxH, ...): the size
+            // comes before the centre.
             promptDrawn = list.fontPack->drawTextCentered(
-                d, first, x + 11, y + 10, 20, 20, 20, ui::kText, ui::kSurface,
+                d, first, 20, x + 11, y + 10, 20, 20, ui::kText, ui::kSurface,
                 kk::ClipRect{x + 1, y + 1, x + 21, y + 19});
         }
     }
