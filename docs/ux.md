@@ -1,9 +1,11 @@
 # KaniKey — UX, keyboard and screens
 
-> Design, 2026-10-25; device alignment 2026-11-19 (DOC-02). The images in
-> `docs/screens` are **renders**, not device captures: `tools/mockups/render.py`
-> draws the firmware's layouts with the M5GFX bitmap fonts (`Font0`/`Font1`
-> 6×8, `Font2` 16 px, `Font4` 26 px) and the RGB332 palette from `Theme.h`.
+> Design, 2026-10-25; device alignment 2026-11-19 (DOC-02); icon adoption
+> 2026-11-20 (TNG-03). The images in `docs/screens` are **renders**, not
+> device captures: `tools/mockups/render.py` draws the firmware's layouts with
+> the M5GFX bitmap fonts (`Font0`/`Font1` 6×8, `Font2` 16 px, `Font4` 26 px),
+> the 1bpp icons from `firmware/src/ui/Icons.h` and the RGB332 palette from
+> `Theme.h`.
 > Individual images are shown at 4× and the contact sheet at 2×; geometry and
 > text sizes are the 1× ones, and the upscale is nearest-neighbour.
 >
@@ -26,7 +28,8 @@
    meaning, the bar changes.
 4. **Color + shape + word.** Correct isn't just green; it has the `CORRECT`
    pill and word. Incorrect isn't just red; it has the `NOT QUITE` pill and
-   word. The current build does not draw separate ✓/✗ icons.
+   word. The check/cross icons are supplementary: they follow the label, and
+   the label alone still says what happened.
 5. **Offline is stated.** One status line carries the most urgent state, such
    as `Offline - 2h old` or `Outbox: 4 pending`; outbox pending/attention
    replaces the offline/stale/vacation/level line. A level-up notice is shown
@@ -106,15 +109,19 @@ font file; Latin text is not rasterized on the device.
 - List rows: 11 px in menu-style lists (Settings, Wi-Fi, Outbox, the Study
   menu) and 20 px in content lists (lesson picker, critical/study rows);
   summary mistake rows are 26 px.
+- Icons: 11×11, drawn after a label with a 4–6 px gap; they never replace text
+  or set a row height.
 - Square corners; no shadows; 1 px borders.
 
 ### 2.4 Components
 
-- **Header:** title or brand on the left; Home adds the sync text and battery
-  value on the right; the review has a 2 px progress bar at the bottom. There
-  are no Wi-Fi or battery icons.
+- **Header:** title or brand on the left; Home adds the sync icon and sync
+  text plus the battery value on the right; the review has a 2 px progress bar
+  at the bottom. There are no Wi-Fi or battery icons.
 - **Pill:** short uppercase label (`MEANING`, `READING`, `CORRECT`,
-  `KANJI L5`) with a `surface-hi` background and semantic color.
+  `KANJI L5`) with a `surface-hi` background and semantic color. A feedback
+  pill may add a check/cross icon after the label; the label stays in place and
+  the pill grows to the right. Other pills have no icon.
 - **Input:** `surface-hi` rectangle with a `line` border; meaning answers use
   the 6×8 font, kana readings the pack at 32 px with a 20 px fallback; 2 px
   caret in `accent`. The active answer field is the text-mode cue; there is no
@@ -122,13 +129,41 @@ font file; Latin text is not rasterized on the device.
 - **Key hint:** 6×8 text in `text-faint`; the key and action share the one-line
   hint bar rather than a drawn keycap.
 - **Progress:** 2–3 px bar; `surface-hi` track, `accent` fill.
-- **Feedback:** pill + word; never color alone. There is no separate icon.
+- **Feedback:** pill + word + a supplementary check/cross icon after the
+  label; never color alone. A warning (`CHECK`) has no icon because it must not
+  imply a result.
 - **List row:** `surface` background, `accent` focus, label left and value
   right; the lesson picker adds a `>`/`*` selection mark and a scroll thumb
   when the list overflows. Settings, Wi-Fi, Outbox, the lesson picker and the
   Study/critical lists share one window primitive; the hint bar is shared
   (TNG-03) and Home picks a shorter known variant when the full hint is too
-  wide.
+  wide. The Outbox header carries the outbox icon; its rows do not.
+
+### 2.5 Icons
+
+TNG-03 adds seven 11×11 1bpp icons: `check`, `cross`, Wi-Fi, `sync`, SD,
+`key` and `outbox` (`firmware/src/ui/Icons.h`). They are supplementary: a
+label, word or colour always carries the meaning on its own, and no icon
+replaces text.
+
+Adopted slots:
+
+- Review and lesson-quiz feedback: check after `CORRECT`, cross after
+  `NOT QUITE`; `CHECK` keeps no icon.
+- Home header: sync icon before `Synced HH:MM` / `sync n/m`, in the same
+  colour as the text. The Sync screen title carries sync, check or cross after
+  `Syncing...`, `Synced` or `Sync failed`.
+- Outbox header: outbox icon before `N need attention`.
+- Setup and on-device Wi-Fi: Wi-Fi icon after `Join this Wi-Fi`, `Connected`
+  and the Wi-Fi scan/password subtitle.
+- About: SD icon after the `Font:` and `Rad:` lines, key after `Token:`.
+
+Intentionally skipped: the 10 px Sync rows, the 8 px Home status/outbox line
+and other 8 px metadata, the 11 px Wi-Fi scan and Outbox/Settings list rows,
+the review question/detail/summary/Stats screens, and warnings. The icon would
+exceed the row height or compete with the value on the right; those slots stay
+text-only. The battery, clock and security labels also keep words (`84%`,
+`WPA2`) instead of an icon.
 
 ---
 
@@ -396,6 +431,9 @@ notices are separate screens that also keep the device awake.
 
 - Header `KaniKey` in coral, `setup` (or `setup · Wi-Fi` once connected) in
   the 6×8 font and the battery on the right. The screen has two states.
+- `Join this Wi-Fi` (AP) and `Connected` (station) carry the Wi-Fi icon after
+  the word. The on-device scan and password headers carry it after their
+  `Wi-Fi · ...` subtitle.
 - **Access-point state** (no saved Wi-Fi):
   - `Join this Wi-Fi`, the SSID `KaniKey-XXXX` in `Font2` (16 px).
   - `Password` and the random 10-character WPA2 key.
@@ -427,7 +465,9 @@ notices are separate screens that also keep the device awake.
 
 - **On-device Wi-Fi (SETUP-09, 2026-11-19).** Settings › Account › Wi-Fi opens
   a 2.4 GHz scan: SSID left, signal bars and `WPA2`/`WPA2/3` right, plus a
-  `+ Enter network name` row for hidden networks. `↑↓` moves, `Enter` chooses,
+  `+ Enter network name` row for hidden networks. The header carries the
+  Wi-Fi icon after the subtitle; the scan rows keep signal bars and security
+  text only. `↑↓` moves, `Enter` chooses,
   `R` rescans and `Esc` returns to Account. The password screen shows the SSID,
   a masked field, `Tab: show` / `Tab: hide` and `8-63 characters; empty for
   open`; `Enter` joins, `Esc` goes back. A failed join keeps the password
@@ -460,9 +500,10 @@ notices are separate screens that also keep the device awake.
 
 - Header: `KaniKey` in `Font2` (16 px, coral), `Synced 14:47` in
   `Font1` (6×8, dim) and the battery as `84%` (or `USB`) in `Font1`, both
-  right-aligned. While an automatic sync runs, the right text is `sync n/m`
-  instead of `Synced HH:MM` and returns to the clock when the job finishes
-  (SPEED-03). There are no Wi-Fi or battery icons on the device.
+  right-aligned. A sync icon sits before the sync text in the same colour.
+  While an automatic sync runs, the right text is `sync n/m` instead of
+  `Synced HH:MM` and returns to the clock when the job finishes (SPEED-03).
+  There are no Wi-Fi or battery icons on the device.
 - `LEVEL 12` in gold and the username next to it in the 6×8 font.
 - Due reviews (`28`) at 32 px and the `REVIEWS DUE` label at 8 px.
 - Lessons (`5`) at 32 px and `LESSONS` at 8 px.
@@ -487,8 +528,9 @@ notices are separate screens that also keep the device awake.
   count is rejected + stuck; pending does not include either. When items need
   attention, the hint becomes the `O: outbox` variant below (§5.13). Above 75%
   (96 of 128 slots, every state counted) the line appends `(nearly full)`.
-  The minute tick above also refreshes the battery, so charging shows without a
-  keypress.
+  The 8 px line stays text-only; the outbox icon is on the Outbox header, not
+  here. The minute tick above also refreshes the battery, so charging shows
+  without a keypress.
 - Priority of the status line: auth/rate/server error, outbox, offline/stale,
   level-up notice, vacation, level line. A level-up notice keeps priority over
   vacation and level until sign-out.
@@ -618,7 +660,7 @@ first with the shuffle kept inside each level.
 
 - The left panel doesn't change; the right one turns into feedback.
 - Correct:
-  - `CORRECT` pill in green (the current screen has no separate ✓ icon).
+  - `CORRECT` pill in green with a check icon after the word.
   - `You typed` and the answer in gray.
   - `Answer` lists every accepted meaning or reading joined by ` / `; kanji
     readings are grouped on'yomi first and kunyomi second, and user synonyms
@@ -626,7 +668,7 @@ first with the shuffle kept inside each level.
     dropped.
   - `Enter: next`, `Tab: details`.
 - Wrong:
-  - `NOT QUITE` pill in red (no separate ✗ icon yet).
+  - `NOT QUITE` pill in red with a cross icon after the word.
   - `You typed` and the user's answer.
   - `Answer` with the accepted list, same layout as Correct.
   - The first sentence of the part's hint, else the user's note; never the
@@ -647,7 +689,7 @@ first with the shuffle kept inside each level.
   as usual. C/A do nothing on Warning and with R7 Off; with R7 Off the help
   omits their rows. **Hardware pending:** C/A, the warning case, the bar/help
   and practice (see [`docs/hardware.md`](hardware.md), 2026-11-19).
-- Warning (`CHECK` pill in amber):
+- Warning (`CHECK` pill in amber, no icon):
   - Only the pill and the message are shown; no typed row and no answer row, so
     the expected answer cannot leak.
   - `Tab` does nothing. The hint bar reads `Enter: edit  Esc: pause`.
@@ -821,16 +863,20 @@ radical/vocabulary page set (see [`docs/hardware.md`](hardware.md), 2026-11-19).
 
 ### 5.10 Lesson quiz
 
+![Lesson quiz](screens/lesson-quiz.png)
+
 - `Q` on a lesson card opens the optional single-item local quiz. The batch
   quiz after the last card is the gate by default (L3 `Required`); L3 `Skip`
   goes straight to the start confirmation.
 - Both quizzes use the review answer field: header `LESSON QUIZ`, `1/2` (or
   `1/1` for radicals), meaning first, then reading when the subject has one.
 - Typed answers use the same romaji-to-kana input and answer checker as reviews.
-- Wrong answers show `NOT QUITE`, the accepted answer list and are retried; a
-  mistake count is kept. Warnings show `CHECK` and retry the same part without
-  showing the typed or answer row; the hint reads `Enter: edit  Esc: card`, and
-  the typed text (meaning string and IME raw buffer) is kept for the retry.
+- Wrong answers show `NOT QUITE` with a cross icon, the accepted answer list
+  and are retried; a mistake count is kept. Warnings show `CHECK` (no icon)
+  and retry the same part without showing the typed or answer row; the hint
+  reads `Enter: edit  Esc: card`, and the typed text (meaning string and IME
+  raw buffer) is kept for the retry. A completed part keeps the same `CORRECT`
+  pill and check icon as §5.5.
 - In the batch quiz, a wrong part requeues until every required part is correct;
   `Esc` returns to the last card with the batch unchanged. After the last part
   the start confirmation follows.
@@ -870,9 +916,10 @@ radical/vocabulary page set (see [`docs/hardware.md`](hardware.md), 2026-11-19).
   pending`), or `N need attention` / `N pending`; `none` before a flush and
   `sent` when both are zero afterwards.
 - Each row shows a name, a value and a status: `ok` in green, `..` while
-  active, `!` for a warning, `X` for a failure and `--` while pending.
+  active, `!` for a warning, `X` for a failure and `--` while pending. The
+  10 px rows stay text-only; an 11 px icon would not fit.
 - Progress bar `0/7` … `7/7`; the title reads `Syncing...`, `Synced` or
-  `Sync failed`.
+  `Sync failed` and carries the sync, check or cross icon after the word.
 - `Esc` cancels at the next step boundary. Completed requests are kept, and
   the device returns to Home (or to boot with `Sync cancelled` if there is no
   cache).
@@ -931,7 +978,9 @@ radical/vocabulary page set (see [`docs/hardware.md`](hardware.md), 2026-11-19).
   sync; `Outbox` opens the list even when nothing needs attention.
 - About shows the firmware version and slot, build date, an update badge when
   one is known, the font and radical pack status, cached batch, last sync,
-  Wi-Fi, whether a token is configured, time zone and heap.
+  Wi-Fi, whether a token is configured, time zone and heap. The `Font:` and
+  `Rad:` lines carry the SD icon and `Token:` the key icon, in the line colour;
+  the other lines stay text-only.
 - `Firmware` shows the running version/slot, the last check or install result
   and `Check now` / `Install update` rows. Install asks for a second `Enter`,
   then streams the image and restarts. A failed check stays on the screen with
@@ -966,10 +1015,13 @@ radical/vocabulary page set (see [`docs/hardware.md`](hardware.md), 2026-11-19).
 
 ### 5.13 Outbox
 
+![Outbox](screens/outbox.png)
+
 - Open with `O` from Home when at least one review was rejected or gave up; the
   key is ignored when nothing needs attention.
-- Header `OUTBOX` and `N need attention`; `rejected` and `stuck` items are
-  listed. Pending, sending and ambiguous items are not.
+- Header `OUTBOX` and `N need attention`; the outbox icon sits before the
+  right-aligned count. `rejected` and `stuck` items are listed. Pending,
+  sending and ambiguous items are not.
 - Up to seven visible rows scroll with `↑↓`. A row shows the subject's English
   main meaning and level (for example `day L1`) when it is still in the cached
   batch, otherwise `assignment <id>` (or `subject <id>`). The reason is
@@ -1085,10 +1137,10 @@ Error screens never show stack traces, URLs with a token, or JSON.
 ## 6. Accessibility
 
 - **Contrast:** main text on background > 15:1; secondary text > 7:1;
-  semantic colors are accompanied by the pill and a word (the current screens
-  do not draw separate ✓/✗ icons).
-- **Color blindness:** green and red aren't the only signal; the pill and the
-  text change.
+  semantic colors are accompanied by the pill and a word; check/cross icons
+  are supplementary and never the only signal.
+- **Color blindness:** green and red aren't the only signal; the pill, the
+  word and, where present, the icon change.
 - **Size:** the UI text is the 6×8 GLCD font (8 px cell); 32 px counters and
   summary values, and 32/20 px Japanese readings. Long text is wrapped or
   paged, never shrunk below the 6×8 cell.
@@ -1119,17 +1171,21 @@ Error screens never show stack traces, URLs with a token, or JSON.
 All images in `docs/screens` are **renders**, not device captures. They are
 generated from the firmware's screen layouts with the M5GFX bitmap fonts and
 the RGB332 palette; Japanese glyphs are a Noto Sans JP stand-in for the pack.
+The renders draw the same 11×11 1bpp icons as `firmware/src/ui/Icons.h` in the
+adopted slots. The panel/gamma check for every icon is pending.
 
 | File | Screen | Source |
 |---|---|---|
 | `screens/home.png` | Home with reviews, lessons and SRS distribution | render |
 | `screens/home-outbox.png` | Home with outbox attention and its hint variant | render |
+| `screens/outbox.png` | Outbox with the attention header and two rows | render |
 | `screens/review-meaning.png` | Meaning question | render |
 | `screens/review-reading.png` | Reading question with romaji | render |
 | `screens/review-correct.png` | Correct feedback with accepted answers | render |
 | `screens/review-wrong.png` | Incorrect feedback with the hint sentence | render |
 | `screens/review-check.png` | Typo warning (`CHECK`) | render |
 | `screens/lesson.png` | Lesson card with the topic title | render |
+| `screens/lesson-quiz.png` | Lesson-quiz wrong feedback with the cross icon | render |
 | `screens/summary.png` | Session summary | render |
 | `screens/sync.png` | Synchronization | render |
 | `screens/settings.png` | Settings, eight sections | render |
