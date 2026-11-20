@@ -101,7 +101,37 @@ The procedure for the subject-page fallback is in
 The test server is in §3.1; the procedure is in
 [`spec/01-fixes.md`](spec/01-fixes.md) (FIX-06, "Dev hooks").
 
-### 2.4 Other hooks
+### 2.4 `remind` and `cue` — reminder wake and sounds (REM-02, REM-03)
+
+| Command | Effect |
+|---|---|
+| `remind <s>` | Arm the reminder timer `s` seconds from now (1–86400) through the REM-02 wake path, then deep-sleep now with the key wake armed. |
+| `remind` | Print the run record from RTC memory: the runs and each timer wake. |
+| `cue chime\|correct\|wrong\|end` | Play one REM-03 cue at the M5 level. M4 is ignored, so sounds may stay Off. `end` plays with one completed review. |
+| `cue vol low\|med\|high` | Set the level of later `cue` plays for this boot (RAM). `cue vol` alone prints the level. |
+
+- `remind` treats M1 Off as 1 for its run, so the banner shows for any due review.
+  Seed reviews first with `T` then `C` (dev token, then 6 due reviews).
+- The banner still obeys M2 quiet hours (22–08 by default). Inside them the log
+  says `banner no`, and the run re-arms without a banner. Test in the daytime or
+  set M2 Off.
+- A timer wake starts no Wi-Fi. The banner lasts 30 s. A key during it continues
+  the normal boot (quick sync). Expiry re-arms the next wake (the next M3 time,
+  or a future review bucket) and sleeps. With no next wake the device sleeps until a key.
+- **USB drops while the chip sleeps and returns when it wakes.** Opening the port
+  during the banner resets the board, and a reset ends the banner. After the
+  expiry the chip sleeps again and the port is gone, so press a key to wake it.
+  Then open the port and send `remind`: the RTC record survives the reset. The
+  banner's own serial lines are not seen; read the record instead.
+- Log lines: `[remind] next wake <UTC> in N s`, `[remind] timer wake N: rebuilt
+  <UTC> expected <UTC> drift D s`, `[rem] timer wake: due N, banner yes|no`,
+  `[remind] hist N ... outcome key|expiry|no-banner next <UTC|none>`, and
+  `[cue] <name> heap before ...; after ...; played 1`.
+
+The procedures are in [`spec/08-reminders-audio.md`](spec/08-reminders-audio.md)
+(REM-02 and REM-03, "Dev check").
+
+### 2.5 Other hooks
 
 The firmware README serial table covers the rest: `h`, `i`, `p`, `S`, `up`, `w`,
 `t`, `u`, `k`, `o`, `f`, `J`, `C`, `U`, `F`, `I`, `V`, `Y` and more.

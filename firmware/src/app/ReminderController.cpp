@@ -14,6 +14,10 @@
 #if defined(TGC_BOARD_PAPERDIY)
 #include "app/CadenceController.h"
 #endif
+#ifdef KANIKEY_DEV
+#include "app/RemindDev.h"
+#include "wk/DevRemind.h"
+#endif
 
 namespace kk::app {
 namespace {
@@ -28,6 +32,11 @@ RTC_DATA_ATTR uint32_t gRemArmed = 0;
 RTC_DATA_ATTR uint32_t gRemEpoch = 0;    // UTC at the arm
 RTC_DATA_ATTR uint64_t gRemRtcUs = 0;    // rtcMicros() at the arm
 RTC_DATA_ATTR uint32_t gRemFiredAt = 0;  // the banner's wake time in this boot
+#ifdef KANIKEY_DEV
+// dev `remind`: this run's timers treat M1 Off as 1. Kept across timer wakes;
+// any other boot clears it (reminderBootWake()).
+RTC_DATA_ATTR uint32_t gRemDevRun = 0;
+#endif
 // PD-04: the UTC targets of the armed timer (0 = none): the reminder's and the
 // sync cadence's, and the cadence's CadenceReason for the log.
 #if defined(TGC_BOARD_PAPERDIY)
@@ -63,6 +72,9 @@ kk::ReminderRules rulesFromSettings() {
     kk::settingsGetInt("rm.remind", &minDue);
     kk::settingsGetInt("rm.quiet", &quiet);
     kk::settingsGetInt("rm.time", &daily);
+#ifdef KANIKEY_DEV
+    if (gRemDevRun) minDue = static_cast<int>(kk::devRemindMinDue(static_cast<uint32_t>(minDue)));
+#endif
     return kk::reminderRulesFromChoices(minDue, quiet, daily);
 }
 
@@ -133,6 +145,9 @@ uint64_t armAt(uint32_t nowUtc, const kk::Summary* summary, bool keepCadence) {
 #else
     (void)keepCadence;
 #endif
+#ifdef KANIKEY_DEV
+    remindDevNoteArm(nowUtc, wakeAt);
+#endif
     if (!wakeAt) return 0;
     gRemEpoch = nowUtc;
     gRemRtcUs = tgc::board::rtcMicros();
@@ -152,6 +167,9 @@ bool reminderBootWake(uint32_t* nowUtc) {
 #endif
     gRemArmed = 0;
     gRemFiredAt = 0;
+#ifdef KANIKEY_DEV
+    if (!tgc::board::wokeFromTimer()) gRemDevRun = 0;
+#endif
     if (!armed || !tgc::board::wokeFromTimer() || !nowUtc) return false;
     const uint64_t rtcNow = tgc::board::rtcMicros();
     if (rtcNow < gRemRtcUs) return false;  // the RTC restarted: no clock to rebuild
@@ -179,6 +197,20 @@ uint64_t reminderArmIdle(const kk::Summary* summary) {
 uint64_t reminderArmAfterWake(uint32_t nowUtc, const kk::Summary* summary) {
     return armAt(nowUtc, summary, true);
 }
+
+#ifdef KANIKEY_DEV
+uint64_t reminderArmDev(uint32_t seconds) {
+    const uint32_t now = effectiveNow();
+    if (now < kTrustedEpoch || seconds == 0) return 0;
+    gRemArmed = 1;
+    gRemEpoch = now;
+    gRemRtcUs = tgc::board::rtcMicros();
+    gRemFiredAt = 0;
+    gRemDevRun = 1;
+    remindDevNoteArm(now, now + seconds);
+    return static_cast<uint64_t>(seconds) * 1000000ULL;
+}
+#endif
 
 bool reminderBannerWanted(uint32_t dueReviews, uint32_t nowUtc) {
     return kk::reminderWanted(dueReviews, nowUtc, rulesFromSettings(), localOffsetAt);

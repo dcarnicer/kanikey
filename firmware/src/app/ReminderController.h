@@ -31,6 +31,14 @@ uint64_t reminderArmIdle(const kk::Summary* summary);
 // the time rebuilt from the RTC. Never time() or effectiveNow() here.
 uint64_t reminderArmAfterWake(uint32_t nowUtc, const kk::Summary* summary);
 
+#ifdef KANIKEY_DEV
+// dev `remind <s>`: arms the timer `seconds` from now through the same RTC
+// epoch bookkeeping as reminderArmIdle(), and makes this run treat M1 Off as 1.
+// Returns the timer in microseconds, 0 without a trusted clock. The caller
+// sleeps with it.
+uint64_t reminderArmDev(uint32_t seconds);
+#endif
+
 // Banner decision for a timer wake at nowUtc with `dueReviews` due: M1 or the
 // M3 time is set and the moment is outside quiet hours.
 bool reminderBannerWanted(uint32_t dueReviews, uint32_t nowUtc);
