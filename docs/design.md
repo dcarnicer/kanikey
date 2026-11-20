@@ -334,6 +334,88 @@ Details are in [ux.md](ux.md). Map:
 These are renders from `tools/mockups/render.py` using the M5GFX bitmap fonts
 and the RGB332 palette, not device captures.
 
+### 8.1 Palette and contrast (UI-08)
+
+The canvas is 8-bit RGB332, so a `Theme.h` value is not what the panel shows.
+Each token is stored as an RGB565 constant, quantized with the same conversion
+as `rgb332_t` (`((((c >> 13) & 7) << 3) + ((c >> 8) & 7)) << 2) + ((c >> 3) & 3)`),
+then expanded back with `R8 = 36*r + r/2`, `G8 = 36*g + g/2`, `B8 = 85*b`.
+The table below is the result; contrast is the WCAG relative-luminance ratio,
+and color distances in the findings are CIE76 ΔE.
+
+| Token | Stored RGB565 | RGB332 | Panel |
+|---|---|---:|---|
+| `bg` | `0x0000` | `0x00` | `#000000` |
+| `surface` | `0x0108` | `0x05` | `#002455` |
+| `surface-hi` | `0x2128` | `0x25` | `#242455` |
+| `line` | `0x2208` | `0x29` | `#244955` |
+| `text` | `0xFFFF` | `0xFF` | `#FFFFFF` |
+| `dim` | `0xA577` | `0xB6` | `#B6B6AA` |
+| `faint` | `0x636F` | `0x6D` | `#6D6D55` |
+| `brand` | `0xE308` | `0xED` | `#FF6D55` |
+| `ok` | `0x5EF1` | `0x5A` | `#49DBAA` |
+| `ok-bg` | `0x0183` | `0x04` | `#002400` |
+| `accent` | `0x2B1B` | `0x2F` | `#246DFF` |
+| `accent-hi` | `0x7D5F` | `0x77` | `#6DB6FF` |
+| `reading` | `0x2D14` | `0x36` | `#24B6AA` |
+| `err` | `0xFB60` | `0xEC` | `#FF6D00` |
+| `err-bg` | `0x3882` | `0x20` | `#240000` |
+| `warn` | `0xFE26` | `0xF8` | `#FFDB00` |
+
+`gold` is not a `Theme.h` token: Home/Stats use M5GFX's `TFT_GOLD`, which
+quantizes to the same `#FFDB00` as `warn`.
+
+Contrast of the text and semantic tokens on the three main backgrounds:
+
+| Foreground | on `bg` | on `surface` | on `surface-hi` |
+|---|---:|---:|---:|
+| `text` | 21.00 | 15.18 | 14.40 |
+| `dim` | 10.26 | 7.42 | 7.03 |
+| `faint` | 3.97 | 2.87 | 2.72 |
+| `brand` | 7.57 | 5.47 | 5.19 |
+| `ok` | 12.00 | 8.67 | 8.22 |
+| `accent-hi` | 9.79 | 7.07 | 6.71 |
+| `reading` | 8.35 | 6.03 | 5.72 |
+| `err` | 7.44 | 5.38 | 5.10 |
+| `warn` | 15.38 | 11.12 | 10.55 |
+
+`ok` on `ok-bg` is 9.58:1 and `err` on `err-bg` is 6.92:1.
+
+**Findings and decisions.**
+
+- `err` was the only status color below 4.5:1 on every main background: 4.26
+  on `bg`, 3.08 on `surface`, 2.92 on `surface-hi`, and 3.97 on `err-bg`.
+  It was also only ΔE 28.5 from `brand`. UI-08 changed it from `0xC945`
+  (`#DB2400`) to `0xFB60` (`#FF6D00`): 7.44/5.38/5.10 and 6.92 on `err-bg`,
+  with ΔE 31 from `brand` and ΔE 63 from `warn`. This is the only palette
+  change; the name and the 8-bit rule stay.
+- `faint` remains below 4.5:1 (3.97/2.87/2.72). It is the deliberate
+  lowest-emphasis token for hints and metadata; raising it to 4.5:1 on the main
+  backgrounds would put it much closer to `dim` and collapse the three-level
+  text hierarchy. It is not used for an error, a required action or the only
+  copy of a value.
+- `accent` is a caret/focus bar, not text: 4.71 on `bg` and 3.23 on
+  `surface-hi`, above the 3:1 non-text threshold. `line` is a 1 px separator
+  (2.16/1.56/1.48); it is supplementary to text and row position.
+- `surface` and `surface-hi` are close (ΔE 6.9, 1.05:1) and both sit just
+  above `bg` (1.38 and 1.46). This is intentional: a focused row also gets the
+  `accent` bar and a brighter label, so focus is never carried by the fill
+  alone. `ok-bg` and `err-bg` are close to `bg` (1.25 and 1.08) for the same
+  reason: the pill word carries the state.
+- The closest semantic pair is `ok` and `reading` (ΔE 23.8). They are not
+  alternatives in one view: `reading` marks the reading mode/reading text and
+  `ok` marks success, and both always carry a word (`READING`, `CORRECT`).
+  `reading` also has to stay distinct from the adjacent `accent-hi` segment in
+  the SRS bar (ΔE 53.6), so neither was moved.
+- `warn`, `ok`, `text`, `dim`, `brand`, `accent-hi` and `reading` all clear
+  4.5:1 on the main backgrounds. `err` now does too.
+
+`tools/mockups/render.py` mirrors the stored constants and the same
+quantization, so `--check` rejects any mockup pixel outside this table. The
+committed images stay synthetic renders; live captures with account content
+are not kept in the repository. A device side-by-side under the panel's real
+gamma remains a hardware check.
+
 ---
 
 ## 9. Architecture

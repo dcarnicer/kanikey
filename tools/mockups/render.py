@@ -177,7 +177,7 @@ RGB565 = {
     "accent": 0x2B1B,
     "accent_hi": 0x7D5F,
     "reading": 0x2D14,
-    "err": 0xC945,
+    "err": 0xFB60,
     "err_bg": 0x3882,
     "warn": 0xFE26,
 }

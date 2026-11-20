@@ -67,7 +67,8 @@ the 8-bit canvas converts it to RGB332 and the panel expands that back. The
 panel therefore shows `surface` as `#002455` and `surface-hi` as `#242455`, not
 as the design hex. Do not add a colour outside `Theme.h` without changing the
 header too. (The Home/Stats level label uses M5GFX's `TFT_GOLD`, which
-quantizes to the same `#FFDB00` as `warn`.)
+quantizes to the same `#FFDB00` as `warn`.) The full quantized table and the
+UI-08 contrast audit are in [design.md §8.1](design.md#81-palette-and-contrast-ui-08).
 
 The palette is its own: warm black, indigo and coral. WaniKani's colors,
 illustrations and components are not copied.
