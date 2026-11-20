@@ -20,6 +20,7 @@
 #include "app/CacheController.h"
 #include "app/DebugScreens.h"
 #include "app/DevConsole.h"
+#include "app/FeedbackTrace.h"
 #include "app/FirmwareScreen.h"
 #include "app/HomeScreen.h"
 #include "app/LessonController.h"
@@ -209,6 +210,17 @@ std::string reviewInput(bool meaning) {
     return state().review.gIme.text();
 }
 
+// REV-10: the reading field as committed kana plus the romaji still pending
+// (display only; checkCurrent() still checks the whole text). The serial
+// helper's direct reading is already kana, so it has no pending tail.
+kk::PendingRomaji readingInputParts() {
+#ifdef KANIKEY_DEV
+    if (!state().review.gDirectReading.empty())
+        return kk::PendingRomaji{state().review.gDirectReading, std::string()};
+#endif
+    return state().review.gIme.split();
+}
+
 bool hasRelatedSubjects(const kk::Subject& s) {
     return !s.visuallySimilarSubjectIds.empty() || !s.amalgamationSubjectIds.empty();
 }
@@ -231,14 +243,18 @@ void applyCompletion() {
     state().review.feedbackCompleted = true;
     if (state().study.gPracticeActive) {
         state().review.gNeedsSubmit = false;
-        journalPractice(state().review.gCompletedItem);
+        journalPractice(state().review.gCompletedItem);  // written after the frame
     } else {
-        // Queue and persist before the feedback is drawn: a crash, power loss
-        // or an OTA install on the feedback screen keeps the review.
+        // The review is queued in memory before the feedback is drawn, so the
+        // frame and every later decision see it. Its file writes (outbox, then
+        // journal, then snapshot) run right after the frame, before any other
+        // key, sync step or send: a power cut still keeps the review, and the
+        // feedback is not held up by three SD/flash writes.
         state().review.gNeedsSubmit = queueReviewLocal(state().review.gCompletedItem);
         if (state().session.gDueReviews > 0) --state().session.gDueReviews;
         markCacheCompleted(state().review.gCompletedItem.subjectId,
-                           state().review.gCompletedItem.assignmentId);
+                           state().review.gCompletedItem.assignmentId, /*save=*/false);
+        deferCacheSnapshot();
         if (!state().review.gNeedsSubmit) {
             // Unreachable when startReview() checked the free slots; show the
             // failure instead of silently losing the review.
@@ -317,10 +333,24 @@ void showReview() {
     view.sendTotal = static_cast<unsigned>(state().review.gSendTotal);
     if (view.sending) view.escHint = "Esc: stop";
     if (!state().review.feedback) {
-        view.typed = reviewInput(part == kk::ReviewPart::Meaning);
+        if (part == kk::ReviewPart::Meaning) {
+            view.typed = reviewInput(true);
+        } else {
+            // REV-10: the kana and the unconverted romaji tail are drawn apart
+            // (the tail in Latin, never through the kana pack).
+            const kk::PendingRomaji parts = readingInputParts();
+            view.typed = parts.kana;
+            view.pending = parts.pending;
+        }
         view.romaji = state().review.gIme.raw();
     } else {
-        view.typed = state().review.feedbackInput;
+        if (part == kk::ReviewPart::Meaning) {
+            view.typed = state().review.feedbackInput;
+        } else {
+            const kk::PendingRomaji parts = kk::splitPendingRomaji(state().review.feedbackInput);
+            view.typed = parts.kana;
+            view.pending = parts.pending;
+        }
         view.status = state().review.gCheck.status;
         view.message = state().review.gCheck.message;
         // A warning must not leak the answer through the feedback frame or the
@@ -344,7 +374,9 @@ void showReview() {
     d.startWrite();
     drawReviewScreen(d, state().storage.gFontPack, state().storage.gRadicalPack, view);
     d.endWrite();
+    feedbackTraceStep(view.feedback ? "feedback frame drawn" : "question frame drawn");
     present();
+    feedbackTraceStep("present returned");
 }
 
 int detailPageCount(const kk::Subject& s) {
@@ -489,6 +521,7 @@ void showReviewSummary() {
 // released for the requests and restored after the loop. A failed send, an
 // armed auth/rate gate or Esc stops the loop; unsent records stay Pending.
 void sendPendingSession(bool onlyLatest = false) {
+    flushPendingReviewWrites();  // the queued review must be on disk before its POST
     auto& r = state().review;
     if (r.gSending) return;
     std::vector<uint32_t> seqs;
@@ -546,14 +579,17 @@ void checkCurrent() {
     state().review.feedbackSubjectId = item->subjectId;
     state().review.feedbackPart = state().review.gQueue.part();
     state().review.feedbackInput = input;
+    feedbackTraceBegin();  // dev-only [perf] trace of this Enter (no-op otherwise)
     // R6: WaniKani (the default) accepts a close meaning, Strict retries it.
     int typos = 0;
     const bool typosStrict = kk::settingsGetInt("rv.typos", &typos) && typos == 1;
     state().review.gCheck = kk::checkAnswer(*s, meaning ? kk::AnswerKind::Meaning : kk::AnswerKind::Reading,
                              input, typosStrict);
+    feedbackTraceStep("answer check");
     // REM-03: the answer tone (a Warning retries the same part and is silent).
     kk::sound::soundAnswer(state().review.gCheck.status, state().sync.gSyncing,
                            state().setup.gSetupPortal.active());
+    feedbackTraceStep("sound cue started");
     state().review.feedbackCorrectAt =
         state().review.gCheck.status == kk::AnswerStatus::Correct ? millis() : 0;
     state().review.feedback = true;
@@ -588,6 +624,9 @@ void checkCurrent() {
 }
 
 void advanceFeedback() {
+    // A C/A shortcut completes and advances on the same key, so its writes run
+    // here before anything below can read them.
+    flushPendingReviewWrites();
     // Changing item/feedback stops the clip before the screen changes.
     audioStop();
     state().review.feedbackCorrectAt = 0;
@@ -646,6 +685,7 @@ bool reviewAutoAdvance(uint32_t now) {
 }
 
 void endReview(bool send) {
+    flushPendingReviewWrites();
     audioStop();
     // The summary's own loop already ran; do not retry what Esc left pending
     // when Enter/Esc closes the session. Pause/End submits the session tail

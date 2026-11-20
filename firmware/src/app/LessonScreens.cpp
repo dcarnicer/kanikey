@@ -369,14 +369,15 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         if (japanese) {
             d.drawString("Y", 86, 40);
             bool typedDrawn = false;
-            if (!typed.empty())
-                typedDrawn = drawJapaneseFit(d, fontPack, typed, 94, 232, 56, 142, ui::kDim,
-                                             ui::kBg,
+            if (!typed.empty() || !view.pending.empty())
+                typedDrawn = drawReadingText(d, fontPack, typed, view.pending, 94, 56, 138, 44,
+                                             /*alignRight=*/false, ui::kDim, ui::kFaint, ui::kBg,
                                              kk::ClipRect{94, 38, 236, 58});
             if (!typedDrawn) {
                 ui::applyFont(d, ui::UiFont::Base);
                 d.setTextColor(ui::kWarn, ui::kBg);
-                d.drawString(typed.empty() ? "-" : "no glyph", 94, 44);
+                const bool empty = typed.empty() && view.pending.empty();
+                d.drawString(empty ? "-" : "no glyph", 94, 44);
             }
             ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kFaint, ui::kBg);
@@ -417,7 +418,7 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         d.drawRect(86, 52, 150, 32, ui::kLine);
         std::string shown = view.typed;
         int caret = 92;
-        if (shown.empty()) {
+        if (shown.empty() && view.pending.empty()) {
             ui::applyFont(d, ui::UiFont::Base);
             d.setTextColor(ui::kFaint, ui::kSurfaceHi);
             d.drawString(meaning ? "answer" : "kana", 92, 60);
@@ -427,10 +428,10 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
             d.setTextColor(ui::kText, ui::kSurfaceHi);
             d.drawString(shown.c_str(), 92, 60);
             caret = 92 + d.textWidth(shown.c_str());
-        } else if (fontPack.drawTextRight(d, shown, 230, 80, 32, ui::kText, ui::kSurfaceHi,
-                                      kk::ClipRect{88, 54, 234, 86}) ||
-                   fontPack.drawTextRight(d, shown, 230, 80, 20, ui::kText, ui::kSurfaceHi,
-                                      kk::ClipRect{88, 54, 234, 86})) {
+        } else if (drawReadingText(d, fontPack, shown, view.pending, 92, 76, 138, 60,
+                                   /*alignRight=*/true, ui::kText, ui::kDim, ui::kSurfaceHi,
+                                   kk::ClipRect{88, 54, 234, 86})) {
+            // REV-10: 20 px kana (was 32 px), right-aligned as before.
             caret = 230;
         } else {
             ui::applyFont(d, ui::UiFont::Base);

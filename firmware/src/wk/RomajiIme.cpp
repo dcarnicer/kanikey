@@ -108,6 +108,17 @@ bool RomajiIme::feedCapped(char c, size_t maxBytes) {
     return true;
 }
 
+PendingRomaji splitPendingRomaji(std::string_view converted) {
+    // Kana is multi-byte UTF-8 (every byte >= 0x80), so the trailing bytes
+    // below 0x80 can only be raw romaji that no table entry consumed.
+    size_t cut = converted.size();
+    while (cut > 0 && static_cast<unsigned char>(converted[cut - 1]) < 0x80) --cut;
+    PendingRomaji parts;
+    parts.kana.assign(converted.substr(0, cut));
+    parts.pending.assign(converted.substr(cut));
+    return parts;
+}
+
 std::string romajiToHiragana(std::string_view raw) {
     std::string out;
     out.reserve(raw.size() * 3);

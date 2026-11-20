@@ -85,7 +85,7 @@ illustrations and components are not copied.
 | Big value | M5GFX `Font2` at size 2 | 32 px | Home counters, summary values |
 | Large title | M5GFX `Font4` | 26 px | Boot, error and empty-state titles |
 | Japanese prompt | Pack glyphs | 64 / 32 / 20 px | Kanji, radicals, vocabulary |
-| Japanese reading | Pack glyphs | 32 / 20 px | Kana readings |
+| Japanese reading | Pack glyphs | 32 / 20 px | Kana readings on cards and rows; typed answers at 20 px (REV-10) |
 
 `Font0` and `Font1` are the same 6×8 GLCD font; M5GFX maps `setTextFont(1)` to
 `Font0` (`HomeScreen.cpp:14,21,44,54,60`; `Widgets.cpp:12`). Body text and every
@@ -95,8 +95,10 @@ use it at size 2, which is 32 px (`HomeScreen.cpp:44`). `Font4` is 26 px and
 draws boot/error titles (`BootScreen.cpp:45`, `LessonScreens.cpp:127`).
 Japanese prompts and readings are never drawn with a UI font: the visual pack
 supplies 64/32/20 px glyphs (`Widgets.cpp:47`, `platform/GlyphPack.cpp`), and a
-missing glyph shows the explicit `no glyph` state. There is no separate UI
-font file; Latin text is not rasterized on the device.
+missing glyph shows the explicit `no glyph` state. The one exception is the
+romaji still being typed (`k` of `ak`, REV-10): it is Latin text, drawn in the
+UI font after the kana, never sent to the kana pack. There is no separate UI
+font file.
 
 ### 2.3 Grid
 
@@ -123,7 +125,9 @@ font file; Latin text is not rasterized on the device.
   pill may add a check/cross icon after the label; the label stays in place and
   the pill grows to the right. Other pills have no icon.
 - **Input:** `surface-hi` rectangle with a `line` border; meaning answers use
-  the 6×8 font, kana readings the pack at 32 px with a 20 px fallback; 2 px
+  the 6×8 font, kana readings the pack at 20 px (REV-10: it was 32 px). The
+  kana is right-aligned to x 228 so a long answer shows its end, and the
+  unconverted romaji tail follows it in the UI font, ending at the caret. 2 px
   caret in `accent`. The active answer field is the text-mode cue; there is no
   separate accent border.
 - **Key hint:** 6×8 text in `text-faint`; the key and action share the one-line
@@ -332,9 +336,15 @@ Home ──Enter──► Review (cached batch; fetch if absent)
 - With the default R2 `Account preference` the order is stable-random per
   session, mixing types; R3 can group types. Items answered wrong come back
   3–5 positions later.
-- A completed review enters the outbox before its feedback is drawn. R12
-  chooses when the session's records are POSTed; `Esc` during the summary send
-  loop leaves the rest Pending for the next sync.
+- A completed review is queued in memory before its feedback is drawn, so the
+  feedback and every later decision see it. Its file writes run right after
+  that frame, in this order: the outbox file (the review must reach WaniKani
+  even after a power cut), the journal record, then the cache snapshot. They
+  finish in the same loop tick, before the next key, sync step or send. A
+  power cut between the frame and the writes loses at most the answer that was
+  just shown, never a review that was already in the outbox. R12 chooses when
+  the session's records are POSTed; `Esc` during the summary send loop leaves
+  the rest Pending for the next sync.
 
 ### 4.3 Offline
 
@@ -646,8 +656,10 @@ notices are separate screens that also keep the device awake.
 - Right panel:
   - Pill `MEANING` (indigo) or `READING` (teal).
   - Instruction: `Type the meaning` / `Type the reading`.
-  - 32 px field with the answer; caret. A meaning answer is 6×8 text; reading
-    kana uses the pack at 32 px with a 20 px fallback.
+  - Field with the answer; caret. A meaning answer is 6×8 text; reading kana
+    uses the pack at 20 px, right-aligned (REV-10; the lesson quiz matches).
+    An unfinished romaji tail (`k` in `ak`) is drawn after the kana in 6×8 text,
+    never as `no glyph`.
   - In reading, below: `romaji: tabe` in gray; the field shows `たべ`.
   - Romaji follows WanaKana: `n` before a vowel or `y` is a syllable
     (`konya` → こにゃ). Type `n'` for ん (`kon'ya` → こんや); `konya` shows

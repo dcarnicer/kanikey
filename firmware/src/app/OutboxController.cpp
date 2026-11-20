@@ -18,6 +18,7 @@
 #include "app/BootScreen.h"
 #include "app/CacheController.h"
 #include "app/DebugScreens.h"
+#include "app/FeedbackTrace.h"
 #include "app/DevConsole.h"
 #include "app/FirmwareScreen.h"
 #include "app/HomeScreen.h"
@@ -431,6 +432,31 @@ void saveOutbox() {
     if (!kk::outboxSave(state().outbox.gOutbox)) Serial.println("[outbox] save failed");
 }
 
+namespace {
+
+// REV-10 latency: the file writes of a completed review wait for its feedback
+// frame. The queue and the stage tracker hold the review at once, so every
+// decision made before the frame is unchanged. flushPendingReviewWrites() runs
+// right after the frame, in this order: the outbox file (the review must reach
+// WaniKani even after a power cut), the journal record, then the cache
+// snapshot. Nothing reads these files before the flush: it runs before the next
+// key, sync step or send.
+enum class JournalWrite : uint8_t { None, Review, Practice };
+
+struct PendingReviewWrites {
+    bool outbox = false;
+    JournalWrite journal = JournalWrite::None;
+    kk::JournalRecord record;
+    uint32_t seq = 0;            // Review: the queued record's outbox seq
+    uint32_t assignmentId = 0;   // Review: its assignment, for the tracker
+    uint8_t srsBefore = 0;       // Review: its pre-review stage
+    bool snapshot = false;
+};
+
+PendingReviewWrites gPendingWrites;
+
+}  // namespace
+
 bool queueReviewLocal(const kk::SessionItem& item) {
     uint32_t created = static_cast<uint32_t>(time(nullptr));
     if (created < 1700000000u) created = 0;  // clock not trusted; let the server stamp it
@@ -446,7 +472,11 @@ bool queueReviewLocal(const kk::SessionItem& item) {
     }
     state().review.gPendingSeq = seq;
     state().review.gPendingJournalHandle = 0;
-    if (state().storage.gFsOk && kk::journalOpen(currentAccountKey())) {
+    // The journal record is built now (completion time and offline state are
+    // the answer's); its handle is tagged on the tracker when it is written.
+    gPendingWrites.outbox = true;
+    gPendingWrites.journal = JournalWrite::None;
+    if (state().storage.gFsOk) {
         kk::JournalRecord record;
         record.completedAt = created;
         record.subjectId = item.subjectId;
@@ -458,16 +488,50 @@ bool queueReviewLocal(const kk::SessionItem& item) {
             static_cast<uint8_t>(std::min<uint16_t>(item.incorrectMeaning, 255));
         record.incorrectReading =
             static_cast<uint8_t>(std::min<uint16_t>(item.incorrectReading, 255));
-        state().review.gPendingJournalHandle = kk::journalAppend(record);
+        gPendingWrites.record = record;
+        gPendingWrites.journal = JournalWrite::Review;
+        gPendingWrites.seq = seq;
+        gPendingWrites.assignmentId = item.assignmentId;
+        gPendingWrites.srsBefore = item.srsStage;
     }
-    // SPEED-01: remember this record's pre-review stage and journal handle for
-    // every item, not only the last one, so each POST can patch its own record.
-    state().review.gStageTracker.record(seq, item.assignmentId, item.srsStage,
-                                        state().review.gPendingJournalHandle);
-    saveOutbox();
+    // SPEED-01: remember this record's pre-review stage for every item, not only
+    // the last one, so each POST can report its own move. The journal tag is
+    // 0 until the flush writes the record.
+    state().review.gStageTracker.record(seq, item.assignmentId, item.srsStage, 0);
+    kk::app::feedbackTraceStep("outbox queued (memory)");
     Serial.printf("[outbox] queued seq %u assignment %u\n", static_cast<unsigned>(seq),
                   static_cast<unsigned>(item.assignmentId));
     return true;
+}
+
+void deferCacheSnapshot() { gPendingWrites.snapshot = true; }
+
+void flushPendingReviewWrites() {
+    PendingReviewWrites& w = gPendingWrites;
+    if (w.outbox) {
+        w.outbox = false;
+        saveOutbox();
+        kk::app::feedbackTraceStep("outbox saved");
+    }
+    if (w.journal != JournalWrite::None) {
+        const JournalWrite kind = w.journal;
+        w.journal = JournalWrite::None;
+        if (state().storage.gFsOk && kk::journalOpen(currentAccountKey())) {
+            const uint32_t handle = kk::journalAppend(w.record);
+            // A review's handle patches its SRS stage after the POST; the
+            // tracker and gPendingJournalHandle learn it here.
+            if (kind == JournalWrite::Review && handle) {
+                state().review.gPendingJournalHandle = handle;
+                state().review.gStageTracker.record(w.seq, w.assignmentId, w.srsBefore, handle);
+            }
+        }
+        kk::app::feedbackTraceStep("journal written");
+    }
+    if (w.snapshot) {
+        w.snapshot = false;
+        saveCacheSnapshot();
+        kk::app::feedbackTraceStep("cache snapshot saved");
+    }
 }
 
 bool sendQueuedReview(uint32_t seq) {
@@ -475,6 +539,7 @@ bool sendQueuedReview(uint32_t seq) {
 }
 
 void flushOutbox() {
+    flushPendingReviewWrites();  // a queued review must be on disk before any send
     if (state().outbox.gOutbox.empty()) {
         clearOutboxAuthIssue();
         return;
@@ -514,7 +579,8 @@ void openOutbox() {
 }
 
 void journalPractice(const kk::SessionItem& item) {
-    if (!state().storage.gFsOk || !kk::journalOpen(currentAccountKey())) return;
+    // REV-10 latency: queued like a review's record; written after the frame.
+    if (!state().storage.gFsOk) return;
     kk::JournalRecord record;
     uint32_t created = static_cast<uint32_t>(time(nullptr));
     record.completedAt = created >= 1700000000u ? created : 0;
@@ -528,7 +594,8 @@ void journalPractice(const kk::SessionItem& item) {
         static_cast<uint8_t>(std::min<uint16_t>(item.incorrectMeaning, 255));
     record.incorrectReading =
         static_cast<uint8_t>(std::min<uint16_t>(item.incorrectReading, 255));
-    kk::journalAppend(record);
+    gPendingWrites.record = record;
+    gPendingWrites.journal = JournalWrite::Practice;
 }
 
 void outboxKey(const KeyEvent& e) {

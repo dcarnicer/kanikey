@@ -23,6 +23,7 @@
 #include "app/AppUi.h"
 #include "app/AudioController.h"
 #include "app/CacheController.h"
+#include "app/FeedbackTrace.h"
 #include "app/DevConsole.h"
 #include "app/LessonController.h"
 #include "app/OutboxController.h"
@@ -186,6 +187,9 @@ void homeFocusOpen() {
 }
 
 void onKeyImpl(const KeyEvent& e) {
+    // REV-10 latency: the previous completion's writes run before this key
+    // (usually they already ran after that frame; this is the no-op path).
+    flushPendingReviewWrites();
 #ifdef KANIKEY_DEV
     if (state().lesson.gDevKeyTest) {
         Serial.printf("[key] test %s %s\n", e.key == Key::None ? "marker" : "event",
@@ -1385,6 +1389,11 @@ void loop() {
         state().display.gDirty = false;
         state().display.gLastDrawMs = now;
     }
+    // REV-10 latency: a review's outbox file, journal record and cache snapshot
+    // are written here, right after the frame that showed its feedback. This
+    // runs before the sync step, the next key and the sleep check below.
+    flushPendingReviewWrites();
+    feedbackTraceEnd();
 #if defined(TGC_BOARD_PAPERDIY)
     // E-paper: push the canvas when the settle/floor/busy policy says so.
     presentTick(now);

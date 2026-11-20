@@ -657,7 +657,15 @@ void showLessonQuiz() {
         view.message = state().lesson.gLessonQuiz.result().message;
     }
     if (!view.complete) {
-        view.typed = lessonQuizInput(meaning);
+        if (meaning) {
+            view.typed = lessonQuizInput(true);
+        } else {
+            // REV-10: committed kana and the unconverted romaji tail (`k` of
+            // `ak`) are drawn apart; the checker still gets the whole text.
+            const kk::PendingRomaji parts = kk::splitPendingRomaji(lessonQuizInput(false));
+            view.typed = parts.kana;
+            view.pending = parts.pending;
+        }
         if (!view.feedback || view.status != kk::AnswerStatus::Warning) {
             if (meaning) {
                 view.answers = kk::acceptedMeaningTokens(s);

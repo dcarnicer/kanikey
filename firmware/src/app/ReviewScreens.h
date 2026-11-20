@@ -40,7 +40,10 @@ struct ReviewView {
     bool sending = false;
     unsigned sent = 0;
     unsigned sendTotal = 0;
-    std::string typed;   // meaning input or the reading shown in the field
+    std::string typed;   // meaning input or the reading shown in the field (kana)
+    // REV-10: the unconverted romaji tail of a reading (`k` of `ak`), drawn in
+    // Latin after the kana; empty for meanings and for finished kana.
+    std::string pending;
     std::string romaji;  // IME raw text, reading prompt only
     kk::AnswerStatus status = kk::AnswerStatus::Incorrect;
     std::string message;

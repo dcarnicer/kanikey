@@ -16,7 +16,9 @@ void saveCacheAll();
 bool loadCache();
 bool loadCachedBatch();
 void evictCachedBatch(bool save);
-void markCacheCompleted(uint32_t subjectId, uint32_t assignmentId);
+// Drops the completed assignment from the summary and batch. save=false leaves
+// the snapshot write to the caller (the review feedback defers it).
+void markCacheCompleted(uint32_t subjectId, uint32_t assignmentId, bool save = true);
 bool mountSd();
 bool cacheIsStale();
 void cacheStatusLine(char* out, size_t n);

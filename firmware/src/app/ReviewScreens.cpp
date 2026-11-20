@@ -250,7 +250,7 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         d.drawRect(100, 52, 136, 32, ui::kLine);
         std::string shown = view.typed;
         int caret = 106;
-        if (shown.empty()) {
+        if (shown.empty() && view.pending.empty()) {
             ui::applyFont(d, ui::UiFont::Base);
             d.setTextColor(ui::kFaint, ui::kSurfaceHi);
             d.drawString(meaning ? "answer" : "kana", 106, 60);
@@ -260,10 +260,10 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
             d.setTextColor(ui::kText, ui::kSurfaceHi);
             d.drawString(shown.c_str(), 106, 60);
             caret = 106 + d.textWidth(shown.c_str());
-        } else if (fontPack.drawTextRight(d, shown, 230, 80, 32, ui::kText, ui::kSurfaceHi,
-                                      kk::ClipRect{102, 54, 234, 86}) ||
-                   fontPack.drawTextRight(d, shown, 230, 80, 20, ui::kText, ui::kSurfaceHi,
-                                      kk::ClipRect{102, 54, 234, 86})) {
+        } else if (drawReadingText(d, fontPack, shown, view.pending, 106, 76, 122, 60,
+                                   /*alignRight=*/true, ui::kText, ui::kDim, ui::kSurfaceHi,
+                                   kk::ClipRect{102, 54, 234, 86})) {
+            // REV-10: 20 px kana, right-aligned so the caret end stays in view.
             caret = 230;
         } else {
             ui::applyFont(d, ui::UiFont::Base);
@@ -305,14 +305,15 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
             // One-letter side labels leave the full panel width for long kana.
             d.drawString("Y", 100, 40);
             bool typedDrawn = false;
-            if (!typed.empty())
-                typedDrawn = drawJapaneseFit(d, fontPack, typed, 108, 232, 56, 128, ui::kDim,
-                                             ui::kBg,
+            if (!typed.empty() || !view.pending.empty())
+                typedDrawn = drawReadingText(d, fontPack, typed, view.pending, 108, 56, 124, 44,
+                                             /*alignRight=*/false, ui::kDim, ui::kFaint, ui::kBg,
                                              kk::ClipRect{108, 38, 236, 58});
             if (!typedDrawn) {
                 ui::applyFont(d, ui::UiFont::Base);
                 d.setTextColor(ui::kWarn, ui::kBg);
-                d.drawString(typed.empty() ? "-" : "no glyph", 108, 44);
+                const bool empty = typed.empty() && view.pending.empty();
+                d.drawString(empty ? "-" : "no glyph", 108, 44);
             }
             ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kFaint, ui::kBg);

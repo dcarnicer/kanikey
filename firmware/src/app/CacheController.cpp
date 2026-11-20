@@ -386,7 +386,7 @@ void evictCachedBatch(bool save) {
                   static_cast<unsigned>(state().cache.gCachedBatchCount));
 }
 
-void markCacheCompleted(uint32_t subjectId, uint32_t assignmentId) {
+void markCacheCompleted(uint32_t subjectId, uint32_t assignmentId, bool save) {
     if (!state().session.gHaveSummary) return;
     removeSubjectFromReviews(state().session.gSummary, subjectId);
     for (size_t i = 0; i < state().cache.gBatch.assignments.size();) {
@@ -397,7 +397,7 @@ void markCacheCompleted(uint32_t subjectId, uint32_t assignmentId) {
     }
     state().cache.gBatch.ok = !state().cache.gBatch.assignments.empty() && !state().cache.gBatch.subjects.empty();
     state().cache.gCachedBatchCount = state().cache.gBatch.assignments.size();
-    saveCacheSnapshot();
+    if (save) saveCacheSnapshot();
 }
 
 bool mountSd() {
