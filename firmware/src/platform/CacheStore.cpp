@@ -213,10 +213,15 @@ bool cacheLoadSubjects(fs::FS& sd, SubjectCache* out) {
 }
 
 bool cacheSaveSubjects(fs::FS& sd, const SubjectCache& cache) {
-    return cacheSaveSubjects(sd, cache.meta, cache.subjects);
+    return cacheSaveSubjects(sd, cache.meta, cache.subjects, cache.components);
 }
 
 bool cacheSaveSubjects(fs::FS& sd, const CacheMeta& meta, const std::vector<Subject>& subjects) {
+    return cacheSaveSubjects(sd, meta, subjects, std::vector<SubjectRef>());
+}
+
+bool cacheSaveSubjects(fs::FS& sd, const CacheMeta& meta, const std::vector<Subject>& subjects,
+                       const std::vector<SubjectRef>& components) {
     const uint32_t started = millis();
     sd.mkdir("/kanikey");
     sd.mkdir("/kanikey/cache");
@@ -227,7 +232,7 @@ bool cacheSaveSubjects(fs::FS& sd, const CacheMeta& meta, const std::vector<Subj
         return false;
     }
     FileSink sink(f);
-    const bool encoded = writeSubjectCache(meta, subjects, &sink);
+    const bool encoded = writeSubjectCache(meta, subjects, components, &sink);
     f.close();
     if (!encoded) {
         sd.remove(kSubjectsTmp);

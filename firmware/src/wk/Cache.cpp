@@ -16,6 +16,8 @@ constexpr uint16_t kMaxBuckets = 64;
 constexpr uint16_t kMaxBucketIds = 1000;
 constexpr uint16_t kMaxAssignments = 128;
 constexpr uint16_t kMaxSubjects = 128;
+// Component records per batch (MEM-20). A batch of 20 reviews has about 30.
+constexpr uint16_t kMaxComponents = 256;
 constexpr uint16_t kMaxMeanings = 32;
 constexpr uint16_t kMaxReadings = 32;
 constexpr uint16_t kMaxList = 64;
@@ -177,6 +179,16 @@ public:
         out->resize(n);
         if (n == 0) return true;
         return take(reinterpret_cast<uint8_t*>(&(*out)[0]), n);
+    }
+    // Reads a length-prefixed string into a fixed `capacity`-byte field (NUL
+    // terminated). Fails when the string does not leave room for the NUL, so a
+    // record never overflows its field.
+    bool fixedStr(char* out, size_t capacity) {
+        uint16_t n = 0;
+        if (!u16(&n) || n > kMaxString || static_cast<size_t>(n) + 1 > capacity) return fail();
+        if (n > 0 && !bytes(reinterpret_cast<uint8_t*>(out), n)) return false;
+        out[n] = '\0';
+        return true;
     }
     // True when the payload was consumed exactly: no trailing bytes.
     bool done() const { return ok_ && (source_ ? remaining_ == 0 : pos_ == size_); }
@@ -604,9 +616,47 @@ bool decodeSubject(Reader& r, Subject* s) {
     return true;
 }
 
-// Decodes the subject list from a payload reader and requires the payload to be
-// fully consumed. The caller validates the header CRC (vector path) or the
-// running CRC (streaming path).
+// A component record: id, type, then the characters and the meaning as strings.
+// The decoder reads them into the record's fixed fields (see Reader::fixedStr).
+void encodeSubjectRef(Writer& w, const SubjectRef& ref) {
+    w.u32(ref.id);
+    w.u8(static_cast<uint8_t>(ref.type));
+    w.str(std::string_view(ref.characters));
+    w.str(std::string_view(ref.meaning));
+}
+
+bool decodeSubjectRef(Reader& r, SubjectRef* ref) {
+    uint8_t type = 0;
+    if (!r.u32(&ref->id) || !r.u8(&type)) return false;
+    if (type > static_cast<uint8_t>(SubjectType::KanaVocabulary)) return false;
+    ref->type = static_cast<SubjectType>(type);
+    return r.fixedStr(ref->characters, sizeof ref->characters) &&
+           r.fixedStr(ref->meaning, sizeof ref->meaning);
+}
+
+// The component list follows the subjects in the payload: u16 count, records.
+bool encodeComponents(Writer& w, const std::vector<SubjectRef>& components) {
+    if (components.size() > kMaxComponents) {
+        w.fail();
+        return false;
+    }
+    w.u16(static_cast<uint16_t>(components.size()));
+    for (const SubjectRef& ref : components) encodeSubjectRef(w, ref);
+    return w.ok();
+}
+
+// Writes the whole subject-file payload. The vector and streaming encoders both
+// use it, so their bytes match.
+bool encodeSubjectPayload(Writer& w, const std::vector<Subject>& subjects,
+                          const std::vector<SubjectRef>& components) {
+    w.u16(static_cast<uint16_t>(subjects.size()));
+    for (const Subject& s : subjects) encodeSubject(w, s);
+    return encodeComponents(w, components) && w.ok();
+}
+
+// Decodes the subject list and the component list from a payload reader and
+// requires the payload to be fully consumed. The caller validates the header CRC
+// (vector path) or the running CRC (streaming path).
 bool decodeSubjects(Reader& r, SubjectCache* cache) {
     uint16_t count = 0;
     if (!r.u16(&count) || count > kMaxSubjects) return false;
@@ -615,6 +665,14 @@ bool decodeSubjects(Reader& r, SubjectCache* cache) {
         Subject s;
         if (!decodeSubject(r, &s)) return false;
         cache->subjects.push_back(std::move(s));
+    }
+    uint16_t components = 0;
+    if (!r.u16(&components) || components > kMaxComponents) return false;
+    cache->components.reserve(components);
+    for (uint16_t i = 0; i < components; ++i) {
+        SubjectRef ref;
+        if (!decodeSubjectRef(r, &ref)) return false;
+        cache->components.push_back(ref);
     }
     return r.done();
 }
@@ -696,18 +754,21 @@ bool decodeCacheSnapshot(const uint8_t* data, size_t size, CacheSnapshot* out) {
 }
 
 bool encodeSubjectCache(const CacheMeta& meta, const std::vector<Subject>& subjects,
-                        std::vector<uint8_t>* out) {
+                        const std::vector<SubjectRef>& components, std::vector<uint8_t>* out) {
     if (!out) return false;
     if (subjects.size() > kMaxSubjects) return false;
     Writer w;
-    w.u16(static_cast<uint16_t>(subjects.size()));
-    for (const Subject& s : subjects) encodeSubject(w, s);
-    if (!w.ok()) return false;
+    if (!encodeSubjectPayload(w, subjects, components)) return false;
     return encodeFile(kSubjectsMagic, meta, w.bytes(), out, kSubjectsVersion);
 }
 
+bool encodeSubjectCache(const CacheMeta& meta, const std::vector<Subject>& subjects,
+                        std::vector<uint8_t>* out) {
+    return encodeSubjectCache(meta, subjects, std::vector<SubjectRef>(), out);
+}
+
 bool encodeSubjectCache(const SubjectCache& cache, std::vector<uint8_t>* out) {
-    return encodeSubjectCache(cache.meta, cache.subjects, out);
+    return encodeSubjectCache(cache.meta, cache.subjects, cache.components, out);
 }
 
 bool decodeSubjectCache(const uint8_t* data, size_t size, SubjectCache* out) {
@@ -724,7 +785,7 @@ bool decodeSubjectCache(const uint8_t* data, size_t size, SubjectCache* out) {
 }
 
 bool writeSubjectCache(const CacheMeta& meta, const std::vector<Subject>& subjects,
-                       ByteSink* sink) {
+                       const std::vector<SubjectRef>& components, ByteSink* sink) {
     if (!sink) return false;
     if (subjects.size() > kMaxSubjects) return false;
 
@@ -734,9 +795,7 @@ bool writeSubjectCache(const CacheMeta& meta, const std::vector<Subject>& subjec
     {
         NullSink discard;
         Writer counter(&discard);
-        counter.u16(static_cast<uint16_t>(subjects.size()));
-        for (const Subject& s : subjects) encodeSubject(counter, s);
-        if (!counter.ok()) return false;
+        if (!encodeSubjectPayload(counter, subjects, components)) return false;
         payloadSize = counter.size();
         payloadCrc = counter.crc();
     }
@@ -755,10 +814,14 @@ bool writeSubjectCache(const CacheMeta& meta, const std::vector<Subject>& subjec
 
     // Pass 2: the same encoder again, now with a 1 KB block per sink write.
     Writer writer(sink);
-    writer.u16(static_cast<uint16_t>(subjects.size()));
-    for (const Subject& s : subjects) encodeSubject(writer, s);
-    if (!writer.ok() || !writer.flush()) return false;
+    if (!encodeSubjectPayload(writer, subjects, components)) return false;
+    if (!writer.flush()) return false;
     return writer.size() == payloadSize && writer.crc() == payloadCrc;
+}
+
+bool writeSubjectCache(const CacheMeta& meta, const std::vector<Subject>& subjects,
+                       ByteSink* sink) {
+    return writeSubjectCache(meta, subjects, std::vector<SubjectRef>(), sink);
 }
 
 bool readSubjectCache(ByteSource* source, size_t fileSize, SubjectCache* out) {

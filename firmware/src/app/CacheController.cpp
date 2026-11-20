@@ -128,8 +128,10 @@ bool saveSubjectCache() {
     kk::CacheMeta meta;
     meta.savedAt = state().cache.gBatch.fetchedAt ? state().cache.gBatch.fetchedAt : state().session.gSyncedAt;
     meta.accountKey = currentAccountKey();
-    // cacheSaveSubjects() logs the count, size and time of a good save.
-    if (!kk::cacheSaveSubjects(SD, meta, state().cache.gBatch.subjects)) {
+    // cacheSaveSubjects() logs the count, size and time of a good save. The
+    // component records go in the same file (KKCS v14).
+    if (!kk::cacheSaveSubjects(SD, meta, state().cache.gBatch.subjects,
+                               state().cache.gBatch.components)) {
         Serial.println("[cache] subjects save failed");
         return false;
     }
@@ -339,9 +341,10 @@ bool loadCachedBatch() {
 
         // Move the subjects instead of copying them: a 52-subject cache has many
         // small strings, and the copy doubled the heap peak enough to abort
-        // after joining Wi-Fi. The used flags keep component subjects for the
-        // offline detail card.
+        // after joining Wi-Fi. The component records come over whole (no heap
+        // per record) for the offline detail card.
         kk::ReviewBatch batch;
+        batch.components = std::move(subjects.components);
         batch.assignments.reserve(snapshot.assignments.size());
         batch.subjects.reserve(subjects.subjects.size());
         std::vector<bool> used(subjects.subjects.size(), false);

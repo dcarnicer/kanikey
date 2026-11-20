@@ -22,6 +22,41 @@ String idList(const std::vector<uint32_t>& ids, size_t begin, size_t end) {
     return s;
 }
 
+// Component ids per request. A 3-subject page is a few KB of DOM; larger pages
+// were the 18.8 KB array problem the batch used to hold.
+constexpr size_t kComponentPage = 3;
+
+// Fetches the component records (MEM-20). Each page is parsed without details,
+// converted to SubjectRef and dropped, so no full component Subject is kept and
+// the record vector is reserved once at the id count. A failed page clears the
+// records, as the old fetch cleared its list: the batch still loads without
+// components.
+void fetchComponentRefs(const String& token, const std::vector<uint32_t>& ids,
+                        const std::vector<Subject>& reviewed, std::vector<SubjectRef>* refs) {
+    refs->clear();
+    refs->reserve(ids.size());
+    WkSessionGuard session;
+    for (size_t begin = 0; begin < ids.size(); begin += kComponentPage) {
+        const size_t end = std::min(ids.size(), begin + kComponentPage);
+        const String path = "/v2/subjects?ids=" + idList(ids, begin, end);
+        WkSubjectsResult r = wkGetSubjectsRetry(path, token, 32768, false);
+        if (r.http.httpCode != 200) {
+            Serial.printf("[review] components HTTP %d\n", r.http.httpCode);
+            refs->clear();
+            return;
+        }
+        if (!r.parsed) {
+            Serial.printf("[review] components JSON failed: len=%u trunc=%d\n",
+                          static_cast<unsigned>(r.http.body.size()), r.http.truncated ? 1 : 0);
+            refs->clear();
+            return;
+        }
+        appendComponentRefs(r.subjects, reviewed, refs);
+        Serial.printf("[review] components %u/%u\n", static_cast<unsigned>(end),
+                      static_cast<unsigned>(ids.size()));
+    }
+}
+
 }  // namespace
 
 DueAssignments fetchDueAssignments(const String& token,
@@ -98,9 +133,9 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
     }
     const size_t want = std::min(limit, dueSubjectIds.size());
     // Reserve before the subject DOMs start fragmenting the heap: growing this
-    // vector while a 15 KB subject page is alive can throw bad_alloc.
+    // vector while a 15 KB subject page is alive can throw bad_alloc. The
+    // subjects vector is reserved once the id count is known (below).
     batch.assignments.reserve(want);
-    batch.subjects.reserve(want);
     String path = "/v2/assignments?subject_ids=" + idList(dueSubjectIds, 0, want);
     Serial.printf("[review] assignments for %u subjects\n", static_cast<unsigned>(want));
     WkAssignmentsResult ar = wkGetAssignmentsRetry(path, token, 32768, want);
@@ -129,6 +164,7 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
     for (const Assignment& a : batch.assignments)
         if (std::find(ids.begin(), ids.end(), a.subjectId) == ids.end())
             ids.push_back(a.subjectId);
+    batch.subjects.reserve(ids.size());
 
     PagePlan plan = pagePlanStart(5);
     for (size_t begin = 0; begin < ids.size();) {
@@ -176,33 +212,11 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
     attachStudyMaterials(token, &batch.subjects);
     attachReviewStatistics(token, &batch.subjects);
 
-    // Detail data: fetch the component subjects once and keep them in the same
-    // subject list. The queue ignores subjects without an assignment.
+    // Detail data: the components become compact records (MEM-20), not Subjects.
+    // The queue ignores them: it only builds from subjects that have an assignment.
     std::vector<uint32_t> componentIds;
-    for (const Subject& s : batch.subjects) {
-        for (uint32_t id : s.componentSubjectIds) {
-            if (std::find(componentIds.begin(), componentIds.end(), id) != componentIds.end())
-                continue;
-            if (std::any_of(batch.subjects.begin(), batch.subjects.end(),
-                            [id](const Subject& x) { return x.id == id; }))
-                continue;
-            componentIds.push_back(id);
-        }
-    }
-    if (!componentIds.empty()) {
-        // Small pages: a 10-subject component page is ~20 KB and its DOM can
-        // exceed the largest free block after the review subjects are cached.
-        std::vector<Subject> components = fetchSubjectsByIds(token, componentIds, 3);
-        batch.subjects.reserve(batch.subjects.size() + components.size());
-        for (Subject& c : components) {
-            if (std::any_of(batch.subjects.begin(), batch.subjects.end(),
-                            [&c](const Subject& x) { return x.id == c.id; }))
-                continue;
-            batch.subjects.push_back(std::move(c));
-        }
-        Serial.printf("[review] components %u/%u\n", static_cast<unsigned>(components.size()),
-                      static_cast<unsigned>(componentIds.size()));
-    }
+    collectComponentIds(batch.subjects, &componentIds);
+    if (!componentIds.empty()) fetchComponentRefs(token, componentIds, batch.subjects, &batch.components);
 
     batch.fetchedAt = now;
     batch.ok = !batch.subjects.empty();
