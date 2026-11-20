@@ -1258,3 +1258,29 @@ stays EXT1-only and `wokeFromTimer()` is separate. `powerWakeCheck()` now runs
 `powerTick()` while blank, so the P4/P6 deadlines still fire with P5 Off. The
 timer path woke on hardware; current draw, key/G0 latency, first-key, Wi-Fi
 rejoin, panel recovery, P4/P6 deadlines and USB checks remain.
+
+---
+
+## 2026-11-20 — BT-01: BLE HID host is a conditional go on NimBLE
+
+**Decision:** BT-02 may start with the source-neutral key seam and the pure
+HID mapping/diff tests. The BLE transport is a conditional go on
+NimBLE-Arduino (pinned 2.5.2; 1.4.3 also compiles), not on the core's
+Bluedroid `esp_hidh`. Bluedroid is a complete HOGP host but a compiled probe
+added ~553 KB flash / ~20.9 KB static RAM, so it does not fit the current
+1.75 MiB slot and its 15.6 KB task-stack floor makes the TLS heap gate
+unlikely. NimBLE added ~201 KB / ~6.4 KB in the same probe; HOGP is our code.
+No library or partition table is merged, and no hardware pair/typing, heap or
+current measurement was taken.
+
+**Why:** the no-PSRAM heap is the deciding constraint, and the current image
+leaves 170,787 B in the slot (not the 278,019 B in the 2026-11-19 brief).
+Both need a larger slot (A 2.5 MB; B at least 2.25 MB, 2.5 MB recommended);
+NimBLE leaves far more flash and static-RAM margin, and it lets the probe
+start pairing at a point `esp_hidh` does not expose.
+
+**Implications:** the seam can ship even if BT is dropped (PaperDIY buttons
+use it). The BLE transport ships only after three keyboards pair and type,
+Just Works and one passkey/numeric flow pass, reconnect/latency and 1,000-key
+tests pass, and BLE-on-TLS keeps at least 8 KB free / 4 KB largest. Details
+and the probe commands are in `docs/spec/10-bluetooth-paperdiy.md` §1.7.

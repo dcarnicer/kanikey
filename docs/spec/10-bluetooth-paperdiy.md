@@ -1,12 +1,14 @@
 # Bluetooth keyboard and PaperDIY
 
-Status: **spike brief, 2026-11-19**. This prepares the post-v1 spikes BT-01
-(BLE HID host on the ESP32-S3) and PD-01/PD-02 (M5Stack PaperDIY board and
-e-paper rendering). It is a specification, not an implementation: no firmware,
-test, partition or library is changed here. No new number in this file is a
-KaniKey hardware measurement; existing build/heap figures are quoted from
-`ROADMAP.md` and `docs/hardware.md`, and vendor/third-party figures are
-labelled. Every measurement the spikes must take is defined here; results go
+Status: **spike brief, 2026-11-19; BT-01 probe evidence added 2026-11-20**.
+This prepares the post-v1 spikes BT-01 (BLE HID host on the ESP32-S3) and
+PD-01/PD-02 (M5Stack PaperDIY board and e-paper rendering). It is a
+specification, not an implementation: no firmware, test, partition or library
+is changed here. §1.7 records compiled size probes and a conditional BT-02
+decision; those are desktop evidence, not a hardware run. No new number in
+this file is a KaniKey hardware measurement; build figures are from `pio
+run`, heap figures from `docs/hardware.md`, and vendor/third-party figures
+are labelled. Every measurement the spikes must take is defined here; results go
 to `docs/hardware.md` as a new dated section. Claims marked `verify` are
 unconfirmed and need a probe or a build.
 
@@ -40,7 +42,7 @@ host:
 
 - `libesp_hid.a` exports `esp_hidh_init`, `esp_hidh_dev_open`,
   `esp_hidh_dev_close` and the input-event API.
-- The S3 `sdkconfig` has `CONFIG_BLUEDROID_ENABLED=y`,
+- The S3 `sdkconfig` has `CONFIG_BT_BLUEDROID_ENABLED=y`,
   `CONFIG_GATTC_ENABLE=y`, `CONFIG_SW_COEXIST_ENABLE=y` and
   `CONFIG_ESP32_WIFI_SW_COEXIST_ENABLE=y`; `CONFIG_BT_HID_HOST_ENABLED` is
   **not** set (no Classic HID host, correct for the S3).
@@ -76,6 +78,15 @@ released around requests. Loop stack 24 KiB, HTTP body buffer 32 KiB. The
 250 KB round budget is a round-2 rule, not a BT budget; BT needs its own
 partition decision.
 
+**Current build check (2026-11-20).** `pio run -e cardputer-adv` in this
+worktree builds at **1,664,221 B of 1,835,008 B (90.7%)** and **105,400 B
+static RAM (32.2%)**. The 2026-11-19 release figure above is historical; the
+current image leaves **170,787 B (9.3%)** in the slot, not 278,019 B. The
+last measured TLS worst point is 22,836 B free / 24,564 B largest during a
+35-request sync on a 96,336 B-static dev image (`docs/hardware.md`,
+2026-11-19 SPEED-05); the current image has 9,064 B more static RAM, so its
+worst point must be re-measured before it is used as a BT budget.
+
 ### 1.2 Candidate host stacks
 
 | | **A. `esp_hidh` + Bluedroid BLE** | **B. NimBLE-Arduino + HOGP client** | **C. Bluedroid GATTC, raw** |
@@ -83,15 +94,22 @@ partition decision.
 | What | ESP-IDF HID host; HOGP on Bluedroid GATTC | NimBLE host; we write HOGP | Bluedroid GATTC; we write HOGP |
 | Integration | Already in the SDK; add `btStart()`, `esp_bluedroid_init()/enable()`, the `esp_hidh_gattc_event_handler` callback, GAP security, scan, `esp_hidh_init()`, `esp_hidh_dev_open()` | New `lib_deps`; `NimBLEDevice::init()`, scan, connect, discover 0x1812, subscribe; own report-map parser and bonding | Same HOGP work as B on a heavier host |
 | HOGP | Complete in `ble_hidh.c`: 0x1812, report map 0x2A4B, report char 0x2A4D, report ref 0x2908, CCCD, boot protocol, battery 0x180F, device info 0x180A ([source](https://github.com/espressif/esp-idf/blob/v4.4.7/components/esp_hid/src/ble_hidh.c)) | GATT client and bonding only; HOGP is our code. The report-map parser can be ported from `esp_hid_common.c` (Apache-2.0) | Same as B |
-| Pairing | Bluedroid SMP; the host GAP handler logs `PASSKEY_NOTIF`/`NC_REQ`/`PASSKEY_REQ` and answers a security request. The shared IDF GAP file's device-side setup uses `ESP_IO_CAP_IO` + `ESP_LE_AUTH_REQ_SC_MITM_BOND` ([example](https://github.com/espressif/esp-idf/blob/v4.4.7/examples/bluetooth/esp_hid_host/main/esp_hid_gap.c)); the host probe sets its own IO cap | NimBLE SMP; we choose IO cap/bonding and store keys in NVS | Bluedroid SMP |
+| Pairing | Bluedroid SMP; the host GAP handler logs `PASSKEY_NOTIF`/`NC_REQ`/`PASSKEY_REQ` and answers a security request. The shared IDF GAP example's setup uses `ESP_IO_CAP_IO` + `ESP_LE_AUTH_REQ_SC_MITM_BOND` ([example](https://github.com/espressif/esp-idf/blob/v4.4.7/examples/bluetooth/esp_hid_host/main/esp_hid_gap.c)); the host probe sets its own IO cap | NimBLE SMP; we choose IO cap/bonding and store keys in NVS | Bluedroid SMP |
 | Flash | Bluedroid is the large one: a third-party S3 build measured ~409 KB for the BLE host, ~534 KB full stack, vs ~79 KB/~170 KB for NimBLE ([measurement](https://benign.host/blog/esp32-ble-flash-budget/); indicative, not ours) | NimBLE-Arduino claims ~50% less flash and ~100 KB less RAM than Bluedroid ([registry](https://registry.platformio.org/libraries/h2zero/NimBLE-Arduino)); plus our HOGP code | Same Bluedroid cost as A, plus code; no advantage |
 | RAM | BT controller + Bluedroid tasks + GATTC cache; measure at boot, init, connect, TLS | BT controller + NimBLE tasks + GATT client; measure the same | Same as A |
 | Effort | Lowest: HOGP, report parsing and CCCD exist; work is init, scan/connect policy, pairing UI, queue | Highest: HOGP + report-map parser + pairing + tests; lower stack cost | High, no benefit over A |
-| Risk | May not fit 1.75 MiB; Bluedroid RAM/coexistence | More code/failure modes; NimBLE-Arduino on core 2.0.17 `verify` | Same as A without the HOGP implementation |
+| Risk | Measured +553 KB; does not fit 1.75 MiB and may not fit the TLS heap; Bluedroid RAM/coexistence | More code/failure modes; NimBLE-Arduino 2.5.2/1.4.3 compile on core 2.0.17 but runtime and HOGP are unverified | Same as A without the HOGP implementation |
 
 `esp_hidh` can be built on NimBLE in a pure ESP-IDF build, but the Arduino
 core is Bluedroid. Rebuilding the framework is out of scope; if A does not
 fit, **B** is the path, not a hybrid.
+
+**Measured on this core (2026-11-20).** A throwaway probe with Wi-Fi in both
+baseline and BT builds measured the host delta over a 673,369 B flash /
+43,168 B static-RAM Wi-Fi baseline: **A +553,492 B / +20,892 B**, **B
+(NimBLE-Arduino 2.5.2) +201,140 B / +6,404 B** (1.4.3: +221,544 B / +6,228 B).
+The probe does not include M5GFX/TLS or B's HOGP client. Full estimates and
+the method are in §1.7.
 
 API facts for the probe:
 
@@ -135,12 +153,14 @@ size comparison, but the final probe must parse a real report map.
 | Boot time | cold boot → first key | `millis()` at the first input event |
 
 The probe must state its partition. The current 1,835,008 B slot has
-278,019 B free; if it does not fit, use a throwaway `kanikey_bt.csv` with two
-~2.5 MB app slots and ~2 MB LittleFS. The final table is a separate decision.
+170,787 B free (2026-11-20 build); the measured probe deltas show neither
+stack fits it, so use a throwaway `kanikey_bt.csv` with two ~2.5 MB app slots
+and ~2 MB LittleFS. The final table is a separate decision.
 
 **Pass:** one stack fits a 2.5 MB slot with ≥ 10% OTA headroom, leaves
-≥ 60 KB internal heap / ≥ 40 KB largest block after BT + Wi-Fi + canvas, and
-`/summary` succeeds 20/20.
+≥ 60 KB internal heap / ≥ 40 KB largest block after BT + Wi-Fi + canvas at
+idle, keeps ≥ 8 KB free / ≥ 4 KB largest at the worst point of 20 `/summary`
+runs, and `/summary` succeeds 20/20.
 
 #### Q2 — Do standard BLE HID keyboards pair and type?
 
@@ -255,8 +275,9 @@ in `docs/hardware.md`.
 
 1. Fits a 2.5 MB OTA slot with ≥ 10% headroom, or a documented partition
    change keeps LittleFS ≥ 2 MB.
-2. After BT + Wi-Fi + canvas: internal heap ≥ 60 KB, largest block ≥ 40 KB;
-   `/summary` 20/20.
+2. After BT + Wi-Fi + canvas at idle: internal heap ≥ 60 KB, largest block
+   ≥ 40 KB. During 20 `/summary` runs: ≥ 8 KB free / ≥ 4 KB largest at the
+   worst point, and 20/20 succeed.
 3. Three BLE keyboards pair and type; Just Works and one passkey/numeric flow
    pass; Classic-only documented out of scope.
 4. 1,000 presses: zero lost/stuck; queue overflow known; p95 radio/host
@@ -268,6 +289,13 @@ in `docs/hardware.md`.
 Decision: **A** if it passes 1–7; **B** if A fails 1 or 2 and B passes 1–7;
 **C** only if A's API makes HOGP impossible. If both fail, BT-01 is a no-go
 with the measured reason. No library is merged; BT-02 starts only after a go.
+
+The 2026-11-20 probe narrows this: both stacks need a larger slot (A 2.5 MB;
+B at least 2.25 MB, 2.5 MB recommended; the current 1.75 MiB slot cannot hold
+either). A fits 2.5 MB at an estimated 84.6% before a full app+BT link, and B
+at ~71% before its HOGP client. Gate 2 (heap during TLS, not idle) is the
+deciding risk, and A's fixed task-stack floor makes it the less likely of
+the two. See §1.7.
 
 ### 1.5 Source-neutral input abstraction (BT-02 requirement)
 
@@ -316,16 +344,253 @@ struct KeyEvent {
   `key_char_shift`; unsupported usage ignored; boot vs report layout; BLE
   overflow does not emit a false `Key::None`.
 
+**Current-code facts (2026-11-20).** `ui/KeyInput.h` still has only
+`key/down/code/x/y`; `Key` has no letter members, so a BLE letter is
+`Key::Other` plus `ch`. The seam touches every screen: `App::onKey()` and
+`syncStopRequested()` call `updateModifier(e.x, e.y, e.down)`, and
+`cardputerCharAt(e.x, e.y, state().ui.gShift)` appears in the review,
+lesson, study, outbox, Wi-Fi setup and dev paths. Five rules avoid silent
+regressions:
+
+- `updateModifier` must take the event (or a `source`/`mods` pair), not
+  `x/y`: BLE events have `x=y=0`, and `gShift` must be right before the
+  first letter reaches a screen.
+- `keyChar(e, shiftHeld)` should apply Shift from `e.mods` only for
+  `Ble`/`Button`; for `Matrix` it must ignore `e.mods` and call
+  `cardputerCharAt(e.x, e.y, shiftHeld)`. Do not double-apply Shift.
+- `KeyRepeat` must skip non-matrix events: a BLE keyboard sends its own
+  repeat reports, and repeating again in `App::loop()` would duplicate
+  arrows and Backspace.
+- The ring is not thread-safe today (plain head/count). A BLE callback on
+  `esp_ble_hidh_events` and `nextKeyEvent()` on the loop task need a
+  `portMUX_TYPE` critical section or a FreeRTOS queue. A 64-entry
+  `KeyEvent` queue is under 1 KB at the proposed size; size it from Q4.
+- On BLE disconnect, emit releases for every key the diff still holds and
+  then a `Key::None` up so modifiers cannot stick. On BLE queue overflow,
+  do not silently use `Key::None`: release the held keys explicitly or set
+  a "lost" flag for BT-03. Keep the existing matrix overflow rule.
+
 ### 1.6 BT-01 risks and open questions
 
-- **Bluedroid flash.** 278 KB free probably is not enough; a partition change
-  is likely. NimBLE is smaller but needs HOGP code.
+- **Bluedroid flash.** The current image has 170,787 B free; the probe's A
+  delta is 553,492 B, so the current slot cannot hold it and a 2.5 MB
+  partition change is required. NimBLE is ~201–222 KB but needs HOGP code.
+- **Pairing hook.** `esp_hidh` has no public way to start pairing between
+  connect and discovery; a keyboard that does not send a Security Request is
+  a per-model risk. NimBLE lets us call `secureConnection()` at the right
+  point, but the flow is still unverified.
+- **TLS heap.** The last measured minimum is 22.8 KB on a smaller image; A's
+  15.6 KB task-stack floor plus 20.9 KB static delta likely exhausts it, and
+  B's 8.2 KB + 6.4 KB is borderline. Measure BLE-on-TLS before BT-02.
 - **Report protocol.** A nonstandard map may rule out a model.
 - **Reconnect UX.** Keyboards that advertise only after a keypress cannot be
   always ready; deep sleep makes it worse.
 - **Blocking UI.** Keys can queue but the UI cannot act during a 2 s TLS
   request; BT-04 must pump keys or accept the delay.
 - **Bonds.** Confirm Bluedroid/NimBLE bonds survive OTA and deep sleep.
+
+### 1.7 BT-01 probe evidence and BT-02 decision (2026-11-20)
+
+Everything here was built in this worktree with `espressif32@6.12.0`
+(Arduino-ESP32 2.0.17, IDF 4.4.7). It is a desktop probe, not a hardware
+run: no keyboard was paired and no current was measured. A full app + BT link
+was not built; the estimates below are the measured probe delta added to the
+measured app image, and are labelled as estimates.
+
+#### What the pinned core actually provides
+
+- `pio pkg list -e cardputer-adv` resolves
+  `framework-arduinoespressif32 @ 3.20017.241212+sha.dcc1105b`; the installed
+  `esp_idf_version.h` reports 4.4.7.
+- `tools/sdk/esp32s3/lib/libesp_hid.a` contains `ble_hidh.c.obj`,
+  `esp_hidh.c.obj` and `esp_hid_common.c.obj`. `nm` exports
+  `esp_hidh_init`, `esp_hidh_dev_open`, `esp_hidh_dev_close`,
+  `esp_hidh_dev_free`, `esp_hidh_dev_output_set`, `esp_hidh_dev_reports_get`,
+  `esp_hidh_dev_report_maps_get` and `esp_hidh_gattc_event_handler`.
+  `esp_hidh_bluedroid.h` guards `esp_hidh_dev_open()` with
+  `CONFIG_BLUEDROID_ENABLED` (the legacy alias is set too);
+  `esp_hidh_gattc.h` guards the GATTC handler with `CONFIG_GATTC_ENABLE`.
+  Both are set, so the host API is compiled in.
+- `tools/sdk/esp32s3/sdkconfig` sets `CONFIG_BT_BLUEDROID_ENABLED=y`,
+  `CONFIG_BT_BLE_ENABLED=y`, `CONFIG_GATTC_ENABLE=y`,
+  `CONFIG_BT_BLE_50_FEATURES_SUPPORTED=y`,
+  `CONFIG_BT_BLE_42_FEATURES_SUPPORTED=y`, `CONFIG_SW_COEXIST_ENABLE=y` and
+  `CONFIG_ESP32_WIFI_SW_COEXIST_ENABLE=y`. `CONFIG_BT_NIMBLE_ENABLED` and
+  `CONFIG_BT_HID_HOST_ENABLED` are not set.
+- `libraries/BLE/src/BLEHIDDevice.h` is device-side only: its constructor
+  takes a `BLEServer`, it creates `BLECharacteristic`s and exposes
+  `inputReport()`/`outputReport()`/`startServices()`. There is no Arduino
+  host class. The host is the ESP-IDF `esp_hidh` component, already in the
+  SDK, not a PlatformIO library.
+- No maintained Arduino HOGP-host library was found (the PlatformIO registry
+  has no `esp_hidh` package; the GitHub projects are small, unvetted, or
+  gamepad-specific). `esp_hidh` is the only complete HOGP implementation in
+  the pinned core. NimBLE-Arduino supplies the GATT client and bonding, but
+  HOGP is application code.
+- `esp_hidh` is not a drop-in host: the Arduino core has no `esp_hid_gap.c`.
+  The probe must implement the GAP callback (scan, security request, passkey
+  and numeric-comparison replies), the scan, and the worker task around the
+  blocking `esp_hidh_dev_open()`.
+
+#### Size probe (compiled, not flashed)
+
+The probe used the same platform, board (`esp32-s3-devkitc-1`), `qio_qspi`
+memory type, `kanikey_8MB.csv` partition table and `-DCORE_DEBUG_LEVEL=1` as
+`env:cardputer-adv`. Both baseline and BT builds call `WiFi.mode(WIFI_STA)`;
+none includes M5GFX, TLS or app code.
+
+| Probe build | Flash | Static RAM |
+|---|---:|---:|
+| Wi-Fi baseline | 673,369 B | 43,168 B |
+| A: Bluedroid + `esp_hidh` | 1,226,861 B | 64,060 B |
+| B: NimBLE-Arduino 2.5.2 | 874,509 B | 49,572 B |
+| B: NimBLE-Arduino 1.4.3 | 894,913 B | 49,396 B |
+
+Deltas over the Wi-Fi baseline: **A +553,492 B flash / +20,892 B static
+RAM**; **B 2.5.2 +201,140 B / +6,404 B**; B 1.4.3 +221,544 B / +6,228 B.
+Both NimBLE versions compile and link on core 2.0.17; 2.5.2 is smaller in
+this probe. The probe does not include the HOGP client that B still needs.
+
+The A probe linked 155 `libbt.a` objects, plus `ble_hidh.c.obj`,
+`esp_hidh.c.obj` and `esp_hid_common.c.obj`; the B probe and the app linked
+one `libbt.a` object (`bt.c.obj`), and B also linked
+`libNimBLE-Arduino.a`. The controller (`libbtdm_app.a`, 53 objects) is in
+both builds and in the app's current map, so the delta is the host, not the
+radio. The probe included
+`<esp_hidh.h>`, `<esp_gap_ble_api.h>` and `<esp_gattc_api.h>` with no extra
+`build_flags` or `lib_deps`.
+
+Adding the probe delta to the current `cardputer-adv` image (1,664,221 B /
+105,400 B static RAM):
+
+| Estimate | Flash | Current 1,835,008 B slot | 2.5 MB (2,621,440 B) slot | Static RAM |
+|---|---:|---|---|---:|
+| A | 2,217,713 B | over by 382,705 B | 84.6%, 15.4% headroom | 126,292 B (38.5%) |
+| B 2.5.2 | 1,865,361 B | over by 30,353 B | 71.2%, 28.8% headroom | 111,804 B (34.1%) |
+
+B's estimate excludes the HOGP client; budget another 10–20 KB and re-link
+before committing. B would also fit a 2.25 MB (2,359,296 B) slot at 79.1%
+before HOGP, but 2.5 MB is the safer shared table. A 2.5 MB table with two
+app slots and a ≥2 MB LittleFS is arithmetic, not a committed table:
+`nvs 0x5000`, `otadata 0x2000`, `app0 0x280000 @0x10000`,
+`app1 0x280000 @0x290000`, `spiffs 0x2F0000 @0x510000` = 3,080,192 B. The
+final table is a separate decision.
+
+#### Pairing and connection constraints
+
+- `esp_hidh_dev_open()` calls `esp_ble_gattc_open(..., is_direct=true)`,
+  waits for open/search, reads the services, and only then posts
+  `ESP_HIDH_OPEN_EVENT` and attaches report listeners. It blocks on
+  semaphores and must run on a worker task, not `App::loop()`.
+- Its report-map and report-reference reads use
+  `ESP_GATT_AUTH_REQ_NO_MITM`. It does not initiate pairing. In IDF 4.4.7 the
+  public Bluedroid GAP API has `esp_ble_gap_security_rsp()`,
+  `esp_ble_passkey_reply()`, `esp_ble_confirm_reply()` and
+  `esp_ble_set_encryption()`, but **no `esp_ble_gap_security_req()`**.
+  Pairing therefore depends on the keyboard sending a Security Request
+  (`ESP_GAP_BLE_SEC_REQ_EVT`) or on a separate `esp_ble_set_encryption()`;
+  `esp_hidh_dev_open()` has no hook between connect and discovery. This is
+  the main per-model risk in A. B can call `secureConnection()` at the point
+  it chooses.
+- Flows to probe: Just Works (`ESP_IO_CAP_NONE` + `ESP_LE_AUTH_BOND` or
+  `ESP_LE_AUTH_REQ_SC_BOND`), host-displays (`ESP_IO_CAP_OUT` +
+  `PASSKEY_NOTIF`; the keyboard types the code), numeric comparison
+  (`ESP_IO_CAP_IO` + `NC_REQ` + `esp_ble_confirm_reply()`), and host-input
+  (`ESP_IO_CAP_IN`; type the keyboard's code on the built-in keyboard).
+  Host-input is unusable on PaperDIY, which has no keyboard.
+- Bonds live in NVS: `esp_ble_get_bond_device_num()`,
+  `esp_ble_get_bond_device_list()`, `esp_ble_remove_bond_device()`.
+  `initArduino()` already calls `nvs_flash_init()`; the app does not need a
+  second call. Confirm bonds survive reboot, deep sleep and OTA.
+- `esp_hidh_dev_free()` must be called from `ESP_HIDH_CLOSE_EVENT`; closing
+  without freeing leaks the device. The OPEN event is posted before the CCCD
+  subscriptions; `esp_hidh_dev_open()` returns after them, so treat the
+  return as ready and log the first key separately.
+- The report-map parser gives `report_id`, `usage`, `value_len` and
+  `map_index` but not decoded bitfields. Support the boot layout (modifier +
+  reserved + 6 keys) and the common 8-byte report; log the raw map and bytes
+  for every model. NKRO bitmaps remain out of scope.
+
+#### Coexistence and heap
+
+- Coexistence is compiled in (`CONFIG_SW_COEXIST_ENABLE=y`,
+  `CONFIG_ESP32_WIFI_SW_COEXIST_ENABLE=y`). `esp_coex_preference_set()` is
+  present but deprecated in the installed `esp_coexist.h`; use
+  `esp_coex_status_bit_set/clear()` if a preference is needed. The keyboard
+  chooses the connection interval; `esp_ble_gap_set_prefer_conn_params()` can
+  request 7.5–30 ms but the keyboard may ignore it.
+- The app turns Wi-Fi off outside sync; BLE would be the only radio at idle.
+  During sync both share the radio. The BLE host's task stacks are fixed at
+  init: controller 4096, BTC 3072, BTU 4352 and `esp_ble_hidh_events` 4096 =
+  **15,616 B** for A; NimBLE uses controller 4096 + host 4096 = **8,192 B**
+  for B, plus TCBs, queues, GATTC cache and report allocations.
+- The last measured worst point is **22,836 B free / 24,564 B largest**
+  during a 35-request sync on the 2026-11-19 image (96,336 B static RAM).
+  The current image has 105,400 B static RAM, 9,064 B more, so its worst
+  point must be re-measured; do not assume 22.8 KB still holds. The static
+  deltas alone (A +20,892 B, B +6,404 B) consume most of that margin before
+  the BT task stacks allocate. On this arithmetic A cannot coexist with the
+  last measured TLS minimum, and B is borderline. This is the single most
+  important hardware measurement; a BLE-on-TLS minimum below 8 KB free or
+  4 KB largest is a no-go for that stack.
+
+#### Recommended probe plan
+
+1. **Keep the seam source-neutral first.** Add `KeySource`, `ch`, `mods` and
+   `keyChar()` behind native tests; do not include a BLE header in screens.
+   This work is useful for PaperDIY buttons even if BT is dropped.
+2. **Probe B (NimBLE-Arduino 2.5.2, pinned).** Implement scan → connect →
+   0x1812 discovery → report-map parse → CCCD subscribe → report diff, with
+   a worker task and a FreeRTOS queue. Keep A's `esp_hidh` probe as the
+   reference implementation and size baseline.
+3. **Measure on the Cardputer ADV** with `CORE_DEBUG_LEVEL=1`; log
+   `heap_caps_get_free_size(MALLOC_CAP_INTERNAL)` and
+   `heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)`
+   at boot, BT init, connect, Wi-Fi join, before/during/after TLS
+   `/summary`, after 20 subjects, and after disconnect; dump
+   `uxTaskGetSystemState()` after connect.
+4. **Pairing matrix:** three BLE keyboards (Logitech/Apple/Keychron or the
+   available equivalents) plus one Classic-only negative control; Just Works
+   and one passkey or numeric flow; record pairing latency (connect → OPEN →
+   first key), the exact GAP events per model and whether the model sends a
+   Security Request.
+5. **Reconnect and latency:** 20 trials cold, deep-sleep wake, keyboard
+   power-cycle and 2 min out of range; 1,000 presses with a second S3 HID
+   emulator and GPIO timestamps; p50/p95/max, lost/stuck keys, queue
+   overflows.
+6. **Coexistence and power:** 20 TLS runs with BLE off/idle/typing on a fixed
+   AP channel; p95 regression; PPK2/INA219 for connected idle, typing,
+   BLE+Wi-Fi and a 20-minute session.
+
+Verification commands: `cd firmware && pio run -e cardputer-adv` (run:
+1,664,221 B, 105,400 B static RAM). The probe was built with `pio run -e
+baseline`, `-e bt`, `-e nimble` and `-e nimble2full` in a throwaway project
+with the same platform, board, `qio_qspi` and partition table; that project
+was deleted. A full app + BT link still needs a throwaway env in
+`firmware/platformio.ini` and `pio run -e cardputer-adv-bt`; it was not run
+here. Hardware results go to `docs/hardware.md` as a new dated section.
+
+#### Decision
+
+**BT-02: go for the source-neutral seam and pure HID mapping now; conditional
+go for the NimBLE transport; no-go for Bluedroid A on the current table.**
+
+- **Go now:** the seam and `hid_usage_to_key`/`hid_report_diff` tests have no
+  BT dependency, are useful for PaperDIY buttons, and can ship even if BT is
+  dropped.
+- **Conditional go for B:** three keyboards pair and type; Just Works and one
+  passkey/numeric flow pass; 20/20 cold reconnect p95 ≤5 s and 20/20
+  deep-sleep p95 ≤3 s; zero lost/stuck keys in 1,000 presses; p95 radio/host
+  ≤50 ms idle and ≤100 ms during TLS; app p95 ≤100 ms when not blocked; TLS
+  p95 regression ≤20% and 20/20; BLE-on-TLS heap ≥8 KB free / ≥4 KB largest;
+  battery within Q5. Any failure is a no-go with the measured reason.
+- **A is not recommended:** it needs a 2.5 MB partition change (estimated
+  84.6% before a full link) and its 15,616 B task-stack floor plus 20,892 B
+  static delta make the TLS heap gate unlikely. Keep it as a fallback only if
+  B's HOGP code proves impractical and the hardware heap probe passes.
+- **No-go for any BT** if the pairing or heap gates fail. Do not ship a
+  best-effort keyboard that loses keys or breaks TLS; the seam can still
+  ship for buttons.
 
 ---
 
