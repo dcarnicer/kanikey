@@ -98,6 +98,7 @@ Every task must respect these. A task that cannot should stop and report why.
 | [07-stats.md](07-stats.md) | STATS | 4 | Forecast, history, streak and progress screens |
 | [08-reminders-audio.md](08-reminders-audio.md) | REM, AUD | 6 | Device-local reminders and vocabulary audio |
 | [09-docs-onboarding.md](09-docs-onboarding.md) | DOC, ONB | 8 | Mockups, docs alignment and easier pack setup |
+| [11-flash-headroom.md](11-flash-headroom.md) | FLASH | 3 | Flash attribution, behaviour-neutral trims (sscanf applied, −9,708 B) and the 8 MB partition proposal with its SD migration |
 
 [03-settings.md](03-settings.md) (CFG-02) is the single source of truth for setting IDs, labels, choices, defaults and NVS keys. Other files refer to settings by those IDs (`R1`…`M7`); if a task file and CFG-02 disagree, CFG-02 wins and the task file is corrected.
 
