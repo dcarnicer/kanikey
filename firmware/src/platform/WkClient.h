@@ -66,6 +66,19 @@ WkResponse wkPut(const String& path, const String& token, const String& body,
 // verification window uses it to mark a new image valid before 10 minutes.
 bool wkHadApiSuccess();
 
+#ifdef KANIKEY_DEV
+// Dev-only overrides, RAM only: a reboot clears both. `cap 0` turns the body
+// cap off. `devhost` sends every WkClient request to host:port with certificate
+// checks off; wkDevSetHost() refuses names that mention WaniKani.
+void wkDevSetBodyCap(uint32_t bytes);
+uint32_t wkDevBodyCap();
+bool wkDevSetHost(std::string_view host, uint32_t port);  // false when refused
+void wkDevClearHost();
+bool wkDevHostActive();
+const char* wkDevHostName();
+uint16_t wkDevHostPort();
+#endif
+
 // Whole seconds left in the shared 429 gate; 0 when requests may go out.
 // Safe across the millis() wrap. While the gate is active every request returns
 // a synthetic 429 without opening TLS, so callers can show a countdown.

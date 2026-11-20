@@ -53,6 +53,7 @@
 #include "platform/DeviceSettings.h"
 #include "platform/DevToken.h"
 #include "platform/DevWifi.h"
+#include "app/RemProbe.h"
 #include "platform/AudioCache.h"
 #include "platform/CriticalStore.h"
 #include "platform/GlyphPack.h"
@@ -940,6 +941,10 @@ void setup() {
     ensureCanvas();
     kk::wkSetRequestHooks(requestBefore, requestAfter);
     firmwareBoot();
+#ifdef KANIKEY_DEV
+    // REM-01 probe: a repeat run sleeps here, before storage, Wi-Fi and sync.
+    remBootProbe();
+#endif
 
     Serial.printf("\n[kk] KaniKey boot\n");
     Serial.printf("[kk] version %s (%s)\n", kk::kFirmwareVersion, kk::ota::buildEnv());
@@ -993,6 +998,9 @@ void setup() {
     Serial.println("[kk] first draw");
     draw();
     Serial.println("[kk] first draw done");
+#ifdef KANIKEY_DEV
+    remNoteBootReady();
+#endif
     state().display.gDirty = false;
     state().display.gLastDrawMs = millis();
 
@@ -1090,6 +1098,10 @@ void loop() {
         state().display.gDirty = false;
         state().display.gLastDrawMs = now;
     }
+#if defined(TGC_BOARD_PAPERDIY)
+    // E-paper: push the canvas when the settle/floor/busy policy says so.
+    presentTick(now);
+#endif
     if (now - state().display.gLastStatusMs >= 1000) {
         drawStatus();
         state().display.gLastStatusMs = now;
@@ -1109,8 +1121,22 @@ void loop() {
     // screen owns the display.
     if (now - state().display.gLastHomeRefreshMs >= 60000 && homeOwnsScreen()) {
         state().display.gLastHomeRefreshMs = now;
+#if defined(TGC_BOARD_PAPERDIY)
+        // E-paper: a minute tick that changes nothing on Home must not refresh
+        // the panel. Redraw only when the numbers Home shows changed; the
+        // battery and clock are read on the next real redraw.
+        const uint32_t dueBefore = state().session.gDueReviews;
+        const uint32_t lessonsBefore = state().session.gLessons;
+        char nextBefore[sizeof state().session.gNextReview];
+        std::memcpy(nextBefore, state().session.gNextReview, sizeof nextBefore);
+        applySummary(effectiveNow());
+        if (dueBefore != state().session.gDueReviews || lessonsBefore != state().session.gLessons ||
+            std::strcmp(nextBefore, state().session.gNextReview) != 0)
+            state().display.gDirty = true;
+#else
         applySummary(effectiveNow());
         state().display.gDirty = true;
+#endif
     }
 
     // G0: a short press wakes the screen; a long press is the future power

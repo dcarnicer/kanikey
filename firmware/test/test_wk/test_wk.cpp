@@ -3829,6 +3829,8 @@ void run_http_tests();
 void run_power_tests();
 void run_screen_tests();
 void run_hid_tests();
+void run_epd_tests();
+void run_devhooks_tests();
 
 int main(int, char**) {
     UNITY_BEGIN();
@@ -4039,5 +4041,7 @@ int main(int, char**) {
     run_power_tests();
     run_screen_tests();
     run_hid_tests();
+    run_epd_tests();
+    run_devhooks_tests();
     return UNITY_END();
 }

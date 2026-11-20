@@ -719,6 +719,12 @@ void firmwareBoot() {
             const kk::ota::RollbackDecision d =
                 kk::ota::rollbackDecision(record, state().ota.gOtaState.installing);
             kk::ota::saveRollbackRecord(d.record);
+#ifdef KANIKEY_DEV
+            Serial.printf("[ota] %s rollback count %u: %s\n",
+                          state().ota.gOtaState.installing.c_str(),
+                          static_cast<unsigned>(d.record.count),
+                          d.blacklist ? "blacklisted" : "still offered");
+#endif
             if (d.blacklist) {
                 state().ota.gOtaState.failedVersion = state().ota.gOtaState.installing;
                 kk::ota::saveFailedVersion(state().ota.gOtaState.failedVersion);

@@ -787,7 +787,12 @@ A150 G143 M81 E147 B586).
 - **TNG-03.** Fifteen native tests cover the list-window math and hint
   fallbacks. Phase 2 migrated Home hints, Settings, the Wi-Fi scan list, Outbox,
   the lesson list window and Study/critical windows to the shared primitives;
-  lesson/critical/study rows keep their custom 20 px painters. Home,
+  the 20 px lesson/critical/study rows moved to `drawList` on 2026-11-20
+  (TNG-03H): the lesson list and the Study menu captured byte-identical to the
+  earlier ARCH-04/TNG-03 captures. That comparison exposed an older bug: the
+  lesson-list prompt boxes were empty because `drawTextCentered()` received
+  the centre in the size slot; after the fix the panel shows 以/月/仕/金/映 in
+  the boxes with the frames intact. The critical list was not opened. Home,
   Settings and the Wi-Fi list rendered with the same layout after flashing;
   the remaining window/scroll cases are in the table. Phase 3 moved wrapping,
   ellipsis and UTF-8 trimming into `TextLayout` and added the 1bpp icon tables;
@@ -843,10 +848,10 @@ instead.
 | `REV-07` | Wrong meaning/reading opens the matching detail page; return | `cardputer-adv-dev` | 2026-11-19 | `partial` | R9 On: a wrong `banana` for 今夜's meaning opened `ITEM DETAIL 2/6`, `MEANING MNEMONIC`, with `Tab/Esc: back`. Reading page, return path and empty-mnemonic state remain. |
 | `REV-08` | Order fetch/selection, visible order, fallback, cached | `cardputer-adv-dev` | 2026-11-19 | `partial` | R2 `Oldest available` fetched the full due set: 8 pages, 228,077 B, 464 assignments, 20 chosen, then a 20-item queue (`二斤`, `氏`, `出す`, …), with no reset. Visible SRS/level/type order, fallback and cached-offline checks remain. |
 | `REV-09/12` | Back-to-back Off; minimal header | — | — | `todo` | Named as remaining after the 2026-11-19 REV-06 smoke; no hardware evidence. |
-| `REV-10` | Backspace repeat, Fn/Ctrl clear, kana units, 64-byte cap | — | — | `todo` | 15 native tests; the hardware hold/clear/kana/paste checks remain (2026-11-19 v1 pass). |
+| `REV-10` | Backspace repeat, Fn/Ctrl clear, kana units, 64-byte cap | `cardputer-adv-dev` | 2026-11-20 | `partial` | Real review, 学 reading prompt through the matrix IME: `tabe` showed `たべ`, Backspace left `た` (romaji `ta`); `kann` gave `たかん`, Backspace left `たか` (romaji `taka`). Meaning prompt: `tabe` + Backspace left `tab`. Only wrong answers were typed and the session was dropped by a reboot; outbox stayed 0. Held-Backspace repeat, Fn/Ctrl+Backspace clear and the 64-byte cap (the box scrolls, so the length is not visible) remain; serial `K` cannot hold keys or add modifiers. |
 | `REV-11` | Mistakes list, navigation, `R` next batch, stage updates, layout | — | — | `todo` | Six native tests; the three-row list, `R`, stage updates during the send loop and the 240×135 layout remain. |
 | `LES-01` | Browse a 5-card batch with all keys; no `[lesson] start` | `cardputer-adv-dev` | 2026-11-19 | `partial` | `L` fetched 5 lessons and showed the `1/5` list; Enter opened the `1/5 p1/4` card; no `[lesson] start`. The full page walk with Space/Left and the five-card sequence were not recorded. |
-| `LES-02` | Batch quiz of 5 with two mistakes; requeue; no outbox growth | `cardputer-adv-dev` | 2026-11-19 | `partial` | The batch quiz opened as `LESSON QUIZ 1/5`. The two-mistake requeue run and the no-outbox-growth check remain. |
+| `LES-02` | Batch quiz of 5 with two mistakes; requeue; no outbox growth | `cardputer-adv-dev` | 2026-11-20 | `pass` | Real 5-lesson batch (以前, 月末, 仕組み, 金魚, 映画), all cards paged, `[lesson] quiz 5 items`. Two mistakes on 映画 (`zzz` meaning → `NOT QUITE` + cross, `You typed zzz`, `Answer Movie / Film`; `かな` reading). The other four completed in turn (`2/5`…`4/5`); 映画 came back last as `5/5` and passed (`CORRECT` + check). Enter opened `Start 5 lessons? / They join your reviews in about 4 hours`; Esc left without a `PUT /start` (none in the log). Outbox stayed `0 items`, Home still 115 lessons. |
 | `LES-03` | Start 5 on Wi-Fi, offline, already-started 422 | `cardputer-adv-dev` | 2026-11-19 | `partial` | A later real batch sent 5 `PUT /start`, all 200; Home dropped from 120 to 115 lessons. Offline start, 422 and already-started-elsewhere were not run; the confirmation/progress text was not recorded. |
 | `LES-04` | L2 order; fresh level shows the radical first, whole unlock reachable | `cardputer-adv-dev` | 2026-11-19 | `partial` | Lessons showed `Order: WaniKani`; Right changed it to `Radicals>Kanji>Vocab` then `Interleave types`; Left restored WaniKani. Fresh-level radical-first and the 60-candidate checks remain. |
 | `LES-05` | L4 threshold screen + Esc; L5/L6 and multi-reason | `cardputer-adv-dev` | 2026-11-19 | `partial` | L4 100 with A150 opened `WORKLOAD CHECK — Apprentice items: 150 (limit 100)` and `Enter: continue  Esc: back`; Esc returned Home without a fetch. L5/L6 and the multi-reason guard remain. |
@@ -862,7 +867,8 @@ instead.
 | `RAD-04` | Radical-only lesson on a low-level account | `cardputer-adv-dev` | 2026-11-06 | `blocked` | Synthetic `L` → `RAD L1 ground` card and quiz rendered the radical bitmap. A real low-level account is not available, so the real first-lesson run is blocked. |
 | `UI-05` | Real level-up notice | — | — | `todo` | No level-up occurred in the 2026-10-29 run; the `Level up!` transition still needs a real level change. |
 | `SPEED-06` | Light sleep: key wake mid-review, current, G0, first key | `cardputer-adv-dev` | 2026-11-20 | `partial` | `Z` 10 s light-sleep test woke on the timer and kept syncing; the post-wake CDC line was lost and `isPlugged()` read false afterwards, so dev builds now sleep only with `O`. Key/G0 wake latency, first key, current and the release USB detection remain. |
-| `REM-01/02/03` | Timer wake, reminder re-sleep, tones | — | — | `todo` | No hardware run; the REM-01 spike and the reminder/sound checks are still `todo`. |
+| `REM-01` | Timer wake, wake cost, tone heap, LED | `cardputer-adv-dev` | 2026-11-20 | `partial` | `rem 20 3`: three timer wakes, `slept_ms 20545` each, probe wake boot→sleep 544 ms with no Wi-Fi; first `playTone` keeps 7,880 B of heap (largest unchanged), a second tone none. The record moved to `RTC_NOINIT_ATTR` after the USB-open reset wiped an `RTC_DATA_ATTR` one. Sleep current (needs a meter) and the EXT1 key abort remain. Details in `docs/spec/08-reminders-audio.md`. |
+| `REM-02/03` | Reminder re-sleep, tones | — | — | `todo` | No hardware run. |
 | `AUD-01/02/03` | Clip sizes, decoder flash/RAM/time, I2S/ES8311, cache, playback | — | — | `todo` | Parser and 880 Hz speaker path merged 2026-11-06; measurements, cache and playback checks remain. |
 | `BT-01` | BLE HID host spike | — | — | `todo` | Post-v1 spike; not started. |
 | `PD-01/02` | PaperDIY board and render spike | — | — | `todo` | Post-v1 spike; not started. |
