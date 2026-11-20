@@ -119,6 +119,14 @@ syncs with the user's account. The SRS still lives in WaniKani.
   `PUT /assignments/{id}/start`.
 - Home screen with pending reviews/lessons, next review time, the breakdown by
   SRS stage and the sync/outbox status.
+- Reminders (off by default): on battery, the device can wake from deep sleep
+  at a daily time or when reviews are due, without Wi-Fi, and show
+  `N reviews ready` for 30 s. Device-local only; no push.
+- Sounds (off by default): short tones for correct and wrong answers, the end
+  of a session and the reminder, with a volume setting. Vocabulary audio
+  playback is not in yet.
+- Experimental PaperDIY target (`paperdiy`, build-only, untested on hardware):
+  the two-button board compiles but has not run yet.
 - Settings, Wi-Fi, time, a sync screen with cancel/retry, and clear
   auth/rate-limit/offline states. Firmware updates check the latest GitHub
   release, verify size and SHA-256, install into the other OTA slot and roll
@@ -148,7 +156,7 @@ syncs with the user's account. The SRS still lives in WaniKani.
 | Storage | microSD FAT32 + LittleFS |
 | Network | 2.4 GHz Wi-Fi |
 | Battery | yes; deep sleep with wake on keypress |
-| Audio | ES8311 codec + speaker (later phase) |
+| Audio | ES8311 codec + speaker: tones now; clip playback later |
 
 The hardest part —keyboard, display, microSD, Wi-Fi/TLS, sleep and OTA— is
 already solved and tested on hardware in
@@ -164,7 +172,8 @@ already solved and tested on hardware in
 | [docs/api-sync.md](docs/api-sync.md) | WaniKani API, cache, offline queue and data model |
 | [docs/ota.md](docs/ota.md) | OTA manifest, slots, install and rollback |
 | [docs/reuse-tangocho.md](docs/reuse-tangocho.md) | What is reused from Tangocho and how it is ported |
-| [docs/setup.md](docs/setup.md) | Setup (Wi-Fi, token, packs), first boot, offline and troubleshooting |
+| [docs/setup.md](docs/setup.md) | Setup (Wi-Fi, token, packs), first boot, reminders and sounds, offline and troubleshooting |
+| [docs/dev-tools.md](docs/dev-tools.md) | Build environments, dev serial commands (`rem`, `cap`, `devhost`) and the local test servers |
 | [docs/decisions.md](docs/decisions.md) | Short log of accepted decisions |
 | [docs/hardware.md](docs/hardware.md) | Measured Cardputer ADV results (heap, SD, Wi-Fi, TLS) |
 | [docs/screens/](docs/screens/) | 240×135 renders (M5GFX fonts and RGB332; individual at 4×, contact sheet at 2×) |
