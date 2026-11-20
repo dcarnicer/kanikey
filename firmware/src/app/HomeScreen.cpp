@@ -91,8 +91,12 @@ void drawHomeScreen(lgfx::LovyanGFX& d, const HomeView& view) {
 
     ui::applyFont(d, ui::UiFont::Base);
     if (view.reminderActive) {
-        d.setTextColor(ui::kAccentHi, ui::kBg);
-        d.drawString(view.reminder, 8, 86);
+        // REM-02: a full-width band, not a recoloured line. On hardware
+        // (2026-11-20) the one-line banner read as the normal Home screen and
+        // the 30 s window ran out twice without anyone noticing it.
+        d.fillRect(4, 83, 232, 15, ui::kAccent);
+        d.setTextColor(ui::kText, ui::kAccent);
+        d.drawString(view.reminder, 10, 86);
     } else {
         d.setTextColor(view.offline ? ui::kWarn : ui::kDim, ui::kBg);
         d.drawString("Next review", 8, 86);
