@@ -2,9 +2,21 @@
 // startWrite()/endWrite() (the caller owns the transfer window).
 #include "app/AboutScreen.h"
 
+#include "ui/Icons.h"
 #include "ui/UiFont.h"
 
 namespace kk::app {
+namespace {
+
+// The About lines are built as text elsewhere; the icon follows the label and
+// is only drawn when the value leaves room for it.
+const ui::Icon* statusIconFor(const std::string& text) {
+    if (text.rfind("Font: ", 0) == 0 || text.rfind("Rad: ", 0) == 0) return &ui::kIconSd;
+    if (text.rfind("Token: ", 0) == 0) return &ui::kIconKey;
+    return nullptr;
+}
+
+}  // namespace
 
 void drawAboutScreen(lgfx::LovyanGFX& d, const AboutView& view) {
     d.fillScreen(ui::kBg);
@@ -33,7 +45,11 @@ void drawAboutScreen(lgfx::LovyanGFX& d, const AboutView& view) {
         d.setTextColor(line.color, ui::kBg);
         std::string s = line.text;
         while (s.size() > 1 && d.textWidth(s.c_str()) > 226) s.pop_back();
+        const int valueWidth = d.textWidth(s.c_str());
         d.drawString(s.c_str(), 7, line.y);
+        const ui::Icon* icon = statusIconFor(line.text);
+        if (icon && 7 + valueWidth + 4 + ui::kIconWidth <= 232)
+            ui::drawIcon(d, *icon, 7 + valueWidth + 4, line.y - 2, line.color);
     }
 }
 

@@ -3,6 +3,7 @@
 #include "app/WifiSetupScreen.h"
 
 #include "ui/HintBar.h"
+#include "ui/Icons.h"
 #include "ui/ListView.h"
 #include "ui/UiFont.h"
 
@@ -30,6 +31,7 @@ void drawHeader(lgfx::LovyanGFX& d, const char* subtitle) {
     d.setTextFont(1);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString(subtitle, 7, 22);
+    ui::drawIcon(d, ui::kIconWifi, 7 + d.textWidth(subtitle) + 4, 20, ui::kDim);
     ui::drawHintRight(d, "Esc: back", ui::kFaint, 232, 5);
     d.drawFastHLine(4, 36, 232, ui::kLine);
 }

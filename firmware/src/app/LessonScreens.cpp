@@ -317,7 +317,8 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         const bool warn = view.status == kk::AnswerStatus::Warning;
         drawPill(d, 86, 20, ok ? "CORRECT" : warn ? "CHECK" : "NOT QUITE",
                  ok ? ui::kOk : warn ? ui::kWarn : ui::kErr,
-                 ok ? ui::kOkBg : warn ? ui::kSurfaceHi : ui::kErrBg);
+                 ok ? ui::kOkBg : warn ? ui::kSurfaceHi : ui::kErrBg,
+                 ok ? &ui::kIconCheck : warn ? nullptr : &ui::kIconCross);
         ui::applyFont(d, ui::UiFont::Small);
         d.setTextColor(ui::kFaint, ui::kBg);
         if (warn) {

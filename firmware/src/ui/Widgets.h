@@ -7,13 +7,17 @@
 #include <vector>
 
 #include "platform/GlyphPack.h"
+#include "ui/Icons.h"
 #include "ui/Theme.h"
 #include "wk/Types.h"
 
 namespace kk::ui {
 
-// Small 6 px label with a background block, top-left at (x, y).
-void drawPill(lgfx::LovyanGFX& d, int x, int y, const char* text, uint16_t fg, uint16_t bg);
+// Small 6 px label with a background block, top-left at (x, y). An optional
+// icon sits after the label in the same pill; the label keeps its position and
+// only the block grows to the right.
+void drawPill(lgfx::LovyanGFX& d, int x, int y, const char* text, uint16_t fg, uint16_t bg,
+              const Icon* icon = nullptr);
 
 // Drops whole UTF-8 code points from the front until the text fits maxWidth.
 void trimFrontToWidth(lgfx::LovyanGFX& d, std::string& text, int maxWidth);

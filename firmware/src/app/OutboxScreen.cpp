@@ -5,6 +5,7 @@
 #include <cstdio>
 
 #include "ui/HintBar.h"
+#include "ui/Icons.h"
 #include "ui/ListView.h"
 #include "ui/Text.h"
 #include "ui/UiFont.h"
@@ -67,6 +68,9 @@ void drawOutboxScreen(lgfx::LovyanGFX& d, const OutboxView& view) {
     d.drawString("OUTBOX", 6, 2);
     char count[32];
     snprintf(count, sizeof count, "%u need attention", view.total);
+    ui::applyFont(d, ui::UiFont::Small);
+    const int countWidth = d.textWidth(count);
+    ui::drawIcon(d, ui::kIconOutbox, 232 - countWidth - 4 - ui::kIconWidth, 4, ui::kErr);
     ui::drawHintRight(d, count, ui::kErr, 232, 5);
 
     if (view.rows.empty()) {

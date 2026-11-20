@@ -1,7 +1,8 @@
 #pragma once
 // Small 1bpp UI icons for the header and status rows. The tables live in this
 // header so the native tests can validate them without a display; `drawIcon`
-// is the only part that needs LovyanGFX. No screen uses an icon yet.
+// is the only part that needs LovyanGFX. Screens draw the tables directly or
+// through drawPill().
 //
 // Rows are packed MSB first: pixel (0, y) is bit 7 of byte y*stride, pixel
 // (8, y) is bit 7 of byte y*stride + 1. Unused low bits in the last byte are 0.

@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <string>
 
+#include "ui/Icons.h"
 #include "ui/UiFont.h"
 
 namespace kk::app {
@@ -45,8 +46,13 @@ void drawSyncScreen(lgfx::LovyanGFX& d, const SyncView& view) {
 
     ui::applyFont(d, ui::UiFont::Title);
     const bool allDone = view.completed >= kSyncRowCount;
-    d.setTextColor(view.finished ? ui::kWarn : allDone ? ui::kOk : ui::kText, ui::kBg);
-    d.drawString(view.finished ? "Sync failed" : allDone ? "Synced" : "Syncing...", 8, 24);
+    const char* title = view.finished ? "Sync failed" : allDone ? "Synced" : "Syncing...";
+    const uint16_t titleColor = view.finished ? ui::kWarn : allDone ? ui::kOk : ui::kText;
+    d.setTextColor(titleColor, ui::kBg);
+    d.drawString(title, 8, 24);
+    const ui::Icon& statusIcon =
+        view.finished ? ui::kIconCross : allDone ? ui::kIconCheck : ui::kIconSync;
+    ui::drawIcon(d, statusIcon, 8 + d.textWidth(title) + 6, 27, titleColor);
     char count[12];
     snprintf(count, sizeof count, "%u/%u", static_cast<unsigned>(view.completed),
              static_cast<unsigned>(kSyncRowCount));
