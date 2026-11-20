@@ -4,6 +4,7 @@
 
 #include <cstdio>
 
+#include "ui/Icons.h"
 #include "ui/UiFont.h"
 
 namespace kk::app {
@@ -47,6 +48,7 @@ void drawSetupScreen(lgfx::LovyanGFX& d, const SetupView& view) {
 
     if (view.apMode) {
         drawLine(d, "Join this Wi-Fi", 38, ui::kDim);
+        ui::drawIcon(d, ui::kIconWifi, 8 + d.textWidth("Join this Wi-Fi") + 5, 36, ui::kDim);
         drawLine(d, view.ssid, 52, ui::kText, 2);
         drawLine(d, "Password", 74, ui::kDim);
         drawLine(d, view.apPassword, 86, ui::kText);
@@ -55,6 +57,7 @@ void drawSetupScreen(lgfx::LovyanGFX& d, const SetupView& view) {
         drawLine(d, "Esc: cancel", 125, ui::kFaint, 0);
     } else {
         drawLine(d, "Connected", 36, ui::kOk);
+        ui::drawIcon(d, ui::kIconWifi, 8 + d.textWidth("Connected") + 5, 34, ui::kOk);
         drawLine(d, view.ssid, 48, ui::kText, 2);
         drawLine(d, "Open on this network", 66, ui::kDim);
         drawLine(d, view.url, 76, ui::kAccentHi);

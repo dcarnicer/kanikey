@@ -10,12 +10,15 @@
 
 namespace kk::ui {
 
-void drawPill(lgfx::LovyanGFX& d, int x, int y, const char* text, uint16_t fg, uint16_t bg) {
+void drawPill(lgfx::LovyanGFX& d, int x, int y, const char* text, uint16_t fg, uint16_t bg,
+              const Icon* icon) {
     ui::applyFont(d, ui::UiFont::Small);
-    const int w = d.textWidth(text) + 8;
+    const int textWidth = d.textWidth(text);
+    const int w = textWidth + 8 + (icon ? kIconWidth + 4 : 0);
     d.fillRect(x, y, w, 13, bg);
     d.setTextColor(fg, bg);
     d.drawString(text, x + 4, y + 2);
+    if (icon) drawIcon(d, *icon, x + 4 + textWidth + 4, y + 1, fg);
 }
 
 void trimFrontToWidth(lgfx::LovyanGFX& d, std::string& text, int maxWidth) {

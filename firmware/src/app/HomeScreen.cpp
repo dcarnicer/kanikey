@@ -5,6 +5,7 @@
 #include <cstdio>
 
 #include "ui/HintBar.h"
+#include "ui/Icons.h"
 #include "ui/UiFont.h"
 
 namespace kk::app {
@@ -25,9 +26,12 @@ void drawHomeScreen(lgfx::LovyanGFX& d, const HomeView& view) {
     else
         snprintf(sync, sizeof sync, "Synced %s", view.syncClock);
     ui::applyFont(d, ui::UiFont::Base);
+    const uint16_t syncColor =
+        view.syncTotal > 0 ? ui::kAccentHi : (view.offline ? ui::kWarn : ui::kDim);
+    const int syncWidth = d.textWidth(sync);
+    ui::drawIcon(d, ui::kIconSync, 198 - syncWidth - 4 - ui::kIconWidth, 3, syncColor);
     d.setTextDatum(lgfx::top_right);
-    d.setTextColor(view.syncTotal > 0 ? ui::kAccentHi : (view.offline ? ui::kWarn : ui::kDim),
-                   ui::kBg);
+    d.setTextColor(syncColor, ui::kBg);
     d.drawString(sync, 198, 5);
 
     char right[20];
