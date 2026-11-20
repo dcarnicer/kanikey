@@ -1,6 +1,5 @@
 #include "app/StudyScreens.h"
 
-#include <algorithm>
 #include <cstdio>
 #include <cstring>
 
@@ -26,6 +25,54 @@ void drawPrompt(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack, kk::GlyphPack& radi
                                kk::ClipRect{cx - 10, cy - 9, cx + 10, cy + 9}))
         ui::drawMissingGlyph(d, fontPack, radicalPack, cx, cy);
 }
+
+void drawStudyRow(lgfx::LovyanGFX& d, int index, int x, int y, int width, bool focus,
+                  const void* ctx) {
+    (void)width;
+    const StudyMenuView& view = *static_cast<const StudyMenuView*>(ctx);
+    ui::applyFont(d, ui::UiFont::Base);
+    d.setTextColor(focus ? ui::kText : ui::kDim, focus ? ui::kSurfaceHi : ui::kBg);
+    d.drawString(kStudyLabels[index], x, y + 2);
+    if (view.counts[index][0]) {
+        d.setTextFont(0);
+        d.setTextDatum(lgfx::top_right);
+        d.setTextColor(focus ? ui::kAccentHi : ui::kFaint,
+                       focus ? ui::kSurfaceHi : ui::kBg);
+        d.drawString(view.counts[index], 228, y + 4);
+        d.setTextDatum(lgfx::top_left);
+    }
+}
+
+struct CriticalListCtx {
+    const CriticalListView* view = nullptr;
+    kk::GlyphPack* fontPack = nullptr;
+    kk::GlyphPack* radicalPack = nullptr;
+};
+
+void drawCriticalRow(lgfx::LovyanGFX& d, int index, int x, int y, int width, bool focus,
+                     const void* ctx) {
+    (void)width;
+    const CriticalListCtx& list = *static_cast<const CriticalListCtx*>(ctx);
+    const CriticalRowView& item = list.view->rows[static_cast<size_t>(index)];
+    d.fillRect(x, y, 22, 20, ui::kSurface);
+    d.drawRect(x, y, 22, 20, ui::kLine);
+    drawPrompt(d, *list.fontPack, *list.radicalPack, item.subject, x + 11, y + 10);
+
+    char label[72];
+    snprintf(label, sizeof label, "%s", item.meaning.c_str());
+    ui::applyFont(d, ui::UiFont::Small);
+    d.setTextColor(focus ? ui::kText : ui::kDim, focus ? ui::kSurfaceHi : ui::kBg);
+    char* end = label + strlen(label);
+    while (end > label + 1 && d.textWidth(label) > 178) *--end = '\0';
+    d.drawString(label, x + 25, y + 1);
+
+    char percent[12];
+    snprintf(percent, sizeof percent, "%u%%", static_cast<unsigned>(item.percentage));
+    d.setTextDatum(lgfx::top_right);
+    d.setTextColor(ui::kErr, focus ? ui::kSurfaceHi : ui::kBg);
+    d.drawString(percent, 230, y + 1);
+    d.setTextDatum(lgfx::top_left);
+}
 }  // namespace
 
 void drawStudyMenuScreen(lgfx::LovyanGFX& d, const StudyMenuView& view) {
@@ -38,26 +85,15 @@ void drawStudyMenuScreen(lgfx::LovyanGFX& d, const StudyMenuView& view) {
     d.drawFastHLine(4, 22, 232, ui::kLine);
 
     const ui::ListWindow window = ui::listWindow(kStudyRows, view.selectedIndex, kStudyRows);
-    for (int row = 0; row < window.rows; ++row) {
-        const int i = window.first + row;
-        const int y = 30 + row * 20;
-        const bool focus = i == view.selectedIndex;
-        if (focus) {
-            d.fillRect(4, y - 1, 228, 19, ui::kSurfaceHi);
-            d.fillRect(4, y - 1, 2, 19, ui::kAccent);
-        }
-        ui::applyFont(d, ui::UiFont::Base);
-        d.setTextColor(focus ? ui::kText : ui::kDim, focus ? ui::kSurfaceHi : ui::kBg);
-        d.drawString(kStudyLabels[i], 12, y + 2);
-        if (view.counts[i][0]) {
-            d.setTextFont(0);
-            d.setTextDatum(lgfx::top_right);
-            d.setTextColor(focus ? ui::kAccentHi : ui::kFaint,
-                           focus ? ui::kSurfaceHi : ui::kBg);
-            d.drawString(view.counts[i], 228, y + 4);
-            d.setTextDatum(lgfx::top_left);
-        }
-    }
+    ui::ListStyle style;
+    style.x = 4;
+    style.y = 30;
+    style.width = 228;
+    style.rowHeight = 20;
+    style.textInset = 8;  // the labels start at x=12
+    style.focusOffsetY = -1;
+    style.focusHeight = 19;
+    ui::drawList(d, window, drawStudyRow, &view, style);
 
     if (view.note[0]) {
         d.setTextFont(0);
@@ -95,43 +131,18 @@ void drawCriticalListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
 
     constexpr int kVisible = 5;
     const ui::ListWindow window = ui::listWindow(total, view.selectedIndex, kVisible);
-    for (int row = 0; row < window.rows; ++row) {
-        const int i = window.first + row;
-        const CriticalRowView& item = view.rows[static_cast<size_t>(i)];
-        const int y = 18 + row * 20;
-        if (i == view.selectedIndex) {
-            d.fillRect(4, y - 1, 228, 19, ui::kSurfaceHi);
-            d.fillRect(4, y - 1, 2, 19, ui::kAccent);
-        }
-        d.fillRect(9, y, 22, 20, ui::kSurface);
-        d.drawRect(9, y, 22, 20, ui::kLine);
-        drawPrompt(d, fontPack, radicalPack, item.subject, 20, y + 10);
-
-        char label[72];
-        snprintf(label, sizeof label, "%s", item.meaning.c_str());
-        ui::applyFont(d, ui::UiFont::Small);
-        d.setTextColor(i == view.selectedIndex ? ui::kText : ui::kDim,
-                       i == view.selectedIndex ? ui::kSurfaceHi : ui::kBg);
-        char* end = label + strlen(label);
-        while (end > label + 1 && d.textWidth(label) > 178) *--end = '\0';
-        d.drawString(label, 34, y + 1);
-
-        char percent[12];
-        snprintf(percent, sizeof percent, "%u%%", static_cast<unsigned>(item.percentage));
-        d.setTextDatum(lgfx::top_right);
-        d.setTextColor(ui::kErr, i == view.selectedIndex ? ui::kSurfaceHi : ui::kBg);
-        d.drawString(percent, 230, y + 1);
-        d.setTextDatum(lgfx::top_left);
-    }
-    if (total > kVisible) {
-        constexpr int kTrackY = 18;
-        constexpr int kTrackH = 100;
-        d.fillRect(236, kTrackY, 2, kTrackH, ui::kLine);
-        const int thumbH = std::max(10, kTrackH * kVisible / total);
-        const int thumbY =
-            kTrackY + (kTrackH - thumbH) * window.first / std::max(1, total - kVisible);
-        d.fillRect(236, thumbY, 2, thumbH, ui::kAccentHi);
-    }
+    ui::ListStyle style;
+    style.x = 4;
+    style.y = 18;
+    style.width = 228;
+    style.rowHeight = 20;
+    style.textInset = 5;  // the prompt box starts at x=9
+    style.focusOffsetY = -1;
+    style.focusHeight = 19;
+    style.trackX = 236;
+    style.trackHeight = 100;
+    CriticalListCtx ctx{&view, &fontPack, &radicalPack};
+    ui::drawList(d, window, drawCriticalRow, &ctx, style);
     ui::drawHintLeft(d, "Enter: detail  P: practice  Esc: back");
 }
 
