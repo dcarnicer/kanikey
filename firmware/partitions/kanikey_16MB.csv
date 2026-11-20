@@ -1,0 +1,11 @@
+# KaniKey, 16 MB flash (M5Stack PaperDIY, ESP32-S3-WROOM-1-N16R8).
+# Two 6 MiB OTA slots: one runs, the other receives; otadata says which one
+# boots (docs/ota.md). The remaining 3.94 MiB is LittleFS for the cache and
+# outbox. The labels stay `app0`, `app1` and `spiffs`: OTA addresses slots by
+# label, and LittleFS mounts the `spiffs` partition.
+# Name,    Type, SubType, Offset,   Size,     Flags
+nvs,       data, nvs,     0x9000,   0x5000,
+otadata,   data, ota,     0xE000,   0x2000,
+app0,      app,  ota_0,   0x10000,  0x600000,
+app1,      app,  ota_1,   0x610000, 0x600000,
+spiffs,    data, spiffs,  0xC10000, 0x3F0000,
