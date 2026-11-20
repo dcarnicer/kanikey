@@ -310,10 +310,17 @@ bool powerTick(uint32_t now) {
         }
         saveCacheSnapshot();
         firmwareBeforeSleep();
+        const kk::Summary* summary =
+            state().session.gHaveSummary ? &state().session.gSummary : nullptr;
+#if defined(TGC_BOARD_PAPERDIY)
+        // PD-04: the sleeping frame, then the one timer for the sync cadence and
+        // the reminder.
+        tgc::board::deepSleep(kk::app::paperIdleSleep(summary));
+#else
         // REM-02: a reminder timer when M1 or M3 is set. Both off (the defaults)
         // arms nothing and this is the same key-only deep sleep as before.
-        tgc::board::deepSleep(kk::app::reminderArmIdle(
-            state().session.gHaveSummary ? &state().session.gSummary : nullptr));
+        tgc::board::deepSleep(kk::app::reminderArmIdle(summary));
+#endif
         return true;
     }
     return false;

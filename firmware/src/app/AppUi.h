@@ -15,6 +15,9 @@ lgfx::LovyanGFX& target();
 // says so; presentNow() pushes at once, for blocking frames and the first frame.
 void present();
 void presentNow();
+// PD-04: the sleeping frame before a deep sleep: a full-quality refresh now,
+// whatever the PD-02 policy would pick, because it is the frame that stays up.
+void presentFullNow();
 void presentTick(uint32_t now);
 bool ensureCanvas();
 void releaseCanvas();

@@ -42,6 +42,9 @@ struct HomeView {
     // status text then moves to the header's right side.
     bool buttonMenu = false;
     uint8_t focus = 0;
+    // PD-04: the sleeping frame drawn before a deep sleep. On a two-button board
+    // the hint then names the buttons that wake the device.
+    bool asleep = false;
 };
 
 // Draws the Home frame into d. The caller owns startWrite()/endWrite() and

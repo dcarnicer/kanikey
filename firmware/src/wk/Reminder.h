@@ -50,4 +50,9 @@ bool reminderWanted(uint32_t dueReviews, uint32_t nowUtc, const ReminderRules& r
 // True when nowUtc's local wall-clock time falls in the quiet span (M2).
 bool inQuietHours(uint32_t nowUtc, const ReminderRules& rules, UtcOffsetFn offsetAt);
 
+// PD-04: `at` itself when it is outside the quiet span (or M2 is off), else the
+// first moment after it outside the span. Shared by the reminder and the sync
+// cadence, so a night sync waits for the same quiet end as a night reminder.
+uint32_t skipQuietHours(uint32_t at, const ReminderRules& rules, UtcOffsetFn offsetAt);
+
 }  // namespace kk

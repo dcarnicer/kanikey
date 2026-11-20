@@ -54,6 +54,10 @@
 #include "platform/DevWifi.h"
 #include "app/RemProbe.h"
 #include "app/ReminderController.h"
+#if defined(TGC_BOARD_PAPERDIY)
+#include "app/CadenceController.h"
+#include "wk/SyncSteps.h"
+#endif
 #include "platform/AudioCache.h"
 #include "platform/CriticalStore.h"
 #include "platform/GlyphPack.h"
@@ -542,6 +546,42 @@ void drawHome() {
     present();
 }
 
+#if defined(TGC_BOARD_PAPERDIY)
+// PD-04: the sleeping frame is the Home frame with the sleep state in place of
+// the status line and the hint. The battery is the header's percentage and the
+// charging state is text. A full refresh is the frame that stays on the dark
+// panel; a cadence wake takes the PD-02 policy (fullRefresh false).
+void drawSleepingFrame(bool fullRefresh) {
+    if (!state().display.gDisp) return;
+    kk::app::HomeView view = buildHomeView();
+    view.asleep = true;
+    // A sync or battery problem keeps its own status line.
+    if (view.statusColor != kErr && view.statusColor != kWarn) {
+        snprintf(view.statusText, sizeof view.statusText, "%s",
+                 tgc::board::isCharging() ? "Asleep: charging" : "Asleep: on battery");
+        view.statusColor = kFaint;
+        view.levelUp = false;
+    }
+    tgc::board::setDisplayOn(true);  // the boost for this frame; deepSleep() turns it off
+    auto& d = target();
+    d.startWrite();
+    kk::app::drawHomeScreen(d, view);
+    d.endWrite();
+    if (fullRefresh)
+        presentFullNow();
+    else
+        presentNow();
+    state().display.gDisp->waitDisplay();
+}
+
+// PD-04: a button is down, or was pressed since the sync started.
+bool buttonsActive() {
+    using tgc::board::Button;
+    return tgc::board::wasPressed(Button::Select) || tgc::board::wasPressed(Button::Next) ||
+           tgc::board::isHeld(Button::Select) || tgc::board::isHeld(Button::Next);
+}
+#endif
+
 // REM-02: the reminder timer woke the chip. No Wi-Fi and no TLS: the cached
 // summary decides, and `now` is the clock rebuilt from the RTC (never time()).
 // A reminder due shows the banner for 30 s; a key in that window returns, and
@@ -585,8 +625,89 @@ void reminderTimerWake(uint32_t now) {
     }
     const uint32_t after = now + static_cast<uint32_t>((millis() - shownAt + 999u) / 1000u);
     firmwareBeforeSleep();
+#if defined(TGC_BOARD_PAPERDIY)
+    drawSleepingFrame(true);  // PD-04: the banner gives way to the sleeping frame
+#endif
     tgc::board::deepSleep(kk::app::reminderArmAfterWake(after, forecast));
 }
+
+#if defined(TGC_BOARD_PAPERDIY)
+// PD-04: a sync wake, the cadence's. The Quick job runs in the background: no
+// screen and no key. The panel changes only when the numbers did (the PD-02
+// policy), then the device sleeps again, unless a button is down or was pressed
+// (the normal boot takes that). Returns false when the normal boot must go on;
+// true when the job ran and the caller goes on (`sleepWhenDone` false, a reminder
+// is due too). With sleepWhenDone it does not return: it sleeps.
+constexpr uint32_t kCadenceSyncMaxMs = 150000;
+
+bool cadenceSyncWake(uint32_t now, bool sleepWhenDone) {
+    if (!loadCache()) {
+#ifdef KANIKEY_DEV
+        Serial.println("[pd] cadence wake: no cache; normal boot");
+#endif
+        return false;
+    }
+    // The Home numbers as they stand now, on the clock rebuilt from the RTC.
+    applySummary(now);
+    const uint32_t dueBefore = state().session.gDueReviews;
+    const uint32_t lessonsBefore = state().session.gLessons;
+    char nextBefore[sizeof state().session.gNextReview];
+    std::memcpy(nextBefore, state().session.gNextReview, sizeof nextBefore);
+
+    kk::app::startSyncAuto(kk::SyncKind::Quick, false);
+    if (!state().sync.gSyncJob.active) {
+#ifdef KANIKEY_DEV
+        Serial.println("[pd] cadence wake: sync not started; normal boot");
+#endif
+        return false;
+    }
+    bool pressed = false;
+    const uint32_t startedMs = millis();
+    while (state().sync.gSyncJob.active && millis() - startedMs < kCadenceSyncMaxMs) {
+        tgc::board::update();
+        pressed = pressed || buttonsActive();
+        syncAdvance();
+        delay(4);
+    }
+    const bool ok = !state().sync.gSyncJob.active && state().sync.gSyncJob.step == kk::SyncStep::Done;
+    const uint32_t nowAfter = now + (millis() + 999u) / 1000u;
+    cadenceNoteSync(ok, nowAfter);
+    applySummary(nowAfter);
+    const bool redraw = dueBefore != state().session.gDueReviews ||
+                        lessonsBefore != state().session.gLessons ||
+                        std::strcmp(nextBefore, state().session.gNextReview) != 0;
+    if (redraw) drawSleepingFrame(false);
+    tgc::board::update();
+    pressed = pressed || buttonsActive();
+#ifdef KANIKEY_DEV
+    Serial.printf("[pd] cadence wake: sync %s, redraw %s, awake %lu ms\n", ok ? "ok" : "fail",
+                  redraw ? "yes" : "no", static_cast<unsigned long>(millis()));
+#endif
+    if (pressed) return false;
+    if (!sleepWhenDone) return true;
+    firmwareBeforeSleep();
+    tgc::board::deepSleep(kk::app::reminderArmAfterWake(
+        nowAfter, state().session.gHaveSummary ? &state().session.gSummary : nullptr));
+}
+
+// PD-04: a timer wake on the PaperDIY. The one timer may be the sync cadence, the
+// reminder or both. A wake that serves neither (an early RTC) keeps the cadence
+// target and sleeps again.
+void paperTimerWake(uint32_t now) {
+    const bool cadence = kk::app::bootCadenceDue(now);
+    const bool reminder = kk::app::bootReminderDue(now);
+    if (cadence && !cadenceSyncWake(now, !reminder)) return;  // the normal boot
+    if (reminder) {
+        reminderTimerWake(now);  // the banner, or it sleeps again
+        return;
+    }
+    if (cadence) return;  // not reached: a sync with sleepWhenDone sleeps or returns false
+    loadCache();
+    firmwareBeforeSleep();
+    tgc::board::deepSleep(kk::app::reminderArmAfterWake(
+        now, state().session.gHaveSummary ? &state().session.gSummary : nullptr));
+}
+#endif
 
 enum class BootState : uint8_t {
     NoSd,
@@ -932,6 +1053,16 @@ bool homeOwnsScreen() {
 
 }
 
+#if defined(TGC_BOARD_PAPERDIY)
+// PD-04: the idle deep sleep. The sleeping frame is drawn before the timer is
+// armed, so the timer and the RTC clock record are taken just before the sleep.
+uint64_t paperIdleSleep(const kk::Summary* summary) {
+    applySummary(effectiveNow());  // a review may have come due since the last minute tick
+    drawSleepingFrame(true);
+    return reminderArmIdle(summary);
+}
+#endif
+
 // ONB-01: the visual packs are two files. Open the font first: the radical
 // fallback checks whether glyphs.kgp is a legacy combined pack.
 bool openFontPack(bool checkCrc) {
@@ -1059,7 +1190,15 @@ void setup() {
         // REM-02: a reminder timer may show the banner or sleep again here,
         // before the first draw and before any Wi-Fi. Returns only when the
         // normal boot goes on (a key during the banner, or no reminder timer).
-        if (reminderTimer) reminderTimerWake(reminderNow);
+        // PD-04: on the PaperDIY the timer may also be the sync cadence, which
+        // syncs and sleeps the same way (paperTimerWake).
+        if (reminderTimer) {
+#if defined(TGC_BOARD_PAPERDIY)
+            paperTimerWake(reminderNow);
+#else
+            reminderTimerWake(reminderNow);
+#endif
+        }
         tgc::board::setBrightness(kk::settingsBrightness());
     }
     if (state().storage.gFsFormatPrompt) {
