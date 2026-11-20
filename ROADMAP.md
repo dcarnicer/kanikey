@@ -137,8 +137,9 @@ Working on hardware:
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Last recorded build (SPEED-06): **release 1,664,221 B / 1,835,008 B flash
-(90.7%)**, **dev 1,732,741 B (94.4%)**, static RAM 105,400/105,520 B (32.2%).
+Last recorded build (TNG-03 UiFont adoption + USB guard): **release 1,663,213 B
+/ 1,835,008 B flash (90.6%)**, **dev 1,731,669 B (94.4%)**, static RAM
+105,400/105,520 B (32.2%).
 Removing `efontJA_16` freed ~468 KB; the dev image now has ~111 KB of headroom.
 The loop task uses a 24 KiB stack;
 the lazy review batch keeps the lesson-fetch minimum free heap above ~44 KB in
@@ -155,7 +156,7 @@ the 2026-11-19 logs.
 | 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Code and docs done; OUTBOX (API-01/05), 401 (API-03) and parse retry (API-04) verified 2026-11-19; 429 (API-02) and 403 still pending | — |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | v1 done; SETUP-09 on-device Wi-Fi is in review 2026-11-19 (scan/password mask smoked; join paths pending) | SETUP-09 |
 | 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen, item detail, level progress and the Stats screen are live | Partial | UI-08 |
-| 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal, OTA, storage and sleep done; ListView/HintBar/TextLayout/Icons/UiFont added and most screens migrated; icon adoption and remaining custom rows pending | TNG-03 |
+| 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal, OTA, storage and sleep done; ListView/HintBar/TextLayout/Icons/UiFont added, most screens use UiFont; icon adoption and remaining custom rows pending | TNG-03 |
 | 9 | Technical debt, CI and release | Maintainability and shipping | Done (TECH-01…06, TECH-08); TECH-07 only if needed | TECH-07 |
 | 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | EXT-01…05 done; audio, reminders and stroke order remain; round 2 specified in `docs/spec` | STUDY |
 | 11 | Bluetooth keyboard | Optional full-size input; BLE-only, shares the 2.4 GHz radio and the no-PSRAM heap | Post-v1; needs the BT-01 host-stack spike | BT-01 |
@@ -614,8 +615,8 @@ SRS and deck catalog remain intentionally dropped. See
   `ui/TextLayout` (wrapping/ellipsis/UTF-8 trim) and `ui/Icons` are added with
   30 native tests; Home/Settings/Wi-Fi/Outbox/lesson/Study lists and hints use
   them. `UiFont` (Small/Base/Title mapping to the built-in 6x8/6x8/16 px
-  fonts) is added; icon adoption in screens and the remaining custom rows
-  remain.
+  fonts) is adopted in 151 size-1 font pairs across the screens; icon
+  adoption and the remaining custom rows remain.
 - **TNG-04 — Storage layer.** Adapt LittleFS/SD paths and atomic writes for the
   assignment/subject cache (CACHE-01/CACHE-02). **Done:** `platform/CacheStore`
   with `.tmp`/`.bak` and CRC32.
@@ -784,7 +785,7 @@ merged and CFG-01/02/03/04, REV-01/02/03/04/05/06/07/08/09/10/11/12,
 LES-01…LES-06, SETUP-09, ONB-01/02 and SPEED-01/02/03/04/05/07 are in review. The
 eight-section Settings menu replaces the flat list; the registry now has 48
 rows after the Account › Wi-Fi action. Main has 437 native tests and builds at
-1,664,221 B (90.7%) release / 1,732,741 B (94.4%) dev. No round-2 task is
+1,663,213 B (90.6%) release / 1,731,669 B (94.4%) dev. No round-2 task is
 claimed as done
 here beyond the spec status above.
 

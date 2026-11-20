@@ -782,7 +782,8 @@ A150 G143 M81 E147 B586).
   ellipsis and UTF-8 trimming into `TextLayout` and added the 1bpp icon tables;
   Home and a real review feedback (answer list, faint synonyms and a two-line
   hint with `...`) rendered correctly after flashing. Icons are not adopted in
-  screens yet.
+  screens yet. UiFont replaced 151 size-1 font pairs across the screens; the
+  pixel-identical sweep needs the device.
 
 ## Round 2 hardware checks
 
