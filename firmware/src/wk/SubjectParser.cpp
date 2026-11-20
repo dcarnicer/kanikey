@@ -5,6 +5,7 @@
 #include <string_view>
 #include <utility>
 
+#include "wk/AudioPlan.h"
 #include "wk/JsonStream.h"
 #include "wk/Text.h"
 
@@ -146,7 +147,10 @@ public:
                 current_.audios.size() < kMaxSubjectAudioClips)
                 current_.audios.push_back(std::move(currentAudio_));
         } else if (kind == ObjKind::Item) {
-            if (active_ && hasSubjectData_ && current_.id) out_->push_back(std::move(current_));
+            if (active_ && hasSubjectData_ && current_.id) {
+                audioChooseSubjectUrls(current_);
+                out_->push_back(std::move(current_));
+            }
             active_ = false;
             hasSubjectData_ = false;
         }
@@ -734,7 +738,10 @@ std::vector<Subject> parseSubjects(const JsonValue& root, bool details) {
             hasStats = true;
         }
         if (hasStats) s.hasReviewStats = true;
-        if (s.id) out.push_back(std::move(s));
+        if (s.id) {
+            audioChooseSubjectUrls(s);
+            out.push_back(std::move(s));
+        }
     }
     return out;
 }

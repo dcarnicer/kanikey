@@ -26,6 +26,10 @@ constexpr uint16_t kCacheVersion = 12;
 // v11 files stay readable: their payload has no last-sync times and decodes
 // them as meta.savedAt.
 constexpr uint16_t kCacheVersionMin = 11;
+// The subject file (KKCS) has its own version. v13 adds the two audio URLs
+// (Subject::audioUrl) to every subject; a file of any other version is not
+// read, and the batch is fetched again (the same path as a bad cache).
+constexpr uint16_t kSubjectsVersion = 13;
 constexpr size_t kCacheHeaderBytes = 24;
 
 struct CacheMeta {

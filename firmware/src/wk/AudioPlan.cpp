@@ -96,4 +96,55 @@ bool audioPickDownload(const std::vector<AudioClip>& clips, uint8_t preferredVoi
     return false;
 }
 
+std::string audioPrimaryReading(const Subject& s) {
+    for (const Reading& r : s.readings)
+        if (r.primary && r.accepted) return r.text;
+    for (const Reading& r : s.readings)
+        if (r.accepted) return r.text;
+    return s.type == SubjectType::KanaVocabulary ? s.characters : std::string();
+}
+
+bool audioPickVoiceClip(const std::vector<AudioClip>& clips, uint8_t voice,
+                        const std::string& reading, size_t* index) {
+    if (!index) return false;
+    for (const bool matchReading : {true, false}) {
+        if (matchReading && reading.empty()) continue;
+        for (size_t i = 0; i < clips.size(); ++i) {
+            const AudioClip& clip = clips[i];
+            if (clip.voice != voice || clip.url.empty() || !audioClipIsMp3(clip.contentType))
+                continue;
+            if (matchReading && clip.pronunciation != reading) continue;
+            *index = i;
+            return true;
+        }
+    }
+    return false;
+}
+
+void audioChooseSubjectUrls(Subject& subject) {
+    for (std::string& url : subject.audioUrl) url.clear();
+    if (!audioSubjectPlayable(subject.type)) return;
+    const std::string reading = audioPrimaryReading(subject);
+    for (uint8_t voice = 0; voice < 2; ++voice) {
+        size_t index = 0;
+        if (audioPickVoiceClip(subject.audios, voice, reading, &index))
+            subject.audioUrl[voice] = subject.audios[index].url;
+    }
+}
+
+bool audioQueueChoice(const std::string (&urls)[2], uint8_t preferredVoice, uint8_t* voiceOut) {
+    if (!voiceOut) return false;
+    const uint8_t preferred = preferredVoice ? 1 : 0;
+    for (const uint8_t voice : {preferred, static_cast<uint8_t>(preferred ^ 1)}) {
+        if (urls[voice].empty()) continue;
+        *voiceOut = voice;
+        return true;
+    }
+    return false;
+}
+
+bool audioRefillWanted(bool requested, bool batchInRam, bool sdOk, bool tokenOk) {
+    return requested && batchInRam && sdOk && tokenOk;
+}
+
 }  // namespace kk

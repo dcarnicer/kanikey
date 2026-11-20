@@ -219,6 +219,8 @@ bool subjectEncodePayload(const Subject& s, std::vector<uint8_t>* out) {
     w.u16(s.readingCurrentStreak);
     w.u8(s.percentageCorrect);
     w.u8(s.hasReviewStats ? 1 : 0);
+    w.str(s.audioUrl[0]);
+    w.str(s.audioUrl[1]);
     if (!w.ok()) return false;
     *out = std::move(w.bytes());
     return true;
@@ -303,6 +305,7 @@ bool subjectDecodePayload(const uint8_t* data, size_t size, Subject* out) {
         !r.u8(&s.percentageCorrect) || !r.u8(&hasStats))
         return false;
     s.hasReviewStats = hasStats != 0;
+    if (!r.str(&s.audioUrl[0]) || !r.str(&s.audioUrl[1])) return false;
     if (!r.done()) return false;
     *out = std::move(s);
     return true;

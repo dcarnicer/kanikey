@@ -1,45 +1,49 @@
 #include "wk/AudioQueue.h"
 
-#include <algorithm>
-
 namespace kk {
 
 void AudioQueue::useAccount(uint32_t accountKey) {
     if (accountKey == accountKey_) return;
-    items_.clear();
+    count_ = 0;
     accountKey_ = accountKey;
 }
 
-AudioQueue::Add AudioQueue::enqueue(uint32_t subjectId, uint8_t voice, const std::string& url,
-                                    const std::string& contentType) {
+AudioQueue::Add AudioQueue::enqueue(uint32_t subjectId, uint8_t voice, const std::string& url) {
     if (contains(subjectId, voice)) return Add::Duplicate;
-    if (items_.size() >= kAudioQueueMax) return Add::Full;
-    AudioQueueItem item;
+    if (url.size() > kAudioUrlMax) return Add::TooLong;
+    if (count_ >= kAudioQueueMax) return Add::Full;
+    AudioQueueItem& item = items_[count_++];
     item.subjectId = subjectId;
     item.voice = voice;
-    item.url = url;
-    item.contentType = contentType;
-    items_.push_back(std::move(item));
+    item.failures = 0;
+    item.urlLen = static_cast<uint8_t>(url.size());
+    std::memcpy(item.url, url.data(), url.size());
+    item.url[url.size()] = '\0';
     return Add::Added;
 }
 
 bool AudioQueue::contains(uint32_t subjectId, uint8_t voice) const {
-    return std::any_of(items_.begin(), items_.end(), [=](const AudioQueueItem& item) {
-        return item.subjectId == subjectId && item.voice == voice;
-    });
+    for (size_t i = 0; i < count_; ++i)
+        if (items_[i].subjectId == subjectId && items_[i].voice == voice) return true;
+    return false;
+}
+
+void AudioQueue::removeFront() {
+    for (size_t i = 1; i < count_; ++i) items_[i - 1] = items_[i];
+    --count_;
 }
 
 void AudioQueue::popFront() {
-    if (!items_.empty()) items_.erase(items_.begin());
+    if (count_ > 0) removeFront();
 }
 
 bool AudioQueue::failFront() {
-    if (items_.empty()) return false;
-    AudioQueueItem item = std::move(items_.front());
-    items_.erase(items_.begin());
+    if (count_ == 0) return false;
+    AudioQueueItem item = items_[0];
+    removeFront();
     ++item.failures;
     if (item.failures >= kAudioQueueMaxFailures) return true;
-    items_.push_back(std::move(item));
+    items_[count_++] = item;  // a slot is free: removeFront() made one
     return false;
 }
 

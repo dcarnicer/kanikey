@@ -1,18 +1,25 @@
 #pragma once
-// AUD-02 download queue, pure rules. The queue keeps the clip targets of a
-// batch in RAM (URLs copied, so the batch can be evicted), in arrival order,
-// with a bound, dedupe by subject and voice, and a failure limit per entry.
-// audioDrainAllowed() and audioDrainHeapOk() decide when one clip may be
-// downloaded. No Arduino headers, so the native tests cover them.
+// AUD-02 download queue, pure rules. The queue keeps the clip targets in RAM in
+// arrival order, with a bound, dedupe by subject and voice, and a failure limit
+// per entry. The storage is a fixed array inside the object: enqueueing never
+// allocates, so the queue adds nothing to the heap fragmentation that a clip
+// download needs (hardware 2026-11-20: 127 KB free, largest block 41 KB, and the
+// drain refused). audioDrainAllowed() and audioDrainHeapOk() decide when one
+// clip may be downloaded. No Arduino headers, so the native tests cover them.
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <string>
-#include <vector>
 
 namespace kk {
 
 inline constexpr size_t kAudioQueueMax = 24;
 inline constexpr uint8_t kAudioQueueMaxFailures = 2;
+
+// Longest URL the queue keeps, in bytes without the terminating NUL. WaniKani
+// clip URLs were 60-100 characters on 2026-11-20. A longer one is refused
+// (AudioQueue::Add::TooLong) and logged by the caller, never truncated.
+inline constexpr size_t kAudioUrlMax = 128;
 
 // Heap a clip download needs once the canvas is released: the TLS handshake
 // needs a large contiguous block (hardware 2026-11-20: 23.5 KB largest failed,
@@ -30,13 +37,13 @@ struct AudioQueueItem {
     uint32_t subjectId = 0;
     uint8_t voice = 0;     // 0 female, 1 male
     uint8_t failures = 0;  // failed attempts so far
-    std::string url;       // the MP3 URL of the chosen clip
-    std::string contentType;
+    uint8_t urlLen = 0;    // bytes in url
+    char url[kAudioUrlMax + 1] = {};  // the MP3 URL of the chosen clip, NUL-terminated
 };
 
 class AudioQueue {
 public:
-    enum class Add : uint8_t { Added, Duplicate, Full };
+    enum class Add : uint8_t { Added, Duplicate, Full, TooLong };
 
     uint32_t accountKey() const { return accountKey_; }
 
@@ -44,15 +51,14 @@ public:
     // URLs belong to one token.
     void useAccount(uint32_t accountKey);
 
-    Add enqueue(uint32_t subjectId, uint8_t voice, const std::string& url,
-                const std::string& contentType);
+    Add enqueue(uint32_t subjectId, uint8_t voice, const std::string& url);
     bool contains(uint32_t subjectId, uint8_t voice) const;
 
-    bool empty() const { return items_.empty(); }
-    size_t size() const { return items_.size(); }
+    bool empty() const { return count_ == 0; }
+    size_t size() const { return count_; }
 
     // Requires !empty(). The reference is valid until the next mutation.
-    const AudioQueueItem& front() const { return items_.front(); }
+    const AudioQueueItem& front() const { return items_[0]; }
 
     // Success: the front entry leaves the queue.
     void popFront();
@@ -61,11 +67,15 @@ public:
     // turn; at kAudioQueueMaxFailures it is dropped. Returns true when dropped.
     bool failFront();
 
-    void clear() { items_.clear(); }
+    void clear() { count_ = 0; }
 
 private:
+    // Drops items_[0] and shifts the rest forward. Requires !empty().
+    void removeFront();
+
     uint32_t accountKey_ = 0;
-    std::vector<AudioQueueItem> items_;
+    size_t count_ = 0;
+    AudioQueueItem items_[kAudioQueueMax];
 };
 
 // Everything the drain decision depends on, read by the caller at the moment

@@ -16,6 +16,7 @@
 #include "app/App.h"
 #include "app/AppState.h"
 #include "app/AppUi.h"
+#include "app/AudioController.h"
 #include "app/BootScreen.h"
 #include "app/CacheController.h"
 #include "app/DebugScreens.h"
@@ -364,6 +365,9 @@ bool loadCachedBatch() {
         Serial.printf("[cache] batch loaded: %u assignments, %u subjects\n",
                       static_cast<unsigned>(state().cache.gBatch.assignments.size()),
                       static_cast<unsigned>(state().cache.gBatch.subjects.size()));
+        // AUD-02: the queue does not survive a restart; its clips come back from
+        // these subjects' persisted URLs on the next audio tick.
+        if (state().cache.gBatch.ok) audioRequestRefill();
         return state().cache.gBatch.ok;
     } catch (const std::bad_alloc&) {
         Serial.println("[cache] batch load out of memory");

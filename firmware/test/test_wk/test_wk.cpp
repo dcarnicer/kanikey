@@ -2377,7 +2377,16 @@ static void test_subject_audio_parse() {
     for (const std::vector<Subject>* list : {&dom, static_cast<const std::vector<Subject>*>(&stream)}) {
         TEST_ASSERT_EQUAL_STRING("にほん", (*list)[0].audios[0].pronunciation.c_str());
         TEST_ASSERT_EQUAL_STRING("にっぽん", (*list)[0].audios[1].pronunciation.c_str());
+        // No readings in this fixture, so each voice takes its first MP3 clip.
+        TEST_ASSERT_EQUAL_STRING("https://example.test/female.mp3", (*list)[0].audioUrl[0].c_str());
+        TEST_ASSERT_EQUAL_STRING("https://example.test/male.mp3", (*list)[0].audioUrl[1].c_str());
     }
+    // Without details the clips and their URLs are not read.
+    std::vector<Subject> plain;
+    TEST_ASSERT_TRUE(parseSubjectsStream(text, &plain, false));
+    TEST_ASSERT_TRUE(plain[0].audios.empty());
+    TEST_ASSERT_TRUE(plain[0].audioUrl[0].empty());
+    TEST_ASSERT_TRUE(plain[0].audioUrl[1].empty());
 }
 
 static void test_subject_stream_matches_dom() {

@@ -29,6 +29,7 @@ struct AudioState {
 };
 
 AudioState gAudio;
+bool gCreatedPending = false;  // set by a fresh cache, read once by audioCacheTakeCreated()
 
 uint32_t nowSeconds() {
     const uint32_t now = static_cast<uint32_t>(time(nullptr));
@@ -238,8 +239,15 @@ bool audioCacheOpen(fs::FS& sd, uint32_t accountKey) {
     gAudio.accountKey = accountKey;
     gAudio.open = true;
     writeIndex(sd);
+    gCreatedPending = true;
     Serial.println("[audio] cache created");
     return true;
+}
+
+bool audioCacheTakeCreated() {
+    const bool created = gCreatedPending;
+    gCreatedPending = false;
+    return created;
 }
 
 constexpr size_t kClipChunkBytes = 4096;
@@ -278,9 +286,8 @@ bool audioCacheHasMp3(fs::FS& sd, uint32_t subjectId, uint8_t voice) {
     return sd.exists(path);
 }
 
-uint32_t audioCacheFetchClip(fs::FS& sd, uint32_t subjectId, uint8_t voice,
-                             const std::string& url, uint32_t handshakeSec,
-                             std::string* error) {
+uint32_t audioCacheFetchClip(fs::FS& sd, uint32_t subjectId, uint8_t voice, const char* url,
+                             uint32_t handshakeSec, std::string* error) {
     if (!gAudio.open) {
         if (error) *error = "cache closed";
         return 0;
@@ -305,7 +312,7 @@ uint32_t audioCacheFetchClip(fs::FS& sd, uint32_t subjectId, uint8_t voice,
                          gAudio.entries.end());
     entry.usedAt = nowSeconds();
     String reason;
-    const bool ok = downloadClip(sd, entry, String(url.c_str()), handshakeSec, chunk,
+    const bool ok = downloadClip(sd, entry, String(url), handshakeSec, chunk,
                                  kClipChunkBytes, &reason);
     heap_caps_free(chunk);
     if (!ok) {
