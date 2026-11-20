@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -962,6 +963,62 @@ static void test_iso8601_round_trip() {
     TEST_ASSERT_EQUAL_UINT32(0, e);
     TEST_ASSERT_FALSE(parseIso8601("2026-10-25 12:38:37", &e));
     TEST_ASSERT_FALSE(parseIso8601("2026-10-25T12:38:37+02:00", &e));
+}
+
+// The scanf-free field reader (wk/Time.h, FLASH-02) must give the same decision
+// and the same fields as the sscanf it replaced, for every input the old
+// parser could see. Host glibc sscanf is the reference; the corpus mixes
+// mutated WaniKani timestamps with random strings over a scanf-relevant
+// alphabet, and it must contain accepted cases as well as refused ones.
+static void test_iso8601_scan_matches_sscanf() {
+    static const char* const kSeeds[] = {
+        "2026-10-25T12:38:37.375268Z", "1970-01-01T00:00:00Z", "2026-01-01T00:30:00Z",
+        "2026-10-25T12:38:37+00:00", "2026-1-5T1:2:3     Z",
+    };
+    static const char kAlphabet[] = "0123456789-+:T.Z \t\r\v\f\n-x";
+    const size_t alphabetLen = sizeof(kAlphabet) - 1;
+    uint32_t seed = 20261120u;
+    auto next = [&seed]() {
+        seed = seed * 1103515245u + 12345u;
+        return (seed >> 16) & 0x7fffu;
+    };
+    size_t accepted = 0;
+    for (int iter = 0; iter < 40000; ++iter) {
+        std::string s;
+        if (iter % 2 == 0) {
+            s = kSeeds[next() % (sizeof(kSeeds) / sizeof(kSeeds[0]))];
+            const size_t at = next() % (s.size() + 1);
+            const char c = kAlphabet[next() % alphabetLen];
+            switch (next() % 3) {
+                case 0: s.insert(s.begin() + static_cast<long>(at), c); break;
+                case 1: if (at < s.size()) s[at] = c; break;
+                default: if (at < s.size()) s.erase(at, 1); break;
+            }
+        } else {
+            const size_t len = next() % 26;
+            for (size_t i = 0; i < len; ++i) s.push_back(kAlphabet[next() % alphabetLen]);
+        }
+        int ref[6] = {0, 0, 0, 0, 0, 0};
+        const int count = std::sscanf(s.c_str(), "%4d-%2d-%2dT%2d:%2d:%2d", &ref[0], &ref[1],
+                                      &ref[2], &ref[3], &ref[4], &ref[5]);
+        int got[6] = {0, 0, 0, 0, 0, 0};
+        const bool ok = kk::scanDateTimeFields(s, got);
+        TEST_ASSERT_EQUAL_MESSAGE(count == 6, ok, s.c_str());
+        if (ok) {
+            ++accepted;
+            for (int i = 0; i < 6; ++i) TEST_ASSERT_EQUAL_MESSAGE(ref[i], got[i], s.c_str());
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_UINT32(1000, static_cast<uint32_t>(accepted));
+    TEST_ASSERT_GREATER_THAN_UINT32(1000, static_cast<uint32_t>(40000 - accepted));
+    // A NUL ends the input for sscanf, so a field after it must not convert.
+    const std::string withNul("2026-10-25T12:38:37\0Z", 21);
+    int nulRef[6] = {0, 0, 0, 0, 0, 0};
+    TEST_ASSERT_EQUAL(6, std::sscanf(withNul.c_str(), "%4d-%2d-%2dT%2d:%2d:%2d", &nulRef[0],
+                                     &nulRef[1], &nulRef[2], &nulRef[3], &nulRef[4], &nulRef[5]));
+    int nulGot[6] = {0, 0, 0, 0, 0, 0};
+    TEST_ASSERT_TRUE(kk::scanDateTimeFields(withNul, nulGot));
+    TEST_ASSERT_FALSE(kk::scanDateTimeFields(std::string("2026-10-25T12\0:38:37", 21), nulGot));
 }
 
 static void test_rate_limit_reset_in_42s() {
@@ -4308,6 +4365,7 @@ int main(int, char**) {
     RUN_TEST(test_json_stream_truncation_and_depth);
     RUN_TEST(test_json_stream_sink_rejection);
     RUN_TEST(test_iso8601_round_trip);
+    RUN_TEST(test_iso8601_scan_matches_sscanf);
     RUN_TEST(test_rate_limit_reset_in_42s);
     RUN_TEST(test_rate_limit_past_or_zero_falls_back);
     RUN_TEST(test_rate_limit_untrusted_clock_falls_back);

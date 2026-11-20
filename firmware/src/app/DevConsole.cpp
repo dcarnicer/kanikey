@@ -1334,6 +1334,40 @@ void handleSerial() {
                                    "digits, '.', '-', not WaniKani; port 1-65535");
                 }
             }
+#ifdef KANIKEY_DEV
+        } else if (state().ui.gSerialLine == "fs") {
+            // FLASH-01 probe: LittleFS total and used bytes, then every entry of
+            // the top-level /state directory with its size. Read-only.
+            if (!state().storage.gFsOk) {
+                Serial.println("[fs] LittleFS not mounted");
+            } else {
+                const size_t total = LittleFS.totalBytes();
+                const size_t used = LittleFS.usedBytes();
+                Serial.printf("[fs] LittleFS total %u B, used %u B, free %u B\n",
+                              static_cast<unsigned>(total), static_cast<unsigned>(used),
+                              static_cast<unsigned>(used <= total ? total - used : 0));
+                File dir = LittleFS.open("/state");
+                if (!dir || !dir.isDirectory()) {
+                    Serial.println("[fs] /state: missing");
+                } else {
+                    size_t files = 0;
+                    size_t bytes = 0;
+                    for (File f = dir.openNextFile(); f; f = dir.openNextFile()) {
+                        if (f.isDirectory()) {
+                            Serial.printf("[fs]   %s/ (directory)\n", f.name());
+                            continue;
+                        }
+                        ++files;
+                        bytes += f.size();
+                        Serial.printf("[fs]   %-24s %8u B\n", f.name(),
+                                      static_cast<unsigned>(f.size()));
+                    }
+                    Serial.printf("[fs] /state: %u files, %u B\n", static_cast<unsigned>(files),
+                                  static_cast<unsigned>(bytes));
+                }
+                dir.close();
+            }
+#endif
         } else if (state().ui.gSerialLine.startsWith("K ")) {
             injectKeys(state().ui.gSerialLine.substring(2));
         } else if (state().ui.gSerialLine == "N") {
@@ -1379,7 +1413,7 @@ void handleSerial() {
 #endif
         } else if (!state().ui.gSerialLine.isEmpty()) {
 #ifdef KANIKEY_DEV
-            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page-right <=page-left j=lesson-select D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear J=attention-outbox Y=clear-rollback C=dev-cache X=clear-cache K <keys>=type R<id>=radical U <url>=manifest F=firmware-check I=firmware-install V=firmware-screen k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload T=dev-token L=radical-lesson E=zero-due H=drop-batch A<code>=fake-start B=bad-pack-crc O=force-battery Z=light-sleep-test Z<s>=sleep G<n>=key-storm n=test-tone a=audio-cache rem <s> [n]=timer-wake-probe rem=probe-log rem tone=tone-heap cap <bytes>=body-cap (0 off) devhost <host> <port>|off=send-requests-to-host remind <s>=reminder-wake remind=reminder-log cue <chime|correct|wrong|end>=sound-cue cue vol <low|med|high>=cue-level\n");
+            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page-right <=page-left j=lesson-select D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear J=attention-outbox Y=clear-rollback C=dev-cache X=clear-cache K <keys>=type R<id>=radical U <url>=manifest F=firmware-check I=firmware-install V=firmware-screen k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload T=dev-token L=radical-lesson E=zero-due H=drop-batch A<code>=fake-start B=bad-pack-crc O=force-battery Z=light-sleep-test Z<s>=sleep G<n>=key-storm n=test-tone a=audio-cache rem <s> [n]=timer-wake-probe rem=probe-log rem tone=tone-heap cap <bytes>=body-cap (0 off) devhost <host> <port>|off=send-requests-to-host fs=littlefs-usage remind <s>=reminder-wake remind=reminder-log cue <chime|correct|wrong|end>=sound-cue cue vol <low|med|high>=cue-level\n");
 #else
             Serial.printf("[kk] commands: h=heap i=pack S=asset-server p=picture r=restart n=test-tone a=audio-cache up <bytes> <path>=sd-upload\n");
 #endif

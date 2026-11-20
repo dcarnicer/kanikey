@@ -18,12 +18,63 @@ inline int64_t daysFromCivil(int y, unsigned m, unsigned d) {
     return static_cast<int64_t>(era) * 146097 + static_cast<int64_t>(doe) - 719468;
 }
 
+// The six fields of `%4d-%2d-%2dT%2d:%2d:%2d`, read without scanf. newlib's
+// scanf engine costs ~9 KB of flash (FLASH-01), and this one call was its only
+// user. Each `%Nd` skips white space (not counted), takes an optional sign
+// (counted in N) and then digits; a literal must match exactly. A NUL ends the
+// input, as it does for sscanf. test_iso8601_scan_matches_sscanf (in
+// test/test_wk/test_wk.cpp) checks it against sscanf.
+namespace detail {
+
+inline bool isScanSpace(char c) { return c == ' ' || (c >= '\t' && c <= '\r'); }
+
+inline bool scanIntField(std::string_view t, size_t* pos, size_t width, int* out) {
+    size_t i = *pos;
+    while (i < t.size() && isScanSpace(t[i])) ++i;
+    const size_t limit = i + width < t.size() ? i + width : t.size();
+    bool negative = false;
+    if (i < limit && (t[i] == '+' || t[i] == '-')) {
+        negative = t[i] == '-';
+        ++i;
+    }
+    const size_t digitsAt = i;
+    long value = 0;
+    while (i < limit && t[i] >= '0' && t[i] <= '9') {
+        value = value * 10 + (t[i] - '0');
+        ++i;
+    }
+    if (i == digitsAt) return false;
+    *out = static_cast<int>(negative ? -value : value);
+    *pos = i;
+    return true;
+}
+
+inline bool scanLiteral(std::string_view t, size_t* pos, char c) {
+    if (*pos >= t.size() || t[*pos] != c) return false;
+    ++*pos;
+    return true;
+}
+
+}  // namespace detail
+
+inline bool scanDateTimeFields(std::string_view t, int f[6]) {
+    size_t p = 0;
+    return detail::scanIntField(t, &p, 4, &f[0]) && detail::scanLiteral(t, &p, '-') &&
+           detail::scanIntField(t, &p, 2, &f[1]) && detail::scanLiteral(t, &p, '-') &&
+           detail::scanIntField(t, &p, 2, &f[2]) && detail::scanLiteral(t, &p, 'T') &&
+           detail::scanIntField(t, &p, 2, &f[3]) && detail::scanLiteral(t, &p, ':') &&
+           detail::scanIntField(t, &p, 2, &f[4]) && detail::scanLiteral(t, &p, ':') &&
+           detail::scanIntField(t, &p, 2, &f[5]);
+}
+
 inline bool parseIso8601(std::string_view text, uint32_t* epoch) {
     if (!epoch) return false;
     const std::string t(text);
-    int y = 0, mo = 0, d = 0, h = 0, mi = 0, s = 0;
-    if (std::sscanf(t.c_str(), "%4d-%2d-%2dT%2d:%2d:%2d", &y, &mo, &d, &h, &mi, &s) != 6)
-        return false;
+    int f[6] = {0, 0, 0, 0, 0, 0};
+    if (!scanDateTimeFields(t, f)) return false;
+    const int y = f[0], mo = f[1], d = f[2], h = f[3], mi = f[4], s = f[5];
+    // The tail is checked from the fixed 19-character prefix, as before the
+    // scanf replacement, so malformed input is accepted or refused the same way.
     size_t pos = 19;
     if (pos < t.size() && t[pos] == '.') {
         ++pos;
