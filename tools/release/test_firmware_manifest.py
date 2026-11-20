@@ -12,7 +12,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from firmware_manifest import ManifestError, build_manifest, main, parse_slot_size
+from firmware_manifest import (ManifestError, build_manifest, main, parse_slot_size,
+                               version_from_header)
 
 ROOT = Path(__file__).resolve().parents[2]
 PARTITIONS = ROOT / "firmware" / "partitions" / "kanikey_8MB.csv"
@@ -26,6 +27,21 @@ def app_image(size: int = 1024) -> bytes:
 class FirmwareManifestTest(unittest.TestCase):
     def test_slot_size_from_partition_table(self) -> None:
         self.assertEqual(parse_slot_size(PARTITIONS), 0x1C0000)
+
+    def test_version_header_has_one_release_literal(self) -> None:
+        # Dev test images set KANIKEY_DEV_VERSION; the header itself must keep
+        # a single release literal for the tag check.
+        version = version_from_header(VERSION_H)
+        self.assertRegex(version, r"^\d+\.\d+\.\d+$")
+
+    def test_two_version_literals_are_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            header = Path(tmp) / "Version.h"
+            header.write_text('#ifdef X\nconstexpr const char* kFirmwareVersion = "0.1.2";\n'
+                              '#else\nconstexpr const char* kFirmwareVersion = "0.1.0";\n#endif\n',
+                              encoding="utf-8")
+            with self.assertRaises(ManifestError):
+                version_from_header(header)
 
     def test_manifest_has_version_size_and_hash(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

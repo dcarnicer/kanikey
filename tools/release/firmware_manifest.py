@@ -59,10 +59,14 @@ def parse_slot_size(partitions: Path) -> int:
 
 def version_from_header(path: Path) -> str:
     text = path.read_text(encoding="utf-8")
-    match = re.search(r'kFirmwareVersion\s*=\s*"([^"]+)"', text)
-    if not match:
+    matches = re.findall(r'kFirmwareVersion\s*=\s*"([^"]+)"', text)
+    if not matches:
         raise ManifestError(f"no kFirmwareVersion in {path}")
-    return match.group(1)
+    # A second literal (e.g. a dev test version behind an #ifdef) would make
+    # the check pick whichever comes first; dev versions use a macro instead.
+    if len(matches) > 1:
+        raise ManifestError(f"{len(matches)} kFirmwareVersion literals in {path}; keep one")
+    return matches[0]
 
 
 def validate_version(version: str) -> tuple[int, int, int]:
