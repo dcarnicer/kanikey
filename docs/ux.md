@@ -748,6 +748,12 @@ first with the shuffle kept inside each level.
   **Hardware pending:** multiple meanings, grouped kanji readings, the hint
   fallback and the lesson-quiz layout (see [`docs/hardware.md`](hardware.md),
   2026-11-19).
+- **Sound (REM-03, 2026-11-20; hardware pending).** With M4 `Sounds` On (default
+  Off), a correct answer plays two short rising tones and a wrong answer one low
+  tone, in reviews and in both lesson quizzes. A Warning (CHECK) plays nothing.
+  Each tone is at most 120 ms, starts with the answer and never holds a key. M5
+  `Volume` sets the level (§5.12). Nothing sounds during a sync or in the setup
+  portal.
 
 ### 5.6 Item detail
 
@@ -820,6 +826,11 @@ Warning and the empty-mnemonic state (see [`docs/hardware.md`](hardware.md)).
   Home; it is absent with no due reviews and in practice. **Hardware pending:**
   the list/navigation, `R`, stage updates during the send loop and the 240×135
   layout (see [`docs/hardware.md`](hardware.md), 2026-11-19).
+
+- **Sound (REM-03, 2026-11-20; hardware pending).** With M4 On, the summary
+  plays a three-note figure once when it opens, and only after at least one
+  review was completed; an empty session is silent. It starts after the send
+  loop, so it is not held up by a POST.
 
 **Implementation note (2026-10-28).** The values use the built-in 32 px font
 and fall back to 16 px if one would cross its column. Accuracy and duration
@@ -1015,6 +1026,12 @@ radical/vocabulary page set (see [`docs/hardware.md`](hardware.md), 2026-11-19).
   timer in the idle deep sleep only. **Hardware pending:** the timer wake with
   Wi-Fi off, the 30 s expiry, the key path and the banner text (see
   [`docs/hardware.md`](hardware.md)).
+- **M4–M5 Sounds (REM-03, 2026-11-20; hardware pending).** M4 `Sounds` (`Off`,
+  `On`; default Off) turns on the answer tones (§5.5), the session-end figure
+  (§5.7) and the reminder chime that plays when the M1–M3 banner shows. M5
+  `Volume` (`Low`, `Medium`, `High`; default Medium) sets the level; it applies
+  to the next tone, with no reboot. Off plays nothing anywhere, and nothing
+  plays during a sync or in the setup portal.
 - R2 `Account preference` reads WaniKani's `reviews_presentation_order`; there
   is no separate toggle for that preference. The other R2 orders are
   device-side and do not change the account setting.

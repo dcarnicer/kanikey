@@ -54,6 +54,7 @@
 #include "platform/Ota.h"
 #include "platform/PracticeStore.h"
 #include "platform/SetupPortal.h"
+#include "platform/Sound.h"
 #include "platform/SubjectCatalog.h"
 #include "platform/WkClient.h"
 #include "platform/WkLessons.h"
@@ -529,6 +530,9 @@ void checkCurrent() {
     const bool typosStrict = kk::settingsGetInt("rv.typos", &typos) && typos == 1;
     state().review.gCheck = kk::checkAnswer(*s, meaning ? kk::AnswerKind::Meaning : kk::AnswerKind::Reading,
                              input, typosStrict);
+    // REM-03: the answer tone (a Warning retries the same part and is silent).
+    kk::sound::soundAnswer(state().review.gCheck.status, state().sync.gSyncing,
+                           state().setup.gSetupPortal.active());
     state().review.feedbackCorrectAt =
         state().review.gCheck.status == kk::AnswerStatus::Correct ? millis() : 0;
     state().review.feedback = true;
@@ -586,6 +590,11 @@ void advanceFeedback() {
         // out on the summary. Esc in this loop leaves the rest pending.
         if (kk::submitAtSessionEnd(policy) && state().review.gStageTracker.size())
             sendPendingSession();
+        // REM-03: the session-end figure, once on entry and after the sends:
+        // the loop does not run during them, so a tone started before would stall.
+        kk::sound::soundCue(kk::SoundCue::SessionEnd,
+                            static_cast<uint32_t>(state().review.gQueue.completedCount()),
+                            state().sync.gSyncing, state().setup.gSetupPortal.active());
     }
     state().display.gDirty = true;
 }

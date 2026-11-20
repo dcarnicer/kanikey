@@ -26,6 +26,7 @@
 #include "wk/LevelProgress.h"
 #include "wk/RateLimit.h"
 #include "wk/Reminder.h"
+#include "wk/SoundPlan.h"
 #include "wk/StudyMaterial.h"
 #include "wk/SubjectParser.h"
 #include "wk/Text.h"
@@ -3987,6 +3988,104 @@ void test_reminder_rules_from_choices() {
     TEST_ASSERT_EQUAL_UINT32(0, odd.dailyMinute);
 }
 
+// ---------------------------------------------------------------- sounds (REM-03)
+
+namespace {
+
+// The k-th tone (not rest) of a sequence, or nullptr.
+const kk::SoundStep* sndTone(kk::SoundSequence seq, size_t k) {
+    for (size_t i = 0; i < seq.count; ++i) {
+        if (!seq.steps[i].frequency) continue;
+        if (k == 0) return &seq.steps[i];
+        --k;
+    }
+    return nullptr;
+}
+
+size_t sndToneCount(kk::SoundSequence seq) {
+    size_t n = 0;
+    for (size_t i = 0; i < seq.count; ++i)
+        if (seq.steps[i].frequency) ++n;
+    return n;
+}
+
+}  // namespace
+
+void test_sound_tones() {
+    using kk::SoundCue;
+    const SoundCue cues[] = {SoundCue::ReminderChime, SoundCue::AnswerCorrect, SoundCue::AnswerWrong,
+                             SoundCue::SessionEnd};
+    for (SoundCue cue : cues) {
+        const kk::SoundSequence seq = kk::soundSequence(cue, 1);
+        TEST_ASSERT_TRUE(seq.count > 0);
+        // Every step is short, so a tone never holds the loop for long.
+        for (size_t i = 0; i < seq.count; ++i) {
+            TEST_ASSERT_TRUE(seq.steps[i].durationMs > 0);
+            TEST_ASSERT_TRUE(seq.steps[i].durationMs <= kk::kSoundStepMaxMs);
+        }
+        // The first step sounds: the board starts it at once.
+        TEST_ASSERT_TRUE(seq.steps[0].frequency > 0);
+    }
+
+    // Reminder chime: two equal tones.
+    const kk::SoundSequence chime = kk::soundSequence(SoundCue::ReminderChime, 0);
+    TEST_ASSERT_EQUAL(2, sndToneCount(chime));
+    TEST_ASSERT_EQUAL_UINT16(sndTone(chime, 0)->frequency, sndTone(chime, 1)->frequency);
+
+    // Correct: two tones, rising.
+    const kk::SoundSequence correct = kk::soundSequence(SoundCue::AnswerCorrect, 0);
+    TEST_ASSERT_EQUAL(2, sndToneCount(correct));
+    TEST_ASSERT_EQUAL_UINT16(880, sndTone(correct, 0)->frequency);
+    TEST_ASSERT_EQUAL_UINT16(1320, sndTone(correct, 1)->frequency);
+
+    // Wrong: one low tone.
+    const kk::SoundSequence wrong = kk::soundSequence(SoundCue::AnswerWrong, 0);
+    TEST_ASSERT_EQUAL(1, sndToneCount(wrong));
+    TEST_ASSERT_TRUE(sndTone(wrong, 0)->frequency < 300);
+
+    // Session end: a three-note figure, rising.
+    const kk::SoundSequence end = kk::soundSequence(SoundCue::SessionEnd, 3);
+    TEST_ASSERT_EQUAL(3, sndToneCount(end));
+    TEST_ASSERT_TRUE(sndTone(end, 0)->frequency < sndTone(end, 1)->frequency);
+    TEST_ASSERT_TRUE(sndTone(end, 1)->frequency < sndTone(end, 2)->frequency);
+}
+
+void test_sound_volume_map() {
+    TEST_ASSERT_EQUAL_UINT8(64, kk::soundLevelForVolume(0));   // Low
+    TEST_ASSERT_EQUAL_UINT8(128, kk::soundLevelForVolume(1));  // Medium
+    TEST_ASSERT_EQUAL_UINT8(255, kk::soundLevelForVolume(2));  // High
+    // Unknown choices fall back to the default, Medium.
+    TEST_ASSERT_EQUAL_UINT8(128, kk::soundLevelForVolume(7));
+    TEST_ASSERT_EQUAL_UINT8(128, kk::soundLevelForVolume(-1));
+    TEST_ASSERT_TRUE(kk::soundLevelForVolume(0) < kk::soundLevelForVolume(1));
+    TEST_ASSERT_TRUE(kk::soundLevelForVolume(1) < kk::soundLevelForVolume(2));
+}
+
+void test_sound_off_plays_nothing() {
+    // M4 Off (the default) blocks every cue, whatever else is true.
+    TEST_ASSERT_FALSE(kk::soundAllowed(false, false, false));
+    TEST_ASSERT_FALSE(kk::soundAllowed(false, true, true));
+    // A sync or the setup portal blocks an On cue too.
+    TEST_ASSERT_FALSE(kk::soundAllowed(true, true, false));
+    TEST_ASSERT_FALSE(kk::soundAllowed(true, false, true));
+    TEST_ASSERT_TRUE(kk::soundAllowed(true, false, false));
+    // A session with no completed review has no end figure.
+    TEST_ASSERT_EQUAL(0, kk::soundSequence(kk::SoundCue::SessionEnd, 0).count);
+    TEST_ASSERT_TRUE(kk::soundSequence(kk::SoundCue::SessionEnd, 1).count > 0);
+}
+
+void test_sound_answer_cue() {
+    kk::SoundCue cue = kk::SoundCue::ReminderChime;
+    TEST_ASSERT_TRUE(kk::soundCueForAnswer(kk::AnswerStatus::Correct, &cue));
+    TEST_ASSERT_TRUE(cue == kk::SoundCue::AnswerCorrect);
+    TEST_ASSERT_TRUE(kk::soundCueForAnswer(kk::AnswerStatus::Incorrect, &cue));
+    TEST_ASSERT_TRUE(cue == kk::SoundCue::AnswerWrong);
+    // A warning retypes the same part: no tone, and cue is left alone.
+    cue = kk::SoundCue::ReminderChime;
+    TEST_ASSERT_FALSE(kk::soundCueForAnswer(kk::AnswerStatus::Warning, &cue));
+    TEST_ASSERT_TRUE(cue == kk::SoundCue::ReminderChime);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_romaji_common_words);
@@ -4187,6 +4286,10 @@ int main(int, char**) {
     RUN_TEST(test_reminder_daily_skips_quiet);
     RUN_TEST(test_reminder_earliest_of_bucket_and_daily);
     RUN_TEST(test_reminder_rules_from_choices);
+    RUN_TEST(test_sound_tones);
+    RUN_TEST(test_sound_volume_map);
+    RUN_TEST(test_sound_off_plays_nothing);
+    RUN_TEST(test_sound_answer_cue);
     run_queue_tests();
     run_les_tests();
     run_ota_tests();

@@ -286,6 +286,9 @@ bool playTone(uint16_t frequency, uint16_t durationMs, uint8_t volume) {
     return true;
 }
 
+// M5Speaker::stop() only queues a stop request for the playback task.
+void speakerStop() { M5.Speaker.stop(); }
+
 void setBrightness(uint8_t level) {
     gBrightness = level;
     M5.Display.setBrightness(level);
