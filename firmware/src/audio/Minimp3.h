@@ -11,6 +11,11 @@
 
 namespace kk::audio {
 
+// The largest MPEG-1/2 Layer III frame the decoder searches for: 320 kbit/s at
+// 32 kHz is 1,440 B (MEM-16; the decoder used to search 2,304 B for free-format
+// frames). AudioPlayer sizes its file window from it, so a whole frame fits.
+inline constexpr size_t kMp3MaxFrameBytes = 1440;
+
 // MPEG frame metadata the player needs for M5.Speaker.playRaw(). `frameBytes`
 // counts the leading ID3/garbage bytes the decoder skipped plus the frame, so
 // the caller advances its file window by that amount.

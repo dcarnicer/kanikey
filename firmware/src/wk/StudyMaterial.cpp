@@ -41,21 +41,25 @@ std::vector<StudyMaterial> parseStudyMaterials(const JsonValue& root) {
     return out;
 }
 
-size_t applyStudyMaterials(const std::vector<StudyMaterial>& materials,
+size_t applyStudyMaterials(std::vector<StudyMaterial>& materials,
                            std::vector<Subject>* subjects) {
     if (!subjects) return 0;
     size_t applied = 0;
-    for (const StudyMaterial& material : materials) {
+    for (StudyMaterial& material : materials) {
         if (material.hidden) continue;
         for (Subject& subject : *subjects) {
             if (subject.id != material.subjectId) continue;
-            if (!material.meaningNote.empty()) subject.meaningNote = material.meaningNote;
-            if (!material.readingNote.empty()) subject.readingNote = material.readingNote;
-            for (const std::string& synonym : material.meaningSynonyms) {
+            // MEM-17: moved, not copied. The material is used once (the break).
+            if (!material.meaningNote.empty())
+                subject.meaningNote = std::move(material.meaningNote);
+            if (!material.readingNote.empty())
+                subject.readingNote = std::move(material.readingNote);
+            for (std::string& synonym : material.meaningSynonyms) {
                 if (std::find(subject.meaningSynonyms.begin(), subject.meaningSynonyms.end(),
                               synonym) == subject.meaningSynonyms.end())
-                    subject.meaningSynonyms.push_back(synonym);
+                    subject.meaningSynonyms.push_back(std::move(synonym));
             }
+            material.meaningSynonyms.clear();
             ++applied;
             break;
         }

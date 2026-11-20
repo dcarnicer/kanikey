@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <numeric>
-#include <random>
 
 namespace kk {
 
@@ -188,7 +187,9 @@ std::vector<uint32_t> selectDueSubjectIds(const std::vector<Assignment>& assignm
     std::vector<size_t> order(rows.size());
     std::iota(order.begin(), order.end(), size_t{0});
     if (strategy == ReviewOrderStrategy::Random) {
-        std::mt19937 rng(seed);
+        // A 4-byte xorshift state here: a local std::mt19937 was ~2.5 KB of
+        // stack on the sync path (MEM-11, MEM-12).
+        Xorshift32 rng(seed);
         std::shuffle(order.begin(), order.end(), rng);
         if (typeOrder) {
             std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
@@ -356,8 +357,8 @@ void ReviewQueue::assignFirstPart(SessionItem& item, FirstPart mode) {
             item.readingFirst = true;
             break;
         case FirstPart::Random:
-            // The top bit of mt19937 is the best-mixed one; a fixed seed gives
-            // the same split every run.
+            // The top bit of the xorshift32 output is the best-mixed one; a
+            // fixed seed gives the same split every run.
             item.readingFirst = (rng_() >> 31) != 0;
             break;
     }

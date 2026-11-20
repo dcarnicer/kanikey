@@ -746,9 +746,14 @@ std::vector<Subject> parseSubjects(const JsonValue& root, bool details) {
     return out;
 }
 
-bool parseSubjectsStream(std::string_view text, std::vector<Subject>* out, bool details) {
+bool parseSubjectsStream(std::string_view text, std::vector<Subject>* out, bool details,
+                         size_t reserveHint) {
     if (!out) return false;
     out->clear();
+    // MEM-18: one block for the page instead of doubling growth. A Subject is
+    // 384 B, so the reserve is capped; a larger page just grows past it.
+    constexpr size_t kMaxReserve = 64;
+    if (reserveHint) out->reserve(std::min(reserveHint, kMaxReserve));
     SubjectSink sink(out, details);
     JsonStreamParser parser(&sink);
     if (!parser.parse(text)) {

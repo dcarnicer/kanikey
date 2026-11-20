@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "wk/Xorshift.h"
+
 namespace kk {
 
 std::vector<uint32_t> sampleIds(const std::vector<uint32_t>& ids, size_t limit,
@@ -14,12 +16,9 @@ std::vector<uint32_t> sampleIds(const std::vector<uint32_t>& ids, size_t limit,
     // xorshift32 instead of std::mt19937: the order is the same on every
     // platform for a given seed, and it costs a few instructions instead of a
     // generator object. The seed comes from the batch, so two sessions differ.
-    uint32_t state = seed ? seed : 1u;
+    Xorshift32 rng(seed);
     for (size_t i = out.size(); i > 1; --i) {
-        state ^= state << 13;
-        state ^= state >> 17;
-        state ^= state << 5;
-        const size_t j = static_cast<size_t>(state % i);
+        const size_t j = static_cast<size_t>(rng() % i);
         std::swap(out[i - 1], out[j]);
     }
     if (out.size() > limit) out.resize(limit);

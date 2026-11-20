@@ -1,5 +1,5 @@
 #pragma once
-// AUD-03: on-demand vocabulary audio. Heap pieces (decoder+scratch, a 4 KB file
+// AUD-03: on-demand vocabulary audio. Heap pieces (decoder+scratch, a 2,880 B file
 // window, two PCM buffers) are allocated on R under an admission rule and freed
 // when the clip ends, stops or fails. One clip plays at a time through
 // M5.Speaker.playRaw(). No whole-file buffer, no network, no autoplay. Only

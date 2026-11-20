@@ -11,6 +11,7 @@
 #include "audio/Minimp3.h"
 #include "platform/AudioCache.h"
 #include "platform/Sound.h"
+#include "platform/SpeakerPower.h"
 #include "wk/AudioPlan.h"
 
 namespace kk {
@@ -21,11 +22,12 @@ namespace {
 // stop a tone before playback and playback before a tone; play() stops every
 // channel first so a dev tone cannot overlap the clip.
 constexpr int kChannel = 0;
-constexpr size_t kFileBytes = 4096;
 constexpr size_t kFrameSamples = 1152;  // per channel, one MPEG Layer III frame
-// The largest MPEG frame (including free-format) is 2,304 B; keep that much in
-// the window so a frame is never split at the buffer boundary.
-constexpr size_t kMinFrameWindow = 2304;
+// The largest MPEG Layer III frame is 1,440 B (MEM-16; was 2,304 with the
+// free-format search). Refill keeps that much in the window, so a frame is never
+// split at the buffer boundary, and the window holds two such frames (2,880 B).
+constexpr size_t kMinFrameWindow = kk::audio::kMp3MaxFrameBytes;
+constexpr size_t kFileBytes = 2 * kMinFrameWindow;
 constexpr uint32_t kStopWaitMs = 40;
 constexpr uint32_t kHeapCaps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
 
@@ -297,6 +299,7 @@ bool audioPlayerPlay(const Subject& subject, uint8_t voice) {
         Serial.printf("[audio] %u: no mp3\n", static_cast<unsigned>(subject.id));
         return false;
     }
+    kk::speaker::wake();  // MEM-15: the speaker may have been ended while idle
     char path[80];
     if (!audioCachePath(plan.entry, path, sizeof path)) {
         Serial.printf("[audio] %u: bad path\n", static_cast<unsigned>(subject.id));
@@ -310,7 +313,7 @@ bool audioPlayerPlay(const Subject& subject, uint8_t voice) {
         return false;
     }
     // Skip a leading ID3v2 tag whatever its size: the first frame search only
-    // sees one 4 KB window.
+    // sees one file window (2,880 B since MEM-16).
     {
         uint8_t header[10];
         const int got = file.read(header, sizeof header);

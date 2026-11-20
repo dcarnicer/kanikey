@@ -64,7 +64,7 @@ size_t attachStudyMaterials(const String& token, std::vector<Subject>* subjects)
     ids.reserve(subjects->size());
     for (const Subject& s : *subjects)
         if (std::find(ids.begin(), ids.end(), s.id) == ids.end()) ids.push_back(s.id);
-    const std::vector<StudyMaterial> materials = fetchStudyMaterials(token, ids);
+    std::vector<StudyMaterial> materials = fetchStudyMaterials(token, ids);
     for (const StudyMaterial& m : materials)
         Serial.printf("[study] subject %u: %u synonyms, notes %u/%u\n",
                       static_cast<unsigned>(m.subjectId),

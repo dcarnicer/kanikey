@@ -84,13 +84,14 @@ WkAssignmentsResult wkGetAssignmentsRetry(const String& path, const String& toke
 }
 
 WkSubjectsResult wkGetSubjectsRetry(const String& path, const String& token, size_t maxBodyBytes,
-                                    bool details, uint32_t timeoutMs, uint8_t attempts) {
+                                    bool details, uint32_t timeoutMs, uint8_t attempts,
+                                    size_t reserveHint) {
     WkSubjectsResult result;
     result.parsed = getParsed(
         path, token, maxBodyBytes, timeoutMs, attempts, &result.http,
         [&result]() { result.subjects.clear(); },
-        [&result, details](std::string_view body) {
-            return parseSubjectsStream(body, &result.subjects, details);
+        [&result, details, reserveHint](std::string_view body) {
+            return parseSubjectsStream(body, &result.subjects, details, reserveHint);
         });
     if (!result.parsed) result.subjects.clear();
     return result;

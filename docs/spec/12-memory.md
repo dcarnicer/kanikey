@@ -2,7 +2,7 @@
 
 Status: **investigation, 2026-11-20.** Four read-only audits (static RAM, runtime
 heap, TLS/Wi-Fi, peripherals) plus measurements on the owner's Cardputer ADV.
-MEM-01 phase 1 (the Arduino 3 migration) is merged and owner-verified (§2.2). MEM-02 (custom core) is built on the host, hardware pending (§2.3); nothing else is implemented.
+MEM-01 phase 1 (the Arduino 3 migration) is merged and owner-verified (§2.2). MEM-02 (custom core) is built on the host, hardware pending (§2.3). Track B (MEM-10 … MEM-18) is implemented and builds on the host; hardware checks pending (§3, Track B status). Track A/C/D are not started.
 Figures are marked **M** (measured on the device with the dev `hh`/`h` commands
 or the boot/HTTP log lines), **B** (from the build/map of `9a95e38`) or **E**
 (estimate from code and struct sizes).
@@ -225,6 +225,56 @@ transient maximum during a flow, not steady state.
 | MEM-16 | Playback set: minimp3 `MAX_FREE_FORMAT_FRAME_SIZE` 2,304 → 1,440, file window 4,096 → 2,880, half-frame PCM buffers (576 samples). Drops the clip set from 31.6 KB to ~27.2 KB and its largest piece stays 15.4 KB. | ~4.4 KB per clip | low–med |
 | MEM-17 | `std::move` instead of copies when applying study materials; read HTTP header lines into a fixed `char[]` instead of `String`. | 1–2 KB peak; fewer reallocs | low |
 | MEM-18 | `reserve` in the subject and summary parsers and for the audio index (`gAudio.entries`) from known counts. | fragmentation (no bytes) | low |
+
+#### Track B status (2026-11-20, host build, hardware pending)
+
+Native tests: 633 pass (621 before, +12 in `test/test_wk/test_mem.cpp`). No
+existing expected order changed: the ReviewQueue and IdSample tests check
+permutations, seed determinism and the fixed `sampleIds` golden order, which
+the xorshift keeps.
+
+| ID | Status | Change (file) | Saving |
+|---|---|---|---|
+| MEM-10 | done | `app/DevConsole.cpp`: `uploadSdFile` takes its 2 KiB transfer block on use, and `dumpCanvas` its row buffer (978 B at 240 px), both `heap_caps_malloc` with RAII free. Both stay in the release; a short heap logs `[up]`/`[shot]` and writes nothing. The remaining `static` in the file is `kSeeds`, inside the dev block. | −9,170 B static (B, exact: 8,192 + 978) |
+| MEM-11 | done | `wk/Xorshift.h` (new): 4-byte `Xorshift32`, a UniformRandomBitGenerator for `std::shuffle`. `IdSample.cpp` and `ReviewQueue` (member and the Random-order shuffle) use it. | −4,982 B static (B; the residual of two 2,504 B `mt19937`); the 2.5 KB stack local in `selectDueSubjectIds` is gone (B) |
+| MEM-12 | done | `main.cpp`: loop stack 16,384 (comment updated). `platform/Ota.cpp`: the two 4 KB copy blocks are on the heap, taken inside the request callback after TLS is up (before `Update.begin`); a failed allocation logs and fails with `WriteFailed`. README line updated. | 8,192 B more heap at boot (E: the task stack; B) |
+| MEM-13 | done | `wk/AudioPlan.cpp` `audioChooseSubjectUrls` releases `audios` (capacity too) on every path; both parsers call it right before the push. Grep: nothing reads `audios` afterwards. `test_wk.cpp` (`test_subject_audio_parse`) now asserts the release; the clip-field checks (voice, pronunciation) are no longer visible after the parse. | 3–7 KB per fresh fetch (E) |
+| MEM-14 | **skipped** | — | — |
+| MEM-15 | done, device check pending | `platform/SpeakerPower.*` (new): `kIdleMs = 3000`; `wake()` before a cue step (`Sound.cpp`) and before a clip (`AudioPlayer.cpp`); `tick()` after `soundTick` in `App::loop`. `board/BoardCardputerAdv.cpp`: `dma_buf_count 4`, `dma_buf_len 128`, read-modify-write after `M5.begin`. Logs `[audio] speaker on` / `off`. | DMA ring 2,048 → 512 B (B, from the config); about 6.4 KB released while idle (E) |
+| MEM-16 | done, half-frame PCM skipped | `audio/Minimp3.cpp`: `MAX_FREE_FORMAT_FRAME_SIZE` 1,440, with a `static_assert` against `kk::audio::kMp3MaxFrameBytes` (`Minimp3.h`). `platform/AudioPlayer.cpp`: `kMinFrameWindow` = 1,440, `kFileBytes` = 2,880. `test_audio_heap_admission_rule` updated to the new sizes. Half-frame PCM skipped: minimp3 writes a whole 1,152-sample frame per call, so the half buffers would need carry-over state across loop ticks. | per clip: scratch 16,240 → 15,376 (raw sizeof 15,372, checked in the object: 12 + 0x3C00), window 4,096 → 2,880; set 31,616 → 29,536 B (B). The free-format search stops at 1,440 (standard streams top out there). |
+| MEM-17 | done | `wk/StudyMaterial.cpp`: `applyStudyMaterials` takes the materials non-const and moves the notes and synonyms out (each material is used once). `wk/HeaderLine.*` (new): a fixed 256-byte line with the old checks (lower-case, prefix, token, number). `platform/WkClient.cpp` reads the status and header lines into it, with the old first-byte deadline and gap timeout (`min(timeout, 5 s)`); bytes past 256 are read and dropped so the stream stays in step. | no static bytes; no String reallocs per header line (E); 2 × 260 B on the stack in `performRequest` |
+| MEM-18 | done, summary skipped | `wk/SubjectParser.cpp`: `parseSubjectsStream(…, reserveHint)`, reserve capped at 64 subjects (384 B each); `platform/WkJson.*`: `wkGetSubjectsRetry(…, reserveHint)`; review and lesson subject pages pass the id count. The DOM parser already reserved `data->size()`. `wk/AudioIndex.cpp`: reserve `count + 8`, capped at 2,000 (the index's own maximum). Summary buckets skipped: their id counts are not in the JSON before the arrays are streamed. | fragmentation (no bytes) |
+
+**Static RAM (`.dram0.data` + `.dram0.bss`, `xtensa-esp32s3-elf-size`):**
+
+| Build | MEM-02 (§2.3) | Track B | Δ |
+|---|---:|---:|---:|
+| `cardputer-adv` | 110,668 | 96,516 | −14,152 |
+| `cardputer-adv-dev` | 110,988 | 96,836 | −14,152 |
+| `cardputer-adv-badapi` | 78,204 | 64,044 | −14,160 (not a like-for-like: its 32 KB `gBodyBuffer` is dropped on the fail-API path, as in §2.3) |
+
+**Flash (PlatformIO "Flash used"):** release 1,774,559 → 1,773,791 (−768);
+dev 1,864,643 → 1,863,207 (−1,436); badapi 1,857,731 → 1,856,555 (−1,176). The
+before numbers are the §2.3 figures; the same PlatformIO line was used for the
+after numbers.
+
+**Stack, MEM-12.** Measured before this change on the device under Arduino 3:
+high-water 19,356 B free of 24,576 after boot and sync (about 5.2 KB used; the
+earlier peak estimate was 8.8 KB, §2.1). The largest stack users left, from a
+grep of the local arrays in `src/` (fixed-size locals and the parser members):
+`GlyphPack::openPath` CRC buffer 1,024 B; asset upload buffer 1,024 B
+(`DevConsole.cpp`, Wi-Fi upload); manifest read buffer 512 B (`Ota.cpp`); the
+Wi-Fi scan's 32 `WifiNetwork` (36 B each, 1.2 KB, `WifiSetupController.cpp`);
+the Minimp3 locals (under 1 KB; the 2.3 KB `maindata` is in the heap scratch);
+the two HeaderLines (520 B) in `performRequest`. The grep found nothing else at
+or over 2 KB. `h` after a lesson fetch and an OTA check is the proof for 16 KB.
+
+**Device checks (parent):**
+- MEM-15: `[audio] speaker off` after a clip or cue, and `on` before the next; clicks or a cut at the start of a clip or cue (the DMA ring is 512 B now); the first-sound latency after an idle period.
+- MEM-16: a clip with a 6.4 KB ID3 tag (`skipped a 6400 B ID3 tag`), a stereo clip, and a clip with a 2,880-byte window (`[audio] alloc 29536…`). Check the `[audio] play` lines for frame errors.
+- MEM-12: `h` stack high-water after a lesson fetch and after an OTA check (the copy blocks are on the heap now).
+- MEM-10: `up <bytes> <path>` and `p` on the serial line.
+- MEM-17: an HTTP session end to end (headers parsed: `Content-Length`, chunked, keep-alive, rate-limit) on the review and lesson fetch.
 
 ### Track C — batch structure
 

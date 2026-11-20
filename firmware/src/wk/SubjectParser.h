@@ -17,7 +17,9 @@ std::vector<Subject> parseSubjects(const JsonValue& root, bool details = false);
 // the top-level `data` array without a JSON DOM. With details=false the
 // mnemonic/hint/parts-of-speech/context-sentence fields are ignored, like the
 // DOM parser. A valid body with no data array returns true and an empty vector;
-// on a parse error the output is cleared and false is returned.
-bool parseSubjectsStream(std::string_view text, std::vector<Subject>* out, bool details = false);
+// on a parse error the output is cleared and false is returned. `reserveHint` is
+// the subject count the caller expects (MEM-18; the ids it asked for); 0 = none.
+bool parseSubjectsStream(std::string_view text, std::vector<Subject>* out, bool details = false,
+                         size_t reserveHint = 0);
 
 }  // namespace kk

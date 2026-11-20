@@ -21,9 +21,11 @@ struct StudyMaterial {
 
 std::vector<StudyMaterial> parseStudyMaterials(const JsonValue& root);
 
-// Copies notes and synonyms into matching subjects. Hidden materials are
-// skipped, and duplicate synonyms are ignored. Returns the subjects changed.
-size_t applyStudyMaterials(const std::vector<StudyMaterial>& materials,
+// Moves notes and synonyms into matching subjects (MEM-17: no copies). Each
+// material goes to one subject; the moved fields are left empty in `materials`,
+// so it must not be read for its text afterwards. Hidden materials are skipped,
+// and duplicate synonyms are ignored. Returns the subjects changed.
+size_t applyStudyMaterials(std::vector<StudyMaterial>& materials,
                            std::vector<Subject>* subjects);
 
 }  // namespace kk

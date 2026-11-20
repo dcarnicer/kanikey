@@ -144,8 +144,9 @@ serial remote and debug screens, keeps library logs at level 1 and is 1,864,643 
 1,786,927 B on the prebuilt core).
 
 The release image keeps a small serial console (`h`, `i`, `p`, `S`, `up`, `r`);
-build `cardputer-adv-dev` for the full remote. The loop task uses a 24 KiB
-stack, enough for the lesson fetch and OTA install paths.
+build `cardputer-adv-dev` for the full remote. The loop task uses a 16 KiB
+stack (MEM-12, `main.cpp`): about 5.2 KB measured after boot and sync, with the
+4 KB OTA copy blocks on the heap. Check `h` after a lesson fetch and an OTA check.
 
 ### Custom core (memory-tuned Arduino core)
 

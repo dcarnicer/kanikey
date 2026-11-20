@@ -1622,11 +1622,13 @@ static void test_audio_plan_never_for_kanji_or_radical() {
 }
 
 static void test_audio_heap_admission_rule() {
-    // Device sizes (xtensa sizeof, rounded to 8): decoder state 6,668 -> 6,672,
-    // decode scratch 16,236 -> 16,240; window 4,096; two mono PCM buffers 2,304.
-    const size_t mono[] = {6672, 16240, 4096, 2304, 2304};
-    const size_t monoFree = 31616 + kAudioAdmitFreeMargin;  // 39,808
-    const size_t monoLargest = 16240 + kAudioAdmitLargestMargin;  // 20,336
+    // Device sizes (xtensa sizeof, rounded to 8): decoder state 6,668 -> 6,672;
+    // decode scratch 16,236 -> 16,240 before MEM-16, and 15,376 now (the frame
+    // payload is 1,440 B, not 2,304: 864 B less maindata); file window 2,880 B
+    // now (2 x 1,440; was 4,096); two mono PCM buffers 2,304 B each.
+    const size_t mono[] = {6672, 15376, 2880, 2304, 2304};  // 29,536 B
+    const size_t monoFree = 29536 + kAudioAdmitFreeMargin;  // 37,728
+    const size_t monoLargest = 15376 + kAudioAdmitLargestMargin;  // 19,472
     TEST_ASSERT_TRUE(audioAdmitsPieces(monoFree, monoLargest, mono, 5));
     TEST_ASSERT_FALSE(audioAdmitsPieces(monoFree - 1, monoLargest, mono, 5));
     TEST_ASSERT_FALSE(audioAdmitsPieces(monoFree, monoLargest - 1, mono, 5));
@@ -1636,18 +1638,19 @@ static void test_audio_heap_admission_rule() {
     // free 77,344 / largest 22,516 must be admitted ...
     TEST_ASSERT_TRUE(audioAdmitsPieces(77344, 22516, mono, 5));
     // ... and free 48,968 / largest 17,396 refused: the largest block is under
-    // the scratch + 4 KB.
+    // the scratch + 4 KB (19,472 now).
     TEST_ASSERT_FALSE(audioAdmitsPieces(48968, 17396, mono, 5));
-    // Enough largest block but too little free memory overall is refused too.
-    TEST_ASSERT_FALSE(audioAdmitsPieces(39000, 51188, mono, 5));
+    // Enough largest block but too little free memory overall is refused too
+    // (the set needs 37,728 free now; 39,000 would be enough before MEM-16).
+    TEST_ASSERT_FALSE(audioAdmitsPieces(37000, 51188, mono, 5));
     // Measured in a real review (feedback R): free 50,516 / largest 27,636,
     // and ~47 KB free with the clip file open.
     TEST_ASSERT_TRUE(audioAdmitsPieces(50516, 27636, mono, 5));
     TEST_ASSERT_TRUE(audioAdmitsPieces(47000, 27636, mono, 5));
-    // Stereo PCM: 2 x 4,608 B.
-    const size_t stereo[] = {6672, 16240, 4096, 4608, 4608};
-    TEST_ASSERT_TRUE(audioAdmitsPieces(36224 + kAudioAdmitFreeMargin, monoLargest, stereo, 5));
-    TEST_ASSERT_FALSE(audioAdmitsPieces(36224 + kAudioAdmitFreeMargin - 1, monoLargest, stereo, 5));
+    // Stereo PCM: 2 x 4,608 B. The set is 34,144 B, so free must reach 42,336.
+    const size_t stereo[] = {6672, 15376, 2880, 4608, 4608};
+    TEST_ASSERT_TRUE(audioAdmitsPieces(34144 + kAudioAdmitFreeMargin, monoLargest, stereo, 5));
+    TEST_ASSERT_FALSE(audioAdmitsPieces(34144 + kAudioAdmitFreeMargin - 1, monoLargest, stereo, 5));
     // Measured in a review: a stereo clip at free 47,408 / largest 27,636 (file open).
     TEST_ASSERT_TRUE(audioAdmitsPieces(47408, 27636, stereo, 5));
 }
@@ -2384,18 +2387,12 @@ static void test_subject_audio_parse() {
     TEST_ASSERT_TRUE(parseSubjectsStream(text, &stream, true));
     TEST_ASSERT_EQUAL(1, dom.size());
     TEST_ASSERT_EQUAL(1, stream.size());
-    // The OGG clip is not kept: only MP3 plays on the device.
-    TEST_ASSERT_EQUAL(2, dom[0].audios.size());
-    TEST_ASSERT_EQUAL(2, stream[0].audios.size());
-    TEST_ASSERT_EQUAL_STRING("https://example.test/female.mp3",
-                             stream[0].audios[0].url.c_str());
-    TEST_ASSERT_EQUAL_STRING("audio/mpeg", stream[0].audios[0].contentType.c_str());
-    TEST_ASSERT_EQUAL(0, stream[0].audios[0].voice);
-    TEST_ASSERT_EQUAL(1, stream[0].audios[1].voice);
-    TEST_ASSERT_EQUAL_STRING("https://example.test/male.mp3", stream[0].audios[1].url.c_str());
+    // MEM-13: the clips are released once the URLs are chosen, so the parsed
+    // subjects keep no clip structs. The voice choice shows in audioUrl below;
+    // the OGG clip never counts, since only MP3 is chosen.
+    TEST_ASSERT_TRUE(dom[0].audios.empty());
+    TEST_ASSERT_TRUE(stream[0].audios.empty());
     for (const std::vector<Subject>* list : {&dom, static_cast<const std::vector<Subject>*>(&stream)}) {
-        TEST_ASSERT_EQUAL_STRING("にほん", (*list)[0].audios[0].pronunciation.c_str());
-        TEST_ASSERT_EQUAL_STRING("にっぽん", (*list)[0].audios[1].pronunciation.c_str());
         // No readings in this fixture, so each voice takes its first MP3 clip.
         TEST_ASSERT_EQUAL_STRING("https://example.test/female.mp3", (*list)[0].audioUrl[0].c_str());
         TEST_ASSERT_EQUAL_STRING("https://example.test/male.mp3", (*list)[0].audioUrl[1].c_str());
@@ -2896,7 +2893,7 @@ static void test_study_materials_parse_and_merge() {
         "{\"id\":901,\"object\":\"study_material\",\"data\":{\"subject_id\":11,"
         "\"meaning_note\":\"Hidden note\",\"meaning_synonyms\":[\"x\"],\"hidden\":true}}]}";
     TEST_ASSERT_TRUE(p.parse(text, &v));
-    const std::vector<StudyMaterial> materials = parseStudyMaterials(v);
+    std::vector<StudyMaterial> materials = parseStudyMaterials(v);
     TEST_ASSERT_EQUAL(2, materials.size());
     TEST_ASSERT_EQUAL_UINT32(10, materials[0].subjectId);
     TEST_ASSERT_EQUAL_STRING("Use this for eating.", materials[0].meaningNote.c_str());
@@ -4223,6 +4220,7 @@ void run_store_tests();
 void run_portal_tests();
 void run_storage_tests();
 void run_net_tests();
+void run_mem_tests();
 void run_app_tests();
 void run_cache_tests();
 void run_rev_tests();
@@ -4790,6 +4788,7 @@ int main(int, char**) {
     run_portal_tests();
     run_storage_tests();
     run_net_tests();
+    run_mem_tests();
     run_app_tests();
     run_cache_tests();
     run_rev_tests();

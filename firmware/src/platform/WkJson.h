@@ -59,8 +59,10 @@ struct WkSubjectsResult {
     bool parsed = false;
     std::vector<Subject> subjects;
 };
+// `reserveHint` (MEM-18): the subject count the request asks for, reserved up
+// front by the streaming parser; 0 when unknown.
 WkSubjectsResult wkGetSubjectsRetry(const String& path, const String& token, size_t maxBodyBytes,
                                     bool details = true, uint32_t timeoutMs = 12000,
-                                    uint8_t attempts = 2);
+                                    uint8_t attempts = 2, size_t reserveHint = 0);
 
 }  // namespace kk

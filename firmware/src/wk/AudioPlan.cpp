@@ -127,13 +127,18 @@ bool audioPickVoiceClip(const std::vector<AudioClip>& clips, uint8_t voice,
 
 void audioChooseSubjectUrls(Subject& subject) {
     for (std::string& url : subject.audioUrl) url.clear();
-    if (!audioSubjectPlayable(subject.type)) return;
-    const std::string reading = audioPrimaryReading(subject);
-    for (uint8_t voice = 0; voice < 2; ++voice) {
-        size_t index = 0;
-        if (audioPickVoiceClip(subject.audios, voice, reading, &index))
-            subject.audioUrl[voice] = subject.audios[index].url;
+    if (audioSubjectPlayable(subject.type)) {
+        const std::string reading = audioPrimaryReading(subject);
+        for (uint8_t voice = 0; voice < 2; ++voice) {
+            size_t index = 0;
+            if (audioPickVoiceClip(subject.audios, voice, reading, &index))
+                subject.audioUrl[voice] = subject.audios[index].url;
+        }
     }
+    // MEM-13: the clip structs and their URL strings are only needed for the
+    // two URLs above. Release them, capacity included, on every path (3-7 KB
+    // kept per fresh fetch otherwise). Nothing reads subject.audios afterwards.
+    std::vector<AudioClip>().swap(subject.audios);
 }
 
 bool audioQueueChoice(const std::string (&urls)[2], uint8_t preferredVoice, uint8_t* voiceOut) {

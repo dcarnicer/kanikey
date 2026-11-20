@@ -7,6 +7,7 @@
 
 #include "board/Board.h"
 #include "platform/DeviceSettings.h"
+#include "platform/SpeakerPower.h"
 
 namespace kk::sound {
 
@@ -23,6 +24,7 @@ bool startStep(uint32_t now) {
     const SoundStep& step = gSeq.steps[gStep];
     gStepEndsAt = now + step.durationMs;
     if (step.frequency == 0) return true;  // a rest
+    kk::speaker::wake();  // MEM-15: the speaker may have been ended while idle
     return tgc::board::playTone(step.frequency, step.durationMs, gLevel);
 }
 
