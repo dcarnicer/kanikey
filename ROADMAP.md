@@ -131,15 +131,15 @@ Working on hardware:
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 546 native tests and the `cardputer-adv` build run in GitHub Actions alongside
+- 553 native tests and the `cardputer-adv` build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests; the release workflow adds
   the manifest tests and a tag-driven GitHub release.
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Last recorded build (AUD-03 + REM-03 + PD-04): **release 1,711,269 B /
-1,835,008 B flash (93.3%)**, **dev 1,738,885 B (94.8%)**, static RAM
-105,664/105,824 B (32.2%); **PaperDIY `paperdiy` 1,739,725 B / 6,291,456 B
+Last recorded build (AUD-03 + M6 + REM-03 + PD-04): **release 1,712,269 B /
+1,835,008 B flash (93.3%)**, **dev 1,744,381 B (95.1%)**, static RAM
+105,736/105,912 B (32.3%); **PaperDIY `paperdiy` 1,740,709 B / 6,291,456 B
 (27.7%)**. The root CA is stored once (`inline constexpr`), which saved 14.6 KB
 release / 29 KB dev.
 Removing `efontJA_16` freed ~468 KB; the dev image now has ~111 KB of headroom.
@@ -768,7 +768,7 @@ round 2.
 | EXT-03 | STUDY-01, STUDY-02 | Critical items and leeches | done (2026-11-06) |
 | EXT-04 | STUDY-03, STUDY-04, STUDY-05 | Extra study and the offline practice pool | done (2026-11-06) |
 | EXT-05 + WK-11 | STATS-01…STATS-04 | Forecast, history, streak and level progress | done (2026-11-06) |
-| EXT-06 | AUD-01…AUD-03 | Vocabulary audio | review: batch MP3 prefetch + on-demand `R` playback (minimp3, heap pieces) work on hardware; soak/current/M6 autoplay pending |
+| EXT-06 | AUD-01…AUD-03 | Vocabulary audio | review: batch MP3 prefetch, on-demand `R` and M6 autoplay work on hardware; soak/current/listening pending |
 | EXT-09 | REM-01…REM-03 | Device-local reminders and sounds | REM-01 spike partial (timer wake, 544 ms wake, tone heap; current pending); REM-02 and REM-03 in review (hardware pending) |
 | Complete lesson flow | LES-01, LES-02, LES-03, LES-04, LES-05, LES-06 | Browse → batch quiz → confirmed start → order/workload/topic pages | review (2026-11-19; hardware partial) |
 | LESSON-08 | LES-04 | Lesson ordering | review: WaniKani/type groups/interleave; 60-pool check pending |
@@ -791,8 +791,8 @@ REM/AUD, ONB (pack and setup) and DOC (this documentation pass). ARCH-01/02 are
 merged and CFG-01/02/03/04, REV-01/02/03/04/05/06/07/08/09/10/11/12,
 LES-01…LES-06, SETUP-09, ONB-01/02 and SPEED-01/02/03/04/05/07 are in review. The
 eight-section Settings menu replaces the flat list; the registry now has 48
-rows after the Account › Wi-Fi action. Main has 546 native tests and builds at
-1,711,269 B (93.3%) release / 1,738,885 B (94.8%) dev; PaperDIY 1,739,725 B of
+rows after the Account › Wi-Fi action. Main has 553 native tests and builds at
+1,712,269 B (93.3%) release / 1,744,381 B (95.1%) dev; PaperDIY 1,740,709 B of
 6,291,456. No round-2 task is
 claimed as done
 here beyond the spec status above.
