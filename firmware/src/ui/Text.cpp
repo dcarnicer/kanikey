@@ -3,6 +3,7 @@
 #include "ui/Text.h"
 
 #include "ui/TextLayout.h"
+#include "ui/UiFont.h"
 
 namespace kk::ui {
 namespace {
@@ -57,8 +58,7 @@ void trimBackToWidth(lgfx::LovyanGFX& d, std::string& text, int maxWidth) {
 
 void drawWrapped(lgfx::LovyanGFX& d, const std::string& text, int x, int y, int w, int maxLines,
                  uint16_t fg, uint16_t bg, bool ellipsis) {
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(fg, bg);
     if (maxLines < 1) return;
 
@@ -85,8 +85,7 @@ void drawAnswerTokens(lgfx::LovyanGFX& d, const std::vector<std::string>& answer
                       const std::vector<std::string>& synonyms, int x, int y, int w,
                       int maxLines, uint16_t fg, uint16_t synonymFg, uint16_t bg) {
     if (maxLines < 1) return;
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
 
     std::vector<Piece> pieces;
     bool anyAnswer = false;

@@ -4,14 +4,15 @@
 
 #include <cstdio>
 
+#include "ui/UiFont.h"
+
 namespace kk::app {
 
 void drawPauseScreen(lgfx::LovyanGFX& d, const PauseView& view) {
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
-    d.setTextFont(2);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Title);
     d.setTextColor(ui::kBrand, ui::kBg);
     d.drawString("KaniKey", 6, 2);
     d.setTextFont(1);
@@ -32,14 +33,12 @@ void drawPauseScreen(lgfx::LovyanGFX& d, const PauseView& view) {
             d.fillRect(4, y - 2, 232, 16, ui::kSurfaceHi);
             d.fillRect(4, y - 2, 2, 16, ui::kAccent);
         }
-        d.setTextFont(1);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Base);
         d.setTextColor(i == view.selectedIndex ? ui::kText : ui::kDim,
                        i == view.selectedIndex ? ui::kSurfaceHi : ui::kBg);
         d.drawString(kRows[i], 12, y);
     }
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kFaint, ui::kBg);
     d.drawString("Enter: select  Esc: continue", 8, 125);
 }
@@ -48,8 +47,7 @@ void drawLowBatteryScreen(lgfx::LovyanGFX& d, const LowBatteryView& view) {
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
-    d.setTextFont(2);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Title);
     d.setTextColor(ui::kBrand, ui::kBg);
     d.drawString("KaniKey", 6, 2);
     d.setTextFont(1);
@@ -65,8 +63,7 @@ void drawLowBatteryScreen(lgfx::LovyanGFX& d, const LowBatteryView& view) {
     d.drawString(pct, 120, 62);
     d.setTextDatum(lgfx::top_left);
 
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kText, ui::kBg);
     d.drawString(view.lessonAction ? "A lesson batch may not finish."
                                    : "A review session may not finish.",
@@ -82,16 +79,14 @@ void drawWorkloadScreen(lgfx::LovyanGFX& d, const WorkloadView& view) {
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
-    d.setTextFont(2);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Title);
     d.setTextColor(ui::kBrand, ui::kBg);
     d.drawString("KaniKey", 6, 2);
     d.setTextFont(1);
     d.setTextColor(ui::kWarn, ui::kBg);
     d.drawString("workload check", 7, 22);
 
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kText, ui::kBg);
     int y = 52;
     for (const std::string& reason : view.reasons) {
@@ -107,18 +102,15 @@ void drawLessonStartScreen(lgfx::LovyanGFX& d, const LessonStartView& view) {
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
-    d.setTextFont(2);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Title);
     d.setTextColor(ui::kBrand, ui::kBg);
     d.drawString("KaniKey", 6, 2);
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString("lessons", 7, 22);
 
     if (view.offline) {
-        d.setTextFont(0);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Small);
         d.setTextColor(ui::kWarn, ui::kBg);
         d.drawString("Needs Wi-Fi - your batch stays here", 8, 46);
         d.setTextColor(ui::kFaint, ui::kBg);
@@ -130,8 +122,7 @@ void drawLessonStartScreen(lgfx::LovyanGFX& d, const LessonStartView& view) {
         d.setTextFont(1);
         d.setTextColor(ui::kWarn, ui::kBg);
         d.drawString("Could not start", 8, 42);
-        d.setTextFont(0);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Small);
         d.setTextColor(ui::kText, ui::kBg);
         char kept[40];
         snprintf(kept, sizeof kept, "%u item%s kept", view.total - view.started,
@@ -153,17 +144,14 @@ void drawLessonStartScreen(lgfx::LovyanGFX& d, const LessonStartView& view) {
     char title[32];
     snprintf(title, sizeof title, "Start %u lesson%s?", view.total,
              view.total == 1 ? "" : "s");
-    d.setTextFont(2);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Title);
     d.setTextColor(ui::kText, ui::kBg);
     d.drawString(title, 8, 46);
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString("They join your reviews", 8, 70);
     d.drawString("in about 4 hours.", 8, 84);
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kFaint, ui::kBg);
     d.drawString("Enter: start  Esc: back", 8, 125);
 }
@@ -172,12 +160,10 @@ void drawHelpScreen(lgfx::LovyanGFX& d, const HelpView& view) {
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
-    d.setTextFont(2);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Title);
     d.setTextColor(ui::kBrand, ui::kBg);
     d.drawString("KaniKey", 6, 2);
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString(view.title, 7, 22);
     d.drawFastHLine(4, 36, 232, ui::kLine);
@@ -186,8 +172,7 @@ void drawHelpScreen(lgfx::LovyanGFX& d, const HelpView& view) {
     if (rows > kHelpMaxRows) rows = kHelpMaxRows;
     for (size_t i = 0; i < rows; ++i) {
         const int y = 42 + static_cast<int>(i) * 11;
-        d.setTextFont(0);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Small);
         d.setTextColor(ui::kAccentHi, ui::kBg);
         d.drawString(view.rows[i].keys, 8, y);
         d.setTextDatum(lgfx::top_right);
@@ -196,8 +181,7 @@ void drawHelpScreen(lgfx::LovyanGFX& d, const HelpView& view) {
         d.setTextDatum(lgfx::top_left);
     }
 
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kFaint, ui::kBg);
     d.drawString("Esc: close", 8, 125);
 }
@@ -206,15 +190,13 @@ void drawSignOutScreen(lgfx::LovyanGFX& d) {
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
-    d.setTextFont(2);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Title);
     d.setTextColor(ui::kBrand, ui::kBg);
     d.drawString("KaniKey", 6, 2);
     d.setTextFont(1);
     d.setTextColor(ui::kErr, ui::kBg);
     d.drawString("sign out", 7, 22);
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kText, ui::kBg);
     d.drawString("Token, cache and", 8, 46);
     d.drawString("pending reviews will", 8, 60);

@@ -9,6 +9,7 @@
 #include "ui/HintBar.h"
 #include "ui/ListView.h"
 #include "ui/Text.h"
+#include "ui/UiFont.h"
 #include "ui/Widgets.h"
 #include "wk/Text.h"
 #include "wk/Utf8.h"
@@ -72,8 +73,7 @@ void drawLessonListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString("LESSONS", 6, 3);
 
@@ -120,8 +120,7 @@ void drawLessonListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
             }
         }
         if (!promptDrawn) {
-            d.setTextFont(1);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Base);
             d.setTextColor(ui::kWarn, ui::kSurface);
             d.setTextDatum(lgfx::middle_center);
             d.drawString("?", 20, y + 10);
@@ -135,8 +134,7 @@ void drawLessonListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         char label[72];
         snprintf(label, sizeof label, "%s L%d  %s", kind, s ? s->level : 0,
                  item.meaning.c_str());
-        d.setTextFont(0);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Small);
         d.setTextColor(i == static_cast<int>(view.selectedIndex) ? ui::kText : ui::kDim,
                        i == static_cast<int>(view.selectedIndex) ? ui::kSurfaceHi : ui::kBg);
         char* end = label + strlen(label);
@@ -160,8 +158,7 @@ void drawLessonListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     }
 
     if (!view.note.empty()) {
-        d.setTextFont(0);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Small);
         d.setTextColor(ui::kWarn, ui::kBg);
         d.drawString(view.note.c_str(), 62, 5);
     }
@@ -172,22 +169,19 @@ void drawLessonEmptyScreen(lgfx::LovyanGFX& d, const LessonEmptyView& view) {
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString("LESSONS", 6, 3);
     d.setTextFont(4);
     d.setTextSize(1);
     d.setTextColor(ui::kText, ui::kBg);
     d.drawString("No lessons now", 8, 38);
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kDim, ui::kBg);
     std::string next = "Next review  ";
     next += view.nextReview;
     d.drawString(next.c_str(), 8, 82);
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kFaint, ui::kBg);
     d.drawString("New lessons unlock as you level up.", 8, 102);
     drawHintLeft(d, "Esc: home");
@@ -202,8 +196,7 @@ void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
 
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString("LESSON", 6, 3);
     // The browser owns both counters, so the drawn page count is the number of
@@ -218,8 +211,7 @@ void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
                  static_cast<unsigned>(view.pages.size()));
         header = fallback;
     }
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextDatum(lgfx::top_right);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString(header, 233, 5);
@@ -242,12 +234,10 @@ void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
                                                              : "KANJI";
     char type[24];
     snprintf(type, sizeof type, "%s L%d", kind, s->level);
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     drawPill(d, 86, 20, type, ui::kDim, ui::kSurfaceHi);
 
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kText, ui::kBg);
     std::string meaning = view.meaning;
     while (meaning.size() > 1 && d.textWidth(meaning.c_str()) > 148) meaning.pop_back();
@@ -259,15 +249,13 @@ void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
                                   kk::ClipRect{86, 50, 236, 88}) &&
             !drawJapaneseFit(d, fontPack, reading, 86, 232, 80, 148, ui::kReading, ui::kBg,
                              kk::ClipRect{86, 50, 236, 88})) {
-            d.setTextFont(1);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Base);
             d.setTextColor(ui::kWarn, ui::kBg);
             d.drawString("no glyph", 86, 58);
         }
     }
 
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     const LessonPageView* cardPage =
         view.page < view.pages.size() ? &view.pages[view.page] : nullptr;
     if (cardPage) {
@@ -292,8 +280,7 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
 
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString("LESSON QUIZ", 6, 3);
     char right[24];
@@ -313,12 +300,10 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     const bool meaning = view.meaning;
     if (view.complete) {
         drawPill(d, 86, 20, "DONE", ui::kOk, ui::kOkBg);
-        d.setTextFont(1);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Base);
         d.setTextColor(ui::kText, ui::kBg);
         d.drawString("Practice complete", 86, 40);
-        d.setTextFont(0);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Small);
         d.setTextColor(ui::kDim, ui::kBg);
         char mistakes[32];
         snprintf(mistakes, sizeof mistakes, "%u mistake%s",
@@ -333,8 +318,7 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         drawPill(d, 86, 20, ok ? "CORRECT" : warn ? "CHECK" : "NOT QUITE",
                  ok ? ui::kOk : warn ? ui::kWarn : ui::kErr,
                  ok ? ui::kOkBg : warn ? ui::kSurfaceHi : ui::kErrBg);
-        d.setTextFont(0);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Small);
         d.setTextColor(ui::kFaint, ui::kBg);
         if (warn) {
             // Warnings keep the typed input and never show the answer.
@@ -352,21 +336,18 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
                                              ui::kBg,
                                              kk::ClipRect{94, 38, 236, 58});
             if (!typedDrawn) {
-                d.setTextFont(1);
-                d.setTextSize(1);
+                ui::applyFont(d, ui::UiFont::Base);
                 d.setTextColor(ui::kWarn, ui::kBg);
                 d.drawString(typed.empty() ? "-" : "no glyph", 94, 44);
             }
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("A", 86, 72);
             const int lines = drawReadingTokens(
                 d, fontPack, view.answers, 94, 68, 142, 2, ok ? ui::kOk : ui::kErr, ui::kBg,
                 kk::ClipRect{94, 66, 236, 110});
             if (lines < 0) {
-                d.setTextFont(1);
-                d.setTextSize(1);
+                ui::applyFont(d, ui::UiFont::Base);
                 d.setTextColor(ui::kWarn, ui::kBg);
                 d.drawString("no glyph", 94, 74);
             } else if (lines <= 1) {
@@ -375,13 +356,11 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
             }
         } else {
             d.drawString("You typed", 86, 38);
-            d.setTextFont(1);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Base);
             d.setTextColor(ui::kDim, ui::kBg);
             while (typed.size() > 1 && d.textWidth(typed.c_str()) > 150) typed.erase(0, 1);
             d.drawString(typed.empty() ? "-" : typed.c_str(), 86, 47);
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("Answer", 86, 65);
             drawAnswerTokens(d, view.answers, view.synonyms, 86, 74, 150, 2,
@@ -392,8 +371,7 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     } else {
         drawPill(d, 86, 20, meaning ? "MEANING" : "READING",
                  meaning ? ui::kAccentHi : ui::kReading, ui::kSurfaceHi);
-        d.setTextFont(0);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Small);
         d.setTextColor(ui::kDim, ui::kBg);
         d.drawString(meaning ? "Type the meaning" : "Type the reading", 86, 38);
 
@@ -402,13 +380,11 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         std::string shown = view.typed;
         int caret = 92;
         if (shown.empty()) {
-            d.setTextFont(1);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Base);
             d.setTextColor(ui::kFaint, ui::kSurfaceHi);
             d.drawString(meaning ? "answer" : "kana", 92, 60);
         } else if (meaning) {
-            d.setTextFont(1);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Base);
             trimFrontToWidth(d, shown, 138);
             d.setTextColor(ui::kText, ui::kSurfaceHi);
             d.drawString(shown.c_str(), 92, 60);
@@ -419,15 +395,13 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
                                       kk::ClipRect{88, 54, 234, 86})) {
             caret = 230;
         } else {
-            d.setTextFont(1);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Base);
             d.setTextColor(ui::kWarn, ui::kSurfaceHi);
             d.drawString("no glyph", 92, 60);
         }
         if (caret < 232) d.fillRect(caret, 58, 2, 16, ui::kAccent);
         if (!meaning) {
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kFaint, ui::kBg);
             std::string raw = "romaji: " + view.romaji;
             d.drawString(raw.c_str(), 86, 88);

@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "ui/UiFont.h"
 #include "ui/Widgets.h"
 
 namespace kk::app {
@@ -21,8 +22,7 @@ void drawDebugScreen(lgfx::LovyanGFX& d, const DebugView& view) {
     d.setTextColor(ui::kBrand, ui::kBg);
     d.drawString("KaniKey", 6, 2);
 
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString("debug build", 7, 38);
 
@@ -77,8 +77,7 @@ void drawRadicalTestScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
-    d.setTextFont(2);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Title);
     d.setTextColor(ui::kBrand, ui::kBg);
     d.drawString("KaniKey", 6, 2);
     d.setTextFont(1);
@@ -91,8 +90,7 @@ void drawRadicalTestScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
                                             ui::kSurface, kk::ClipRect{6, 40, 234, 102});
     if (!ok) drawMissingGlyph(d, fontPack, radicalPack, 120, 71);
 
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ok ? ui::kOk : ui::kWarn, ui::kBg);
     char line[64];
     snprintf(line, sizeof line, "subject %u  %s",

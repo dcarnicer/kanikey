@@ -7,6 +7,7 @@
 #include "ui/HintBar.h"
 #include "ui/ListView.h"
 #include "ui/Text.h"
+#include "ui/UiFont.h"
 #include "wk/Utf8.h"
 
 namespace kk::app {
@@ -41,8 +42,7 @@ void drawOutboxRow(lgfx::LovyanGFX& d, int index, int x, int y, int width, bool 
     const OutboxView& view = *static_cast<const OutboxView*>(ctx);
     const OutboxRowView& item = view.rows[static_cast<size_t>(index)];
 
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     const int reasonWidth = d.textWidth(item.reason.c_str());
     std::string label = item.label;
     fitBack(d, label, 212 - reasonWidth);
@@ -62,8 +62,7 @@ void drawOutboxScreen(lgfx::LovyanGFX& d, const OutboxView& view) {
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
 
-    d.setTextFont(2);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Title);
     d.setTextColor(ui::kBrand, ui::kBg);
     d.drawString("OUTBOX", 6, 2);
     char count[32];
@@ -97,8 +96,7 @@ void drawOutboxScreen(lgfx::LovyanGFX& d, const OutboxView& view) {
                         "WaniKani.",
                         8, 88, 224, 3, ui::kFaint, ui::kBg);
         if (!view.note.empty()) {
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kErr, ui::kBg);
             d.drawString(view.note.c_str(), 8, 112);
         }
@@ -122,8 +120,7 @@ void drawOutboxScreen(lgfx::LovyanGFX& d, const OutboxView& view) {
     ui::drawList(d, window, drawOutboxRow, &view, style);
 
     if (!view.note.empty()) {
-        d.setTextFont(0);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Small);
         d.setTextColor(ui::kErr, ui::kBg);
         d.drawString(view.note.c_str(), 8, 112);
     }

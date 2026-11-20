@@ -5,14 +5,15 @@
 #include <cstdio>
 #include <string>
 
+#include "ui/UiFont.h"
+
 namespace kk::app {
 namespace {
 
 void drawSyncText(lgfx::LovyanGFX& d, const char* text, int x, int y, uint16_t fg,
                   int maxWidth) {
     if (!text || !text[0]) return;
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(fg, ui::kBg);
     std::string s = text;
     while (s.size() > 1 && d.textWidth(s.c_str()) > maxWidth) s.pop_back();
@@ -26,8 +27,7 @@ void drawSyncScreen(lgfx::LovyanGFX& d, const SyncView& view) {
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
 
-    d.setTextFont(2);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Title);
     d.setTextColor(ui::kBrand, ui::kBg);
     d.drawString("KaniKey", 6, 2);
 
@@ -43,16 +43,14 @@ void drawSyncScreen(lgfx::LovyanGFX& d, const SyncView& view) {
     d.drawString(right, 233, 5);
     d.setTextDatum(lgfx::top_left);
 
-    d.setTextFont(2);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Title);
     const bool allDone = view.completed >= kSyncRowCount;
     d.setTextColor(view.finished ? ui::kWarn : allDone ? ui::kOk : ui::kText, ui::kBg);
     d.drawString(view.finished ? "Sync failed" : allDone ? "Synced" : "Syncing...", 8, 24);
     char count[12];
     snprintf(count, sizeof count, "%u/%u", static_cast<unsigned>(view.completed),
              static_cast<unsigned>(kSyncRowCount));
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kFaint, ui::kBg);
     d.setTextDatum(lgfx::top_right);
     d.drawString(count, 233, 32);
@@ -61,8 +59,7 @@ void drawSyncScreen(lgfx::LovyanGFX& d, const SyncView& view) {
     for (int i = 0; i < kSyncRowCount; ++i) {
         const SyncRowView& row = view.rows[i];
         const int y = 42 + i * 10;
-        d.setTextFont(0);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Small);
         d.setTextColor(ui::kDim, ui::kBg);
         d.drawString(row.label, 8, y);
 
@@ -93,8 +90,7 @@ void drawSyncScreen(lgfx::LovyanGFX& d, const SyncView& view) {
                 break;
         }
         if (row.value[0]) drawSyncText(d, row.value, 64, y, valueColor, 140);
-        d.setTextFont(0);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Small);
         d.setTextColor(statusColor, ui::kBg);
         d.setTextDatum(lgfx::top_right);
         d.drawString(status, 233, y);
@@ -126,8 +122,7 @@ void drawSyncScreen(lgfx::LovyanGFX& d, const SyncView& view) {
                    : "Enter: retry  Esc: back";
     else if (allDone)
         hint = "";
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kFaint, ui::kBg);
     d.drawString(hint, 8, 125);
 }

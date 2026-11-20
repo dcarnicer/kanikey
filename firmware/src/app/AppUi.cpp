@@ -75,6 +75,7 @@
 #include "wk/SubjectText.h"
 #include "wk/Time.h"
 #include "ui/Theme.h"
+#include "ui/UiFont.h"
 
 namespace kk::app {
 namespace {
@@ -251,8 +252,7 @@ void drawNotice() {
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString(header, 6, 3);
     d.setTextFont(4);
@@ -261,13 +261,11 @@ void drawNotice() {
     // "Could not start lesson" is wider than the screen in Font4.
     if (d.textWidth(title) > 228) d.setTextFont(2);
     d.drawString(title, 8, 38);
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString(state().ui.gNoticeLine, 8, 82);
     if (state().ui.gNoticeLine2[0]) d.drawString(state().ui.gNoticeLine2, 8, 102);
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kFaint, ui::kBg);
     d.drawString(hint, 8, 125);
     d.endWrite();

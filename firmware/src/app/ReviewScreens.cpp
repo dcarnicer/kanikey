@@ -6,6 +6,7 @@
 #include <cstdio>
 
 #include "ui/Text.h"
+#include "ui/UiFont.h"
 #include "ui/Widgets.h"
 #include "wk/SessionStats.h"
 #include "wk/Text.h"
@@ -122,8 +123,7 @@ void drawSummaryMistakeRow(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
             (!prompt.empty() &&
              fontPack.drawTextCentered(d, prompt, 20, cx, cy, 20, 20, ui::kText, bg, clip));
         if (!drawn) {
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kWarn, bg);
             d.drawString("?", x + 9, y + 8);
         }
@@ -136,8 +136,7 @@ void drawSummaryMistakeRow(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     const int readLeft = right - 78;
     const int textRight = readLeft - 5;
 
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     std::string meaning = s ? subjectPrimaryMeaning(*s) : std::string();
     if (meaning.empty()) meaning = "-";
     while (meaning.size() > 1 && d.textWidth(meaning.c_str()) > textRight - textX)
@@ -151,8 +150,7 @@ void drawSummaryMistakeRow(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         if (!reading.empty() &&
             !drawJapaneseFit(d, fontPack, reading, readLeft, right, y + 18, 78,
                              ui::kReading, bg, readClip)) {
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kWarn, bg);
             d.drawString("no glyph", readLeft, y + 8);
         }
@@ -162,8 +160,7 @@ void drawSummaryMistakeRow(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     // POST has not answered this assignment yet.
     char stage[24];
     kk::formatSummaryStage(item.stageValid, item.stageFrom, item.stageTo, stage, sizeof stage);
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextDatum(lgfx::top_right);
     d.setTextColor(item.stageValid && item.stageTo > item.stageFrom ? ui::kOk : ui::kFaint,
                    bg);
@@ -198,8 +195,7 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
 
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kDim, ui::kBg);
     if (view.wrapUpCount > 0) {
         // REV-05: the count is the pruned queue, so the counter below matches.
@@ -237,16 +233,14 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         drawMissingGlyph(d, fontPack, radicalPack, 48, 56);
     char type[24];
     snprintf(type, sizeof type, "%s L%d", kindName(s->type), s->level);
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     drawPill(d, 48 - (d.textWidth(type) + 8) / 2, 92, type, ui::kDim, ui::kSurfaceHi);
 
     if (!view.feedback) {
         const bool meaning = part == kk::ReviewPart::Meaning;
         drawPill(d, 100, 20, meaning ? "MEANING" : "READING",
                  meaning ? ui::kAccentHi : ui::kReading, ui::kSurfaceHi);
-        d.setTextFont(0);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Small);
         d.setTextColor(ui::kDim, ui::kBg);
         d.drawString(meaning ? "Type the meaning" : "Type the reading", 100, 38);
 
@@ -255,13 +249,11 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         std::string shown = view.typed;
         int caret = 106;
         if (shown.empty()) {
-            d.setTextFont(1);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Base);
             d.setTextColor(ui::kFaint, ui::kSurfaceHi);
             d.drawString(meaning ? "answer" : "kana", 106, 60);
         } else if (meaning) {
-            d.setTextFont(1);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Base);
             trimFrontToWidth(d, shown, 128);
             d.setTextColor(ui::kText, ui::kSurfaceHi);
             d.drawString(shown.c_str(), 106, 60);
@@ -272,16 +264,14 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
                                       kk::ClipRect{102, 54, 234, 86})) {
             caret = 230;
         } else {
-            d.setTextFont(1);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Base);
             d.setTextColor(ui::kWarn, ui::kSurfaceHi);
             d.drawString("no glyph", 106, 60);
         }
         if (caret < 232) d.fillRect(caret, 58, 2, 16, ui::kAccent);
 
         if (!meaning) {
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kFaint, ui::kBg);
             std::string raw = "romaji: " + view.romaji;
             d.drawString(raw.c_str(), 100, 88);
@@ -292,15 +282,13 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         drawPill(d, 100, 20, ok ? "CORRECT" : warn ? "CHECK" : "NOT QUITE",
                  ok ? ui::kOk : warn ? ui::kWarn : ui::kErr,
                  ok ? ui::kOkBg : warn ? ui::kSurfaceHi : ui::kErrBg);
-        d.setTextFont(0);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Small);
         d.setTextColor(ui::kFaint, ui::kBg);
         if (warn) {
             // A warning must not reveal the expected answer: pill and message
             // only, so the user can fix the typed text and retry.
             drawWrapped(d, view.message, 100, 40, 136, 4, ui::kFaint, ui::kBg);
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("Enter: edit", 6, 125);
             d.setTextDatum(lgfx::top_right);
@@ -319,21 +307,18 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
                                              ui::kBg,
                                              kk::ClipRect{108, 38, 236, 58});
             if (!typedDrawn) {
-                d.setTextFont(1);
-                d.setTextSize(1);
+                ui::applyFont(d, ui::UiFont::Base);
                 d.setTextColor(ui::kWarn, ui::kBg);
                 d.drawString(typed.empty() ? "-" : "no glyph", 108, 44);
             }
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("A", 100, 72);
             const int lines = drawReadingTokens(
                 d, fontPack, view.answers, 108, 68, 128, 2, ok ? ui::kOk : ui::kErr, ui::kBg,
                 kk::ClipRect{108, 66, 236, 110});
             if (lines < 0) {
-                d.setTextFont(1);
-                d.setTextSize(1);
+                ui::applyFont(d, ui::UiFont::Base);
                 d.setTextColor(ui::kWarn, ui::kBg);
                 d.drawString("no glyph", 108, 74);
             } else if (lines <= 1) {
@@ -342,13 +327,11 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
             }
         } else {
             d.drawString("You typed", 100, 38);
-            d.setTextFont(1);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Base);
             d.setTextColor(ui::kDim, ui::kBg);
             while (typed.size() > 1 && d.textWidth(typed.c_str()) > 136) typed.erase(0, 1);
             d.drawString(typed.empty() ? "-" : typed.c_str(), 100, 47);
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("Answer", 100, 65);
             drawAnswerTokens(d, view.answers, view.synonyms, 100, 74, 136, 2,
@@ -357,8 +340,7 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         }
     }
 
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kFaint, ui::kBg);
     if (view.sending) {
         char sending[24];
@@ -385,8 +367,7 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString("ITEM DETAIL", 6, 3);
     char right[16];
@@ -404,14 +385,12 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         drawMissingGlyph(d, fontPack, radicalPack, 41, 52);
     char type[24];
     snprintf(type, sizeof type, "%s L%d", kindName(s->type), s->level);
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     drawPill(d, 86, 20, type, ui::kDim, ui::kSurfaceHi);
 
     switch (view.kind) {
         case 0: {
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("MEANINGS", 86, 38);
             std::string meanings;
@@ -429,8 +408,7 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
             }
             if (meanings.empty()) meanings = "-";
             drawWrapped(d, meanings, 86, 48, 150, 3, ui::kText, ui::kBg);
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("R", 86, 82);
             std::string reading;
@@ -449,8 +427,7 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
                 d.drawString("none", 94, 88);
             } else if (!drawJapaneseFit(d, fontPack, reading, 94, 232, 98, 142, ui::kReading,
                                         ui::kBg, kk::ClipRect{94, 80, 236, 100})) {
-                d.setTextFont(1);
-                d.setTextSize(1);
+                ui::applyFont(d, ui::UiFont::Base);
                 d.setTextColor(ui::kWarn, ui::kBg);
                 d.drawString("no glyph", 94, 88);
             }
@@ -459,8 +436,7 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         case 1:
         case 2: {
             const bool meaning = view.page == 1;
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString(meaning ? "MEANING MNEMONIC" : "READING MNEMONIC", 86, 38);
             std::string text = meaning ? s->meaningMnemonic : s->readingMnemonic;
@@ -471,8 +447,7 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
             break;
         }
         case 3: {
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("NOTES", 86, 38);
             std::string notes;
@@ -483,8 +458,7 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
             break;
         }
         case 4: {
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("COMPONENTS", 86, 38);
             int row = 0;
@@ -496,13 +470,11 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
                     fontPack.drawTextFit(d, c->characters, 86, y + 15, 20, 24, ui::kText, ui::kBg,
                                      kk::ClipRect{86, y, 112, y + 17});
                 else {
-                    d.setTextFont(0);
-                    d.setTextSize(1);
+                    ui::applyFont(d, ui::UiFont::Small);
                     d.setTextColor(ui::kFaint, ui::kBg);
                     d.drawString("RAD", 86, y + 4);
                 }
-                d.setTextFont(1);
-                d.setTextSize(1);
+                ui::applyFont(d, ui::UiFont::Base);
                 d.setTextColor(ui::kDim, ui::kBg);
                 std::string meaning = subjectMainMeaning(*c);
                 while (meaning.size() > 1 && d.textWidth(meaning.c_str()) > 116)
@@ -511,16 +483,14 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
                 ++row;
             }
             if (row == 0) {
-                d.setTextFont(0);
-                d.setTextSize(1);
+                ui::applyFont(d, ui::UiFont::Small);
                 d.setTextColor(ui::kFaint, ui::kBg);
                 d.drawString("No components cached.", 86, 50);
             }
             break;
         }
         case 5: {
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("PARTS OF SPEECH", 86, 38);
             std::string parts;
@@ -530,8 +500,7 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
             }
             if (parts.empty()) parts = "No parts of speech.";
             drawWrapped(d, parts, 86, 48, 150, 2, ui::kText, ui::kBg);
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("CONTEXT", 86, 68);
             std::string context;
@@ -546,8 +515,7 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
             break;
         }
         case 6: {
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("RELATED", 86, 38);
             auto relatedLine = [&](const char* label, const std::vector<const kk::Subject*>& items,
@@ -555,8 +523,7 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
                 char head[40];
                 snprintf(head, sizeof head, "%s: %u", label,
                          static_cast<unsigned>(items.size()));
-                d.setTextFont(0);
-                d.setTextSize(1);
+                ui::applyFont(d, ui::UiFont::Small);
                 d.setTextColor(ui::kDim, ui::kBg);
                 d.drawString(head, 86, y);
                 std::string names;
@@ -576,8 +543,7 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         }
     }
 
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kFaint, ui::kBg);
     d.drawString("Space: page  Tab/Esc: back", 5, 125);
 }
@@ -596,16 +562,14 @@ void drawReviewSummaryScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     if (count > 0 && selected >= count) selected = count - 1;
     const int first = kk::summaryWindowStart(selected, count, 3);
 
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString(view.practice ? "PRACTICE" : "SESSION", 6, 3);
 
     if (view.focus == 1) {
         // The header carries the page counter and the way back to the stats;
         // the footer below stays the same as the unfocused summary.
-        d.setTextFont(0);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Small);
         d.setTextDatum(lgfx::top_right);
         if (count > 0) {
             char counter[16];
@@ -624,8 +588,7 @@ void drawReviewSummaryScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     // stats layout back.
     if (view.focus == 1) {
         char line[64];
-        d.setTextFont(0);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Small);
         d.setTextColor(ui::kDim, ui::kBg);
         snprintf(line, sizeof line, "%u reviews  %u%%  %s", view.reviews, view.accuracy,
                  view.duration);
@@ -673,8 +636,7 @@ void drawReviewSummaryScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         d.drawFastHLine(8, 33, 224, ui::kLine);
 
         if (count == 0) {
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("No mistakes", 8, 50);
         } else {
@@ -691,14 +653,12 @@ void drawReviewSummaryScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
             const unsigned total = view.sendTotal ? view.sendTotal : 1;
             const unsigned sent = view.sent > total ? total : view.sent;
             d.fillRect(8, 121, static_cast<int>(224u * sent / total), 3, ui::kAccentHi);
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kFaint, ui::kBg);
             d.drawString("Esc: stop", 8, 125);
             return;
         }
-        d.setTextFont(0);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Small);
         d.setTextColor(ui::kFaint, ui::kBg);
         d.drawString(view.canNextBatch ? "Enter: home  R: next batch" : "Enter: home", 8, 125);
         return;
@@ -722,8 +682,7 @@ void drawReviewSummaryScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     value(accuracy, 84, 74);
     value(view.duration, 164, 72);
 
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString("REVIEWS", 8, 66);
     d.drawString("ACCURACY", 84, 66);

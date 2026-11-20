@@ -4,6 +4,7 @@
 
 #include "ui/HintBar.h"
 #include "ui/ListView.h"
+#include "ui/UiFont.h"
 
 namespace kk::app {
 namespace {
@@ -23,8 +24,7 @@ std::string tailToWidth(lgfx::LovyanGFX& d, std::string text, int maxWidth) {
 void drawHeader(lgfx::LovyanGFX& d, const char* subtitle) {
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
-    d.setTextFont(2);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Title);
     d.setTextColor(ui::kBrand, ui::kBg);
     d.drawString("KaniKey", 6, 2);
     d.setTextFont(1);
@@ -36,14 +36,12 @@ void drawHeader(lgfx::LovyanGFX& d, const char* subtitle) {
 
 void drawNote(lgfx::LovyanGFX& d, const WifiSetupView& view, int y) {
     if (view.note.empty()) return;
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     ui::drawHintLeft(d, trimToWidth(d, view.note, 224).c_str(), view.noteColor, 8, y);
 }
 
 void drawHelp(lgfx::LovyanGFX& d, const WifiSetupView& view) {
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     const char* help = view.help.empty() ? "Esc: back" : view.help.c_str();
     ui::drawHintLeft(d, trimToWidth(d, help, 224).c_str(), ui::kFaint, 8, 124);
 }
@@ -53,8 +51,7 @@ void drawHelp(lgfx::LovyanGFX& d, const WifiSetupView& view) {
 void drawTextField(lgfx::LovyanGFX& d, const std::string& text, int y) {
     d.fillRect(6, y, 228, 18, ui::kSurface);
     d.drawRect(6, y, 228, 18, ui::kLine);
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kText, ui::kSurface);
     d.setTextDatum(lgfx::top_left);
     const std::string shown = tailToWidth(d, text, 208);
@@ -68,8 +65,7 @@ void drawScanRow(lgfx::LovyanGFX& d, int index, int x, int y, int width, bool fo
     (void)width;
     const WifiSetupView& view = *static_cast<const WifiSetupView*>(ctx);
     const WifiListRowView& item = view.rows[static_cast<size_t>(index)];
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     const uint16_t labelColor =
         item.manual ? (focus ? ui::kAccentHi : ui::kDim)
                     : (focus ? ui::kText : ui::kDim);
@@ -107,8 +103,7 @@ void drawNetworkList(lgfx::LovyanGFX& d, const WifiSetupView& view) {
 }
 
 void drawManual(lgfx::LovyanGFX& d, const WifiSetupView& view) {
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kDim, ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.drawString("Network name (hidden)", 8, 48);
@@ -121,8 +116,7 @@ void drawManual(lgfx::LovyanGFX& d, const WifiSetupView& view) {
 }
 
 void drawPassword(lgfx::LovyanGFX& d, const WifiSetupView& view) {
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kDim, ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.drawString("Network", 8, 44);
