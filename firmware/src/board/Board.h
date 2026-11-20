@@ -135,8 +135,9 @@ void setDisplayOn(bool on);
 // Blanks the panel and puts the chip in deep sleep. The Select button wakes it
 // (on the Cardputer ADV any key too, which is not delivered as a key event;
 // on PaperDIY both A and B), and the chip then boots through setup() again.
-// Never returns.
-[[noreturn]] void deepSleep();
+// timerUs > 0 also arms a timer wake (the dev REM-01 probe; release passes
+// nothing, so it never arms one). Never returns.
+[[noreturn]] void deepSleep(uint64_t timerUs = 0);
 // Blanks the panel, turns Wi-Fi off and enters light sleep. RAM and the current
 // screen stay; the Select button and the keyboard's INT line wake it
 // (PaperDIY: A and B), and with maxMs > 0 a timer does too (0 = key only). The

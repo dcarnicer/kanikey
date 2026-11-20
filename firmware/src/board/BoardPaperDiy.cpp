@@ -259,12 +259,13 @@ void setDisplayOn(bool on) {
     }
 }
 
-void deepSleep() {
+void deepSleep(uint64_t timerUs) {
     M5.Display.waitDisplay();
     M5.Display.powerSaveOn();  // turns off the EPD boost/OE (BST_EN, OE)
     M5.Display.waitDisplay();
     waitForButtonsUp();
     armButtonWake();
+    if (timerUs) esp_sleep_enable_timer_wakeup(timerUs);
     Serial.flush();
     esp_deep_sleep_start();
 }

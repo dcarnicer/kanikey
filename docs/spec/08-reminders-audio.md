@@ -17,7 +17,7 @@ Decision D4 brings Kakehashi's reminders and vocabulary audio into this round. R
 
 | ID | Title | Priority | Size | Depends on | Wave | Status |
 |---|---|---|---|---|---|---|
-| REM-01 | Spike: timer wake and sound | P2 | M | none | 4 | todo |
+| REM-01 | Spike: timer wake and sound | P2 | M | none | 4 | partial (2026-11-20: dev probe; hardware run pending) |
 | REM-02 | Reminder wake | P2 | M | REM-01, SPEED-02, CFG (M1–M3) | 4 | todo |
 | REM-03 | Sounds | P3 | S | REM-01, REM-02, CFG (M4, M5) | 4 | todo |
 | AUD-01 | Spike: vocabulary audio | P2 | M | none | 4 | partial (2026-11-06: parser + speaker) |
@@ -45,6 +45,23 @@ Decision D4 brings Kakehashi's reminders and vocabulary audio into this round. R
 **Tests.** Hardware only, in `docs/hardware.md`: `timer-wake-cause`, `sleep-current-ext1`, `sleep-current-ext1-timer`, `wake-boot-ms`, `tone-flash-ram`, `led-present`.
 
 **Docs.** `docs/hardware.md` — new dated section with a numbers table and an explicit go/no-go for REM-02 and REM-03; note the method and the meter used. No ROADMAP change yet.
+
+#### Probe (dev image, `KANIKEY_DEV`; hardware run pending)
+
+Code: `firmware/src/app/RemProbe.cpp` (dev only; the release image has none of it), `Board::deepSleep(timerUs)` (timer optional, release passes none). Serial commands:
+- `rem <s> [n]` — arm a timer of `s` seconds (1–86400) for `n` timer wakes (1–32) and deep-sleep now with the key wake (G0/keyboard) still armed. Runs on battery or USB.
+- `rem` — the probe record and the wake history of the last run.
+- `rem tone` — one 880 Hz tone through `playTone()`, with heap before and after.
+
+Repeat loop: each probe wake returns to `setup()` right after `firmwareBoot()` and sleeps again before storage, Wi-Fi or sync start, so no probe wake joins Wi-Fi. The last timer wake continues into the normal boot. A key wake (EXT1), a reset or a power-on ends the run at once and boots normally. Sleep time is `rtcMicros()` across sleep. The record survives deep sleep in RTC memory; `seq` counts up across runs until a power cut.
+
+Log lines to collect (serial, 115200):
+- `[rem] wake cause timer|ext1|other N seq n slept_ms ms requested_s s` — every boot; `other` with no run is a cold power-on or reset.
+- `[rem] sleep seq n requested_s s left k` and `[rem] boot_ms ms` — at each probe sleep; `boot_ms` is boot to sleep with no Wi-Fi.
+- `[rem] boot_ms ms` — every normal boot at the first draw (boot to ready).
+- `[rem] repeat done after n timer wakes: normal boot` or `[rem] repeat aborted by cause N at seq n: normal boot`.
+- `[rem] hist i seq n slept_ms ms boot_ms ms` — the run's wakes, printed once the run ends. USB drops while the chip sleeps, so read this line after the run, not the per-wake lines.
+- `[rem] tone heap before free F largest L min M; after free F largest L min M (played 1)`.
 
 **Acceptance.**
 - [ ] `ext1` + timer wake works repeatedly; both causes are logged.
