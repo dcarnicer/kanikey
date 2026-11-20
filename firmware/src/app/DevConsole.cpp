@@ -1284,6 +1284,53 @@ void handleSerial() {
             kk::ota::clearRollbackRecord();
             firmwareNote("Rollback record cleared", kOk);
             Serial.println("[ota] rollback record cleared");
+        } else if (state().ui.gSerialLine == "cap" || state().ui.gSerialLine.startsWith("cap ")) {
+            // FIX-14 hook: `cap <bytes>` makes WkClient treat a body as truncated
+            // after <bytes> (0 = off); `cap` alone prints it. RAM only.
+            String arg = state().ui.gSerialLine.substring(3);
+            arg.trim();
+            if (arg.isEmpty()) {
+                Serial.printf("[dev] body cap %u (0 = off, buffer 32768)\n",
+                              static_cast<unsigned>(kk::wkDevBodyCap()));
+            } else {
+                const int32_t bytes = arg.toInt();
+                if (bytes < 0 || bytes > 1000000 || String(bytes) != arg) {
+                    Serial.println("[dev] use: cap <bytes>  (0 = off)");
+                } else {
+                    kk::wkDevSetBodyCap(static_cast<uint32_t>(bytes));
+                    Serial.printf("[dev] body cap %d (0 = off)\n", static_cast<int>(bytes));
+                }
+            }
+        } else if (state().ui.gSerialLine == "devhost" || state().ui.gSerialLine.startsWith("devhost ")) {
+            // FIX-06 hook: `devhost <host> <port>` sends every WkClient request to
+            // that host with certificate checks off; `devhost off` restores
+            // WaniKani; `devhost` alone prints. RAM only.
+            String arg = state().ui.gSerialLine.substring(7);
+            arg.trim();
+            if (arg.isEmpty()) {
+                if (kk::wkDevHostActive())
+                    Serial.printf("[dev] devhost %s:%u (active)\n", kk::wkDevHostName(),
+                                  static_cast<unsigned>(kk::wkDevHostPort()));
+                else
+                    Serial.println("[dev] devhost off (api.wanikani.com:443)");
+            } else if (arg == "off") {
+                kk::wkDevClearHost();
+                Serial.println("[dev] devhost off (api.wanikani.com:443)");
+            } else {
+                const int sp = arg.lastIndexOf(' ');
+                String host = sp > 0 ? arg.substring(0, sp) : String();
+                host.trim();
+                const int32_t port = sp > 0 ? arg.substring(sp + 1).toInt() : 0;
+                if (kk::wkDevSetHost(std::string_view(host.c_str(), host.length()),
+                                     static_cast<uint32_t>(port))) {
+                    Serial.printf("[dev] devhost %s:%d: requests go there, certificate check OFF "
+                                  "(RAM only, reboot clears)\n",
+                                  host.c_str(), static_cast<int>(port));
+                } else {
+                    Serial.println("[dev] devhost refused: use <host> <port>; host 1-63 letters, "
+                                   "digits, '.', '-', not WaniKani; port 1-65535");
+                }
+            }
         } else if (state().ui.gSerialLine.startsWith("K ")) {
             injectKeys(state().ui.gSerialLine.substring(2));
         } else if (state().ui.gSerialLine == "N") {
