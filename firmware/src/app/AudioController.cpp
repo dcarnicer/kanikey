@@ -1,4 +1,5 @@
 #include "app/AudioController.h"
+#include "app/AppUi.h"
 
 #include <SD.h>
 #include <WiFi.h>
@@ -89,13 +90,21 @@ void audioPrefetchBatch(const std::vector<kk::Subject>& subjects) {
         Serial.println("[audio] prefetch skipped: offline");
         return;
     }
+    // The clip downloads are TLS requests outside WkClient, so they do not get
+    // its request hooks: release the canvas the same way for the whole batch
+    // (on the Cardputer it holds the block TLS needs; measured 27,636 B largest
+    // with it, after a lesson fetch), and bring it back afterwards.
+    const bool savedFree = state().ui.gFreeCanvasForRequest;
+    state().ui.gFreeCanvasForRequest = true;
+    requestBefore();
     const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     if (largest < kTlsNeedBytes) {
         Serial.printf("[audio] prefetch skipped: largest %u\n", static_cast<unsigned>(largest));
-        return;
+    } else if (kk::audioCacheOpen(SD, currentAccountKey())) {
+        kk::audioCachePrefetch(SD, subjects, audioVoice(), kPrefetchBudgetMs, kTlsNeedBytes);
     }
-    if (!kk::audioCacheOpen(SD, currentAccountKey())) return;
-    kk::audioCachePrefetch(SD, subjects, audioVoice(), kPrefetchBudgetMs, kTlsNeedBytes);
+    requestAfter();
+    state().ui.gFreeCanvasForRequest = savedFree;
     state().display.gDirty = true;
 }
 

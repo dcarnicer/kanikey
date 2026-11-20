@@ -38,6 +38,14 @@ AudioHint audioHintForPlan(const AudioPlan& plan);
 // has no audio at all. The screens append/drop this to keep the hint bar short.
 const char* audioHintText(AudioHint hint);
 
+// Why a clip could not start or kept failing. Only a clip that is missing,
+// corrupt or not MP3 is remembered as `no audio` for its subject and voice. A
+// heap refusal is transient: the clip exists, so the next R tries again.
+enum class AudioFailure : uint8_t { Missing, Corrupt, NoHeap };
+inline bool audioFailureMarksBad(AudioFailure failure) {
+    return failure != AudioFailure::NoHeap;
+}
+
 // Heap admission for the playback pieces (AUD-03). The request is admitted only
 // when the free total leaves kAudioAdmitFreeMargin beside the pieces and the
 // largest free block holds the biggest piece plus kAudioAdmitLargestMargin.

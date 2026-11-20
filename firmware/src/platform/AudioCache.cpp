@@ -125,7 +125,7 @@ bool parseHttpsUrl(const String& url, String* host, String* path) {
 }
 
 bool downloadClip(fs::FS& sd, const AudioEntry& entry, const String& url, uint32_t handshakeSec,
-                  String* error) {
+                  uint8_t* chunk, size_t chunkBytes, String* error) {
     String host;
     String path;
     if (!parseHttpsUrl(url, &host, &path)) {
@@ -181,17 +181,16 @@ bool downloadClip(fs::FS& sd, const AudioEntry& entry, const String& url, uint32
         if (error) *error = "audio SD write";
         return false;
     }
-    uint8_t buf[4096];
     size_t total = 0;
     uint32_t lastData = millis();
     bool ok = true;
     while (total < contentLength) {
         const int avail = client.available();
         if (avail > 0) {
-            const size_t want = std::min<size_t>(sizeof buf, contentLength - total);
-            const int n = client.read(buf, want);
+            const size_t want = std::min<size_t>(chunkBytes, contentLength - total);
+            const int n = client.read(chunk, want);
             if (n > 0) {
-                if (file.write(buf, static_cast<size_t>(n)) != static_cast<size_t>(n)) {
+                if (file.write(chunk, static_cast<size_t>(n)) != static_cast<size_t>(n)) {
                     ok = false;
                     break;
                 }
@@ -243,6 +242,8 @@ bool audioCacheOpen(fs::FS& sd, uint32_t accountKey) {
     return true;
 }
 
+constexpr size_t kClipChunkBytes = 4096;
+
 AudioPrefetchStats audioCachePrefetch(fs::FS& sd, const std::vector<Subject>& subjects,
                                       uint8_t voice, uint32_t budgetMs, size_t minLargestHeap) {
     AudioPrefetchStats stats;
@@ -273,7 +274,15 @@ AudioPrefetchStats audioCachePrefetch(fs::FS& sd, const std::vector<Subject>& su
     }
     stats.wanted = wanted.size();
 
+    // The 4 KB stream chunk is one heap allocation per batch, not a stack array.
+    uint8_t* chunk = nullptr;
+    if (!wanted.empty()) {
+        chunk = static_cast<uint8_t*>(heap_caps_malloc(kClipChunkBytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+        if (!chunk) stats.stopped = "heap";
+    }
+
     for (const Want& w : wanted) {
+        if (!chunk) break;
         const uint32_t elapsed = millis() - start;
         if (elapsed >= budgetMs) {
             stats.stopped = "budget";
@@ -302,7 +311,8 @@ AudioPrefetchStats audioCachePrefetch(fs::FS& sd, const std::vector<Subject>& su
         // reads keep their own 5 s stall limit.
         const uint32_t remainingSec = std::max<uint32_t>(2, (budgetMs - elapsed) / 1000);
         String error;
-        if (!downloadClip(sd, entry, String(clip.url.c_str()), remainingSec, &error)) {
+        if (!downloadClip(sd, entry, String(clip.url.c_str()), remainingSec, chunk,
+                          kClipChunkBytes, &error)) {
             Serial.printf("[audio] %u: %s\n", static_cast<unsigned>(entry.subjectId), error.c_str());
             continue;
         }
@@ -322,6 +332,7 @@ AudioPrefetchStats audioCachePrefetch(fs::FS& sd, const std::vector<Subject>& su
         Serial.printf("[audio] cached %u %s (%u bytes)\n", static_cast<unsigned>(entry.subjectId),
                       path, static_cast<unsigned>(entry.bytes));
     }
+    if (chunk) heap_caps_free(chunk);
     if (stats.downloaded) {
         while (gAudio.bytes > kAudioCacheMaxBytes) {
             std::vector<AudioEntry> victims = audioEvict(gAudio.entries, gAudio.bytes, 0);

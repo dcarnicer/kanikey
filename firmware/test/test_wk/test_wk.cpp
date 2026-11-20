@@ -1412,25 +1412,36 @@ static void test_audio_plan_never_for_kanji_or_radical() {
 }
 
 static void test_audio_heap_admission_rule() {
-    // Stereo pieces: decoder+scratch, window, two stereo PCM buffers.
-    const size_t pieces[] = {22928, 4096, 4608, 4608};
-    const size_t freeNeed = 36240 + kAudioAdmitFreeMargin;
-    const size_t largestNeed = 22928 + kAudioAdmitLargestMargin;
-    TEST_ASSERT_TRUE(audioAdmitsPieces(freeNeed, largestNeed, pieces, 4));
-    TEST_ASSERT_FALSE(audioAdmitsPieces(freeNeed - 1, largestNeed, pieces, 4));
-    TEST_ASSERT_FALSE(audioAdmitsPieces(freeNeed, largestNeed - 1, pieces, 4));
-    TEST_ASSERT_FALSE(audioAdmitsPieces(freeNeed, largestNeed, pieces, 0));
-    TEST_ASSERT_FALSE(audioAdmitsPieces(freeNeed, largestNeed, nullptr, 4));
-    // A measured review sample (free 74,936, largest 51,188) is admitted; the
-    // old single 52,624 B largest requirement refused it.
-    TEST_ASSERT_TRUE(audioAdmitsPieces(74936, 51188, pieces, 4));
-    // A largest block of 38,900 B is enough for the 22.9 KB decoder piece.
-    TEST_ASSERT_TRUE(audioAdmitsPieces(74936, 38900, pieces, 4));
-    TEST_ASSERT_FALSE(audioAdmitsPieces(50000, 51188, pieces, 4));
-    // Mono PCM admits with less free memory.
-    const size_t mono[] = {22928, 4096, 2304, 2304};
-    TEST_ASSERT_TRUE(audioAdmitsPieces(31632 + kAudioAdmitFreeMargin, largestNeed, mono, 4));
-    TEST_ASSERT_FALSE(audioAdmitsPieces(31632 + kAudioAdmitFreeMargin - 1, largestNeed, mono, 4));
+    // Device sizes (xtensa sizeof, rounded to 8): decoder state 6,668 -> 6,672,
+    // decode scratch 16,236 -> 16,240; window 4,096; two mono PCM buffers 2,304.
+    const size_t mono[] = {6672, 16240, 4096, 2304, 2304};
+    const size_t monoFree = 31616 + kAudioAdmitFreeMargin;  // 56,192
+    const size_t monoLargest = 16240 + kAudioAdmitLargestMargin;  // 20,336
+    TEST_ASSERT_TRUE(audioAdmitsPieces(monoFree, monoLargest, mono, 5));
+    TEST_ASSERT_FALSE(audioAdmitsPieces(monoFree - 1, monoLargest, mono, 5));
+    TEST_ASSERT_FALSE(audioAdmitsPieces(monoFree, monoLargest - 1, mono, 5));
+    TEST_ASSERT_FALSE(audioAdmitsPieces(monoFree, monoLargest, mono, 0));
+    TEST_ASSERT_FALSE(audioAdmitsPieces(monoFree, monoLargest, nullptr, 5));
+    // Measured on the Cardputer (lesson card, second R after the speaker task):
+    // free 77,344 / largest 22,516 must be admitted ...
+    TEST_ASSERT_TRUE(audioAdmitsPieces(77344, 22516, mono, 5));
+    // ... and free 48,968 / largest 17,396 refused: the largest block is under
+    // the scratch + 4 KB.
+    TEST_ASSERT_FALSE(audioAdmitsPieces(48968, 17396, mono, 5));
+    // Enough largest block but too little free memory overall is refused too.
+    TEST_ASSERT_FALSE(audioAdmitsPieces(50000, 51188, mono, 5));
+    // Stereo PCM: 2 x 4,608 B.
+    const size_t stereo[] = {6672, 16240, 4096, 4608, 4608};
+    TEST_ASSERT_TRUE(audioAdmitsPieces(36224 + kAudioAdmitFreeMargin, monoLargest, stereo, 5));
+    TEST_ASSERT_FALSE(audioAdmitsPieces(36224 + kAudioAdmitFreeMargin - 1, monoLargest, stereo, 5));
+}
+
+static void test_audio_failure_marks_only_content_bad() {
+    // A missing, corrupt or non-MP3 clip is remembered as `no audio` for its
+    // subject; a heap refusal is transient and the next R tries again.
+    TEST_ASSERT_TRUE(audioFailureMarksBad(AudioFailure::Missing));
+    TEST_ASSERT_TRUE(audioFailureMarksBad(AudioFailure::Corrupt));
+    TEST_ASSERT_FALSE(audioFailureMarksBad(AudioFailure::NoHeap));
 }
 
 static void test_mp3_first_frame_channels() {
@@ -4343,6 +4354,7 @@ int main(int, char**) {
     RUN_TEST(test_audio_plan_fallback_voice_skips_ogg);
     RUN_TEST(test_audio_plan_never_for_kanji_or_radical);
     RUN_TEST(test_audio_heap_admission_rule);
+    RUN_TEST(test_audio_failure_marks_only_content_bad);
     RUN_TEST(test_mp3_first_frame_channels);
     RUN_TEST(test_audio_pick_download_mp3_first);
     RUN_TEST(test_assignment_stream_matches_dom);

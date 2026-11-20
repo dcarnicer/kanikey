@@ -1971,33 +1971,26 @@ void mp3dec_f32_to_s16(const float *in, int16_t *out, int num_samples)
 
 
 namespace kk::audio {
-namespace {
 
-// Decoder state and the decode scratch share one caller-owned block (see
-// AudioPlayer): neither is static RAM and neither is a stack local.
-struct Work {
-    mp3dec_t dec;
-    mp3dec_scratch_t scratch;
-};
+// The decoder state and the decode scratch are two caller-owned allocations
+// (AudioPlayer heap pieces): neither is static RAM and neither is a stack local.
+size_t mp3StateBytes() { return sizeof(mp3dec_t); }
+size_t mp3ScratchBytes() { return sizeof(mp3dec_scratch_t); }
 
-}  // namespace
-
-size_t mp3WorkBytes() { return sizeof(Work); }
-
-void mp3Reset(void* work) {
-    // A new file must not inherit the previous file's bit reservoir or
-    // overlap state. Zeroing the whole block also clears the header bytes
-    // that mp3dec_init() would only clear for a continuous stream.
-    if (work) memset(work, 0, sizeof(Work));
+void mp3Reset(void* state) {
+    // A new file must not inherit the previous file's bit reservoir or overlap
+    // state. Zeroing the state also clears the header bytes that mp3dec_init()
+    // would only clear for a continuous stream. The scratch needs no reset.
+    if (state) memset(state, 0, sizeof(mp3dec_t));
 }
 
-int mp3DecodeFrame(void* work, const uint8_t* data, int bytes, int16_t* pcm, int maxChannels,
-                   Mp3FrameInfo* info) {
+int mp3DecodeFrame(void* state, void* scratch, const uint8_t* data, int bytes, int16_t* pcm,
+                   int maxChannels, Mp3FrameInfo* info) {
     if (!info) return 0;
     info->frameBytes = 0;
     info->channels = 0;
     info->hz = 0;
-    if (!work || !data || bytes <= 0 || !pcm) return 0;
+    if (!state || !scratch || !data || bytes <= 0 || !pcm) return 0;
     // minimp3 writes 1152 samples per channel of the frame it finds. Refuse a
     // frame that needs more channels than the caller's PCM buffers hold, before
     // anything is written. The caller sees info->channels > maxChannels.
@@ -2006,9 +1999,10 @@ int mp3DecodeFrame(void* work, const uint8_t* data, int bytes, int16_t* pcm, int
         info->channels = channels;
         return 0;
     }
-    Work* w = static_cast<Work*>(work);
     mp3dec_frame_info_t frame{};
-    const int samples = mp3dec_decode_frame_scratch(&w->dec, data, bytes, pcm, &frame, &w->scratch);
+    const int samples = mp3dec_decode_frame_scratch(static_cast<mp3dec_t*>(state), data, bytes,
+                                                    pcm, &frame,
+                                                    static_cast<mp3dec_scratch_t*>(scratch));
     info->frameBytes = frame.frame_bytes;
     info->channels = frame.channels;
     info->hz = frame.hz;
