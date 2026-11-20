@@ -8,6 +8,7 @@
 
 #include "platform/RootCerts.h"
 #include "Version.h"
+#include "wk/DevOverrides.h"
 #include "wk/HttpChunked.h"
 #include "wk/RateLimit.h"
 
@@ -35,6 +36,14 @@ int gAuthHttpCode = 0;
 
 // Set by the first 2xx status; read by the OTA verification window.
 bool gHadApiSuccess = false;
+
+#ifdef KANIKEY_DEV
+// Dev-only request overrides (`cap`, `devhost`). RAM only: a reboot clears them.
+uint32_t gDevBodyCap = 0;
+bool gDevHostOn = false;
+char gDevHost[64] = "";
+uint16_t gDevPort = 0;
+#endif
 
 // The Cardputer has no RTC; anything earlier than this is a clock that has not
 // been set yet, so an epoch reset header cannot be compared against it.
@@ -96,6 +105,21 @@ void closeClient(WiFiClientSecure& client) {
     client.socket();  // the library accessor sets sslclient->socket = -1
 }
 
+struct Endpoint {
+    const char* host;
+    uint16_t port;
+    bool insecure;  // dev `devhost` only: certificate checks off
+};
+
+// The WaniKani API, or the dev host while `devhost` is set. Release builds
+// have no way to leave the pinned root CA.
+Endpoint activeEndpoint() {
+#ifdef KANIKEY_DEV
+    if (gDevHostOn) return Endpoint{gDevHost, gDevPort, true};
+#endif
+    return Endpoint{"api.wanikani.com", 443, false};
+}
+
 struct Attempt {
     WkResponse r;
     bool retryable = false;
@@ -117,10 +141,19 @@ Attempt performRequest(WiFiClientSecure& client, const String& method, const Str
         Serial.printf("[http] %s reuse\n", path.c_str());
     } else {
         closeClient(client);
-        client.setCACert(tgc::kRootCaPem);
+        const Endpoint endpoint = activeEndpoint();
+        if (endpoint.insecure)
+            client.setInsecure();
+        else
+            client.setCACert(tgc::kRootCaPem);
         client.setHandshakeTimeout(kHandshakeTimeoutS);
         client.setTimeout(timeoutMs / 1000);
-        if (!client.connect("api.wanikani.com", 443)) {
+#ifdef KANIKEY_DEV
+        if (endpoint.insecure)
+            Serial.printf("[http] dev host %s:%u, certificate check off\n", endpoint.host,
+                          static_cast<unsigned>(endpoint.port));
+#endif
+        if (!client.connect(endpoint.host, endpoint.port)) {
             char err[80] = "";
             r.tlsError = client.lastError(err, sizeof err);
             r.ms = millis() - t0;
@@ -243,7 +276,14 @@ Attempt performRequest(WiFiClientSecure& client, const String& method, const Str
         return a;
     }
 
+#ifdef KANIKEY_DEV
+    const size_t cap = effectiveBodyCap(maxBodyBytes, bufferSize, gDevBodyCap);
+    if (gDevBodyCap)
+        Serial.printf("[http] dev cap %u, %s effective %u\n", static_cast<unsigned>(gDevBodyCap),
+                      path.c_str(), static_cast<unsigned>(cap));
+#else
     const size_t cap = std::min(maxBodyBytes, bufferSize);
+#endif
     const bool noBody = r.httpCode / 100 == 1 || r.httpCode == 204 || r.httpCode == 304;
     size_t bodyLen = 0;
     bool bodyComplete = false;
@@ -427,11 +467,57 @@ void wkClearAuthBlock() {
 
 bool wkHadApiSuccess() { return gHadApiSuccess; }
 
+#ifdef KANIKEY_DEV
+void wkDevSetBodyCap(uint32_t bytes) { gDevBodyCap = bytes; }
+
+uint32_t wkDevBodyCap() { return gDevBodyCap; }
+
+bool wkDevSetHost(std::string_view host, uint32_t port) {
+    if (!devHostAllowed(host, port)) return false;
+    host.copy(gDevHost, host.size());
+    gDevHost[host.size()] = '\0';
+    gDevPort = static_cast<uint16_t>(port);
+    gDevHostOn = true;
+    // Sockets opened for the old endpoint must not carry over to the new one.
+    if (gSessionDepth == 0) {
+        closeClient(gSessionClient);
+        closeClient(gLocalClient);
+    }
+    return true;
+}
+
+void wkDevClearHost() {
+    gDevHostOn = false;
+    gDevHost[0] = '\0';
+    gDevPort = 0;
+    if (gSessionDepth == 0) {
+        closeClient(gSessionClient);
+        closeClient(gLocalClient);
+    }
+}
+
+bool wkDevHostActive() { return gDevHostOn; }
+
+const char* wkDevHostName() { return gDevHost; }
+
+uint16_t wkDevHostPort() { return gDevPort; }
+#endif
+
 namespace {
 WkResponse request(const String& method, const String& path, const String& token,
                    const String& body, size_t maxBodyBytes, uint32_t timeoutMs,
                    char* externalBuffer = nullptr, size_t externalCapacity = 0) {
     const uint32_t startMs = millis();
+#if defined(KANIKEY_DEV) && defined(KANIKEY_DEV_FAIL_API)
+    // FIX-20 test image: every request fails before a socket is opened, so the
+    // image never reports an API success and only the 10-minute window can
+    // mark it valid.
+    {
+        WkResponse r;
+        Serial.printf("[http] %s dev fail-api: not connecting\n", path.c_str());
+        return r;
+    }
+#endif
     if (gAuthBlocked) {
         WkResponse r;
         r.connected = true;

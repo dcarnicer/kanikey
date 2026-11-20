@@ -205,6 +205,8 @@ Every item below was found and reproduced in the 2026-11-01 review of the firmwa
 - [ ] `Ota.cpp` has the same post-connect timeout setup.
 - [ ] A slow response no longer yields `httpCode 0` after 1 s on hardware.
 
+**Dev hooks (procedure only).** Build and flash `cardputer-adv-dev`. The `devhost <host> <port>` console command (RAM only, cleared by a reboot) sends every WkClient request to that host with certificate checks off; the Host header stays `api.wanikani.com`. A host whose name contains `wanikani` is refused. `devhost off` restores WaniKani; `devhost` alone prints the state. On the Mac run `python3 tools/slow_server.py stall --port 8443` (or `slow`, or `log`); it prints the LAN IP and the exact `devhost` line. Then on the device: `devhost <ip> 8443`, trigger the request under test (`t` for the probe, or a review submit), and `devhost off` when done. Serial lines to read: `[http] dev host <ip>:8443, certificate check off` at connect; `[http] <path> no status line` in stall mode, which has no timing, so time it with a stopwatch from the key press (it should take about the request's timeoutMs, 20 s for a default GET, not 1 s); `[http] <path> -> <code>, <n> body bytes, <ms> ms, …` in slow mode, where the `ms` value includes the server's 3 s header delay and `(truncated)` shows the body was cut at the deadline. `log` mode prints one line per request that arrived, so a POST /reviews that is sent twice shows as two lines.
+
 ### FIX-07 — Setup AP password derivable from the beacon
 
 - **Priority:** P1
@@ -424,6 +426,8 @@ Every item below was found and reproduced in the 2026-11-01 review of the firmwa
 - [ ] The summary path has a defined truncation behaviour.
 - [ ] Measured sizes are in `docs/hardware.md`.
 
+**Dev hooks (procedure only).** Build and flash `cardputer-adv-dev`. `cap <bytes>` makes WkClient treat a body as truncated once it exceeds `<bytes>`; it can never raise the 32 KB buffer. `cap 0` turns it off, `cap` alone prints the value, and a reboot clears it. While it is set, each request logs `[http] dev cap <bytes>, <path> effective <n>`. Procedure: with Wi-Fi and a token, set a cap that makes a 5-subject page truncate but a smaller page fit (start near `cap 8000` and lower it until both retries appear; the value is found by trial, not computed). Then run the path that fetches subject pages: `v` (review batch) for the review fallback, `l` (lessons) for the lesson fallback. Afterwards run `cap 0`. Serial lines to read: `[review] subject page <a>-<b>: <n> bytes (truncated)` followed by `[review] subject page <a>-<b> truncated, retrying with 2` and then `… retrying with 1`; the lesson path prints `[lesson] subject page …` and `[lesson] level page … retrying with …` the same way. A later page that completes without `(truncated)` shows the fallback worked.
+
 ### FIX-15 — Typo tolerance uses the typed length
 
 - **Priority:** P2
@@ -582,6 +586,8 @@ Every item below was found and reproduced in the 2026-11-01 review of the firmwa
 - [ ] Sleep applies the same rule.
 - [ ] Two failed first boots are needed to blacklist a version.
 - [ ] The policy has native tests.
+
+**Dev hooks (procedure only).** Serve images over plain HTTP with `tools/ota_local.py`; a dev build accepts `http://` for the manifest and the image, and a release build does not. The bad image is `pio run -e cardputer-adv-badapi` (version 0.1.2, every WaniKani request fails before a socket opens, so it never reports an API success). Setup: `python3 tools/ota_local.py --bin firmware/.pio/build/cardputer-adv-badapi/firmware.bin --version v0.1.2 --port 8080`. On the device (running a dev build at 0.1.0 with Wi-Fi): `U http://<ip>:8080/kanikey-firmware.txt`, `F` (expect `Update available`), `I` (confirm). Then watch the serial log. Install lines: `[ota] installing http://<ip>:8080/firmware.bin (<n> bytes) into app1`, `[ota] install: ok (<n>/<n> bytes, http 200)`, `[ota] restarting into v0.1.2`. First boot: `[ota] 0.1.2 (cardputer-adv) in app1; …`, `[ota] v0.1.2 installed over the air in app1`, `[ota] first boot of 0.1.2: valid after an API success or 10 minutes`, then `[http] <path> dev fail-api: not connecting`. Before 10 minutes and before any API success, reset the device (`r`, or unplug and replug): the bootloader rolls back to app0. Boot after the rollback: `[ota] v0.1.2 did not start in app1: back on 0.1.0`, `[ota] v0.1.2 rollback count 1: still offered`; `F` still offers v0.1.2. Repeat the install and reset once more: `[ota] v0.1.2 rollback count 2: blacklisted`, and `F` shows `Previous update failed`. Clear the record with `Y` before retesting. Good-image valid path: install a `cardputer-adv-dev` image built at 0.1.1 (served with `--version v0.1.1`); after a successful API request the log shows `[ota] 0.1.1 marked valid after boot (API success)`. Note that `ota_local.py` refuses a `--version` that is not in the image.
 
 ### FIX-21 — LittleFS formats on any mount failure
 
