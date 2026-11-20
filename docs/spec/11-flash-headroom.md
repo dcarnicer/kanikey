@@ -12,7 +12,7 @@ arithmetic (**E**). The hardware checks are in §7.
 |---|---|---|---|
 | FLASH-01 | Attribution of the release, dev and PaperDIY images; `fs` probe | done (build; `fs` on hardware) | Release 1,712,269 B at baseline; ours is 27.4% of it; the WiFi/lwIP, ESP-IDF, mbedTLS and M5GFX blocks are 53% (M). Dev-only code is 32.1 KB (M). `fs` on hardware: 94,208 B used of 4,653,056 B (§2.7). `fs` added (dev only). |
 | FLASH-02 | Behaviour-neutral trims | **applied: `sscanf` removal and `CORE_DEBUG_LEVEL=0` for `cardputer-adv` (release) only** (2026-11-20); 2 held back | `sscanf` removed from ISO-8601 parsing: **−9,708 B** release (M), native test vs sscanf passes. `CORE_DEBUG_LEVEL=0` on the release saves 38,188 B (M): release 1,664,373 B now; dev, badapi keep level 1 (§8). `-fno-threadsafe-statics` and the other rows are still held back. |
-| FLASH-03 | 8 MB partition change | **implemented 2026-11-20, hardware pending** (option c: 2 × 3 MiB, LittleFS 1.94 MiB; no migration) | Table in §8. Build: release 1,664,373 B of 3,145,728 B (52.9%). Hardware checks in §7 (OTA into the 3 MiB slot, LittleFS format/mount time, `fs`, the FIX-21 prompt after the table move). |
+| FLASH-03 | 8 MB partition change | **done 2026-11-20 (hardware verified)** (option c: 2 × 3 MiB, LittleFS 1.94 MiB; no migration) | Table in §8. Build: release 1,664,373 B of 3,145,728 B (52.9%). Hardware checks in §7 (OTA into the 3 MiB slot, LittleFS format/mount time, `fs`, the FIX-21 prompt after the table move). |
 
 ## 1. Baseline and method
 
@@ -501,3 +501,24 @@ Developer move from the old table: `docs/setup.md` §7.3.
    unchanged (FIX-20 procedure).
 7. **FIX-21 prompt** after a corrupt LittleFS on the new layout: `Esc` keeps the
    files, `Enter` formats (as before at `0x610000`).
+
+## 9. Hardware run (2026-11-20, Cardputer ADV)
+
+- Table move on the dev device: `esptool … erase_region 0x610000 0x1F0000`
+  (3.6 s), then `pio run -e cardputer-adv-dev -t upload` (writes 0x8000 table
+  and 0xE000 `boot_app0`). NVS survived: saved Wi-Fi joined in 3.1 s and the
+  token synced the real account (469/115). Boot log: `[ota] 0.1.0 … in app0;
+  update slot app1, 3145728 bytes`. No storage prompt.
+- Blank partition: a second erase with `--after no_reset` and a captured boot
+  showed the failed `begin(false)` and then `[kk] LittleFS was blank: formatted
+  ok in 42 ms`, no prompt (the blank check added in this change).
+- `fs`: total 2,031,616 B; after a sync 28,672 B used, `/state` 9,824 B
+  (`cache.bin`/`.bak`, `critical.bin`, `practice.bin`; the journal restarted
+  empty, as accepted).
+- OTA into the new `app1` (0x310000): `cardputer-adv-badapi` 0.1.2
+  (1,729,712 B) from `tools/ota_local.py` installed in 12.7 s, booted `0.1.2 …
+  in app1; update slot app0, 3145728 bytes`; `r` rolled back to `app0` with
+  `rollback count 1: still offered`. Record cleared, default manifest URL
+  restored.
+- Not run: the stale-bytes path (flashing without the erase) on hardware, and
+  a release image (level 0 logs) on the device.
