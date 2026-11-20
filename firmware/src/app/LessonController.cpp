@@ -4,6 +4,8 @@
 #include <SD.h>
 #include <SPI.h>
 #include <WiFi.h>
+
+#include "app/AppUi.h"
 #include <esp_heap_caps.h>
 #include <esp_system.h>
 #include <time.h>
@@ -218,7 +220,14 @@ void showLessonFetchError(int httpCode, const String& error) {
 // After the last page of the last card: the batch quiz (L3 Required) or the
 // start confirmation (L3 Skip).
 void afterLastLessonCard() {
-    if (lessonNextStep(kk::settingsLessonQuizRequired()) == LessonNextStep::Quiz)
+    const bool quiz = lessonNextStep(kk::settingsLessonQuizRequired()) == LessonNextStep::Quiz;
+    // PD-03: the quiz types an answer and the start is a PUT: neither runs on a
+    // two-button board. The card stays put and says why.
+    if (tgc::board::buttonsOnly()) {
+        needsKeyboardNotice(quiz ? "Quizzes need a keyboard" : "Lesson start needs a keyboard");
+        return;
+    }
+    if (quiz)
         startLessonBatchQuiz();
     else
         openLessonStartConfirm();
@@ -575,6 +584,10 @@ void showLessonBatchQuiz() {
 }
 
 void startLessonQuiz() {
+    if (tgc::board::buttonsOnly()) {
+        needsKeyboardNotice("Quizzes need a keyboard");
+        return;
+    }
     const kk::Subject* s = currentLessonSubject();
     if (!s) return;
     state().lesson.gLessonQuiz.start(*s);
@@ -901,7 +914,14 @@ void lessonStartKey(const KeyEvent& e) {
     startLessonBatch();
 }
 
-void startLessonBatch() { runLessonStart(); }
+// The one PUT /start path. PD-03: refused on a two-button board.
+void startLessonBatch() {
+    if (tgc::board::buttonsOnly()) {
+        needsKeyboardNotice("Lesson start needs a keyboard");
+        return;
+    }
+    runLessonStart();
+}
 
 // Kept for the notice retry path. It never sends anything: the confirmation
 // owns every PUT /assignments/{id}/start.
@@ -1164,6 +1184,14 @@ void lessonListKey(const KeyEvent& e) {
         }
         state().display.gDirty = true;
     } else if (e.key == Key::Enter) {
+        if (tgc::board::buttonsOnly()) {
+            // No Space key: a hold of A opens the item under the cursor alone.
+            const size_t cursor = l.gLessonBrowse.cursor();
+            const size_t limit = l.gLessonBatchLimit ? l.gLessonBatchLimit : total;
+            l.gLessonBrowse.begin(total, limit);
+            l.gLessonBrowse.setCursor(cursor);
+            l.gLessonBrowse.toggle(cursor, limit);
+        }
         if (l.gLessonBrowse.selectedCount() == 0) {
             snprintf(l.gLessonNote, sizeof l.gLessonNote, "select one first");
             state().display.gDirty = true;
@@ -1199,7 +1227,9 @@ void lessonKey(const KeyEvent& e) {
         state().display.gDirty = true;
         return;
     }
-    if (e.key == Key::Left || e.key == Key::Backspace) {
+    // PD-03: a two-button board goes back a page with hold B (Up).
+    if (e.key == Key::Left || e.key == Key::Backspace ||
+        (tgc::board::buttonsOnly() && e.key == Key::Up)) {
         l.gLessonBrowse.previous();
         state().display.gDirty = true;
         return;

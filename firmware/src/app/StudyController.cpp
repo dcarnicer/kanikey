@@ -4,6 +4,8 @@
 #include <SD.h>
 #include <SPI.h>
 #include <WiFi.h>
+
+#include "app/AppUi.h"
 #include <esp_heap_caps.h>
 #include <esp_system.h>
 #include <time.h>
@@ -401,6 +403,10 @@ bool refreshPracticePool() {
 }
 
 void openStudyMenu() {
+    if (tgc::board::buttonsOnly()) {
+        needsKeyboardNotice("Study needs a keyboard");
+        return;
+    }
     state().study.gStudyMenuActive = true;
     state().study.gStudyIndex = 0;
     state().study.gStudyNote[0] = 0;

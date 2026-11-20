@@ -4,6 +4,8 @@
 #include <SD.h>
 #include <SPI.h>
 #include <WiFi.h>
+
+#include "app/AppUi.h"
 #include <esp_heap_caps.h>
 #include <esp_system.h>
 #include <time.h>
@@ -203,7 +205,11 @@ void settingsRunAction(const kk::SettingDef& def) {
         kk::screenPush(&state().screen, Modal::SignOut);
         state().ui.gSettingsNote[0] = 0;
     } else if (std::strcmp(id, "system.firmware") == 0) {
-        openFirmware();
+        // PD-03: the OTA flow is not verified on PaperDIY yet (PD-05).
+        if (tgc::board::buttonsOnly())
+            setSettingsNote("Firmware updates: Cardputer only", kWarn);
+        else
+            openFirmware();
     } else if (std::strcmp(id, "system.about") == 0) {
         kk::screenPush(&state().screen, Modal::About);
         state().ui.gSettingsNote[0] = 0;

@@ -2,6 +2,8 @@
 // startWrite()/endWrite() (the caller owns the transfer window).
 #include "app/SyncScreen.h"
 
+#include "app/ButtonHint.h"
+
 #include <cstdio>
 #include <string>
 
@@ -121,11 +123,11 @@ void drawSyncScreen(lgfx::LovyanGFX& d, const SyncView& view) {
             d.fillRect(8, 113, 224 * view.completed / kSyncRowCount, 3, ui::kAccentHi);
     }
 
-    const char* hint = "Esc: cancel";
+    const char* hint = pickHint("Esc: cancel", "B: cancel");
     if (view.finished)
         hint = (view.issue == SyncIssueKind::Auth || view.issue == SyncIssueKind::Forbidden)
-                   ? "Enter: setup  Esc: back"
-                   : "Enter: retry  Esc: back";
+                   ? pickHint("Enter: setup  Esc: back", "hold A: setup  B: back")
+                   : pickHint("Enter: retry  Esc: back", "hold A: retry  B: back");
     else if (allDone)
         hint = "";
     ui::applyFont(d, ui::UiFont::Small);

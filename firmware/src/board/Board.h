@@ -54,6 +54,19 @@ inline bool hasKeyboard() { return false; }
 inline bool nextKeyEvent(KeyEvent*) { return false; }
 #endif
 
+// PD-03: true when the board's only input is its buttons, so the app shows
+// button hints and keeps to the read-only scope (no review, quiz, start or
+// text entry). Compile-time on the PaperDIY (true) and the Cardputer ADV
+// (false), so the Cardputer image drops the button paths; the M5 image asks
+// the board it found at boot.
+#if defined(TGC_BOARD_PAPERDIY)
+constexpr bool buttonsOnly() { return true; }
+#elif defined(TGC_BOARD_CARDPUTER_ADV)
+constexpr bool buttonsOnly() { return false; }
+#else
+inline bool buttonsOnly() { return !hasKeyboard(); }
+#endif
+
 // --- microSD slot --------------------------------------------------------------
 // The SPI pins of the board's microSD slot (docs/microsd.md §1), -1 for none.
 // The card has a bus of its own, SPI2 (an SPIClass on FSPI in mountSd()),
