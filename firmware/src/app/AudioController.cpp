@@ -5,6 +5,9 @@
 #include <WiFi.h>
 #include <esp_heap_caps.h>
 
+#include <algorithm>
+#include <string>
+
 #include "app/AppState.h"
 #include "app/CacheController.h"
 #include "platform/AudioCache.h"
@@ -13,6 +16,7 @@
 #include "platform/WkClient.h"
 #include "platform/DeviceSettings.h"
 #include "platform/DevToken.h"
+#include "wk/AudioQueue.h"
 
 namespace kk::app {
 
@@ -22,9 +26,13 @@ namespace {
 // card screen. Cleared on leaving, so the next visit prepares again once.
 bool gPreparedForVisit = false;
 
-// A batch prefetch that had to wait for the WkClient session to close.
-enum class PrefetchSource : uint8_t { None, Review, Lesson };
-PrefetchSource gPrefetchPending = PrefetchSource::None;
+// AUD-02: the clips waiting to download. RAM only; a restart or a new sync
+// refills it from the batch. Entries carry copies of the URLs, so the batch can
+// be evicted from RAM meanwhile.
+kk::AudioQueue gQueue;
+bool gDrainAttempted = false;
+uint32_t gDrainLastAttemptMs = 0;
+bool gDrainRefused = false;  // the last attempt was refused for heap
 
 // M6: one pending autoplay. Only the id and type are kept; the clip is looked
 // up when it starts, so a stale subject pointer is never used.
@@ -62,45 +70,123 @@ kk::Subject lightSubject(uint32_t id, SubjectType type) {
     return s;
 }
 
-// Batch prefetch budget (AUD-02: 8 s total per batch, the batch stops early
-// when it is spent). The TLS need is the 32 KB handshake buffer: below that
-// largest free block a clip is not started.
-constexpr uint32_t kPrefetchBudgetMs = 8000;
-constexpr size_t kTlsNeedBytes = 32 * 1024;
+// AUD-02 queue budgets. The TLS handshake of one clip gets at most 8 s; a
+// lesson batch may drain inline within 8 s in total (its five clips took 3.8 s
+// on hardware); the Home tick downloads one clip per call.
+constexpr uint32_t kDrainHandshakeSec = 8;
+constexpr uint32_t kInlineDrainBudgetMs = 8000;
+
+enum class DrainResult : uint8_t { NotReady, Refused, Stored, Failed };
 
 bool audioScreen() {
     const Screen base = kk::screenBase(state().screen);
     return base == Screen::Review || base == Screen::LessonCard;
 }
 
-}  // namespace
-
-uint8_t audioVoice() {
-    int voice = 0;
-    if (kk::settingsGetInt("rm.voice", &voice) && voice == 1) return 1;
-    return 0;
+// The Home tick may download only on an idle Home: no modal, not dimmed, no
+// portal, and nothing playing (a download would stall the decoder).
+bool drainScreenIdle() {
+    if (kk::screenBase(state().screen) != Screen::Home) return false;
+    if (kk::screenTop(state().screen) != kk::Modal::None) return false;
+    if (state().ui.gDimmed) return false;
+    if (state().setup.gSetupPortal.active()) return false;
+    if (kk::audioPlayerIsPlaying() || kk::sound::soundBusy()) return false;
+    return true;
 }
 
-void audioBegin() { kk::audioPlayerBegin(SD); }
+// Downloads the head of the queue. The canvas is released only around the
+// download, as the old batch hook did, and restored afterwards.
+DrainResult drainOne(bool screenIdle, uint32_t spacingMs, uint32_t handshakeSec) {
+    if (gQueue.empty()) return DrainResult::NotReady;
+    // Every call past the spacing counts as an attempt, even one that finds a
+    // rule false, so the token is read and the link checked at most once per
+    // spacing window, not on every loop.
+    const uint32_t sinceAttempt =
+        gDrainAttempted ? millis() - gDrainLastAttemptMs : kk::kAudioDrainNever;
+    if (sinceAttempt < spacingMs) return DrainResult::NotReady;
+    gDrainAttempted = true;
+    gDrainLastAttemptMs = millis();
 
-void audioAutoplayRequest(const kk::Subject& subject) {
-    int on = 0;
-    if (!kk::settingsGetInt("rm.autoplay", &on) || on != 1) return;  // Off: nothing changes
-    gAutoplay.active = true;
-    gAutoplay.subjectId = subject.id;
-    gAutoplay.type = subject.type;
+    gQueue.useAccount(currentAccountKey());
+    kk::AudioDrainState s;
+    s.queued = !gQueue.empty();
+    s.screenIdle = screenIdle;
+    s.sessionActive = kk::wkSessionActive();
+    s.syncRunning = state().sync.gSyncing || state().sync.gSyncJob.active;
+    s.wifiUp = WiFi.status() == WL_CONNECTED;
+    s.sdOk = state().storage.gSdOk;
+    s.tokenUsable = kk::DevToken::has() && !kk::wkAuthBlocked() && kk::wkRateLimitWaitSeconds() == 0;
+    s.msSinceAttempt = sinceAttempt;
+    s.spacingMs = spacingMs;
+    if (!kk::audioDrainAllowed(s)) return DrainResult::NotReady;
+
+    const bool savedFree = state().ui.gFreeCanvasForRequest;
+    state().ui.gFreeCanvasForRequest = true;
+    requestBefore();
+    const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    const size_t total = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    DrainResult result = DrainResult::Refused;
+    if (!kk::audioDrainHeapOk(largest, total)) {
+        gDrainRefused = true;
+        Serial.printf("[audio] drain waits for heap: largest %u, free %u\n",
+                      static_cast<unsigned>(largest), static_cast<unsigned>(total));
+    } else if (!kk::audioCacheOpen(SD, gQueue.accountKey())) {
+        Serial.println("[audio] drain skipped: cache unavailable");
+        result = DrainResult::NotReady;
+    } else {
+        const kk::AudioQueueItem& item = gQueue.front();
+        const uint32_t subjectId = item.subjectId;
+        const uint8_t voice = item.voice;
+        const uint32_t t0 = millis();
+        std::string error;
+        const uint32_t bytes =
+            kk::audioCacheFetchClip(SD, subjectId, voice, item.url, handshakeSec, &error);
+        const uint32_t ms = millis() - t0;
+        gDrainRefused = false;
+        if (bytes) {
+            Serial.printf("[audio] clip %u ok %u B %u ms\n", static_cast<unsigned>(subjectId),
+                          static_cast<unsigned>(bytes), static_cast<unsigned>(ms));
+            gQueue.popFront();
+            result = DrainResult::Stored;
+        } else {
+            Serial.printf("[audio] clip %u failed: %s\n", static_cast<unsigned>(subjectId),
+                          error.c_str());
+            if (gQueue.failFront())
+                Serial.printf("[audio] clip %u given up after %u failures\n",
+                              static_cast<unsigned>(subjectId),
+                              static_cast<unsigned>(kk::kAudioQueueMaxFailures));
+            result = DrainResult::Failed;
+        }
+        if (gQueue.empty()) Serial.println("[audio] queue empty");
+    }
+    requestAfter();
+    state().ui.gFreeCanvasForRequest = savedFree;
+    state().display.gDirty = true;
+    return result;
 }
 
-void audioLessonCardShown(const kk::Subject& subject, bool hasReading) {
-    if (!hasReading || subject.id == 0 || lessonAlreadyAsked(subject.id)) return;
-    gLessonAsked[gLessonAskedNext] = subject.id;
-    gLessonAskedNext = (gLessonAskedNext + 1) % kLessonAskedMax;
-    audioAutoplayRequest(subject);
+// Home tick: at most one clip per call, with the spacing after a clip, a
+// failure, or (longer) a heap refusal.
+void drainTick() {
+    if (gQueue.empty()) return;
+    if (!drainScreenIdle()) return;
+    const uint32_t spacing = gDrainRefused ? kk::kAudioDrainRefusedSpacingMs : kk::kAudioDrainSpacingMs;
+    drainOne(/*screenIdle=*/true, spacing, kDrainHandshakeSec);
 }
 
-void audioAutoplayCancel() { gAutoplay.active = false; }
-
-namespace {
+// Lesson batch hook: drains the batch's clips in this call, within the budget,
+// under the same link and heap rules. It stops at the first refusal, and the
+// rest waits for the Home tick.
+void drainInline() {
+    const uint32_t start = millis();
+    while (!gQueue.empty()) {
+        const uint32_t elapsed = millis() - start;
+        if (elapsed >= kInlineDrainBudgetMs) break;
+        const uint32_t left = std::max<uint32_t>(2, (kInlineDrainBudgetMs - elapsed) / 1000);
+        const DrainResult result = drainOne(/*screenIdle=*/true, /*spacingMs=*/0, left);
+        if (result != DrainResult::Stored && result != DrainResult::Failed) break;
+    }
+}
 
 // Starts the pending autoplay when every rule still holds. It re-checks the
 // setting, the screen, the cache, sync and the portal at start time, so a
@@ -131,6 +217,31 @@ void autoplayTick() {
 
 }  // namespace
 
+uint8_t audioVoice() {
+    int voice = 0;
+    if (kk::settingsGetInt("rm.voice", &voice) && voice == 1) return 1;
+    return 0;
+}
+
+void audioBegin() { kk::audioPlayerBegin(SD); }
+
+void audioAutoplayRequest(const kk::Subject& subject) {
+    int on = 0;
+    if (!kk::settingsGetInt("rm.autoplay", &on) || on != 1) return;  // Off: nothing changes
+    gAutoplay.active = true;
+    gAutoplay.subjectId = subject.id;
+    gAutoplay.type = subject.type;
+}
+
+void audioLessonCardShown(const kk::Subject& subject, bool hasReading) {
+    if (!hasReading || subject.id == 0 || lessonAlreadyAsked(subject.id)) return;
+    gLessonAsked[gLessonAskedNext] = subject.id;
+    gLessonAskedNext = (gLessonAskedNext + 1) % kLessonAskedMax;
+    audioAutoplayRequest(subject);
+}
+
+void audioAutoplayCancel() { gAutoplay.active = false; }
+
 void audioTick() {
     // M6: the asked-cards set lasts through a lesson's cards and their quiz, and
     // ends when the device leaves for any other screen.
@@ -151,13 +262,7 @@ void audioTick() {
     }
     autoplayTick();
     kk::audioPlayerTick();
-    if (gPrefetchPending != PrefetchSource::None && !kk::wkSessionActive()) {
-        const PrefetchSource source = gPrefetchPending;
-        gPrefetchPending = PrefetchSource::None;
-        Serial.println("[audio] running the deferred prefetch");
-        audioPrefetchBatch(source == PrefetchSource::Lesson ? state().lesson.gLessonBatch.subjects
-                                                            : state().cache.gBatch.subjects);
-    }
+    drainTick();
 }
 
 void audioStop() {
@@ -185,42 +290,40 @@ bool audioPlay(const kk::Subject& subject) {
     return started;
 }
 
-void audioPrefetchBatch(const std::vector<kk::Subject>& subjects) {
+void audioPrefetchBatch(const std::vector<kk::Subject>& subjects, bool drainNow) {
     if (!state().storage.gSdOk || !kk::DevToken::has()) return;
-    // A keep-alive WkClient session (the sync job, the batch fetch) still holds
-    // its TLS context; a second handshake for the clip host then runs out of
-    // heap (hardware 2026-11-20: `RSA - BIGNUM - Memory allocation failed`,
-    // 0/12 clips). Defer to audioTick(), which runs it once the session ends.
-    if (kk::wkSessionActive()) {
-        gPrefetchPending = &subjects == &state().lesson.gLessonBatch.subjects
-                               ? PrefetchSource::Lesson
-                               : PrefetchSource::Review;
-        Serial.println("[audio] prefetch deferred until the API session closes");
-        return;
+    const uint32_t key = currentAccountKey();
+    if (!kk::audioCacheOpen(SD, key)) return;
+    gQueue.useAccount(key);
+    // The batch only queues: a review batch arrives right after a large fetch,
+    // when the TLS heap is short, so it never downloads here (hardware
+    // 2026-11-20: 0/17 clips). The Home tick drains the queue later.
+    size_t queued = 0;
+    size_t cached = 0;
+    size_t full = 0;
+    for (const kk::Subject& subject : subjects) {
+        if (subject.type != SubjectType::Vocabulary) continue;
+        size_t index = 0;
+        if (!kk::audioPickDownload(subject.audios, audioVoice(), &index)) continue;
+        const kk::AudioClip& clip = subject.audios[index];
+        if (kk::audioCacheHasMp3(SD, subject.id, clip.voice)) {
+            ++cached;
+            continue;
+        }
+        switch (gQueue.enqueue(subject.id, clip.voice, clip.url, clip.contentType)) {
+            case kk::AudioQueue::Add::Added: ++queued; break;
+            case kk::AudioQueue::Add::Duplicate: break;
+            case kk::AudioQueue::Add::Full: ++full; break;
+        }
     }
-    if (kk::wkAuthBlocked() || kk::wkRateLimitWaitSeconds() > 0) {
-        Serial.println("[audio] prefetch skipped: token blocked or rate limited");
-        return;
-    }
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("[audio] prefetch skipped: offline");
-        return;
-    }
-    // The clip downloads are TLS requests outside WkClient, so they do not get
-    // its request hooks: release the canvas the same way for the whole batch
-    // (on the Cardputer it holds the block TLS needs; measured 27,636 B largest
-    // with it, after a lesson fetch), and bring it back afterwards.
-    const bool savedFree = state().ui.gFreeCanvasForRequest;
-    state().ui.gFreeCanvasForRequest = true;
-    requestBefore();
-    const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    if (largest < kTlsNeedBytes) {
-        Serial.printf("[audio] prefetch skipped: largest %u\n", static_cast<unsigned>(largest));
-    } else if (kk::audioCacheOpen(SD, currentAccountKey())) {
-        kk::audioCachePrefetch(SD, subjects, audioVoice(), kPrefetchBudgetMs, kTlsNeedBytes);
-    }
-    requestAfter();
-    state().ui.gFreeCanvasForRequest = savedFree;
+    Serial.printf("[audio] queued %u clips (%u already cached)\n", static_cast<unsigned>(queued),
+                  static_cast<unsigned>(cached));
+    if (full)
+        Serial.printf("[audio] queue full: %u clips not queued\n", static_cast<unsigned>(full));
+    // The lesson hook asks for the inline drain: a lesson batch is small and
+    // the lesson cards need their clips at once. The same heap and link rules
+    // apply, so a short heap leaves the clips for the Home tick.
+    if (drainNow) drainInline();
     state().display.gDirty = true;
 }
 

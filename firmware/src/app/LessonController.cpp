@@ -1123,7 +1123,7 @@ void startLessons() {
         showLessonFetchError(state().lesson.gLessonBatch.httpCode, state().lesson.gLessonBatch.error);
         return;
     }
-    audioPrefetchBatch(state().lesson.gLessonBatch.subjects);
+    audioPrefetchBatch(state().lesson.gLessonBatch.subjects, /*drainNow=*/true);
     state().lesson.gLessonComponents.clear();
     std::vector<uint32_t> componentIds;
     for (const kk::Assignment& a : state().lesson.gLessonBatch.assignments) {

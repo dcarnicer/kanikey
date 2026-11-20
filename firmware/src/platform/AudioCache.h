@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "wk/AudioIndex.h"
@@ -14,21 +15,19 @@
 namespace kk {
 
 bool audioCacheOpen(fs::FS& sd, uint32_t accountKey);
-// AUD-02 batch prefetch: downloads the MP3 clip (preferred voice, then the other
-// voice; never OGG) of each vocabulary subject not on the card yet. Stops early
-// when `budgetMs` is spent or the largest free block drops below
-// `minLargestHeap`. Streams to the card in 4 KB chunks, keeps the index and the
-// size cap, and logs one `[audio] batch prefetch` line. Call audioCacheOpen()
-// first.
-struct AudioPrefetchStats {
-    size_t wanted = 0;      // MP3 clips not on the card when the batch arrived
-    size_t downloaded = 0;
-    uint64_t bytes = 0;
-    uint32_t ms = 0;
-    const char* stopped = nullptr;  // "budget" or "heap" when the batch ended early
-};
-AudioPrefetchStats audioCachePrefetch(fs::FS& sd, const std::vector<Subject>& subjects,
-                                      uint8_t voice, uint32_t budgetMs, size_t minLargestHeap);
+
+// AUD-02: true when the MP3 clip for this subject and voice is on the card
+// (index entry and file). Call audioCacheOpen() first.
+bool audioCacheHasMp3(fs::FS& sd, uint32_t subjectId, uint8_t voice);
+
+// AUD-02 queue step: downloads one MP3 clip into the cache. Streams the body to
+// the card in 4 KB chunks, drops a stale index entry for the same subject and
+// voice, evicts to the 50 MB cap and rewrites the index. Returns the stored
+// bytes, or 0 with `error` set. The caller checks the heap and the link first;
+// `handshakeSec` bounds the TLS handshake. Call audioCacheOpen() first.
+uint32_t audioCacheFetchClip(fs::FS& sd, uint32_t subjectId, uint8_t voice,
+                             const std::string& url, uint32_t handshakeSec,
+                             std::string* error);
 size_t audioCacheCount();
 uint64_t audioCacheBytes();
 void audioCacheClear(fs::FS& sd);

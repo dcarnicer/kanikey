@@ -4017,6 +4017,7 @@ void run_devhooks_tests();
 void run_devremind_tests();
 void run_button_tests();
 void run_cadence_tests();
+void run_audioq_tests();
 
 // ---------------------------------------------------------------- reminder (REM-02)
 
@@ -4570,5 +4571,6 @@ int main(int, char**) {
     run_devremind_tests();
     run_button_tests();
     run_cadence_tests();
+    run_audioq_tests();
     return UNITY_END();
 }
