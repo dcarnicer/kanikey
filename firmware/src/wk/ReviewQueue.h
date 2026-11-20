@@ -4,7 +4,6 @@
 // mistakes a few items later, and complete an item only when every required
 // part is correct. Pure C++, no Arduino.
 #include <cstdint>
-#include <deque>
 #include <random>
 #include <vector>
 
@@ -113,7 +112,7 @@ public:
     bool empty() const { return queue_.empty(); }
     size_t remaining() const { return queue_.size(); }
     size_t completedCount() const { return completed_.size(); }
-    const std::deque<SessionItem>& queue() const { return queue_; }
+    const std::vector<SessionItem>& queue() const { return queue_; }
     const std::vector<SessionItem>& completed() const { return completed_; }
 
     const SessionItem* current() const { return queue_.empty() ? nullptr : &queue_.front(); }
@@ -196,7 +195,11 @@ private:
     // other item, without resetting its attempted flags.
     void interleaveFront();
 
-    std::deque<SessionItem> queue_;
+    // A vector, not a deque: a libstdc++ deque allocates its map and a 512 B
+    // node even when empty, so every `ReviewQueue{}` left heap blocks behind in
+    // the middle of the heap after a session (2026-11-20, TLS then failed for
+    // lack of two 16.7 KB blocks). Front erases are cheap at session sizes.
+    std::vector<SessionItem> queue_;
     std::vector<SessionItem> completed_;
     ReviewPart part_ = ReviewPart::None;
     // REV-04: the last Incorrect answer, kept until it is undone or replaced.

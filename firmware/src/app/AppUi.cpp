@@ -239,6 +239,12 @@ void releaseCanvas() {
     state().display.gCanvas = nullptr;
 }
 
+#if !defined(TGC_BOARD_PAPERDIY)
+// Largest free block that holds both 16.7 KB TLS record buffers and the
+// handshake's smaller allocations without touching the canvas.
+constexpr size_t kTlsComfortLargest = 40u * 1024u;
+#endif
+
 void requestBefore() {
 #if defined(TGC_BOARD_PAPERDIY)
     // The PSRAM canvas stays where it is: TLS needs internal RAM only. A frame
@@ -246,8 +252,18 @@ void requestBefore() {
     // loop and the screen should show what was drawn before it.
     if (gEpd.pending) presentNow();
 #else
-    if (!state().ui.gFreeCanvasForRequest) return;
     if (!state().display.gCanvas) return;  // already drawing directly
+    if (!state().ui.gFreeCanvasForRequest) {
+        // The Arduino mbedTLS build has 16 KB records both ways, so a handshake
+        // needs two ~16.7 KB buffers plus a few KB. A background sync on Home
+        // failed with -32512 at 98 KB free / 30.7 KB largest (2026-11-20). When
+        // no block is that big, the canvas's 32 KB gives one of the buffers.
+        const size_t largest =
+            heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (largest >= kTlsComfortLargest) return;
+        Serial.printf("[kk] canvas released for TLS (largest %u)\n",
+                      static_cast<unsigned>(largest));
+    }
     releaseCanvas();
     gCanvasReleasedForRequest = true;
 #endif

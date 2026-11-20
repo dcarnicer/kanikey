@@ -694,6 +694,21 @@ bool reviewAutoAdvance(uint32_t now) {
     return true;
 }
 
+// The session's containers and strings give their memory back (clear() keeps
+// a vector's capacity and a long string's buffer).
+void releaseSessionHeap() {
+    auto& r = state().review;
+    decltype(r.gWrongAnswers)().swap(r.gWrongAnswers);
+    decltype(r.gSummaryStages)().swap(r.gSummaryStages);
+    std::string().swap(r.feedbackInput);
+    std::string().swap(r.gMeaningInput);
+#ifdef KANIKEY_DEV
+    std::string().swap(r.gDirectReading);
+#endif
+    r.gCheck = kk::AnswerCheck{};
+    r.gIme = kk::RomajiIme{};
+}
+
 void endReview(bool send) {
     flushPendingReviewWrites();
     audioStop();
@@ -720,14 +735,17 @@ void endReview(bool send) {
     state().review.gQueue = kk::ReviewQueue{};
     state().review.gWrapUp = false;
     // REV-11: the summary rows and their typed wrong answers belong to this
-    // session only.
-    state().review.gWrongAnswers.clear();
-    state().review.gSummaryStages.clear();
+    // session only. Released, not just cleared: anything this session left
+    // allocated sits between the batch's blocks, and once the batch is evicted
+    // it splits the free heap so TLS cannot find its two 16.7 KB buffers
+    // (Home sync failed with -32512 at 98 KB free / 30.7 KB largest,
+    // 2026-11-20).
+    releaseSessionHeap();
     state().review.gSummaryFocus = 0;
     state().review.gSummarySelected = 0;
     state().study.gPracticeActive = false;
     state().study.gPracticeMode = 0;
-    state().study.gPracticeSubjects.clear();
+    std::vector<kk::Subject>().swap(state().study.gPracticeSubjects);
     state().study.gPracticeSkipped = 0;
     state().study.gStudyMenuActive = false;
     state().study.gCriticalListActive = false;

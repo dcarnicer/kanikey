@@ -868,6 +868,21 @@ WaniKani writes were authorized for this run.
 - **R4/R5 order.** R4 Random behaved as meaning-first (bug). After the fix
   (defaults Random / Off, fresh seed per session) the owner saw meanings and
   readings of different items mixed, sometimes reading first.
+- **Sync TLS -32512 (heap).** After a review session started with a fresh
+  batch fetch and was ended, the Home sync failed every request with
+  `SSL - Memory allocation failed` at 98 KB free / 30.7 KB largest. The
+  Arduino mbedTLS build has 16 KB records both ways
+  (`CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN=16384`, no asymmetric lengths), so a
+  handshake needs two ~16.7 KB buffers. Cause: the session's containers
+  (`ReviewQueue{}`'s deque allocates even when empty; cleared vectors keep
+  their capacity) were allocated between the batch's blocks and outlived the
+  eviction. Fix: the queue is a vector, `endReview()` releases the session's
+  vectors and strings, and `requestBefore()` releases the canvas when the
+  largest block is under 40 KB. Reproduced over serial (`H`, Enter, Esc → End
+  session): largest block on Home after the session 31.7 KB → 61.4 KB; a
+  manual sync then completed (`canvas released for TLS (largest 28660)` on its
+  second session), as did the boot sync. `heap_caps_dump` over USB trips the
+  interrupt watchdog, so it is not a dev command; `hh` prints the totals.
 - **Canvas.** After a review's send loop the canvas stayed released (direct
   drawing) because the heap was fragmented at session end; it is now retried
   every 5 s once a 34 KB block exists.

@@ -396,7 +396,7 @@ void ReviewQueue::prepareItem(SessionItem& item) {
 void ReviewQueue::requeueFront() {
     if (queue_.empty()) return;
     SessionItem item = queue_.front();
-    queue_.pop_front();
+    queue_.erase(queue_.begin());
     prepareItem(item);
     const size_t pos = std::min(kRequeueGap, queue_.size());
     queue_.insert(queue_.begin() + static_cast<std::ptrdiff_t>(pos), item);
@@ -406,7 +406,7 @@ void ReviewQueue::requeueFront() {
 void ReviewQueue::interleaveFront() {
     if (queue_.empty()) return;
     SessionItem item = queue_.front();
-    queue_.pop_front();
+    queue_.erase(queue_.begin());
     // Never the very front while another item exists: with N items left the
     // item goes to one of positions 1..N. A single-item queue puts it back at
     // the front so the other part is still asked.
@@ -475,7 +475,7 @@ AnswerOutcome ReviewQueue::answer(AnswerStatus status) {
                          (!item.needsReading || item.readingDone);
     if (allDone) {
         completed_.push_back(item);
-        queue_.pop_front();
+        queue_.erase(queue_.begin());
         if (!queue_.empty()) setPart(queue_.front());
         out.advanced = true;
         out.completed = true;
@@ -510,7 +510,7 @@ AnswerOutcome ReviewQueue::answer(AnswerStatus status) {
 
 void ReviewQueue::skip() {
     if (queue_.empty()) return;
-    queue_.pop_front();
+    queue_.erase(queue_.begin());
     lastIncorrectAssignmentId_ = 0;
     lastIncorrectSubjectId_ = 0;
     lastIncorrectPart_ = ReviewPart::None;
@@ -551,7 +551,7 @@ bool ReviewQueue::undoLastIncorrect() {
         if (item.incorrectReading > 0) --item.incorrectReading;
         item.readingAttempted = false;
     }
-    queue_.push_front(item);
+    queue_.insert(queue_.begin(), item);
     part_ = lastIncorrectPart_;
     lastIncorrectAssignmentId_ = 0;
     lastIncorrectSubjectId_ = 0;
@@ -566,7 +566,7 @@ size_t ReviewQueue::wrapUp() {
     // The current item stays even when it is untouched; behind it only items
     // already in progress survive. The current part is left alone so the
     // question on screen does not change.
-    std::deque<SessionItem> kept;
+    std::vector<SessionItem> kept;
     kept.push_back(queue_.front());
     for (size_t i = 1; i < queue_.size(); ++i) {
         const SessionItem& item = queue_[i];
