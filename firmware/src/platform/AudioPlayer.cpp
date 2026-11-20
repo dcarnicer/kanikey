@@ -9,6 +9,7 @@
 
 #include "audio/Minimp3.h"
 #include "platform/AudioCache.h"
+#include "wk/AudioPlan.h"
 
 namespace kk {
 
@@ -19,25 +20,18 @@ namespace {
 // channel first so a dev tone cannot overlap the clip.
 constexpr int kChannel = 0;
 constexpr size_t kFileBytes = 4096;
-// A stereo frame: 1152 samples per channel, interleaved int16.
-constexpr size_t kPcmSamples = 1152 * 2;
-constexpr size_t kPcmBytes = kPcmSamples * sizeof(int16_t);
+constexpr size_t kFrameSamples = 1152;  // per channel, one MPEG Layer III frame
 // The largest MPEG frame (including free-format) is 2,304 B; keep that much in
 // the window so a frame is never split at the buffer boundary.
 constexpr size_t kMinFrameWindow = 2304;
-// The block is only allocated when this much stays free beside it, so TLS and
-// the loop keep their headroom.
-constexpr size_t kHeapFloor = 16 * 1024;
 constexpr uint32_t kStopWaitMs = 40;
 constexpr uint32_t kHeapCaps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
 
 size_t roundUp8(size_t n) { return (n + 7) & ~static_cast<size_t>(7); }
-size_t workBytes() { return roundUp8(kk::audio::mp3WorkBytes()); }
-// Layout: [decoder state + scratch | file window | pcm buffer 0 | pcm buffer 1]
-size_t blockBytes() { return workBytes() + kFileBytes + 2 * kPcmBytes; }
 
-// Static state only. The release callback touches nothing else, so a late
-// callback can never write into memory the block has given back.
+// Static state only, except the pieces it points at. The release callback
+// touches only these fields, so a late callback never writes into memory that
+// was given back.
 struct Player {
     fs::FS* sd = nullptr;
     File file;
@@ -51,11 +45,11 @@ struct Player {
     size_t pos = 0;
     size_t len = 0;
 
-    // Heap block (null while none is allocated) and the pointers into it.
-    uint8_t* block = nullptr;
-    uint8_t* work = nullptr;
-    uint8_t* window = nullptr;
-    int16_t* pcm = nullptr;  // pcm buffer 0; buffer 1 follows it
+    // Heap pieces, each its own internal allocation (null while not held).
+    uint8_t* work = nullptr;    // mp3dec_t + scratch, one block
+    uint8_t* window = nullptr;  // kFileBytes
+    int16_t* pcm[2] = {nullptr, nullptr};
+    int pcmChannels = 0;        // 1 or 2; sets the PCM buffer size
     // stop() discards queued requests without a release callback, so the flags
     // of those buffers may never set. The forced release covers that case.
     bool releaseForced = false;
@@ -65,9 +59,13 @@ struct Player {
     // cannot promise a clip that will fail again on every R.
     uint32_t badSubjectId = 0;
     uint8_t badVoice = 0;
+
+    bool piecesLogged = false;
 };
 
 Player gPlayer;
+
+size_t pcmBytes(int channels) { return kFrameSamples * channels * sizeof(int16_t); }
 
 bool waitForIdle(uint32_t timeoutMs) {
     const uint32_t start = millis();
@@ -93,73 +91,93 @@ void setBufferFree(bool free0, bool free1) {
     gPlayer.bufferFree[1].store(free1, std::memory_order_release);
 }
 
-// Runs on the playback task. Compares the released pointer with the two buffer
-// addresses and sets a static flag. After freeBlock() pcm is null and the
-// callback does nothing.
+// Runs on the playback task. Compares the released pointer with the buffer
+// addresses and sets a static flag. A freed buffer's pointer is null first, so
+// a callback after the free does nothing.
 void onBufferRelease(void*, const void* data, uint8_t channel) {
-    int16_t* pcm = gPlayer.pcm;
-    if (channel != kChannel || !pcm) return;
-    if (data == pcm)
+    if (channel != kChannel) return;
+    if (gPlayer.pcm[0] && data == gPlayer.pcm[0])
         gPlayer.bufferFree[0].store(true, std::memory_order_release);
-    else if (data == pcm + kPcmSamples)
+    else if (gPlayer.pcm[1] && data == gPlayer.pcm[1])
         gPlayer.bufferFree[1].store(true, std::memory_order_release);
 }
 
-// One heap allocation for the whole decode path. Refuses when less than
-// kHeapFloor would remain free beside it.
-bool allocBlock() {
-    if (gPlayer.block) return true;
-    const size_t need = blockBytes();
-    const size_t largest = heap_caps_get_largest_free_block(kHeapCaps);
-    if (largest < need + kHeapFloor) {
-        Serial.printf("[audio] no heap: need %u, largest %u\n", static_cast<unsigned>(need),
-                      static_cast<unsigned>(largest));
-        return false;
-    }
-    uint8_t* block = static_cast<uint8_t*>(heap_caps_malloc(need, kHeapCaps));
-    if (!block) {
-        Serial.println("[audio] alloc failed");
-        return false;
-    }
-    gPlayer.block = block;
-    gPlayer.work = block;
-    gPlayer.window = block + workBytes();
-    gPlayer.pcm = reinterpret_cast<int16_t*>(block + workBytes() + kFileBytes);
-    setBufferFree(true, true);
-    Serial.printf("[audio] alloc %u, heap %u/%u after\n", static_cast<unsigned>(need),
-                  static_cast<unsigned>(heap_caps_get_free_size(kHeapCaps)),
-                  static_cast<unsigned>(heap_caps_get_largest_free_block(kHeapCaps)));
-    return true;
+bool admit(const size_t* pieces, size_t count) {
+    return kk::audioAdmitsPieces(heap_caps_get_free_size(kHeapCaps),
+                                 heap_caps_get_largest_free_block(kHeapCaps), pieces, count);
 }
 
-void freeBlock() {
-    if (!gPlayer.block) return;
-    // Null first: a callback that runs from here on does nothing.
-    gPlayer.pcm = nullptr;
-    gPlayer.work = nullptr;
+void logPieces(size_t workB) {
+    if (gPlayer.piecesLogged) return;
+    gPlayer.piecesLogged = true;
+    Serial.printf("[audio] pieces: work %u, window %u, pcm %u per buffer (%u buffers)\n",
+                  static_cast<unsigned>(workB), static_cast<unsigned>(kFileBytes),
+                  static_cast<unsigned>(pcmBytes(gPlayer.pcmChannels)), 2u);
+}
+
+// Frees every held piece. The PCM pointers are cleared first so a late release
+// callback does nothing. Only called once the speaker can no longer read them.
+void freePieces() {
+    if (!gPlayer.work && !gPlayer.window && !gPlayer.pcm[0] && !gPlayer.pcm[1]) return;
+    int16_t* pcm0 = gPlayer.pcm[0];
+    int16_t* pcm1 = gPlayer.pcm[1];
+    gPlayer.pcm[0] = nullptr;
+    gPlayer.pcm[1] = nullptr;
+    if (pcm0) heap_caps_free(pcm0);
+    if (pcm1) heap_caps_free(pcm1);
+    if (gPlayer.window) heap_caps_free(gPlayer.window);
+    if (gPlayer.work) heap_caps_free(gPlayer.work);
     gPlayer.window = nullptr;
-    heap_caps_free(gPlayer.block);
-    gPlayer.block = nullptr;
+    gPlayer.work = nullptr;
+    gPlayer.pcmChannels = 0;
     gPlayer.releaseForced = false;
     Serial.printf("[audio] freed, heap %u/%u\n",
                   static_cast<unsigned>(heap_caps_get_free_size(kHeapCaps)),
                   static_cast<unsigned>(heap_caps_get_largest_free_block(kHeapCaps)));
 }
 
-// The only place the block is freed. It needs the channel idle and no clip
-// open, and either both buffers released (natural end) or a forced release
-// from stop(). Either way no request can still read the buffers.
-void tryFreeBlock() {
-    if (!gPlayer.block || gPlayer.playing) return;
-    if (M5.Speaker.isPlaying(kChannel)) return;
-    if (!gPlayer.releaseForced && !(gPlayer.bufferFree[0] && gPlayer.bufferFree[1])) return;
-    freeBlock();
+bool holdsPieces() {
+    return gPlayer.work || gPlayer.window || gPlayer.pcm[0] || gPlayer.pcm[1];
 }
 
-int freeBuffer() {
-    for (int i = 0; i < 2; ++i)
-        if (gPlayer.bufferFree[i].load(std::memory_order_acquire)) return i;
-    return -1;
+// The only place pieces are freed on a natural end. It needs the channel idle
+// and no clip open, and either both buffers released or a forced release from
+// stop(). Then no request can still read the buffers.
+void tryFreePieces() {
+    if (!holdsPieces() || gPlayer.playing) return;
+    if (M5.Speaker.isPlaying(kChannel)) return;
+    if (!gPlayer.releaseForced && !(gPlayer.bufferFree[0] && gPlayer.bufferFree[1])) return;
+    freePieces();
+}
+
+// Allocates the work block, the window and the PCM buffers for `channels`.
+// The caller has already passed admission. A failed allocation frees whatever
+// this call took.
+bool allocPieces(int channels) {
+    const size_t workB = roundUp8(kk::audio::mp3WorkBytes());
+    if (!gPlayer.work) {
+        gPlayer.work = static_cast<uint8_t*>(heap_caps_malloc(workB, kHeapCaps));
+        if (!gPlayer.work) return false;
+    }
+    if (!gPlayer.window) {
+        gPlayer.window = static_cast<uint8_t*>(heap_caps_malloc(kFileBytes, kHeapCaps));
+        if (!gPlayer.window) return false;
+    }
+    if (gPlayer.pcm[0] && gPlayer.pcmChannels != channels) {
+        // Stereo upgrade: the mono buffers are not in use, so release them.
+        heap_caps_free(gPlayer.pcm[0]);
+        heap_caps_free(gPlayer.pcm[1]);
+        gPlayer.pcm[0] = gPlayer.pcm[1] = nullptr;
+    }
+    for (int i = 0; i < 2; ++i) {
+        if (gPlayer.pcm[i]) continue;
+        gPlayer.pcm[i] = static_cast<int16_t*>(heap_caps_malloc(pcmBytes(channels), kHeapCaps));
+        if (!gPlayer.pcm[i]) return false;
+    }
+    gPlayer.pcmChannels = channels;
+    setBufferFree(true, true);
+    logPieces(workB);
+    return true;
 }
 
 // Make at least one complete frame available after gPlayer.pos. Compacts the
@@ -183,6 +201,12 @@ bool refillForFrame() {
         gPlayer.len += static_cast<size_t>(got);
     }
     return gPlayer.len > gPlayer.pos;
+}
+
+int freeBuffer() {
+    for (int i = 0; i < 2; ++i)
+        if (gPlayer.bufferFree[i].load(std::memory_order_acquire)) return i;
+    return -1;
 }
 
 void finishStream() {
@@ -221,15 +245,15 @@ bool audioPlayerPlay(const Subject& subject, uint8_t voice) {
 
     // Stop our stream and every tone first. A request discarded by stop() does
     // not call back, so wait for the channel to drain (bounded) and only then
-    // reuse the block. A short settle covers a late release for the last clip.
-    const bool hadBlock = gPlayer.block != nullptr;
+    // reuse the pieces. A short settle covers a late release for the last clip.
+    const bool hadPieces = holdsPieces();
     audioPlayerStop();
     if (M5.Speaker.isPlaying()) M5.Speaker.stop();
-    if (!waitForIdle(kStopWaitMs) || gPlayer.block) {
+    if (!waitForIdle(kStopWaitMs) || holdsPieces()) {
         Serial.println("[audio] speaker busy; not starting");
         return false;
     }
-    if (hadBlock) delay(2);
+    if (hadPieces) delay(2);
 
     const AudioPlan plan = audioCachePlan(subject.id, subject.type, voice);
     if (!plan.playable) {
@@ -248,28 +272,67 @@ bool audioPlayerPlay(const Subject& subject, uint8_t voice) {
         markBad(subject.id, voice);
         return false;
     }
-    if (!allocBlock()) {
+
+    // Admission on the mono set (the WaniKani clips); a stereo clip is
+    // re-admitted below with stereo buffers.
+    const size_t monoPieces[] = {roundUp8(kk::audio::mp3WorkBytes()), kFileBytes,
+                                 pcmBytes(1), pcmBytes(1)};
+    if (!admit(monoPieces, 4)) {
         file.close();
+        Serial.printf("[audio] no heap: free %u, largest %u\n",
+                      static_cast<unsigned>(heap_caps_get_free_size(kHeapCaps)),
+                      static_cast<unsigned>(heap_caps_get_largest_free_block(kHeapCaps)));
+        markBad(subject.id, voice);
+        return false;
+    }
+    gPlayer.file = file;
+    gPlayer.pos = 0;
+    gPlayer.len = 0;
+    gPlayer.eof = false;
+    if (!allocPieces(1)) {
+        freePieces();
+        gPlayer.file.close();
         markBad(subject.id, voice);
         return false;
     }
 
-    gPlayer.file = file;
+    // The first window tells us the channel mode; a stereo clip needs stereo
+    // buffers, admitted on what is free now.
+    const int channels = refillForFrame()
+                             ? kk::mp3FirstFrameChannels(gPlayer.window + gPlayer.pos,
+                                                         gPlayer.len - gPlayer.pos)
+                             : 0;
+    const size_t stereoPcm[] = {pcmBytes(2), pcmBytes(2)};
+    if (channels == 0 || (channels == 2 && !admit(stereoPcm, 2))) {
+        freePieces();
+        gPlayer.file.close();
+        markBad(subject.id, voice);
+        return false;
+    }
+    if (channels == 2 && !allocPieces(2)) {
+        freePieces();
+        gPlayer.file.close();
+        markBad(subject.id, voice);
+        return false;
+    }
+
     gPlayer.subjectId = subject.id;
     gPlayer.voice = plan.entry.voice;
     gPlayer.badSubjectId = 0;
     gPlayer.badVoice = 0;
-    gPlayer.pos = 0;
-    gPlayer.len = 0;
-    gPlayer.eof = false;
     gPlayer.playing = true;
     kk::audio::mp3Reset(gPlayer.work);
-    Serial.printf("[audio] play %u voice %u -> %s (%u bytes)\n",
-                  static_cast<unsigned>(subject.id), static_cast<unsigned>(plan.entry.voice), path,
-                  static_cast<unsigned>(file.size()));
+    Serial.printf("[audio] alloc %u, heap %u/%u after\n",
+                  static_cast<unsigned>(roundUp8(kk::audio::mp3WorkBytes()) + kFileBytes +
+                                        2 * pcmBytes(gPlayer.pcmChannels)),
+                  static_cast<unsigned>(heap_caps_get_free_size(kHeapCaps)),
+                  static_cast<unsigned>(heap_caps_get_largest_free_block(kHeapCaps)));
+    Serial.printf("[audio] play %u voice %u (%d ch) -> %s (%u bytes)\n",
+                  static_cast<unsigned>(subject.id), static_cast<unsigned>(plan.entry.voice),
+                  channels, path, static_cast<unsigned>(file.size()));
 
     // Decode the first frame now: a corrupt or non-MP3 file must leave the
-    // player stopped, the block freed and the hint at "no audio".
+    // player stopped, the pieces freed and the hint at "no audio".
     audioPlayerTick();
     if (!gPlayer.playing) {
         audioPlayerStop();
@@ -283,15 +346,15 @@ void audioPlayerStop() {
     gPlayer.playing = false;
     if (M5.Speaker.isPlaying(kChannel)) M5.Speaker.stop(kChannel);
     closeFile();
-    if (gPlayer.block) {
+    if (holdsPieces()) {
         waitForIdle(kStopWaitMs);
         gPlayer.releaseForced = true;
-        tryFreeBlock();
+        tryFreePieces();
     }
 }
 
 void audioPlayerTick() {
-    tryFreeBlock();
+    tryFreePieces();
     if (!gPlayer.playing) return;
     if (!gPlayer.file) {
         closeFile();
@@ -308,9 +371,18 @@ void audioPlayerTick() {
 
         const size_t available = gPlayer.len - gPlayer.pos;
         kk::audio::Mp3FrameInfo info;
-        int16_t* pcm = gPlayer.pcm + index * kPcmSamples;
+        int16_t* pcm = gPlayer.pcm[index];
         const int samples = kk::audio::mp3DecodeFrame(gPlayer.work, gPlayer.window + gPlayer.pos,
-                                                      static_cast<int>(available), pcm, &info);
+                                                      static_cast<int>(available),
+                                                      pcm, gPlayer.pcmChannels, &info);
+        if (info.channels > gPlayer.pcmChannels) {
+            // A stereo frame inside a clip that was admitted as mono: refused
+            // before the decoder wrote anything.
+            Serial.printf("[audio] %u: channel change\n", static_cast<unsigned>(gPlayer.subjectId));
+            markBad(gPlayer.subjectId, gPlayer.voice);
+            audioPlayerStop();
+            break;
+        }
         if (info.frameBytes <= 0) {
             // No sync in the whole window, or an incomplete frame at EOF:
             // discard the window rather than spin on the same bytes.
@@ -341,7 +413,7 @@ void audioPlayerTick() {
             }
             continue;
         }
-        if (info.channels < 1 || info.channels > 2 || info.hz <= 0) {
+        if (info.channels < 1 || info.hz <= 0) {
             Serial.printf("[audio] %u: bad frame\n", static_cast<unsigned>(gPlayer.subjectId));
             markBad(gPlayer.subjectId, gPlayer.voice);
             audioPlayerStop();

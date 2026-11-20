@@ -1409,6 +1409,85 @@ static void test_audio_plan_never_for_kanji_or_radical() {
     TEST_ASSERT_FALSE(audioChoosePlayableEntry(entries, 14, 0, nullptr));
 }
 
+static void test_audio_heap_admission_rule() {
+    // Stereo pieces: decoder+scratch, window, two stereo PCM buffers.
+    const size_t pieces[] = {22928, 4096, 4608, 4608};
+    const size_t freeNeed = 36240 + kAudioAdmitFreeMargin;
+    const size_t largestNeed = 22928 + kAudioAdmitLargestMargin;
+    TEST_ASSERT_TRUE(audioAdmitsPieces(freeNeed, largestNeed, pieces, 4));
+    TEST_ASSERT_FALSE(audioAdmitsPieces(freeNeed - 1, largestNeed, pieces, 4));
+    TEST_ASSERT_FALSE(audioAdmitsPieces(freeNeed, largestNeed - 1, pieces, 4));
+    TEST_ASSERT_FALSE(audioAdmitsPieces(freeNeed, largestNeed, pieces, 0));
+    TEST_ASSERT_FALSE(audioAdmitsPieces(freeNeed, largestNeed, nullptr, 4));
+    // A measured review sample (free 74,936, largest 51,188) is admitted; the
+    // old single 52,624 B largest requirement refused it.
+    TEST_ASSERT_TRUE(audioAdmitsPieces(74936, 51188, pieces, 4));
+    // A largest block of 38,900 B is enough for the 22.9 KB decoder piece.
+    TEST_ASSERT_TRUE(audioAdmitsPieces(74936, 38900, pieces, 4));
+    TEST_ASSERT_FALSE(audioAdmitsPieces(50000, 51188, pieces, 4));
+    // Mono PCM admits with less free memory.
+    const size_t mono[] = {22928, 4096, 2304, 2304};
+    TEST_ASSERT_TRUE(audioAdmitsPieces(31632 + kAudioAdmitFreeMargin, largestNeed, mono, 4));
+    TEST_ASSERT_FALSE(audioAdmitsPieces(31632 + kAudioAdmitFreeMargin - 1, largestNeed, mono, 4));
+}
+
+static void test_mp3_first_frame_channels() {
+    const uint8_t mono[] = {0xFF, 0xFB, 0x90, 0xC0};
+    const uint8_t stereo[] = {0xFF, 0xFB, 0x90, 0x00};
+    TEST_ASSERT_EQUAL_INT(1, mp3FirstFrameChannels(mono, sizeof mono));
+    TEST_ASSERT_EQUAL_INT(2, mp3FirstFrameChannels(stereo, sizeof stereo));
+    // Leading ID3v2 tag (size 4, syncsafe) is skipped before the frame.
+    const uint8_t tagged[] = {'I', 'D', '3', 4, 0, 0, 0, 0, 0, 4, 0xAA, 0xBB,
+                              0xCC, 0xDD, 0xFF, 0xFB, 0x90, 0xC0};
+    TEST_ASSERT_EQUAL_INT(1, mp3FirstFrameChannels(tagged, sizeof tagged));
+    // A tag that uses the whole window leaves nothing to read.
+    const uint8_t tagOnly[] = {'I', 'D', '3', 4, 0, 0, 0, 0, 0, 4, 0xFF, 0xFB, 0x90, 0xC0};
+    TEST_ASSERT_EQUAL_INT(0, mp3FirstFrameChannels(tagOnly, sizeof tagOnly));
+    // Reserved MPEG version, free-format bitrate, reserved sample rate: no frame.
+    const uint8_t reservedVersion[] = {0xFF, 0xEB, 0x90, 0xC0};
+    const uint8_t freeBitrate[] = {0xFF, 0xFB, 0x00, 0xC0};
+    const uint8_t reservedRate[] = {0xFF, 0xFB, 0x9C, 0xC0};
+    TEST_ASSERT_EQUAL_INT(0, mp3FirstFrameChannels(reservedVersion, sizeof reservedVersion));
+    TEST_ASSERT_EQUAL_INT(0, mp3FirstFrameChannels(freeBitrate, sizeof freeBitrate));
+    TEST_ASSERT_EQUAL_INT(0, mp3FirstFrameChannels(reservedRate, sizeof reservedRate));
+    // An Ogg page is not MP3 at all.
+    const uint8_t ogg[] = {'O', 'g', 'g', 'S', 0, 2, 0, 0};
+    TEST_ASSERT_EQUAL_INT(0, mp3FirstFrameChannels(ogg, sizeof ogg));
+    TEST_ASSERT_EQUAL_INT(0, mp3FirstFrameChannels(nullptr, 4));
+}
+
+static void test_audio_pick_download_mp3_first() {
+    std::vector<AudioClip> clips(3);
+    clips[0].url = "https://a/ogg-f";
+    clips[0].contentType = "audio/ogg";
+    clips[0].voice = 0;
+    clips[1].url = "https://a/mp3-f";
+    clips[1].contentType = "audio/mpeg";
+    clips[1].voice = 0;
+    clips[2].url = "https://a/mp3-m";
+    clips[2].contentType = "audio/mpeg";
+    clips[2].voice = 1;
+    size_t index = 99;
+    // Preferred female voice: its MP3, never its OGG sibling.
+    TEST_ASSERT_TRUE(audioPickDownload(clips, 0, &index));
+    TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(index));
+    // Preferred male voice has an MP3.
+    TEST_ASSERT_TRUE(audioPickDownload(clips, 1, &index));
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(index));
+    // Preferred voice only has OGG: fall back to the other voice's MP3.
+    clips[1].contentType = "audio/ogg";
+    TEST_ASSERT_TRUE(audioPickDownload(clips, 0, &index));
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(index));
+    // OGG only, or an MP3 with no URL: nothing to download.
+    clips[2].contentType = "audio/ogg";
+    TEST_ASSERT_FALSE(audioPickDownload(clips, 0, &index));
+    clips[2].contentType = "audio/mpeg";
+    clips[2].url.clear();
+    TEST_ASSERT_FALSE(audioPickDownload(clips, 0, &index));
+    TEST_ASSERT_FALSE(audioPickDownload({}, 0, &index));
+    TEST_ASSERT_FALSE(audioPickDownload(clips, 0, nullptr));
+}
+
 
 // ---------------------------------------------------------------- subject catalog
 static Subject catalogSubject() {
@@ -3945,6 +4024,9 @@ int main(int, char**) {
     RUN_TEST(test_audio_plan_preferred_voice_and_mp3);
     RUN_TEST(test_audio_plan_fallback_voice_skips_ogg);
     RUN_TEST(test_audio_plan_never_for_kanji_or_radical);
+    RUN_TEST(test_audio_heap_admission_rule);
+    RUN_TEST(test_mp3_first_frame_channels);
+    RUN_TEST(test_audio_pick_download_mp3_first);
     RUN_TEST(test_assignment_stream_matches_dom);
     RUN_TEST(test_assignment_stream_edges);
     RUN_TEST(test_subject_stream_matches_dom);

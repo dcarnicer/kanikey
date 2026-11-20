@@ -1,7 +1,7 @@
 #pragma once
-// AUD-03: on-demand vocabulary audio. One heap block (allocated on R, freed
-// when the clip ends, stops or fails) holds the minimp3 state and scratch, the
-// 4 KB file window and two PCM buffers. One clip plays at a time through
+// AUD-03: on-demand vocabulary audio. Heap pieces (decoder+scratch, a 4 KB file
+// window, two PCM buffers) are allocated on R under an admission rule and freed
+// when the clip ends, stops or fails. One clip plays at a time through
 // M5.Speaker.playRaw(). No whole-file buffer, no network, no autoplay. Only
 // audio/mpeg (MP3) clips play; OGG, missing or corrupt clips report Missing.
 #include <FS.h>

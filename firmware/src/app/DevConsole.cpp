@@ -1273,9 +1273,10 @@ void handleSerial() {
             } else {
                 const std::vector<kk::Subject>& subjects =
                     !state().cache.gBatch.subjects.empty() ? state().cache.gBatch.subjects : state().lesson.gLessonBatch.subjects;
-                const bool ok = kk::audioCacheSyncSubjects(SD, subjects, 0, 4);
+                const kk::AudioPrefetchStats stats =
+                    kk::audioCachePrefetch(SD, subjects, 0, 8000, 32768);
                 Serial.printf("[audio] cache %s, %u clips, %u bytes\n",
-                              ok ? "updated" : "unchanged",
+                              stats.downloaded ? "updated" : "unchanged",
                               static_cast<unsigned>(kk::audioCacheCount()),
                               static_cast<unsigned>(kk::audioCacheBytes()));
             }

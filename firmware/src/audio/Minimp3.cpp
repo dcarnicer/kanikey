@@ -17,6 +17,8 @@
 
 #include "audio/Minimp3.h"
 
+#include "wk/AudioPlan.h"
+
 #define MINIMP3_ONLY_MP3
 #define MINIMP3_IMPLEMENTATION
 
@@ -1989,12 +1991,21 @@ void mp3Reset(void* work) {
     if (work) memset(work, 0, sizeof(Work));
 }
 
-int mp3DecodeFrame(void* work, const uint8_t* data, int bytes, int16_t* pcm, Mp3FrameInfo* info) {
+int mp3DecodeFrame(void* work, const uint8_t* data, int bytes, int16_t* pcm, int maxChannels,
+                   Mp3FrameInfo* info) {
     if (!info) return 0;
     info->frameBytes = 0;
     info->channels = 0;
     info->hz = 0;
     if (!work || !data || bytes <= 0 || !pcm) return 0;
+    // minimp3 writes 1152 samples per channel of the frame it finds. Refuse a
+    // frame that needs more channels than the caller's PCM buffers hold, before
+    // anything is written. The caller sees info->channels > maxChannels.
+    const int channels = mp3FirstFrameChannels(data, static_cast<size_t>(bytes));
+    if (channels > maxChannels) {
+        info->channels = channels;
+        return 0;
+    }
     Work* w = static_cast<Work*>(work);
     mp3dec_frame_info_t frame{};
     const int samples = mp3dec_decode_frame_scratch(&w->dec, data, bytes, pcm, &frame, &w->scratch);

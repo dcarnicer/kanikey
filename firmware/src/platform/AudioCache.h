@@ -14,8 +14,21 @@
 namespace kk {
 
 bool audioCacheOpen(fs::FS& sd, uint32_t accountKey);
-bool audioCacheSyncSubjects(fs::FS& sd, const std::vector<Subject>& subjects, uint8_t voice,
-                            size_t maxClips);
+// AUD-02 batch prefetch: downloads the MP3 clip (preferred voice, then the other
+// voice; never OGG) of each vocabulary subject not on the card yet. Stops early
+// when `budgetMs` is spent or the largest free block drops below
+// `minLargestHeap`. Streams to the card in 4 KB chunks, keeps the index and the
+// size cap, and logs one `[audio] batch prefetch` line. Call audioCacheOpen()
+// first.
+struct AudioPrefetchStats {
+    size_t wanted = 0;      // MP3 clips not on the card when the batch arrived
+    size_t downloaded = 0;
+    uint64_t bytes = 0;
+    uint32_t ms = 0;
+    const char* stopped = nullptr;  // "budget" or "heap" when the batch ended early
+};
+AudioPrefetchStats audioCachePrefetch(fs::FS& sd, const std::vector<Subject>& subjects,
+                                      uint8_t voice, uint32_t budgetMs, size_t minLargestHeap);
 size_t audioCacheCount();
 uint64_t audioCacheBytes();
 void audioCacheClear(fs::FS& sd);

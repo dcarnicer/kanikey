@@ -31,9 +31,11 @@ size_t mp3WorkBytes();
 void mp3Reset(void* work);
 
 // Decode one MPEG-1/2/2.5 Layer III frame from `data` into interleaved signed
-// 16-bit PCM. `pcm` must hold 1152 * 2 samples (a stereo frame). Returns the
-// number of samples per channel (0 on EOF, corrupt input or a non-MPEG frame);
-// `info` is always filled.
-int mp3DecodeFrame(void* work, const uint8_t* data, int bytes, int16_t* pcm, Mp3FrameInfo* info);
+// 16-bit PCM. `pcm` must hold 1152 * maxChannels samples. A frame with more
+// channels than maxChannels is not decoded: info->channels reports it and 0 is
+// returned. Returns the samples per channel (0 on EOF, corrupt input or a
+// non-MPEG frame); `info` is always filled.
+int mp3DecodeFrame(void* work, const uint8_t* data, int bytes, int16_t* pcm, int maxChannels,
+                   Mp3FrameInfo* info);
 
 }  // namespace kk::audio

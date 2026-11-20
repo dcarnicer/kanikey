@@ -1,10 +1,14 @@
 #include "app/AudioController.h"
 
 #include <SD.h>
+#include <WiFi.h>
+#include <esp_heap_caps.h>
 
 #include "app/AppState.h"
 #include "app/CacheController.h"
+#include "platform/AudioCache.h"
 #include "platform/AudioPlayer.h"
+#include "platform/WkClient.h"
 #include "platform/DeviceSettings.h"
 #include "platform/DevToken.h"
 
@@ -15,6 +19,12 @@ namespace {
 // True once the cache was prepared for the current visit to a review or lesson
 // card screen. Cleared on leaving, so the next visit prepares again once.
 bool gPreparedForVisit = false;
+
+// Batch prefetch budget (AUD-02: 8 s total per batch, the batch stops early
+// when it is spent). The TLS need is the 32 KB handshake buffer: below that
+// largest free block a clip is not started.
+constexpr uint32_t kPrefetchBudgetMs = 8000;
+constexpr size_t kTlsNeedBytes = 32 * 1024;
 
 bool audioScreen() {
     const Screen base = kk::screenBase(state().screen);
@@ -67,6 +77,26 @@ bool audioPlay(const kk::Subject& subject) {
     const bool started = kk::audioPlayerPlay(subject, audioVoice());
     state().display.gDirty = true;
     return started;
+}
+
+void audioPrefetchBatch(const std::vector<kk::Subject>& subjects) {
+    if (!state().storage.gSdOk || !kk::DevToken::has()) return;
+    if (kk::wkAuthBlocked() || kk::wkRateLimitWaitSeconds() > 0) {
+        Serial.println("[audio] prefetch skipped: token blocked or rate limited");
+        return;
+    }
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("[audio] prefetch skipped: offline");
+        return;
+    }
+    const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (largest < kTlsNeedBytes) {
+        Serial.printf("[audio] prefetch skipped: largest %u\n", static_cast<unsigned>(largest));
+        return;
+    }
+    if (!kk::audioCacheOpen(SD, currentAccountKey())) return;
+    kk::audioCachePrefetch(SD, subjects, audioVoice(), kPrefetchBudgetMs, kTlsNeedBytes);
+    state().display.gDirty = true;
 }
 
 }  // namespace kk::app
