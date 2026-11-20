@@ -180,6 +180,10 @@ RGB565 = {
     "err": 0xFB60,
     "err_bg": 0x3882,
     "warn": 0xFE26,
+    # Subject type colours (ui/Theme.h): the prompt panel fill.
+    "radical": 0x055F,
+    "kanji": 0xF815,
+    "vocab": 0xA81F,
 }
 
 
@@ -214,6 +218,9 @@ READING = PALETTE["reading"]
 ERR = PALETTE["err"]
 ERR_BG = PALETTE["err_bg"]
 WARN = PALETTE["warn"]
+RADICAL = PALETTE["radical"]
+KANJI = PALETTE["kanji"]
+VOCAB = PALETTE["vocab"]
 
 
 def nearest_palette(rgb: tuple[int, int, int]) -> tuple[int, int, int]:
@@ -485,7 +492,8 @@ def review_header(im: Image.Image, position: int = 12, total: int = 48) -> None:
 
 
 def review_subject(im: Image.Image) -> None:
-    rect(im, 4, 20, 88, 88, SURFACE, LINE)
+    # Type-colour panel (ui::drawSubjectPanel): a kanji is KANJI, white glyph.
+    rect(im, 4, 20, 88, 88, KANJI, LINE)
     jp(im, 48, 56, "食", 64, TEXT, "mm")
     label = "KANJI L5"
     pill(im, 48 - (text_width(label, 0) + 8) // 2, 92, label, DIM, SURFACE_HI)
@@ -588,7 +596,7 @@ def screen_lesson() -> Image.Image:
     text(im, 233, 5, "2/5 p1/3", 0, 1, DIM, "rt")
     progress(im, 0, 14, 240, 2, 1, 5, ACCENT_HI, SURFACE_HI)
 
-    rect(im, 4, 20, 74, 64, SURFACE, LINE)
+    rect(im, 4, 20, 74, 64, KANJI, LINE)
     jp(im, 41, 52, "休", 60, TEXT, "mm")
     pill(im, 86, 20, "KANJI L5", DIM, SURFACE_HI)
     text(im, 86, 38, "rest", 1, 1, TEXT)
@@ -616,7 +624,7 @@ def screen_lesson_quiz() -> Image.Image:
     text(im, 233, 5, "1/2", 0, 1, FAINT, "rt")
     progress(im, 0, 14, 240, 2, 0, 1, ACCENT_HI, SURFACE_HI)
 
-    rect(im, 4, 20, 74, 64, SURFACE, LINE)
+    rect(im, 4, 20, 74, 64, KANJI, LINE)
     jp(im, 41, 52, "休", 60, TEXT, "mm")
     pill(im, 86, 20, "NOT QUITE", ERR, ERR_BG, "cross")
     text(im, 86, 38, "You typed", 0, 1, FAINT)

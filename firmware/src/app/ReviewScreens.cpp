@@ -95,13 +95,19 @@ void drawSummaryMistakeRow(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     if (s) {
         const int cx = x + 12;
         const int cy = y + h / 2;
+        // A 20 px type-coloured chip behind the glyph (WaniKani-style). On
+        // paperdiy the chip is skipped and the row stays as it was.
+        const uint16_t chip = subjectTypeColor(s->type);
+        const uint16_t glyphBg = kTypeColours ? chip : bg;
+        if (kTypeColours) d.fillRect(cx - 10, cy - 10, 20, 20, chip);
         const std::string prompt = firstCodePoint(s->characters);
         const bool drawn =
             (s->type == kk::SubjectType::Radical &&
-             radicalPack.drawRadical(d, s->id, cx, cy, 20, 20, ui::kText, bg, clip)) ||
+             radicalPack.drawRadical(d, s->id, cx, cy, 20, 20, ui::kText, glyphBg, clip)) ||
             (!prompt.empty() &&
-             fontPack.drawTextCentered(d, prompt, 20, cx, cy, 20, 20, ui::kText, bg, clip));
+             fontPack.drawTextCentered(d, prompt, 20, cx, cy, 20, 20, ui::kText, glyphBg, clip));
         if (!drawn) {
+            if (kTypeColours) d.fillRect(cx - 10, cy - 10, 20, 20, bg);
             ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(ui::kWarn, bg);
             d.drawString("?", x + 9, y + 8);
@@ -205,11 +211,7 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     if (view.total > 0)
         d.fillRect(0, 14, 240 * (view.position - 1) / view.total, 2, ui::kAccentHi);
 
-    d.fillRect(4, 20, 88, 88, ui::kSurface);
-    d.drawRect(4, 20, 88, 88, ui::kLine);
-    if (!drawSubjectPrompt(d, fontPack, radicalPack, *s, 48, 56, 78, 80, 64, ui::kText,
-                           ui::kSurface, kk::ClipRect{6, 22, 90, 106}))
-        drawMissingGlyph(d, fontPack, radicalPack, 48, 56);
+    drawSubjectPanel(d, fontPack, radicalPack, *s, 4, 20, 88, 88, 48, 56, 78, 80, 64);
     char type[24];
     snprintf(type, sizeof type, "%s L%d", kindName(s->type), s->level);
     ui::applyFont(d, ui::UiFont::Small);
@@ -340,11 +342,7 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     d.setTextDatum(lgfx::top_left);
     d.fillRect(0, 14, 240, 2, ui::kSurfaceHi);
 
-    d.fillRect(4, 20, 74, 64, ui::kSurface);
-    d.drawRect(4, 20, 74, 64, ui::kLine);
-    if (!drawSubjectPrompt(d, fontPack, radicalPack, *s, 41, 52, 70, 62, 60, ui::kText,
-                           ui::kSurface, kk::ClipRect{6, 22, 76, 82}))
-        drawMissingGlyph(d, fontPack, radicalPack, 41, 52);
+    drawSubjectPanel(d, fontPack, radicalPack, *s, 4, 20, 74, 64, 41, 52, 70, 62, 60);
     char type[24];
     snprintf(type, sizeof type, "%s L%d", kindName(s->type), s->level);
     ui::applyFont(d, ui::UiFont::Small);

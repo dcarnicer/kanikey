@@ -55,13 +55,16 @@ void drawLessonRow(lgfx::LovyanGFX& d, int index, int x, int y, int width, bool 
     const LessonListCtx& list = *static_cast<const LessonListCtx*>(ctx);
     const LessonRowView& item = list.view->rows[static_cast<size_t>(index)];
     const kk::Subject* s = item.subject;
-    d.fillRect(x, y, 22, 20, ui::kSurface);
+    // The 22x20 chip is the subject's type colour (WaniKani-style); the glyph is
+    // drawn on it and the dark box returns when the glyph is missing.
+    const uint16_t chip = s ? subjectTypeColor(s->type) : ui::kSurface;
+    d.fillRect(x, y, 22, 20, chip);
     d.drawRect(x, y, 22, 20, ui::kLine);
     bool promptDrawn = false;
     if (s) {
         if (s->type == kk::SubjectType::Radical) {
             promptDrawn = list.radicalPack->drawRadical(
-                d, s->id, x + 11, y + 10, 20, 18, ui::kText, ui::kSurface,
+                d, s->id, x + 11, y + 10, 20, 18, ui::kText, chip,
                 kk::ClipRect{x + 1, y + 1, x + 21, y + 19});
         } else if (!s->characters.empty()) {
             std::string first = s->characters;
@@ -71,11 +74,12 @@ void drawLessonRow(lgfx::LovyanGFX& d, int index, int x, int y, int width, bool 
             // drawTextCentered(text, prefer, cx, cy, maxW, maxH, ...): the size
             // comes before the centre.
             promptDrawn = list.fontPack->drawTextCentered(
-                d, first, 20, x + 11, y + 10, 20, 20, ui::kText, ui::kSurface,
+                d, first, 20, x + 11, y + 10, 20, 20, ui::kText, chip,
                 kk::ClipRect{x + 1, y + 1, x + 21, y + 19});
         }
     }
     if (!promptDrawn) {
+        d.fillRect(x + 1, y + 1, 20, 18, ui::kSurface);
         ui::applyFont(d, ui::UiFont::Base);
         d.setTextColor(ui::kWarn, ui::kSurface);
         d.setTextDatum(lgfx::middle_center);
@@ -213,11 +217,7 @@ void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         d.fillRect(0, 14, progressWidth, 2, ui::kAccentHi);
     }
 
-    d.fillRect(4, 20, 74, 64, ui::kSurface);
-    d.drawRect(4, 20, 74, 64, ui::kLine);
-    if (!drawSubjectPrompt(d, fontPack, radicalPack, *s, 41, 52, 70, 62, 60, ui::kText,
-                           ui::kSurface, kk::ClipRect{6, 22, 76, 82}))
-        drawMissingGlyph(d, fontPack, radicalPack, 41, 52);
+    drawSubjectPanel(d, fontPack, radicalPack, *s, 4, 20, 74, 64, 41, 52, 70, 62, 60);
 
     const char* kind = s->type == kk::SubjectType::Vocabulary ? "VOCAB"
                        : s->type == kk::SubjectType::Radical ? "RADICAL"
@@ -303,11 +303,7 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     d.setTextDatum(lgfx::top_left);
     d.fillRect(0, 14, 240, 2, ui::kSurfaceHi);
 
-    d.fillRect(4, 20, 74, 64, ui::kSurface);
-    d.drawRect(4, 20, 74, 64, ui::kLine);
-    if (!drawSubjectPrompt(d, fontPack, radicalPack, s, 41, 52, 70, 62, 60, ui::kText,
-                           ui::kSurface, kk::ClipRect{6, 22, 76, 82}))
-        drawMissingGlyph(d, fontPack, radicalPack, 41, 52);
+    drawSubjectPanel(d, fontPack, radicalPack, s, 4, 20, 74, 64, 41, 52, 70, 62, 60);
 
     const bool meaning = view.meaning;
     if (view.complete) {
