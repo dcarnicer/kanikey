@@ -1229,17 +1229,22 @@ void handleSerial() {
             // Hardware spike (SPEED-06): enter light sleep on demand. A 10 s
             // timer bounds the test; a key or G0 wakes it sooner. rtcMicros()
             // keeps counting through light sleep, so the difference is the
-            // time actually slept.
-            Serial.println("[power] light-sleep test: 10 s timer, press a key or G0");
-            const uint64_t startedUs = tgc::board::rtcMicros();
-            const bool keyWake = tgc::board::lightSleep(10000);
-            const uint64_t sleptUs = tgc::board::rtcMicros() - startedUs;
-            Serial.printf("[power] light-sleep test: %s wake after %llu us (timer %d)\n",
-                          keyWake ? "key" : "timer",
-                          static_cast<unsigned long long>(sleptUs),
-                          tgc::board::wokeFromTimer() ? 1 : 0);
-            state().ui.gLastInputAt = millis();
-            state().display.gDirty = true;
+            // time actually slept. USB power must be forced to battery first:
+            // light sleep drops the USB CDC and can strand the serial session.
+            if (!state().storage.gDevForceBattery && tgc::board::externalPower()) {
+                Serial.println("[power] light-sleep test refuses on USB; use O first");
+            } else {
+                Serial.println("[power] light-sleep test: 10 s timer, press a key or G0");
+                const uint64_t startedUs = tgc::board::rtcMicros();
+                const bool keyWake = tgc::board::lightSleep(10000);
+                const uint64_t sleptUs = tgc::board::rtcMicros() - startedUs;
+                Serial.printf("[power] light-sleep test: %s wake after %llu us (timer %d)\n",
+                              keyWake ? "key" : "timer",
+                              static_cast<unsigned long long>(sleptUs),
+                              tgc::board::wokeFromTimer() ? 1 : 0);
+                state().ui.gLastInputAt = millis();
+                state().display.gDirty = true;
+            }
         } else if (state().ui.gSerialLine.startsWith("Z ")) {
             const int seconds = state().ui.gSerialLine.substring(2).toInt();
             if (kk::settingsSetSleepSecondsDev(seconds))
