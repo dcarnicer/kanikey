@@ -147,6 +147,25 @@ static void test_list_move_selection_edges() {
     TEST_ASSERT_EQUAL(0, listMoveSelection(-3, 5, 0, true));
 }
 
+// ---------------------------------------------------------- List focus
+
+static void test_list_focus_default_frame() {
+    const ListStyle style;
+    const ListFocusRect focus = listFocusRect(style, 50);
+    TEST_ASSERT_EQUAL(48, focus.y);
+    TEST_ASSERT_EQUAL(11, focus.height);
+}
+
+static void test_list_focus_content_row() {
+    ListStyle style;
+    style.rowHeight = 20;
+    style.focusOffsetY = -1;
+    style.focusHeight = 19;
+    const ListFocusRect focus = listFocusRect(style, 18 + 2 * 20);
+    TEST_ASSERT_EQUAL(57, focus.y);
+    TEST_ASSERT_EQUAL(19, focus.height);
+}
+
 // --------------------------------------------------------- hint fallback
 
 static void test_hint_fit_index_first_match() {
@@ -508,6 +527,8 @@ void run_ui_tests() {
     RUN_TEST(test_list_move_selection_non_wrap);
     RUN_TEST(test_list_move_selection_wrap);
     RUN_TEST(test_list_move_selection_edges);
+    RUN_TEST(test_list_focus_default_frame);
+    RUN_TEST(test_list_focus_content_row);
     RUN_TEST(test_hint_fit_index_first_match);
     RUN_TEST(test_hint_fit_index_falls_back_to_last);
     RUN_TEST(test_hint_fit_index_empty);

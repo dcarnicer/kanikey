@@ -2,7 +2,6 @@
 // startWrite()/endWrite() (the caller owns the transfer window).
 #include "app/LessonScreens.h"
 
-#include <algorithm>
 #include <cstdio>
 #include <cstring>
 
@@ -40,6 +39,63 @@ std::string feedbackLine(const LessonQuizView& view) {
     if (view.status == kk::AnswerStatus::Warning) return view.message;
     if (view.message.empty() || view.message == "Correct") return std::string();
     return view.message;
+}
+
+struct LessonListCtx {
+    const LessonListView* view = nullptr;
+    kk::GlyphPack* fontPack = nullptr;
+    kk::GlyphPack* radicalPack = nullptr;
+};
+
+void drawLessonRow(lgfx::LovyanGFX& d, int index, int x, int y, int width, bool focus,
+                   const void* ctx) {
+    (void)width;
+    const LessonListCtx& list = *static_cast<const LessonListCtx*>(ctx);
+    const LessonRowView& item = list.view->rows[static_cast<size_t>(index)];
+    const kk::Subject* s = item.subject;
+    d.fillRect(x, y, 22, 20, ui::kSurface);
+    d.drawRect(x, y, 22, 20, ui::kLine);
+    bool promptDrawn = false;
+    if (s) {
+        if (s->type == kk::SubjectType::Radical) {
+            promptDrawn = list.radicalPack->drawRadical(
+                d, s->id, x + 11, y + 10, 20, 18, ui::kText, ui::kSurface,
+                kk::ClipRect{x + 1, y + 1, x + 21, y + 19});
+        } else if (!s->characters.empty()) {
+            std::string first = s->characters;
+            const char* p = first.c_str();
+            kk::utf8Next(&p);
+            first.resize(static_cast<size_t>(p - first.c_str()));
+            promptDrawn = list.fontPack->drawTextCentered(
+                d, first, x + 11, y + 10, 20, 20, 20, ui::kText, ui::kSurface,
+                kk::ClipRect{x + 1, y + 1, x + 21, y + 19});
+        }
+    }
+    if (!promptDrawn) {
+        ui::applyFont(d, ui::UiFont::Base);
+        d.setTextColor(ui::kWarn, ui::kSurface);
+        d.setTextDatum(lgfx::middle_center);
+        d.drawString("?", x + 11, y + 10);
+        d.setTextDatum(lgfx::top_left);
+    }
+
+    const char* kind = !s ? "?"
+                       : s->type == kk::SubjectType::Vocabulary ? "VOCAB"
+                       : s->type == kk::SubjectType::Radical  ? "RAD"
+                                                              : "KANJI";
+    char label[72];
+    snprintf(label, sizeof label, "%s L%d  %s", kind, s ? s->level : 0,
+             item.meaning.c_str());
+    ui::applyFont(d, ui::UiFont::Small);
+    d.setTextColor(focus ? ui::kText : ui::kDim, focus ? ui::kSurfaceHi : ui::kBg);
+    char* end = label + strlen(label);
+    while (end > label + 1 && d.textWidth(label) > 194) *--end = '\0';
+    d.drawString(label, x + 25, y + 1);
+    d.setTextColor(item.selected ? ui::kAccentHi : ui::kFaint,
+                   focus ? ui::kSurfaceHi : ui::kBg);
+    d.setTextDatum(lgfx::top_right);
+    d.drawString(item.selected ? "*" : ">", 230, y + 1);
+    d.setTextDatum(lgfx::top_left);
 }
 
 void drawFeedbackLine(lgfx::LovyanGFX& d, const LessonQuizView& view, int x, int y, int w) {
@@ -92,70 +148,18 @@ void drawLessonListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     constexpr int kVisible = 5;
     const ListWindow window =
         listWindow(static_cast<int>(total), static_cast<int>(view.selectedIndex), kVisible);
-    for (int row = 0; row < window.rows; ++row) {
-        const int i = window.first + row;
-        const LessonRowView& item = view.rows[static_cast<size_t>(i)];
-        const kk::Subject* s = item.subject;
-        const int y = 18 + row * 20;
-        if (i == static_cast<int>(view.selectedIndex)) {
-            d.fillRect(4, y - 1, 228, 19, ui::kSurfaceHi);
-            d.fillRect(4, y - 1, 2, 19, ui::kAccent);
-        }
-        d.fillRect(9, y, 22, 20, ui::kSurface);
-        d.drawRect(9, y, 22, 20, ui::kLine);
-        bool promptDrawn = false;
-        if (s) {
-            if (s->type == kk::SubjectType::Radical) {
-                promptDrawn = radicalPack.drawRadical(d, s->id, 20, y + 10, 20, 18, ui::kText,
-                                               ui::kSurface,
-                                               kk::ClipRect{10, y + 1, 30, y + 19});
-            } else if (!s->characters.empty()) {
-                std::string first = s->characters;
-                const char* p = first.c_str();
-                kk::utf8Next(&p);
-                first.resize(static_cast<size_t>(p - first.c_str()));
-                promptDrawn = fontPack.drawTextCentered(d, first, 20, y + 10, 20, 20, 20,
-                                                    ui::kText, ui::kSurface,
-                                                    kk::ClipRect{10, y + 1, 30, y + 19});
-            }
-        }
-        if (!promptDrawn) {
-            ui::applyFont(d, ui::UiFont::Base);
-            d.setTextColor(ui::kWarn, ui::kSurface);
-            d.setTextDatum(lgfx::middle_center);
-            d.drawString("?", 20, y + 10);
-            d.setTextDatum(lgfx::top_left);
-        }
-
-        const char* kind = !s ? "?"
-                           : s->type == kk::SubjectType::Vocabulary ? "VOCAB"
-                           : s->type == kk::SubjectType::Radical  ? "RAD"
-                                                                  : "KANJI";
-        char label[72];
-        snprintf(label, sizeof label, "%s L%d  %s", kind, s ? s->level : 0,
-                 item.meaning.c_str());
-        ui::applyFont(d, ui::UiFont::Small);
-        d.setTextColor(i == static_cast<int>(view.selectedIndex) ? ui::kText : ui::kDim,
-                       i == static_cast<int>(view.selectedIndex) ? ui::kSurfaceHi : ui::kBg);
-        char* end = label + strlen(label);
-        while (end > label + 1 && d.textWidth(label) > 194) *--end = '\0';
-        d.drawString(label, 34, y + 1);
-        d.setTextColor(item.selected ? ui::kAccentHi : ui::kFaint,
-                       i == static_cast<int>(view.selectedIndex) ? ui::kSurfaceHi : ui::kBg);
-        d.setTextDatum(lgfx::top_right);
-        d.drawString(item.selected ? "*" : ">", 230, y + 1);
-        d.setTextDatum(lgfx::top_left);
-    }
-
-    if (total > kVisible) {
-        constexpr int kTrackY = 18;
-        constexpr int kTrackH = 100;
-        d.fillRect(236, kTrackY, 2, kTrackH, ui::kLine);
-        const int thumbH = std::max(10, kTrackH * kVisible / static_cast<int>(total));
-        const int thumbY =
-            kTrackY + (kTrackH - thumbH) * window.first / static_cast<int>(total - kVisible);
-        d.fillRect(236, thumbY, 2, thumbH, ui::kAccentHi);
-    }
+    ui::ListStyle style;
+    style.x = 4;
+    style.y = 18;
+    style.width = 228;
+    style.rowHeight = 20;
+    style.textInset = 5;  // the prompt box starts at x=9
+    style.focusOffsetY = -1;
+    style.focusHeight = 19;
+    style.trackX = 236;
+    style.trackHeight = 100;
+    LessonListCtx ctx{&view, &fontPack, &radicalPack};
+    ui::drawList(d, window, drawLessonRow, &ctx, style);
 
     if (!view.note.empty()) {
         ui::applyFont(d, ui::UiFont::Small);
