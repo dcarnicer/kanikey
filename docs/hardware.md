@@ -828,6 +828,50 @@ A150 G143 M81 E147 B586).
   review (`zzz` reached the checker and produced the expected feedback);
   shortcuts/IME/Wi-Fi password and the BLE transport/HID reports remain.
 
+### 2026-11-20 — real reviews with the owner (dev image, `b0df39b` → `929c5d9`)
+
+Cardputer ADV on the 8 MB table, real account (L8), owner present. Real
+WaniKani writes were authorized for this run.
+
+- **SETUP-09.** Joining Shimokitazawa from the Wi-Fi list connected in 2.8 s.
+  The owner did not read the green `Wi-Fi: <ssid>` note as a confirmation, so
+  it now reads `Connected to <ssid>`.
+- **Real reviews.** Completed items were posted and accepted (`201`) with SRS
+  changes 8→9, 5→6 and 8→6. Later `outbox] sent assignment … (201)` on the
+  boot sync.
+- **AUD-03 in reviews.** R on reading feedback was first refused
+  (`no heap: free 50,516 / largest 27,636`, 24 KB margin), then with 16 KB
+  (`free 51,556`, clip file open). With 12 KB and the sync step waiting while
+  a clip plays, 主に played three times (`alloc 31616, heap 68928/57332`). A
+  stereo clip was then refused (`no heap: stereo`, 47,408 B free) because the
+  check ran with the mono buffers held; fixed, margin 8 KB (not re-run with a
+  stereo clip yet). 近々 played きんきん instead of the primary ちかぢか: the
+  parsers kept the first four clips of any reading; now MP3 only, the
+  primary reading's clip is chosen and the KKAU index is version 2.
+- **AUD-02 queue.** The Home drain stalled at a 41 KB largest block until it
+  evicted the review batch to the card; then 17 clips downloaded at ~0.8 s
+  each. After the KKAU v2 wipe a batch loaded from the card had no clip URLs
+  (`no audio` on 北西) and, after a dev `b` fetch queued 11 clips, the drain
+  waited at `largest 40948, free 126880` (fragmented). Follow-up in progress.
+- **REV-10 kana input.** `ak` showed `あ` plus a Latin `k` (no more
+  `no glyph`); 20 px kana in the answer box judged right by the owner.
+- **Enter latency.** `[perf]` before: frame at 3,727 ms after Enter (outbox
+  382 ms, journal 3,094 ms, snapshot 199 ms ran first). After the frame-first
+  ordering and the append-only journal: frame at 54–67 ms, then outbox
+  131 ms, journal 27 ms, snapshot 219 ms. The v1 journal migrated on first
+  open (`18 records, 0 skipped`). The owner reported CORRECT as immediate.
+- **REV-01/03 feedback.** Full answer lists and hints without `...`; the
+  owner did not hit a body long enough to scroll. A wrong meaning showed the
+  reading in kana (a WaniKani hint spelling it, now drawn at 20 px); the
+  notes now leave out kana while the reading is still to come, and the owner
+  confirmed it no longer shows.
+- **R4/R5 order.** R4 Random behaved as meaning-first (bug). After the fix
+  (defaults Random / Off, fresh seed per session) the owner saw meanings and
+  readings of different items mixed, sometimes reading first.
+- **Canvas.** After a review's send loop the canvas stayed released (direct
+  drawing) because the heap was fragmented at session end; it is now retried
+  every 5 s once a 34 KB block exists.
+
 ## Round 2 hardware checks
 
 Round-2 tasks use the same device tools as the v1 passes. Record each check
