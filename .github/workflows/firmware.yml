@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.14"
       # ~/.platformio holds the rebuilt ESP32-S3 core (framework-arduinoespressif32-libs),
       # so caching it is what makes a warm run skip the rebuild. The key covers the
       # ini and the cache-check script that decide how that core is built.

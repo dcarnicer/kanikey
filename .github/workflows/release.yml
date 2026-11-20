@@ -19,7 +19,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.14"
       # Same cache as firmware.yml: ~/.platformio holds the rebuilt ESP32-S3 core.
       - name: Cache PlatformIO and pip
         uses: actions/cache@v4

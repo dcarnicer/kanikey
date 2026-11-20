@@ -163,6 +163,10 @@ PlatformIO rebuilds the ESP32-S3 Arduino core libraries with that section's
   prebuilt libs. The core is one directory per chip, so every switch between
   `cardputer-adv` and `paperdiy` reinstalls or rebuilds it: about 1 min 40 s for
   `paperdiy` and 2 min 20 s to come back. Build one family at a time.
+- **After a PaperDIY build, build `cardputer-adv` first.** It rebuilds the
+  tuned core; starting with `cardputer-adv-dev` fails that rebuild with
+  `"CORE_DEBUG_LEVEL" redefined [-Werror]` (the dev env's level-1 flag reaches
+  the core build). Once the core is back, `-dev` builds normally.
 - **Use PlatformIO Core 6.1.19**, the CI pin (`pip install platformio==6.1.19`).
   Without touching a global 6.2 install: `uvx --from platformio==6.1.19 pio run -e cardputer-adv`.
   The platform needs `>=6.1.19`. PlatformIO Core 6.2.0 fails at the ESP32-S3 link
