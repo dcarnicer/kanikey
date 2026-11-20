@@ -781,9 +781,18 @@ A150 G143 M81 E147 B586).
   the remaining window/scroll cases are in the table. Phase 3 moved wrapping,
   ellipsis and UTF-8 trimming into `TextLayout` and added the 1bpp icon tables;
   Home and a real review feedback (answer list, faint synonyms and a two-line
-  hint with `...`) rendered correctly after flashing. Icons are not adopted in
-  screens yet. UiFont replaced 151 size-1 font pairs across the screens; the
-  pixel-identical sweep needs the device.
+  hint with `...`) rendered correctly after flashing. UiFont replaced 151
+  size-1 font pairs across the screens; a real review prompt typed through the
+  matrix path still works. TNG-03 icons were adopted afterwards: Home shows the
+  sync icon, About the Font/Rad/Token icons, and a real `NOT QUITE` feedback
+  shows the cross; the pill/answer layout stays readable. The full icon sweep
+  (Sync/Outbox/Wi-Fi/Setup, 1–3-digit counts, pill width) remains.
+- **UI-08.** The new `kErr` (`#FF6D00`) is visible as the orange `Answer` and
+  `NOT QUITE` on the real panel; the full gamma/contrast sweep across every
+  status screen remains.
+- **BT-02.** The source-neutral seam keeps matrix typing working in a real
+  review (`zzz` reached the checker and produced the expected feedback);
+  shortcuts/IME/Wi-Fi password and the BLE transport/HID reports remain.
 
 ## Round 2 hardware checks
 
