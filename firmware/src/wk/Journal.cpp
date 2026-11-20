@@ -108,4 +108,69 @@ void journalPatchSrsAfter(JournalRecord* record, uint8_t stage) {
     record->srsAfterKnown = true;
 }
 
+namespace {
+constexpr size_t kHeaderMagicBytes = 4;
+constexpr uint32_t kHeaderCrcAt = 28;
+}  // namespace
+
+void journalEncodeHeader(uint32_t accountKey, uint32_t baseOrdinal,
+                         uint8_t out[kJournalHeaderBytes]) {
+    std::memset(out, 0, kJournalHeaderBytes);
+    std::memcpy(out, "KKJR", kHeaderMagicBytes);
+    out[4] = static_cast<uint8_t>(kJournalFormatV2);
+    out[5] = static_cast<uint8_t>(kJournalFormatV2 >> 8);
+    out[6] = static_cast<uint8_t>(kJournalRecordBytes);
+    out[7] = static_cast<uint8_t>(kJournalRecordBytes >> 8);
+    put32(out + 12, accountKey);
+    put32(out + 16, baseOrdinal);
+    put32(out + kHeaderCrcAt, crc32(out, kHeaderCrcAt));
+}
+
+bool journalDecodeHeader(const uint8_t in[kJournalHeaderBytes], JournalHeader* out) {
+    if (!in || !out) return false;
+    if (std::memcmp(in, "KKJR", kHeaderMagicBytes) != 0) return false;
+    if (get32(in + kHeaderCrcAt) != crc32(in, kHeaderCrcAt)) return false;
+    JournalHeader h;
+    h.version = static_cast<uint16_t>(in[4] | (in[5] << 8));
+    h.recordBytes = static_cast<uint16_t>(in[6] | (in[7] << 8));
+    h.perBlock = static_cast<uint16_t>(in[8] | (in[9] << 8));
+    h.blocks = static_cast<uint16_t>(in[10] | (in[11] << 8));
+    h.accountKey = get32(in + 12);
+    h.field16 = get32(in + 16);
+    h.field20 = get32(in + 20);
+    if (h.recordBytes != kJournalRecordBytes) return false;
+    if (h.version != kJournalFormatV1 && h.version != kJournalFormatV2) return false;
+    *out = h;
+    return true;
+}
+
+uint32_t journalRecordsInFile(uint64_t fileBytes) {
+    if (fileBytes < kJournalHeaderBytes) return 0;
+    const uint64_t records = (fileBytes - kJournalHeaderBytes) / kJournalRecordBytes;
+    return records > 0xFFFFFFFFu ? 0xFFFFFFFFu : static_cast<uint32_t>(records);
+}
+
+bool journalTornTail(uint64_t fileBytes) {
+    if (fileBytes < kJournalHeaderBytes) return true;
+    return (fileBytes - kJournalHeaderBytes) % kJournalRecordBytes != 0;
+}
+
+uint32_t journalCompactDrop(uint32_t count) {
+    if (count < kJournalMaxRecords) return 0;
+    return count - static_cast<uint32_t>(kJournalKeepRecords);
+}
+
+uint32_t journalV1OldestSlot(uint32_t next, uint32_t count, uint32_t i) {
+    // Until the ring wraps, slot order is review order; after it wraps the
+    // oldest record is the one the next append would overwrite (`next`).
+    if (count < kJournalMaxRecords) return i;
+    return (next + i) % static_cast<uint32_t>(kJournalMaxRecords);
+}
+
+bool journalBlockValid(const uint8_t in[kJournalBlockBytes]) {
+    if (!in) return false;
+    const uint32_t want = get32(in + kJournalRecordsPerBlock * kJournalRecordBytes + 4);
+    return crc32(in, kJournalRecordsPerBlock * kJournalRecordBytes) == want;
+}
+
 }  // namespace kk

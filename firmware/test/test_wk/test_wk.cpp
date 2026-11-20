@@ -1317,6 +1317,101 @@ static void test_journal_block_rejects_zero_crc() {
     TEST_ASSERT_FALSE(journalDecodeBlock(block, decoded, &seq));
 }
 
+// Format v2: header written once, records appended (see wk/Journal.h).
+static void test_journal_v2_header_roundtrip() {
+    uint8_t raw[kJournalHeaderBytes];
+    journalEncodeHeader(0xABCD1234u, 12345u, raw);
+    JournalHeader h;
+    TEST_ASSERT_TRUE(journalDecodeHeader(raw, &h));
+    TEST_ASSERT_EQUAL(kJournalFormatV2, h.version);
+    TEST_ASSERT_EQUAL(kJournalRecordBytes, h.recordBytes);
+    TEST_ASSERT_EQUAL_UINT32(0xABCD1234u, h.accountKey);
+    TEST_ASSERT_EQUAL_UINT32(12345u, h.field16);
+    TEST_ASSERT_EQUAL_UINT32(0u, h.field20);
+}
+
+static void test_journal_header_rejects_damage() {
+    uint8_t raw[kJournalHeaderBytes];
+    journalEncodeHeader(7u, 0u, raw);
+    JournalHeader h;
+    raw[16] ^= 0x01;  // base ordinal: covered by the CRC
+    TEST_ASSERT_FALSE(journalDecodeHeader(raw, &h));
+    raw[16] ^= 0x01;
+    raw[0] = 'X';  // magic
+    TEST_ASSERT_FALSE(journalDecodeHeader(raw, &h));
+    raw[0] = 'K';
+    TEST_ASSERT_TRUE(journalDecodeHeader(raw, &h));
+    TEST_ASSERT_FALSE(journalDecodeHeader(nullptr, &h));
+}
+
+// A v1 header has the same magic, CRC and record size; only the fields differ.
+static void test_journal_v1_header_decodes_for_migration() {
+    uint8_t raw[kJournalHeaderBytes];
+    journalEncodeHeader(99u, 0u, raw);
+    raw[4] = 1;  // version 1
+    raw[8] = static_cast<uint8_t>(kJournalRecordsPerBlock);
+    raw[10] = static_cast<uint8_t>(kJournalBlocks);
+    raw[16] = 5;   // next
+    raw[20] = 40;  // count
+    const uint32_t crc = kk::crc32(raw, 28);
+    raw[28] = static_cast<uint8_t>(crc);
+    raw[29] = static_cast<uint8_t>(crc >> 8);
+    raw[30] = static_cast<uint8_t>(crc >> 16);
+    raw[31] = static_cast<uint8_t>(crc >> 24);
+    JournalHeader h;
+    TEST_ASSERT_TRUE(journalDecodeHeader(raw, &h));
+    TEST_ASSERT_EQUAL(kJournalFormatV1, h.version);
+    TEST_ASSERT_EQUAL(kJournalRecordsPerBlock, h.perBlock);
+    TEST_ASSERT_EQUAL(kJournalBlocks, h.blocks);
+    TEST_ASSERT_EQUAL_UINT32(5u, h.field16);
+    TEST_ASSERT_EQUAL_UINT32(40u, h.field20);
+}
+
+static void test_journal_records_in_file_and_torn_tail() {
+    const uint64_t header = kJournalHeaderBytes;
+    TEST_ASSERT_EQUAL_UINT32(0u, journalRecordsInFile(0));
+    TEST_ASSERT_EQUAL_UINT32(0u, journalRecordsInFile(header));
+    TEST_ASSERT_EQUAL_UINT32(1u, journalRecordsInFile(header + 16));
+    TEST_ASSERT_EQUAL_UINT32(1u, journalRecordsInFile(header + 16 + 7));  // partial ignored
+    TEST_ASSERT_EQUAL_UINT32(4000u, journalRecordsInFile(header + 4000 * 16));
+
+    TEST_ASSERT_TRUE(journalTornTail(0));
+    TEST_ASSERT_FALSE(journalTornTail(header));
+    TEST_ASSERT_FALSE(journalTornTail(header + 16 * 3));
+    TEST_ASSERT_TRUE(journalTornTail(header + 16 * 3 + 1));
+    TEST_ASSERT_TRUE(journalTornTail(header + 15));
+}
+
+// The file keeps the newest 3000 records once it holds 4000: the next append
+// after 4000 drops 1000 at once, and nothing is dropped below the limit.
+static void test_journal_compact_drop_rule() {
+    TEST_ASSERT_EQUAL_UINT32(0u, journalCompactDrop(0));
+    TEST_ASSERT_EQUAL_UINT32(0u, journalCompactDrop(3999));
+    TEST_ASSERT_EQUAL_UINT32(1000u, journalCompactDrop(4000));
+    TEST_ASSERT_EQUAL_UINT32(0u, journalCompactDrop(3000));
+    TEST_ASSERT_EQUAL(3000u, kJournalKeepRecords);
+}
+
+static void test_journal_v1_oldest_slot_order() {
+    // Not wrapped: slot order is review order.
+    TEST_ASSERT_EQUAL_UINT32(0u, journalV1OldestSlot(3, 3, 0));
+    TEST_ASSERT_EQUAL_UINT32(2u, journalV1OldestSlot(3, 3, 2));
+    // Wrapped: `next` is the oldest record, the slot the next append overwrites.
+    TEST_ASSERT_EQUAL_UINT32(5u, journalV1OldestSlot(5, 4000, 0));
+    TEST_ASSERT_EQUAL_UINT32(0u, journalV1OldestSlot(5, 4000, 3995));
+    TEST_ASSERT_EQUAL_UINT32(4u, journalV1OldestSlot(5, 4000, 3999));
+}
+
+static void test_journal_block_valid_checks_crc() {
+    JournalRecord records[kJournalRecordsPerBlock];
+    records[0].subjectId = 9;
+    uint8_t block[kJournalBlockBytes];
+    journalEncodeBlock(records, 2, block);
+    TEST_ASSERT_TRUE(journalBlockValid(block));
+    block[3] ^= 0x10;
+    TEST_ASSERT_FALSE(journalBlockValid(block));
+}
+
 static void test_journal_seven_day_counts() {
     const DayStats days[3] = {{100, 3, 2, 1}, {99, 2, 2, 0}, {94, 1, 1, 0}};
     HistoryStats stats;
@@ -4413,6 +4508,13 @@ int main(int, char**) {
     RUN_TEST(test_journal_ring_wraps);
     RUN_TEST(test_journal_patch_srs_after);
     RUN_TEST(test_journal_block_rejects_zero_crc);
+    RUN_TEST(test_journal_v2_header_roundtrip);
+    RUN_TEST(test_journal_header_rejects_damage);
+    RUN_TEST(test_journal_v1_header_decodes_for_migration);
+    RUN_TEST(test_journal_records_in_file_and_torn_tail);
+    RUN_TEST(test_journal_compact_drop_rule);
+    RUN_TEST(test_journal_v1_oldest_slot_order);
+    RUN_TEST(test_journal_block_valid_checks_crc);
     RUN_TEST(test_journal_seven_day_counts);
     RUN_TEST(test_journal_today_accuracy);
     RUN_TEST(test_journal_current_streak_today_empty);

@@ -436,11 +436,22 @@ namespace {
 
 // REV-10 latency: the file writes of a completed review wait for its feedback
 // frame. The queue and the stage tracker hold the review at once, so every
-// decision made before the frame is unchanged. flushPendingReviewWrites() runs
-// right after the frame, in this order: the outbox file (the review must reach
-// WaniKani even after a power cut), the journal record, then the cache
-// snapshot. Nothing reads these files before the flush: it runs before the next
-// key, sync step or send.
+// decision made before the frame is unchanged. The writes run in this order:
+// the outbox file (the review must reach WaniKani even after a power cut), the
+// journal record, then the cache snapshot.
+//
+// Ordering (the frame always goes out first):
+//  - framePresented is set only by showReview() after it presented a feedback
+//    frame (feedbackFramePresented()). It is cleared when a completion queues
+//    its writes.
+//  - Early call sites run the writes only once framePresented is set:
+//    onKeyImpl() (flushReviewWritesAfterFrame) and syncAdvance()
+//    (reviewWritesWaitForFrame, which skips that sync step for this loop).
+//  - loop() runs the writes after the draw and the e-paper push
+//    (flushReviewWritesAfterDraw): when the feedback frame went out, or when no
+//    frame is waiting to be drawn.
+//  - Every other path (advance, send, sleep, end of session) still flushes at
+//    once, before the next state change, send or sleep.
 enum class JournalWrite : uint8_t { None, Review, Practice };
 
 struct PendingReviewWrites {
@@ -451,13 +462,40 @@ struct PendingReviewWrites {
     uint32_t assignmentId = 0;   // Review: its assignment, for the tracker
     uint8_t srsBefore = 0;       // Review: its pre-review stage
     bool snapshot = false;
+    bool framePresented = false;  // the feedback frame for these writes is on screen
 };
 
 PendingReviewWrites gPendingWrites;
 
+bool reviewWritesPending() {
+    const PendingReviewWrites& w = gPendingWrites;
+    return w.outbox || w.journal != JournalWrite::None || w.snapshot;
+}
+
 }  // namespace
 
+void feedbackFramePresented() { gPendingWrites.framePresented = true; }
+
+bool reviewWritesWaitForFrame() {
+    return reviewWritesPending() && !gPendingWrites.framePresented;
+}
+
+void flushReviewWritesAfterFrame() {
+    if (reviewWritesPending() && gPendingWrites.framePresented) flushPendingReviewWrites();
+}
+
+void flushReviewWritesAfterDraw() {
+    // A frame still waiting for its draw (the 16 ms gate) keeps the writes for the
+    // next loop; the draw clears gDirty, so this cannot wait forever.
+    if (reviewWritesPending() && (gPendingWrites.framePresented || !state().display.gDirty))
+        flushPendingReviewWrites();
+}
+
 bool queueReviewLocal(const kk::SessionItem& item) {
+    // Defensive: a completion never follows an unflushed one (each completion is
+    // advanced, and so flushed, first). Flush rather than lose the older writes.
+    if (reviewWritesPending()) flushPendingReviewWrites();
+    gPendingWrites.framePresented = false;
     uint32_t created = static_cast<uint32_t>(time(nullptr));
     if (created < 1700000000u) created = 0;  // clock not trusted; let the server stamp it
     const uint32_t seq = kk::outboxAdd(state().outbox.gOutbox, item.assignmentId, item.subjectId,
@@ -504,7 +542,10 @@ bool queueReviewLocal(const kk::SessionItem& item) {
     return true;
 }
 
-void deferCacheSnapshot() { gPendingWrites.snapshot = true; }
+void deferCacheSnapshot() {
+    gPendingWrites.snapshot = true;
+    gPendingWrites.framePresented = false;
+}
 
 void flushPendingReviewWrites() {
     PendingReviewWrites& w = gPendingWrites;
@@ -532,6 +573,7 @@ void flushPendingReviewWrites() {
         saveCacheSnapshot();
         kk::app::feedbackTraceStep("cache snapshot saved");
     }
+    w.framePresented = false;
 }
 
 bool sendQueuedReview(uint32_t seq) {
@@ -580,6 +622,7 @@ void openOutbox() {
 
 void journalPractice(const kk::SessionItem& item) {
     // REV-10 latency: queued like a review's record; written after the frame.
+    gPendingWrites.framePresented = false;
     if (!state().storage.gFsOk) return;
     kk::JournalRecord record;
     uint32_t created = static_cast<uint32_t>(time(nullptr));
