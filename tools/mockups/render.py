@@ -287,10 +287,15 @@ def line(im: Image.Image, x0: int, y0: int, x1: int, y1: int,
 
 
 def pill(im: Image.Image, x: int, y: int, label: str,
-         fg: tuple[int, int, int], bg: tuple[int, int, int]) -> None:
-    w = text_width(label, 0) + 8
+         fg: tuple[int, int, int], bg: tuple[int, int, int],
+         badge: str | None = None) -> None:
+    """A pill; `badge` is an optional icon after the label (Widgets.cpp)."""
+    label_w = text_width(label, 0)
+    w = label_w + 8 + (ICON_W + 4 if badge else 0)
     rect(im, x, y, w, 13, bg)
     text(im, x + 4, y + 2, label, 0, 1, fg)
+    if badge:
+        icon(im, badge, x + 4 + label_w + 4, y + 1, fg)
 
 
 def progress(im: Image.Image, x: int, y: int, w: int, h: int, done: int, total: int,
@@ -328,6 +333,58 @@ def scrollbar(im: Image.Image, x: int, y: int, height: int, count: int, visible:
     max_first = count - visible
     thumb_y = y + ((height - thumb) * first // max_first if max_first > 0 else 0)
     rect(im, x, thumb_y, 2, thumb, ACCENT_HI)
+
+
+# --- UI icons -----------------------------------------------------------------
+# The 11x11 1bpp tables from firmware/src/ui/Icons.h, MSB first with a 2-byte
+# stride. Screens draw these after a label; the text stays in place.
+ICON_W = ICON_H = 11
+ICONS: dict[str, list[int]] = {
+    "check": [
+        0x00, 0x00, 0x00, 0x60, 0x00, 0xC0, 0x01, 0x80, 0x03, 0x00, 0xC6,
+        0x00, 0x6C, 0x00, 0x38, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ],
+    "cross": [
+        0x00, 0x00, 0x60, 0xC0, 0x31, 0x80, 0x1B, 0x00, 0x0E, 0x00, 0x04,
+        0x00, 0x0E, 0x00, 0x1B, 0x00, 0x31, 0x80, 0x60, 0xC0, 0x00, 0x00,
+    ],
+    "wifi": [
+        0x0E, 0x00, 0x31, 0x80, 0x60, 0xC0, 0xC0, 0x60, 0x00, 0x00, 0x1F,
+        0x00, 0x31, 0x80, 0x60, 0xC0, 0x00, 0x00, 0x0E, 0x00, 0x04, 0x00,
+    ],
+    "sync": [
+        0x0F, 0x80, 0x30, 0xE0, 0x60, 0x60, 0xC0, 0x00, 0x80, 0x00, 0x80,
+        0x00, 0xC0, 0xC0, 0x60, 0xE0, 0x31, 0x80, 0x1F, 0x00, 0x00, 0x00,
+    ],
+    "sd": [
+        0x3F, 0x80, 0x20, 0xC0, 0x20, 0x60, 0x20, 0x60, 0x20, 0x60, 0x20,
+        0x60, 0x20, 0x60, 0x20, 0x60, 0x20, 0x60, 0x3F, 0x80, 0x00, 0x00,
+    ],
+    "key": [
+        0x1E, 0x00, 0x21, 0x00, 0x21, 0x00, 0x1E, 0x00, 0x04, 0x00, 0x04,
+        0x00, 0x07, 0x00, 0x04, 0x00, 0x07, 0x00, 0x04, 0x00, 0x00, 0x00,
+    ],
+    "outbox": [
+        0x04, 0x00, 0x0E, 0x00, 0x15, 0x00, 0x04, 0x00, 0x04, 0x00, 0x00,
+        0x00, 0x40, 0x40, 0xC0, 0x60, 0x80, 0x20, 0xFF, 0xE0, 0x00, 0x00,
+    ],
+}
+
+
+def icon_pixel(name: str, x: int, y: int) -> bool:
+    bits = ICONS[name]
+    if x < 0 or y < 0 or x >= ICON_W or y >= ICON_H:
+        return False
+    return bool(bits[y * 2 + (x >> 3)] & (0x80 >> (x & 7)))
+
+
+def icon(im: Image.Image, name: str, x: int, y: int,
+         color: tuple[int, int, int]) -> None:
+    """Draw the 1bpp table like ui::drawIcon(): set pixels only, no box."""
+    for row in range(ICON_H):
+        for col in range(ICON_W):
+            if icon_pixel(name, col, row):
+                rect(im, x + col, y + row, 1, 1, color)
 
 
 # --- Japanese pack stand-in ---------------------------------------------------
@@ -377,7 +434,9 @@ def jp_fit(im: Image.Image, x: int, y: int, s: str, prefer: int, max_width: int,
 def screen_home(outbox: bool = False) -> Image.Image:
     im = Image.new("RGB", (W, H), BG)
     text(im, 6, 2, "KaniKey", 2, 1, BRAND)
-    text(im, 198, 5, "Synced 14:47", 1, 1, DIM, "rt")
+    sync = "Synced 14:47"
+    icon(im, "sync", 198 - text_width(sync) - 4 - ICON_W, 3, DIM)
+    text(im, 198, 5, sync, 1, 1, DIM, "rt")
     text(im, 233, 5, "84%", 1, 1, DIM, "rt")
 
     text(im, 7, 21, "LEVEL 12", 1, 1, WARN)
@@ -432,6 +491,31 @@ def review_subject(im: Image.Image) -> None:
     pill(im, 48 - (text_width(label, 0) + 8) // 2, 92, label, DIM, SURFACE_HI)
 
 
+def screen_outbox() -> Image.Image:
+    """Outbox header with the icon; two attention rows (TNG-03)."""
+    im = Image.new("RGB", (W, H), BG)
+    text(im, 6, 2, "OUTBOX", 2, 1, BRAND)
+    count = "2 need attention"
+    icon(im, "outbox", 232 - text_width(count) - 4 - ICON_W, 4, ERR)
+    text(im, 232, 5, count, 0, 1, ERR, "rt")
+    line(im, 4, 22, 235, 22, LINE)
+
+    rows = [
+        ("day L1", "HTTP 422", ERR),
+        ("eat L2", "gave up", WARN),
+    ]
+    for i, (label, reason, reason_color) in enumerate(rows):
+        y = 28 + i * 12
+        if i == 0:
+            rect(im, 4, y - 2, 228, 12, SURFACE_HI)
+            rect(im, 4, y - 2, 2, 12, ACCENT)
+        text(im, 10, y, label, 0, 1, TEXT if i == 0 else DIM)
+        text(im, 228, y, reason, 0, 1, reason_color, "rt")
+
+    text(im, 8, 124, "Enter: review  D: discard  Esc: back", 0, 1, FAINT)
+    return im
+
+
 def screen_review_meaning() -> Image.Image:
     im = Image.new("RGB", (W, H), BG)
     review_header(im)
@@ -466,13 +550,13 @@ def screen_review_feedback(correct: bool) -> Image.Image:
     review_header(im)
     review_subject(im)
     if correct:
-        pill(im, 100, 20, "CORRECT", OK, OK_BG)
+        pill(im, 100, 20, "CORRECT", OK, OK_BG, "check")
         text(im, 100, 38, "You typed", 0, 1, FAINT)
         text(im, 100, 47, "eat", 1, 1, DIM)
         text(im, 100, 65, "Answer", 0, 1, FAINT)
         text(im, 100, 74, "eat / food", 0, 1, OK)
     else:
-        pill(im, 100, 20, "NOT QUITE", ERR, ERR_BG)
+        pill(im, 100, 20, "NOT QUITE", ERR, ERR_BG, "cross")
         text(im, 100, 38, "You typed", 0, 1, FAINT)
         text(im, 100, 47, "eta", 1, 1, DIM)
         text(im, 100, 65, "Answer", 0, 1, FAINT)
@@ -525,6 +609,25 @@ def screen_lesson() -> Image.Image:
     return im
 
 
+def screen_lesson_quiz() -> Image.Image:
+    """Lesson quiz wrong feedback: same pill geometry at the narrower x=86."""
+    im = Image.new("RGB", (W, H), BG)
+    text(im, 6, 3, "LESSON QUIZ", 1, 1, DIM)
+    text(im, 233, 5, "1/2", 0, 1, FAINT, "rt")
+    progress(im, 0, 14, 240, 2, 0, 1, ACCENT_HI, SURFACE_HI)
+
+    rect(im, 4, 20, 74, 64, SURFACE, LINE)
+    jp(im, 41, 52, "休", 60, TEXT, "mm")
+    pill(im, 86, 20, "NOT QUITE", ERR, ERR_BG, "cross")
+    text(im, 86, 38, "You typed", 0, 1, FAINT)
+    text(im, 86, 47, "eta", 1, 1, DIM)
+    text(im, 86, 65, "Answer", 0, 1, FAINT)
+    text(im, 86, 74, "rest", 0, 1, ERR)
+    text(im, 86, 92, "A person rests by a tree.", 0, 1, FAINT)
+    text(im, 5, 125, "Enter: continue  Esc: card", 0, 1, FAINT)
+    return im
+
+
 def screen_summary() -> Image.Image:
     im = Image.new("RGB", (W, H), BG)
     text(im, 6, 3, "SESSION", 1, 1, DIM)
@@ -548,7 +651,9 @@ def screen_sync() -> Image.Image:
     im = Image.new("RGB", (W, H), BG)
     text(im, 6, 2, "KaniKey", 2, 1, BRAND)
     text(im, 233, 5, "84%", 1, 1, DIM, "rt")
-    text(im, 8, 24, "Syncing...", 2, 1, TEXT)
+    title = "Syncing..."
+    text(im, 8, 24, title, 2, 1, TEXT)
+    icon(im, "sync", 8 + text_width(title, 2) + 6, 27, TEXT)
     text(im, 233, 32, "5/7", 0, 1, FAINT, "rt")
 
     rows = [
@@ -636,7 +741,9 @@ def screen_settings_reviews() -> Image.Image:
 def screen_wifi_scan() -> Image.Image:
     im = Image.new("RGB", (W, H), BG)
     text(im, 6, 2, "KaniKey", 2, 1, BRAND)
-    text(im, 7, 22, "Wi-Fi · 2.4 GHz networks", 1, 1, DIM)
+    subtitle = "Wi-Fi · 2.4 GHz networks"
+    text(im, 7, 22, subtitle, 1, 1, DIM)
+    icon(im, "wifi", 7 + text_width(subtitle) + 4, 20, DIM)
     text(im, 232, 5, "Esc: back", 0, 1, FAINT, "rt")
     line(im, 4, 36, 235, 36, LINE)
 
@@ -678,7 +785,9 @@ def screen_wifi_scan() -> Image.Image:
 def screen_wifi_password() -> Image.Image:
     im = Image.new("RGB", (W, H), BG)
     text(im, 6, 2, "KaniKey", 2, 1, BRAND)
-    text(im, 7, 22, "Wi-Fi · password", 1, 1, DIM)
+    subtitle = "Wi-Fi · password"
+    text(im, 7, 22, subtitle, 1, 1, DIM)
+    icon(im, "wifi", 7 + text_width(subtitle) + 4, 20, DIM)
     text(im, 232, 5, "Esc: back", 0, 1, FAINT, "rt")
     line(im, 4, 36, 235, 36, LINE)
 
@@ -702,6 +811,7 @@ def screen_setup() -> Image.Image:
     text(im, 233, 5, "84%", 1, 1, DIM, "rt")
 
     text(im, 8, 38, "Join this Wi-Fi", 1, 1, DIM)
+    icon(im, "wifi", 8 + text_width("Join this Wi-Fi") + 5, 36, DIM)
     text(im, 8, 52, "KaniKey-4F2C", 2, 1, TEXT)
     text(im, 8, 74, "Password", 1, 1, DIM)
     text(im, 8, 86, "mango-tide", 1, 1, TEXT)
@@ -718,6 +828,7 @@ def screen_setup_station() -> Image.Image:
     text(im, 233, 5, "84%", 1, 1, DIM, "rt")
 
     text(im, 8, 36, "Connected", 1, 1, OK)
+    icon(im, "wifi", 8 + text_width("Connected") + 5, 34, OK)
     text(im, 8, 48, "dev-net", 2, 1, TEXT)
     text(im, 8, 66, "Open on this network", 1, 1, DIM)
     text(im, 8, 76, "http://192.168.1.42/", 1, 1, ACCENT_HI)
@@ -751,18 +862,24 @@ def screen_about() -> Image.Image:
     ]
     for label, color, y in lines:
         text(im, 7, y, label, 0, 1, color)
+        badge = ("sd" if label.startswith("Font: ") or label.startswith("Rad: ")
+                 else "key" if label.startswith("Token: ") else None)
+        if badge and 7 + text_width(label) + 4 + ICON_W <= 232:
+            icon(im, badge, 7 + text_width(label) + 4, y - 2, color)
     return im
 
 
 SCREENS = [
     ("home", screen_home),
     ("home-outbox", lambda: screen_home(True)),
+    ("outbox", screen_outbox),
     ("review-meaning", screen_review_meaning),
     ("review-reading", screen_review_reading),
     ("review-correct", lambda: screen_review_feedback(True)),
     ("review-wrong", lambda: screen_review_feedback(False)),
     ("review-check", screen_review_check),
     ("lesson", screen_lesson),
+    ("lesson-quiz", screen_lesson_quiz),
     ("summary", screen_summary),
     ("sync", screen_sync),
     ("settings", screen_settings),
