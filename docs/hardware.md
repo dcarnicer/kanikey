@@ -768,6 +768,11 @@ A150 G143 M81 E147 B586).
   normally. The full `Pause → Settings → System → About → Esc ×3` chain returned
   to Pause with Settings selected. Sleep/dim, firmware install, low battery and
   debug routes remain.
+- **PD-01.** The `paperdiy` and `paperdiy-dev` targets compile with the 16 MB
+  table, `qio_opi`, M5GFX 0.3.0 and the new board HAL (960×540, buttons, SD,
+  PM1 power/sleep); `paperdiy` is 1,696,357 B of its 6,291,456 B slot. No
+  PaperDIY hardware was available: panel/PSRAM/button/SD/PM1/EPD power and
+  strapping-pin checks remain, as does PD-02 rendering.
 - **SPEED-06.** Five native tests cover the P5/P6 policy and sleep slices. A
   bare dev `Z` entered the 10 s light-sleep test; the device was alive and
   syncing after the timer wake (`cmd h` answered, no boot). The post-wake
