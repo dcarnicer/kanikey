@@ -857,7 +857,7 @@ void handleSerial() {
 #ifdef KANIKEY_DEV
         } else if (state().ui.gSerialLine == "hh") {
             // Internal heap fragmentation, for the audio drain: the drain needs a
-            // largest free block of 45 KB, so 'free' alone is not the answer.
+            // largest free block of 28 KB, so 'free' alone is not the answer.
             multi_heap_info_t info = {};
             heap_caps_get_info(&info, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
             const unsigned fragPct =

@@ -227,6 +227,8 @@ static void test_audioq_heap_thresholds() {
     TEST_ASSERT_FALSE(audioDrainHeapOk(200 * 1024, kAudioDrainMinFree - 1));
     // The 2026-11-20 failure state: 23.5 KB largest, 33 KB free.
     TEST_ASSERT_FALSE(audioDrainHeapOk(23 * 1024 + 512, 33 * 1024));
+    // Measured on the MEM-02 core: the drain waited here after one clip.
+    TEST_ASSERT_TRUE(audioDrainHeapOk(34804, 139304));
 }
 
 // AUD-02 refill: only a requested refill, with the batch in RAM, the card up

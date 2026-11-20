@@ -22,9 +22,12 @@ inline constexpr uint8_t kAudioQueueMaxFailures = 2;
 inline constexpr size_t kAudioUrlMax = 128;
 
 // Heap a clip download needs once the canvas is released: the TLS handshake
-// needs a large contiguous block (hardware 2026-11-20: 23.5 KB largest failed,
-// `start_ssl_client: -1`), and the total must leave room beside it.
-inline constexpr size_t kAudioDrainMinLargest = 45 * 1024;
+// needs a large contiguous block, and the total must leave room beside it.
+// 28 KB since the MEM-02 core (2026-11-20): mbedTLS now takes one 16.7 KB input
+// buffer and a 4.4 KB output buffer (it was two 16.7 KB buffers, when 23.5 KB
+// failed with `start_ssl_client: -1` and 45 KB was the rule). The old rule left
+// the Home drain stuck at 34.8 KB largest / 139 KB free after one clip.
+inline constexpr size_t kAudioDrainMinLargest = 28 * 1024;
 inline constexpr size_t kAudioDrainMinFree = 60 * 1024;
 
 // Minimum time between download attempts on the Home tick: after a clip (or a
