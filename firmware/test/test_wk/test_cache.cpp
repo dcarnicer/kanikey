@@ -189,10 +189,10 @@ static void stream_write_matches_vector_encoder() {
     TEST_ASSERT_TRUE(writeSubjectCache(testMeta(), subjects, &sink));
     TEST_ASSERT_EQUAL(static_cast<int>(vectorBytes.size()), static_cast<int>(sink.bytes.size()));
     TEST_ASSERT_EQUAL_UINT8_ARRAY(vectorBytes.data(), sink.bytes.data(), vectorBytes.size());
-    // Header unchanged: KKCS, version, savedAt, account key.
+    // Header: KKCS, the subject version (13), savedAt, account key.
     TEST_ASSERT_EQUAL_UINT8('K', sink.bytes[0]);
     TEST_ASSERT_EQUAL_UINT8('S', sink.bytes[3]);
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kCacheVersion), sink.bytes[4]);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kSubjectsVersion), sink.bytes[4]);
 }
 
 static void stream_read_decodes_vector_encoded_file() {
@@ -342,7 +342,75 @@ static void stream_write_rejects_too_long_string() {
     TEST_ASSERT_EQUAL_UINT8_ARRAY(vectorBytes.data(), okSink.bytes.data(), vectorBytes.size());
 }
 
+// AUD-02: the chosen clip URL of each voice is persisted (KKCS v13). A URL
+// round-trips through both encoders; an empty URL stays empty.
+static void subject_audio_urls_round_trip() {
+    Subject vocab = vocabularySubject();
+    vocab.audioUrl[0] = "https://audio.example.test/clips/0123456789/female-ichiban.mp3";
+    vocab.audioUrl[1] = "";  // no male clip for this word
+    const std::vector<Subject> subjects = {vocab, kanjiSubject()};
+
+    std::vector<uint8_t> bytes;
+    TEST_ASSERT_TRUE(encodeSubjectCache(testMeta(), subjects, &bytes));
+    SubjectCache out;
+    TEST_ASSERT_TRUE(decodeSubjectCache(bytes.data(), bytes.size(), &out));
+    TEST_ASSERT_EQUAL(2, out.subjects.size());
+    TEST_ASSERT_EQUAL_STRING(vocab.audioUrl[0].c_str(), out.subjects[0].audioUrl[0].c_str());
+    TEST_ASSERT_TRUE(out.subjects[0].audioUrl[1].empty());
+    TEST_ASSERT_TRUE(out.subjects[1].audioUrl[0].empty());
+    TEST_ASSERT_TRUE(out.subjects[1].audioUrl[1].empty());
+
+    // The streaming reader gives the same URLs.
+    MemorySink sink;
+    TEST_ASSERT_TRUE(writeSubjectCache(testMeta(), subjects, &sink));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(bytes.data(), sink.bytes.data(), bytes.size());
+    MemorySource source(sink.bytes);
+    SubjectCache streamed;
+    TEST_ASSERT_TRUE(readSubjectCache(&source, sink.bytes.size(), &streamed));
+    TEST_ASSERT_EQUAL_STRING(vocab.audioUrl[0].c_str(), streamed.subjects[0].audioUrl[0].c_str());
+    TEST_ASSERT_TRUE(streamed.subjects[0].audioUrl[1].empty());
+}
+
+// The URL field is the last one of a subject: a file cut inside it, or with the
+// URL bytes changed into a longer string, is refused, never half-read.
+static void subject_audio_urls_reject_truncation() {
+    Subject vocab = vocabularySubject();
+    vocab.audioUrl[1] = "https://audio.example.test/clips/male.mp3";
+    std::vector<uint8_t> bytes;
+    TEST_ASSERT_TRUE(encodeSubjectCache(testMeta(), {vocab}, &bytes));
+    std::vector<uint8_t> cut(bytes.begin(), bytes.end() - 3);
+    SubjectCache out;
+    TEST_ASSERT_FALSE(decodeSubjectCache(cut.data(), cut.size(), &out));
+    MemorySource source(cut);
+    TEST_ASSERT_FALSE(readSubjectCache(&source, cut.size(), &out));
+}
+
+// The subject file is read only at kSubjectsVersion. A v12 file (no URLs, the
+// old KKCS) and a future version are refused, so the batch is fetched again.
+static void subject_cache_other_version_rejected() {
+    std::vector<uint8_t> bytes;
+    TEST_ASSERT_TRUE(encodeSubjectCache(testMeta(), realisticSubjects(), &bytes));
+    TEST_ASSERT_EQUAL_UINT16(kSubjectsVersion, static_cast<uint16_t>(bytes[4] | (bytes[5] << 8)));
+
+    for (const uint16_t version : {static_cast<uint16_t>(kSubjectsVersion - 1),
+                                   static_cast<uint16_t>(kCacheVersion),
+                                   static_cast<uint16_t>(kSubjectsVersion + 1)}) {
+        std::vector<uint8_t> bad = bytes;
+        bad[4] = static_cast<uint8_t>(version);
+        bad[5] = static_cast<uint8_t>(version >> 8);
+        SubjectCache out;
+        TEST_ASSERT_FALSE(decodeSubjectCache(bad.data(), bad.size(), &out));
+        MemorySource source(bad);
+        TEST_ASSERT_FALSE(readSubjectCache(&source, bad.size(), &out));
+    }
+    SubjectCache out;
+    TEST_ASSERT_TRUE(decodeSubjectCache(bytes.data(), bytes.size(), &out));
+}
+
 void run_cache_tests() {
+    RUN_TEST(subject_audio_urls_round_trip);
+    RUN_TEST(subject_audio_urls_reject_truncation);
+    RUN_TEST(subject_cache_other_version_rejected);
     RUN_TEST(stream_write_matches_vector_encoder);
     RUN_TEST(stream_read_decodes_vector_encoded_file);
     RUN_TEST(stream_roundtrip_small_source_chunks);

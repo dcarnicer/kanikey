@@ -22,27 +22,19 @@ namespace kk::app {
 
 namespace {
 
-// The reading the clip should speak: the primary accepted reading (a kana
-// vocabulary word is its own reading).
-std::string primaryReading(const kk::Subject& s) {
-    for (const kk::Reading& r : s.readings)
-        if (r.primary && r.accepted) return r.text;
-    for (const kk::Reading& r : s.readings)
-        if (r.accepted) return r.text;
-    return s.type == SubjectType::KanaVocabulary ? s.characters : std::string();
-}
-
 // True once the cache was prepared for the current visit to a review or lesson
 // card screen. Cleared on leaving, so the next visit prepares again once.
 bool gPreparedForVisit = false;
 
-// AUD-02: the clips waiting to download. RAM only; a restart or a new sync
-// refills it from the batch. Entries carry copies of the URLs, so the batch can
-// be evicted from RAM meanwhile.
+// AUD-02: the clips waiting to download. RAM only, in the queue's fixed storage
+// (a static object: no heap). Entries carry copies of the URLs, so the batch can
+// be evicted from RAM meanwhile. A restart empties it; the next batch load from
+// the card refills it (gRefillRequested).
 kk::AudioQueue gQueue;
 bool gDrainAttempted = false;
 uint32_t gDrainLastAttemptMs = 0;
 bool gDrainRefused = false;  // the last attempt was refused for heap
+bool gRefillRequested = false;  // a batch load or a new clip cache wants a refill
 
 // M6: one pending autoplay. Only the id and type are kept; the clip is looked
 // up when it starts, so a stale subject pointer is never used.
@@ -184,6 +176,66 @@ DrainResult drainOne(bool screenIdle, uint32_t spacingMs, uint32_t handshakeSec)
     return result;
 }
 
+struct QueueCounts {
+    size_t queued = 0;
+    size_t cached = 0;
+    size_t full = 0;
+    size_t tooLong = 0;
+};
+
+// Queues the clip of each playable subject that is not on the card yet: the
+// current voice's URL, or the other voice's when only that one exists. The
+// URLs come from the subjects (persisted since KKCS v13), so a batch loaded from
+// the card queues the same clips as a fresh fetch.
+QueueCounts queueClips(const std::vector<kk::Subject>& subjects) {
+    QueueCounts n;
+    const uint8_t preferred = audioVoice();  // one settings read for the whole batch
+    for (const kk::Subject& subject : subjects) {
+        if (!kk::audioSubjectPlayable(subject.type)) continue;
+        uint8_t voice = 0;
+        if (!kk::audioQueueChoice(subject.audioUrl, preferred, &voice)) continue;
+        if (kk::audioCacheHasMp3(SD, subject.id, voice)) {
+            ++n.cached;
+            continue;
+        }
+        switch (gQueue.enqueue(subject.id, voice, subject.audioUrl[voice])) {
+            case kk::AudioQueue::Add::Added: ++n.queued; break;
+            case kk::AudioQueue::Add::Duplicate: break;
+            case kk::AudioQueue::Add::Full: ++n.full; break;
+            case kk::AudioQueue::Add::TooLong:
+                ++n.tooLong;
+                Serial.printf("[audio] clip %u URL too long (%u bytes), skipped\n",
+                              static_cast<unsigned>(subject.id),
+                              static_cast<unsigned>(subject.audioUrl[voice].size()));
+                break;
+        }
+    }
+    return n;
+}
+
+// AUD-02 refill: a batch loaded from the card has its URLs but the queue may not
+// (after a restart, a cache wipe or an eviction). Runs at most once per request,
+// and only while the batch is in RAM, so it does no SD work on an idle loop.
+void refillTick() {
+    if (kk::audioCacheTakeCreated()) gRefillRequested = true;
+    // The common loop stops here: no token read (a storage read) and no SD work.
+    if (!gRefillRequested || state().cache.gBatch.subjects.empty()) return;
+    // One decision per request, so the card and token are checked once. A request
+    // that is refused here is not kept; the next batch load asks again.
+    const bool wanted = kk::audioRefillWanted(gRefillRequested, /*batchInRam=*/true,
+                                              state().storage.gSdOk, kk::DevToken::has());
+    gRefillRequested = false;
+    if (!wanted) return;
+    const uint32_t key = currentAccountKey();
+    if (!kk::audioCacheOpen(SD, key)) return;
+    gQueue.useAccount(key);
+    const QueueCounts n = queueClips(state().cache.gBatch.subjects);
+    Serial.printf("[audio] refill: queued %u clips (%u already cached)\n",
+                  static_cast<unsigned>(n.queued), static_cast<unsigned>(n.cached));
+    if (n.full)
+        Serial.printf("[audio] queue full: %u clips not queued\n", static_cast<unsigned>(n.full));
+}
+
 // Home tick: at most one clip per call, with the spacing after a clip, a
 // failure, or (longer) a heap refusal.
 void drainTick() {
@@ -281,8 +333,11 @@ void audioTick() {
     }
     autoplayTick();
     kk::audioPlayerTick();
+    refillTick();
     drainTick();
 }
+
+void audioRequestRefill() { gRefillRequested = true; }
 
 void audioStop() {
     audioAutoplayCancel();
@@ -317,29 +372,11 @@ void audioPrefetchBatch(const std::vector<kk::Subject>& subjects, bool drainNow)
     // The batch only queues: a review batch arrives right after a large fetch,
     // when the TLS heap is short, so it never downloads here (hardware
     // 2026-11-20: 0/17 clips). The Home tick drains the queue later.
-    size_t queued = 0;
-    size_t cached = 0;
-    size_t full = 0;
-    for (const kk::Subject& subject : subjects) {
-        if (!kk::audioSubjectPlayable(subject.type)) continue;
-        size_t index = 0;
-        if (!kk::audioPickDownload(subject.audios, audioVoice(), primaryReading(subject), &index))
-            continue;
-        const kk::AudioClip& clip = subject.audios[index];
-        if (kk::audioCacheHasMp3(SD, subject.id, clip.voice)) {
-            ++cached;
-            continue;
-        }
-        switch (gQueue.enqueue(subject.id, clip.voice, clip.url, clip.contentType)) {
-            case kk::AudioQueue::Add::Added: ++queued; break;
-            case kk::AudioQueue::Add::Duplicate: break;
-            case kk::AudioQueue::Add::Full: ++full; break;
-        }
-    }
-    Serial.printf("[audio] queued %u clips (%u already cached)\n", static_cast<unsigned>(queued),
-                  static_cast<unsigned>(cached));
-    if (full)
-        Serial.printf("[audio] queue full: %u clips not queued\n", static_cast<unsigned>(full));
+    const QueueCounts n = queueClips(subjects);
+    Serial.printf("[audio] queued %u clips (%u already cached)\n", static_cast<unsigned>(n.queued),
+                  static_cast<unsigned>(n.cached));
+    if (n.full)
+        Serial.printf("[audio] queue full: %u clips not queued\n", static_cast<unsigned>(n.full));
     // The lesson hook asks for the inline drain: a lesson batch is small and
     // the lesson cards need their clips at once. The same heap and link rules
     // apply, so a short heap leaves the clips for the Home tick.

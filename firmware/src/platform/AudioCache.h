@@ -16,6 +16,11 @@ namespace kk {
 
 bool audioCacheOpen(fs::FS& sd, uint32_t accountKey);
 
+// True once after audioCacheOpen() created an empty clip cache (no usable index
+// before: a first use, an account change or a version change). Reading it
+// clears it. The app asks for a refill of the queue then.
+bool audioCacheTakeCreated();
+
 // AUD-02: true when the MP3 clip for this subject and voice is on the card
 // (index entry and file). Call audioCacheOpen() first.
 bool audioCacheHasMp3(fs::FS& sd, uint32_t subjectId, uint8_t voice);
@@ -25,9 +30,8 @@ bool audioCacheHasMp3(fs::FS& sd, uint32_t subjectId, uint8_t voice);
 // voice, evicts to the 50 MB cap and rewrites the index. Returns the stored
 // bytes, or 0 with `error` set. The caller checks the heap and the link first;
 // `handshakeSec` bounds the TLS handshake. Call audioCacheOpen() first.
-uint32_t audioCacheFetchClip(fs::FS& sd, uint32_t subjectId, uint8_t voice,
-                             const std::string& url, uint32_t handshakeSec,
-                             std::string* error);
+uint32_t audioCacheFetchClip(fs::FS& sd, uint32_t subjectId, uint8_t voice, const char* url,
+                             uint32_t handshakeSec, std::string* error);
 size_t audioCacheCount();
 uint64_t audioCacheBytes();
 void audioCacheClear(fs::FS& sd);

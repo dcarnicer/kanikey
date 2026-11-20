@@ -851,6 +851,23 @@ void handleSerial() {
             delay(100);
             ESP.restart();
 #ifdef KANIKEY_DEV
+        } else if (state().ui.gSerialLine == "hh") {
+            // Internal heap fragmentation, for the audio drain: the drain needs a
+            // largest free block of 45 KB, so 'free' alone is not the answer.
+            multi_heap_info_t info = {};
+            heap_caps_get_info(&info, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+            const unsigned fragPct =
+                info.total_free_bytes
+                    ? static_cast<unsigned>(100u - (info.largest_free_block * 100u) / info.total_free_bytes)
+                    : 0u;
+            Serial.printf("[heap] internal: free %u, largest %u, fragmented %u%%, min free %u\n",
+                          static_cast<unsigned>(info.total_free_bytes),
+                          static_cast<unsigned>(info.largest_free_block), fragPct,
+                          static_cast<unsigned>(info.minimum_free_bytes));
+            Serial.printf("[heap] blocks: %u free, %u allocated, %u allocated bytes\n",
+                          static_cast<unsigned>(info.free_blocks),
+                          static_cast<unsigned>(info.allocated_blocks),
+                          static_cast<unsigned>(info.total_allocated_bytes));
         } else if (state().ui.gSerialLine == "w") {
             snprintf(state().ui.gNetLine, sizeof state().ui.gNetLine, "NET: joining...");
             state().display.gDirty = true;
@@ -1413,7 +1430,7 @@ void handleSerial() {
 #endif
         } else if (!state().ui.gSerialLine.isEmpty()) {
 #ifdef KANIKEY_DEV
-            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page-right <=page-left j=lesson-select D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear J=attention-outbox Y=clear-rollback C=dev-cache X=clear-cache K <keys>=type R<id>=radical U <url>=manifest F=firmware-check I=firmware-install V=firmware-screen k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload T=dev-token L=radical-lesson E=zero-due H=drop-batch A<code>=fake-start B=bad-pack-crc O=force-battery Z=light-sleep-test Z<s>=sleep G<n>=key-storm n=test-tone a=audio-cache rem <s> [n]=timer-wake-probe rem=probe-log rem tone=tone-heap cap <bytes>=body-cap (0 off) devhost <host> <port>|off=send-requests-to-host fs=littlefs-usage remind <s>=reminder-wake remind=reminder-log cue <chime|correct|wrong|end>=sound-cue cue vol <low|med|high>=cue-level\n");
+            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page-right <=page-left j=lesson-select D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear J=attention-outbox Y=clear-rollback C=dev-cache X=clear-cache K <keys>=type R<id>=radical U <url>=manifest F=firmware-check I=firmware-install V=firmware-screen k <token> c=clear h=heap hh=heap-blocks i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload T=dev-token L=radical-lesson E=zero-due H=drop-batch A<code>=fake-start B=bad-pack-crc O=force-battery Z=light-sleep-test Z<s>=sleep G<n>=key-storm n=test-tone a=audio-cache rem <s> [n]=timer-wake-probe rem=probe-log rem tone=tone-heap cap <bytes>=body-cap (0 off) devhost <host> <port>|off=send-requests-to-host fs=littlefs-usage remind <s>=reminder-wake remind=reminder-log cue <chime|correct|wrong|end>=sound-cue cue vol <low|med|high>=cue-level\n");
 #else
             Serial.printf("[kk] commands: h=heap i=pack S=asset-server p=picture r=restart n=test-tone a=audio-cache up <bytes> <path>=sd-upload\n");
 #endif

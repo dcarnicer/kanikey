@@ -250,11 +250,12 @@ bool encodeFile(const char magic[4], const CacheMeta& meta, const std::vector<ui
 }
 
 bool decodeFile(const char magic[4], const uint8_t* data, size_t size, CacheMeta* meta,
-                Reader* payload, uint16_t* versionOut = nullptr) {
+                Reader* payload, uint16_t minVersion, uint16_t maxVersion,
+                uint16_t* versionOut = nullptr) {
     if (!data || size < kCacheHeaderBytes) return false;
     if (std::memcmp(data, magic, 4) != 0) return false;
     const uint16_t version = get16(data + 4);
-    if (version < kCacheVersionMin || version > kCacheVersion) return false;
+    if (version < minVersion || version > maxVersion) return false;
     if (get16(data + 6) != 0) return false;
     const uint32_t payloadSize = get32(data + 16);
     if (payloadSize != size - kCacheHeaderBytes) return false;
@@ -521,6 +522,8 @@ void encodeSubject(Writer& w, const Subject& s) {
     w.u16(s.readingCurrentStreak);
     w.u8(s.percentageCorrect);
     w.u8(s.hasReviewStats ? 1 : 0);
+    w.str(s.audioUrl[0]);
+    w.str(s.audioUrl[1]);
 }
 
 bool decodeSubject(Reader& r, Subject* s) {
@@ -597,6 +600,7 @@ bool decodeSubject(Reader& r, Subject* s) {
         !r.u16(&s->readingCurrentStreak) || !r.u8(&s->percentageCorrect) || !r.u8(&hasStats))
         return false;
     s->hasReviewStats = hasStats != 0;
+    if (!r.str(&s->audioUrl[0]) || !r.str(&s->audioUrl[1])) return false;
     return true;
 }
 
@@ -654,7 +658,9 @@ bool decodeCacheSnapshot(const uint8_t* data, size_t size, CacheSnapshot* out) {
     CacheMeta meta;
     Reader r;
     uint16_t version = kCacheVersion;
-    if (!decodeFile(kSnapshotMagic, data, size, &meta, &r, &version)) return false;
+    if (!decodeFile(kSnapshotMagic, data, size, &meta, &r, kCacheVersionMin, kCacheVersion,
+                    &version))
+        return false;
     CacheSnapshot snapshot;
     snapshot.meta = meta;
     if (!r.str(&snapshot.summary.nextReviewsAt) ||
@@ -697,7 +703,7 @@ bool encodeSubjectCache(const CacheMeta& meta, const std::vector<Subject>& subje
     w.u16(static_cast<uint16_t>(subjects.size()));
     for (const Subject& s : subjects) encodeSubject(w, s);
     if (!w.ok()) return false;
-    return encodeFile(kSubjectsMagic, meta, w.bytes(), out);
+    return encodeFile(kSubjectsMagic, meta, w.bytes(), out, kSubjectsVersion);
 }
 
 bool encodeSubjectCache(const SubjectCache& cache, std::vector<uint8_t>* out) {
@@ -708,7 +714,8 @@ bool decodeSubjectCache(const uint8_t* data, size_t size, SubjectCache* out) {
     if (!out) return false;
     CacheMeta meta;
     Reader r;
-    if (!decodeFile(kSubjectsMagic, data, size, &meta, &r)) return false;
+    if (!decodeFile(kSubjectsMagic, data, size, &meta, &r, kSubjectsVersion, kSubjectsVersion))
+        return false;
     SubjectCache cache;
     cache.meta = meta;
     if (!decodeSubjects(r, &cache)) return false;
@@ -738,7 +745,7 @@ bool writeSubjectCache(const CacheMeta& meta, const std::vector<Subject>& subjec
     uint8_t header[kCacheHeaderBytes];
     std::memset(header, 0, sizeof header);
     std::memcpy(header, kSubjectsMagic, 4);
-    put16(header + 4, kCacheVersion);
+    put16(header + 4, kSubjectsVersion);
     put16(header + 6, 0);
     put32(header + 8, meta.savedAt);
     put32(header + 12, meta.accountKey);
@@ -761,7 +768,7 @@ bool readSubjectCache(ByteSource* source, size_t fileSize, SubjectCache* out) {
     if (!readExact(source, header, sizeof header)) return false;
     if (std::memcmp(header, kSubjectsMagic, 4) != 0) return false;
     const uint16_t version = get16(header + 4);
-    if (version < kCacheVersionMin || version > kCacheVersion) return false;
+    if (version != kSubjectsVersion) return false;
     if (get16(header + 6) != 0) return false;
     const uint32_t payloadSize = get32(header + 16);
     if (payloadSize != fileSize - kCacheHeaderBytes) return false;

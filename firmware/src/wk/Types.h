@@ -72,6 +72,11 @@ struct Subject {
     std::vector<std::string> partsOfSpeech;       // vocabulary details
     std::vector<ContextSentence> contextSentences;  // vocabulary details
     std::vector<AudioClip> audios;                  // pronunciation_audios, transient
+    // The MP3 URL chosen per voice (index = voice), primary reading first; ""
+    // when the voice has no clip. Set when the subject is parsed and persisted
+    // in the subject cache (KKCS v13), so a batch loaded from the card can queue
+    // its clips again. Only the URL is kept: the voice is the index.
+    std::string audioUrl[2];
 
     // Review statistics (GET /review_statistics); hasReviewStats is false for
     // lessons and for subjects without a statistics resource.

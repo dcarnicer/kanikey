@@ -18,7 +18,9 @@ constexpr const char* kMetaPath = "/kanikey/cache/catalog/meta.bin";
 constexpr const char* kMetaTmp = "/kanikey/cache/catalog/meta.tmp";
 constexpr const char* kMetaBak = "/kanikey/cache/catalog/meta.bak";
 constexpr const char* kSubjectMagic = "KKSB";
-constexpr uint16_t kVersion = 1;
+// 2: the subject payload (wk/SubjectCodec) carries the two audio URLs. A v1
+// file is not read; the subject is fetched again.
+constexpr uint16_t kVersion = 2;
 
 struct CatalogState {
     bool open = false;

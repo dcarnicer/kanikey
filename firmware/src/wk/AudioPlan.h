@@ -81,4 +81,28 @@ int mp3FirstFrameChannels(const uint8_t* p, size_t n);
 bool audioPickDownload(const std::vector<AudioClip>& clips, uint8_t preferredVoice,
                        const std::string& reading, size_t* index);
 
+// The reading a clip should speak: the primary accepted reading, else the first
+// accepted one, else a kana vocabulary's own text. Empty when there is none.
+std::string audioPrimaryReading(const Subject& subject);
+
+// One voice only: the MP3 clip of `voice` that speaks `reading` when there is
+// one, else the first MP3 clip of that voice. False when the voice has none.
+bool audioPickVoiceClip(const std::vector<AudioClip>& clips, uint8_t voice,
+                        const std::string& reading, size_t* index);
+
+// Fills subject.audioUrl[0..1] from subject.audios with audioPickVoiceClip().
+// Vocabulary and kana vocabulary only; other types get two empty URLs. The
+// parsers call it once a subject is complete.
+void audioChooseSubjectUrls(Subject& subject);
+
+// The clip to queue for `preferredVoice`: its own URL, or when that is empty the
+// other voice's. Sets *voiceOut to the voice of the URL. False when neither
+// voice has a URL.
+bool audioQueueChoice(const std::string (&urls)[2], uint8_t preferredVoice, uint8_t* voiceOut);
+
+// AUD-02 refill rule: the queue is refilled from the batch in RAM only when a
+// refill was requested (a batch load from the card, or a new clip cache), the
+// batch is in RAM, the card is up and the token is usable.
+bool audioRefillWanted(bool requested, bool batchInRam, bool sdOk, bool tokenOk);
+
 }  // namespace kk

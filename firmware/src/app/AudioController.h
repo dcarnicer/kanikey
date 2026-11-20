@@ -27,14 +27,20 @@ bool audioPlay(const kk::Subject& subject);
 
 // AUD-02 hook, called right after a review or lesson batch fetch succeeds, with
 // that batch's subjects (their pronunciation_audios are still parsed here). It
-// queues the preferred MP3 of each vocabulary subject not on the card yet
-// (copies of the URLs; bounded, deduped by subject and voice). It downloads
-// nothing by itself unless `drainNow`: the review hook passes false, because
-// the heap is short right after a large fetch; the lesson hook passes true and
-// drains inline within 8 s under the same link and heap rules. Otherwise
-// audioTick() drains the queue one clip at a time on an idle Home. Never OGG;
-// a clip gives up after two failures.
+// queues the chosen MP3 of each vocabulary subject not on the card yet (the URL
+// is copied into the queue's fixed storage; bounded, deduped by subject and
+// voice). It downloads nothing by itself unless `drainNow`: the review hook
+// passes false, because the heap is short right after a large fetch; the lesson
+// hook passes true and drains inline within 8 s under the same link and heap
+// rules. Otherwise audioTick() drains the queue one clip at a time on an idle
+// Home. Never OGG; a clip gives up after two failures.
 void audioPrefetchBatch(const std::vector<kk::Subject>& subjects, bool drainNow = false);
+
+// AUD-02 refill: the next audioTick() queues again the playable subjects of the
+// batch in RAM that have no clip on the card. Called after a batch loads from the
+// card, since its URLs are not in the queue after a restart or a cache wipe. A
+// new clip cache asks by itself. Costs nothing until the batch is in RAM.
+void audioRequestRefill();
 
 // M6 autoplay. A request is made at a reading point (a checked reading answer
 // on review feedback, or a lesson card's first draw for its subject). Does
