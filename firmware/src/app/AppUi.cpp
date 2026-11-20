@@ -63,6 +63,7 @@
 #include "platform/WkReviewStatistics.h"
 #include "platform/WkSrsCounts.h"
 #include "wk/AnswerChecker.h"
+#include "wk/EpdRefreshPolicy.h"
 #include "wk/IdSample.h"
 #include "wk/LessonOrder.h"
 #include "wk/LessonQuiz.h"
@@ -89,6 +90,59 @@ using namespace kk::ui;
 // brings it back even if the caller cleared gFreeCanvasForRequest meanwhile.
 bool gCanvasReleasedForRequest = false;
 
+#if defined(TGC_BOARD_PAPERDIY)
+// PD-02: the PaperDIY canvas is the logical 240x135 UI, in PSRAM. A 960x540
+// sprite would be 518 KB of internal RAM, which the TLS heap cannot spare, so
+// the panel size is never used for the canvas; present() zooms it 4x instead.
+constexpr int kEpdLogicalW = 240;
+constexpr int kEpdLogicalH = 135;
+constexpr float kEpdZoom = 4.0f;
+
+kk::epd::Presenter gEpd;
+kk::epd::Config gEpdCfg;
+// The EPD mode the panel is in now. begin() sets epd_quality for the first frame.
+kk::epd::Mode gEpdPanelMode = kk::epd::Mode::Quality;
+
+lgfx::epd_mode_t epdModeOf(kk::epd::Mode m) {
+    return m == kk::epd::Mode::Quality ? lgfx::epd_quality : lgfx::epd_text;
+}
+
+const char* epdModeName(kk::epd::Mode m) {
+    return m == kk::epd::Mode::Quality ? "quality" : "text";
+}
+
+// Push the canvas, 4x, to the panel. A mode change waits for the panel first.
+// The push only queues the update (Panel_EPD runs the refresh in the
+// background), so the first frame also waits for the refresh to log its time.
+void epdPush(const kk::epd::Decision& d, uint32_t now) {
+    auto* disp = state().display.gDisp;
+    if (d.mode != gEpdPanelMode) {
+        disp->waitDisplay();
+        disp->setEpdMode(epdModeOf(d.mode));
+        Serial.printf("[disp] epd mode %s\n", epdModeName(d.mode));
+        gEpdPanelMode = d.mode;
+    }
+    const bool first = !gEpd.presentedOnce;
+    const uint32_t t0 = micros();
+    state().display.gCanvas->pushRotateZoom(disp, 0.0f, 0.0f, 0.0f, kEpdZoom, kEpdZoom);
+    const uint32_t pushUs = micros() - t0;
+    kk::epd::recordPresent(&gEpd, d, now);
+    if (first) {
+        // Bring-up number: boot to the first pixels, and the time the panel
+        // takes to finish that refresh (the push itself only queues it).
+        const uint32_t w0 = millis();
+        disp->waitDisplay();
+        Serial.printf("[disp] first frame: started at %lu ms, push %lu us, refresh %lu ms, mode %s\n",
+                      static_cast<unsigned long>(now), static_cast<unsigned long>(pushUs),
+                      static_cast<unsigned long>(millis() - w0), epdModeName(d.mode));
+    } else {
+        Serial.printf("[disp] present %s%s, push %lu us, partials %lu\n", epdModeName(d.mode),
+                      d.full ? " (full)" : "", static_cast<unsigned long>(pushUs),
+                      static_cast<unsigned long>(gEpd.partials));
+    }
+}
+#endif
+
 }  // namespace
 
 lgfx::LovyanGFX& target() {
@@ -96,16 +150,67 @@ lgfx::LovyanGFX& target() {
     return *state().display.gDisp;
 }
 
+#if defined(TGC_BOARD_PAPERDIY)
+void presentNow() {
+    if (!state().display.gCanvas || !state().display.gDisp) return;
+    // Never push over a refresh still running; the push then starts a new one.
+    if (state().display.gDisp->displayBusy()) state().display.gDisp->waitDisplay();
+    const kk::epd::Decision d = kk::epd::decide(gEpd, millis(), false, gEpdCfg, /*force=*/true);
+    epdPush(d, millis());
+}
+
+void presentTick(uint32_t now) {
+    if (!state().display.gCanvas || !state().display.gDisp) return;
+    const kk::epd::Decision d =
+        kk::epd::decide(gEpd, now, state().display.gDisp->displayBusy(), gEpdCfg);
+    if (d.action == kk::epd::Action::Present) epdPush(d, now);
+}
+
+void present() {
+    if (!state().display.gCanvas || !state().display.gDisp) return;
+    // The first frame goes out at once; later changes wait for presentTick().
+    if (!gEpd.presentedOnce) {
+        presentNow();
+        return;
+    }
+    kk::epd::markDirty(&gEpd, millis());
+}
+#else
 void present() {
     if (state().display.gCanvas && state().display.gDisp) state().display.gCanvas->pushSprite(0, 0);
 }
+#endif
 
 bool ensureCanvas() {
     if (state().display.gCanvas || !state().display.gDisp) return state().display.gCanvas != nullptr;
     for (int attempt = 0; attempt < 4; ++attempt) {
         state().display.gCanvas = new lgfx::LGFX_Sprite(state().display.gDisp);
+#if defined(TGC_BOARD_PAPERDIY)
+        // 16-level grayscale straight into PSRAM: 240x135 = 32,400 B.
+        state().display.gCanvas->setColorDepth(lgfx::grayscale_8bit);
+        state().display.gCanvas->setPsram(true);
+        const bool made = state().display.gCanvas->createSprite(kEpdLogicalW, kEpdLogicalH);
+#else
         state().display.gCanvas->setColorDepth(lgfx::rgb332_1Byte);
-        if (state().display.gCanvas->createSprite(state().display.gDisp->width(), state().display.gDisp->height())) return true;
+        const bool made = state().display.gCanvas->createSprite(state().display.gDisp->width(), state().display.gDisp->height());
+#endif
+        if (made) {
+#if defined(TGC_BOARD_PAPERDIY)
+            // pushRotateZoom() places the sprite's pivot at (dst_x, dst_y), and
+            // createSprite() leaves the pivot at the centre; a top-left pivot
+            // makes the 4x push at (0, 0) cover the whole 960x540 panel.
+            state().display.gCanvas->setPivot(0, 0);
+            Serial.printf("[disp] canvas %dx%d grayscale_8bit in PSRAM: %u B; PSRAM free %u B; "
+                          "internal free %u B, largest %u B\n",
+                          kEpdLogicalW, kEpdLogicalH,
+                          static_cast<unsigned>(state().display.gCanvas->bufferLength()),
+                          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)),
+                          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+                          static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL |
+                                                                                 MALLOC_CAP_8BIT)));
+#endif
+            return true;
+        }
         Serial.printf("[kk] canvas attempt %d failed, heap %u largest %u\n", attempt + 1,
                       static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
                       static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL |
@@ -125,10 +230,17 @@ void releaseCanvas() {
 }
 
 void requestBefore() {
+#if defined(TGC_BOARD_PAPERDIY)
+    // The PSRAM canvas stays where it is: TLS needs internal RAM only. A frame
+    // still waiting for the panel goes out now, because the request blocks the
+    // loop and the screen should show what was drawn before it.
+    if (gEpd.pending) presentNow();
+#else
     if (!state().ui.gFreeCanvasForRequest) return;
     if (!state().display.gCanvas) return;  // already drawing directly
     releaseCanvas();
     gCanvasReleasedForRequest = true;
+#endif
 }
 
 void requestAfter() {
@@ -217,7 +329,11 @@ void drawLoading(const char* title, const char* subtitle) {
     d.startWrite();
     kk::app::drawLoadingScreen(d, view);
     d.endWrite();
+#if defined(TGC_BOARD_PAPERDIY)
+    presentNow();  // the caller blocks next; a deferred frame would never show
+#else
     present();
+#endif
 }
 
 // Blocking notice frame: the lessons empty state's shape with a caller-supplied
@@ -280,7 +396,11 @@ void drawNotice() {
     d.setTextColor(ui::kFaint, ui::kBg);
     d.drawString(hint, 8, 125);
     d.endWrite();
+#if defined(TGC_BOARD_PAPERDIY)
+    presentNow();  // the next step is often a blocking request
+#else
     present();
+#endif
 }
 
 void noticeKey(const KeyEvent& e) {

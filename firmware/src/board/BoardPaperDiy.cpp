@@ -250,10 +250,13 @@ bool externalPower() {
 // E-paper keeps its image when the boost is off, so blanking means powerSave.
 // PD-02 owns the refresh/present policy around these calls.
 void setDisplayOn(bool on) {
-    if (on)
+    if (on) {
         M5.Display.powerSaveOff();
-    else
+    } else {
+        // Cutting the boost mid-refresh leaves a half-written frame; let it end.
+        M5.Display.waitDisplay();
         M5.Display.powerSaveOn();
+    }
 }
 
 void deepSleep() {

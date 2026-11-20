@@ -9,7 +9,12 @@
 namespace kk::app {
 
 lgfx::LovyanGFX& target();
+// Cardputer: present() pushes the canvas at once. PaperDIY (PD-02): present()
+// marks the canvas dirty and presentTick() pushes it when the e-paper policy
+// says so; presentNow() pushes at once, for blocking frames and the first frame.
 void present();
+void presentNow();
+void presentTick(uint32_t now);
 bool ensureCanvas();
 void releaseCanvas();
 void requestBefore();
