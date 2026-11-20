@@ -152,7 +152,7 @@ the 2026-11-19 logs.
 | 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Done except a real low-level radical-only lesson; the synthetic radical lesson UI passed | RAD-04 |
 | 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Done: real-account online fetch, deliberate offline reboot and cached session verified (2026-11-19) | CACHE-07 |
 | 3 | Complete lesson flow | List/picker, card, components, quiz, empty state, start and ordering exist; the round-2 browse → quiz → batch-start flow is in review | v1 flow complete; LES-01…LES-06 in review 2026-11-19 (hardware partial); the real low-level run is open | LES-01 |
-| 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; stats and local review history are live; audio remains | Stats/local history done; AUD-03 remains; round 2 tracked in `docs/spec` | AUD |
+| 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; stats and local review history are live; audio remains | Stats/local history done; AUD-03 decoder probe done, playback/hardware gates remain | AUD |
 | 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Code and docs done; OUTBOX (API-01/05), 401 (API-03) and parse retry (API-04) verified 2026-11-19; 429 (API-02) and 403 still pending | — |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | v1 done; SETUP-09 on-device Wi-Fi is in review 2026-11-19 (scan/password mask smoked; join paths pending) | SETUP-09 |
 | 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen, item detail, level progress and the Stats screen are live | UI palette audited 2026-11-20; device visual check pending | UI-08 |
@@ -766,7 +766,7 @@ round 2.
 | EXT-03 | STUDY-01, STUDY-02 | Critical items and leeches | done (2026-11-06) |
 | EXT-04 | STUDY-03, STUDY-04, STUDY-05 | Extra study and the offline practice pool | done (2026-11-06) |
 | EXT-05 + WK-11 | STATS-01…STATS-04 | Forecast, history, streak and level progress | done (2026-11-06) |
-| EXT-06 | AUD-01…AUD-03 | Vocabulary audio | partial (AUD-01/02); AUD-03 todo |
+| EXT-06 | AUD-01…AUD-03 | Vocabulary audio | partial (AUD-01/02); AUD-03 minimp3 probe, playback/hardware gates todo |
 | EXT-09 | REM-01…REM-03 | Device-local reminders and sounds | todo |
 | Complete lesson flow | LES-01, LES-02, LES-03, LES-04, LES-05, LES-06 | Browse → batch quiz → confirmed start → order/workload/topic pages | review (2026-11-19; hardware partial) |
 | LESSON-08 | LES-04 | Lesson ordering | review: WaniKani/type groups/interleave; 60-pool check pending |
