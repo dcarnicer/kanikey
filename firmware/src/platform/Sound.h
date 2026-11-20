@@ -30,4 +30,18 @@ void soundStop();
 // passed). M6 autoplay waits for this to clear before it starts a clip.
 bool soundBusy();
 
+#ifdef KANIKEY_DEV
+// REM-03 dev `cue`: plays `cue` whatever M4 says, and without the sync or portal
+// check. The level is M5's, or the `cue vol` override. False when no step played
+// (no speaker in this build, or a SessionEnd with no completed review).
+bool soundDevCue(SoundCue cue, uint32_t reviewsCompleted);
+
+// Dev `cue vol`: the level for later dev cues, as a volume choice (0 Low,
+// 1 Medium, 2 High). RAM only; -1 follows M5 again.
+void soundDevSetVolume(int volumeChoice);
+
+// The speaker level the next dev cue plays at, 0..255.
+uint8_t soundDevLevel();
+#endif
+
 }  // namespace kk::sound

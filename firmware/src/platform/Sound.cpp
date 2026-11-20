@@ -72,4 +72,38 @@ void soundTick(uint32_t now) {
     if (!startStep(now)) soundStop();
 }
 
+#ifdef KANIKEY_DEV
+namespace {
+
+int gDevVolume = -1;  // `cue vol`: -1 follows M5 Volume
+
+int devVolumeChoice() {
+    if (gDevVolume >= 0) return gDevVolume;
+    int volume = 1;  // Medium
+    kk::settingsGetInt("rm.volume", &volume);
+    return volume;
+}
+
+}  // namespace
+
+bool soundDevCue(SoundCue cue, uint32_t reviewsCompleted) {
+    const SoundSequence seq = kk::soundSequence(cue, reviewsCompleted);
+    if (!seq.count) return false;
+    soundStop();
+    gSeq = seq;
+    gStep = 0;
+    gLevel = kk::soundLevelForVolume(devVolumeChoice());
+    if (!startStep(millis())) {
+        soundStop();
+        return false;
+    }
+    gPlaying = true;
+    return true;
+}
+
+void soundDevSetVolume(int volumeChoice) { gDevVolume = volumeChoice; }
+
+uint8_t soundDevLevel() { return kk::soundLevelForVolume(devVolumeChoice()); }
+#endif
+
 }  // namespace kk::sound

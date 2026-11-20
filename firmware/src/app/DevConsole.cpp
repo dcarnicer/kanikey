@@ -28,6 +28,7 @@
 #include "app/OutboxController.h"
 #include "app/OutboxScreen.h"
 #include "app/PowerController.h"
+#include "app/RemindDev.h"
 #include "app/RemProbe.h"
 #include "app/ReviewController.h"
 #include "app/ReviewScreens.h"
@@ -1351,6 +1352,13 @@ void handleSerial() {
             // REM-01 probe: `rem <s> [n]` sleeps (timer + key wake), `rem` logs
             // the record, `rem tone` measures the tone's heap.
             remSerialCommand(state().ui.gSerialLine);
+        } else if (state().ui.gSerialLine == "remind" || state().ui.gSerialLine.startsWith("remind ")) {
+            // REM-02 dev check: `remind <s>` arms the reminder timer and sleeps,
+            // `remind` logs the RTC history of the runs.
+            remindSerialCommand(state().ui.gSerialLine);
+        } else if (state().ui.gSerialLine == "cue" || state().ui.gSerialLine.startsWith("cue ")) {
+            // REM-03 dev check: `cue <name>` plays one cue, `cue vol <level>` sets its level.
+            cueSerialCommand(state().ui.gSerialLine);
         } else if (state().ui.gSerialLine.startsWith("R")) {
             String arg = state().ui.gSerialLine.substring(1);
             arg.trim();
@@ -1371,7 +1379,7 @@ void handleSerial() {
 #endif
         } else if (!state().ui.gSerialLine.isEmpty()) {
 #ifdef KANIKEY_DEV
-            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page-right <=page-left j=lesson-select D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear J=attention-outbox Y=clear-rollback C=dev-cache X=clear-cache K <keys>=type R<id>=radical U <url>=manifest F=firmware-check I=firmware-install V=firmware-screen k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload T=dev-token L=radical-lesson E=zero-due H=drop-batch A<code>=fake-start B=bad-pack-crc O=force-battery Z=light-sleep-test Z<s>=sleep G<n>=key-storm n=test-tone a=audio-cache rem <s> [n]=timer-wake-probe rem=probe-log rem tone=tone-heap cap <bytes>=body-cap (0 off) devhost <host> <port>|off=send-requests-to-host\n");
+            Serial.printf("[kk] commands: w=wifi w <ssid>|<pass> t=tls u=user m=summary b=batch v=review l=lessons g=page-right <=page-left j=lesson-select D=review-detail Q=lesson-quiz y<text> e=enter q=quit d=wifi-off o=outbox f=flush x=test-queue z=clear J=attention-outbox Y=clear-rollback C=dev-cache X=clear-cache K <keys>=type R<id>=radical U <url>=manifest F=firmware-check I=firmware-install V=firmware-screen k <token> c=clear h=heap i=pack S=asset-server p=picture s=scan r=restart up <bytes> <path>=sd-upload T=dev-token L=radical-lesson E=zero-due H=drop-batch A<code>=fake-start B=bad-pack-crc O=force-battery Z=light-sleep-test Z<s>=sleep G<n>=key-storm n=test-tone a=audio-cache rem <s> [n]=timer-wake-probe rem=probe-log rem tone=tone-heap cap <bytes>=body-cap (0 off) devhost <host> <port>|off=send-requests-to-host remind <s>=reminder-wake remind=reminder-log cue <chime|correct|wrong|end>=sound-cue cue vol <low|med|high>=cue-level\n");
 #else
             Serial.printf("[kk] commands: h=heap i=pack S=asset-server p=picture r=restart n=test-tone a=audio-cache up <bytes> <path>=sd-upload\n");
 #endif

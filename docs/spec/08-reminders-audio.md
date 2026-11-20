@@ -122,6 +122,25 @@ change; keep `internal_spk = true`. Both share the speaker with AUD-03, whose
 - [ ] No wake loop after a reminder fires; the next wake is strictly later.
 - [ ] M1 = 0 arms no timer; a cold boot behaves exactly as today.
 
+**Dev check (procedure only; not run on hardware).** Dev image
+`cardputer-adv-dev`, with `remind` and the log in [`docs/dev-tools.md`](../dev-tools.md) §2.4.
+1. Send `T` then `C`, which give a dev token and 6 due reviews. Check local time is
+   outside M2 quiet hours (22–08 by default) or set M2 Off.
+2. Send `remind 30`. The log shows `[remind] next wake … in 30 s`, then
+   `[remind] run 1 armed`. The port drops.
+3. Watch the panel (no serial needed). Do not open the port during the 30 s
+   banner: a reset ends it. Expected on the panel: the banner, with no Wi-Fi
+   activity, then the banner goes and the chip sleeps.
+4. After the expiry the chip sleeps and the port is gone. Press a key to wake it
+   (a normal boot; the record keeps the run), open the port and send `remind`.
+   Expected: one `[remind] hist 1` line with `rebuilt` near `expected` (the drift
+   is a few seconds at most), `due 6`, `banner yes` and `outcome expiry`.
+   `ended_by` reads `no-next-wake` when nothing re-armed (the seed has no future
+   bucket; set M3 for a next wake), and `reset` when a next wake exists.
+5. Key case: send `remind 30` again and press any key during the banner. Then
+   open the port and send `remind`. Expected: `outcome key` and `ended_by key`,
+   then the quick sync on that normal boot.
+
 ### REM-03 — Sounds
 
 - **Priority:** P3 · **Size:** S (< ~150 lines)
@@ -149,6 +168,19 @@ change; keep `internal_spk = true`. Both share the speaker with AUD-03, whose
 - [ ] No tone blocks the loop or delays a key.
 - [ ] M5's Low/Medium/High is stored and applied without a reboot.
 - [ ] A no-go in REM-01 marks this task dropped with the reason instead of shipping half of it.
+
+**Dev check (procedure only; not run on hardware).** Dev image
+`cardputer-adv-dev`; commands in [`docs/dev-tools.md`](../dev-tools.md) §2.4. M4 may stay Off.
+1. Send `cue chime`, `cue correct`, `cue wrong`, `cue end` in turn. Each line
+   prints `heap before … after …; played 1 (level 128, N ms)`. Each tone must be
+   audible, and no input may lag.
+2. Send `cue vol low`, then `cue correct`, then `cue vol high` and `cue correct`.
+   The levels are 64 and 255. `cue vol` alone prints the current level.
+3. Heap: the first tone may take a one-off block (REM-01: about 7.9 KB). Later
+   cues must leave `after free` and `largest` unchanged.
+4. M4 check: set M4 On and run `remind 30` (the timer wake plays the chime with the
+   banner). With M4 Off the same wake is silent.
+5. Guard: during a sync, `cue` prints `refused: a sync is running`.
 
 ### AUD-01 — Spike: vocabulary audio
 

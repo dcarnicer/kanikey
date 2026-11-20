@@ -3943,6 +3943,7 @@ void run_screen_tests();
 void run_hid_tests();
 void run_epd_tests();
 void run_devhooks_tests();
+void run_devremind_tests();
 void run_button_tests();
 void run_cadence_tests();
 
@@ -4493,6 +4494,7 @@ int main(int, char**) {
     run_hid_tests();
     run_epd_tests();
     run_devhooks_tests();
+    run_devremind_tests();
     run_button_tests();
     run_cadence_tests();
     return UNITY_END();

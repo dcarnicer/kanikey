@@ -55,6 +55,7 @@
 #include "platform/DevWifi.h"
 #include "app/RemProbe.h"
 #include "app/ReminderController.h"
+#include "app/RemindDev.h"
 #if defined(TGC_BOARD_PAPERDIY)
 #include "app/CadenceController.h"
 #include "wk/SyncSteps.h"
@@ -600,6 +601,7 @@ void reminderTimerWake(uint32_t now) {
 #ifdef KANIKEY_DEV
     Serial.printf("[rem] timer wake: due %u, banner %s\n", static_cast<unsigned>(due),
                   banner ? "yes" : "no");
+    kk::app::remindDevWakeDecision(due, banner);
 #endif
     if (!banner) {
         firmwareBeforeSleep();
@@ -631,10 +633,14 @@ void reminderTimerWake(uint32_t now) {
     if (key) {
 #ifdef KANIKEY_DEV
         Serial.println("[rem] key during the banner: normal boot");
+        kk::app::remindDevBannerEnd(true);
 #endif
         return;
     }
     const uint32_t after = now + static_cast<uint32_t>((millis() - shownAt + 999u) / 1000u);
+#ifdef KANIKEY_DEV
+    kk::app::remindDevBannerEnd(false);
+#endif
     firmwareBeforeSleep();
 #if defined(TGC_BOARD_PAPERDIY)
     drawSleepingFrame(true);  // PD-04: the banner gives way to the sleeping frame
@@ -1161,6 +1167,9 @@ void setup() {
     uint32_t reminderNow = 0;
     const bool reminderTimer = kk::app::reminderBootWake(&reminderNow);
     const bool timerWake = tgc::board::wokeFromTimer();
+#ifdef KANIKEY_DEV
+    kk::app::remindDevBoot(timerWake, reminderTimer, reminderNow);
+#endif
 
     tgc::board::begin();
     state().display.gDisp = &tgc::board::display();
