@@ -12,7 +12,13 @@ uint32_t effectiveNow();
 void applySummary(uint32_t now);
 void pruneBatchToSummary(uint32_t now);
 void saveCacheSnapshot();
-void saveCacheAll();
+// True when the subjects reached the card too.
+bool saveCacheAll();
+// After a fresh batch fetch: its subjects were allocated while the TLS buffers
+// were live, scattered between them (a review then had 46 KB free with a 10 KB
+// largest block, too little for R, 2026-11-20). Drops the batch and reloads it
+// from the card, which lays it out contiguously. Call only after a good save.
+void compactCachedBatch();
 bool loadCache();
 bool loadCachedBatch();
 void evictCachedBatch(bool save);

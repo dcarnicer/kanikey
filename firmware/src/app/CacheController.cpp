@@ -91,7 +91,7 @@ void removeSubjectFromReviews(kk::Summary& summary, uint32_t subjectId);
 void pruneCacheOutbox();
 // A fresh summary is authoritative: drop cached assignments that are no
 // longer due or that were reviewed in the meantime.
-void saveSubjectCache();
+bool saveSubjectCache();
 uint32_t cacheAgeSeconds();
 
 void removeSubjectFromReviews(kk::Summary& summary, uint32_t subjectId) {
@@ -122,15 +122,18 @@ void pruneCacheOutbox() {
 
 // A fresh summary is authoritative: drop cached assignments that are no
 // longer due or that were reviewed in the meantime.
-void saveSubjectCache() {
-    if (!state().storage.gFsOk) return;  // no storage: keep everything in memory only
-    if (!state().storage.gSdOk || !state().cache.gBatch.ok || state().cache.gBatch.subjects.empty() || !kk::DevToken::has()) return;
+bool saveSubjectCache() {
+    if (!state().storage.gFsOk) return false;  // no storage: keep everything in memory only
+    if (!state().storage.gSdOk || !state().cache.gBatch.ok || state().cache.gBatch.subjects.empty() || !kk::DevToken::has()) return false;
     kk::CacheMeta meta;
     meta.savedAt = state().cache.gBatch.fetchedAt ? state().cache.gBatch.fetchedAt : state().session.gSyncedAt;
     meta.accountKey = currentAccountKey();
     // cacheSaveSubjects() logs the count, size and time of a good save.
-    if (!kk::cacheSaveSubjects(SD, meta, state().cache.gBatch.subjects))
+    if (!kk::cacheSaveSubjects(SD, meta, state().cache.gBatch.subjects)) {
         Serial.println("[cache] subjects save failed");
+        return false;
+    }
+    return true;
 }
 
 uint32_t cacheAgeSeconds() {
@@ -247,9 +250,21 @@ void saveCacheSnapshot() {
                   static_cast<unsigned>(state().session.gDueReviews));
 }
 
-void saveCacheAll() {
+bool saveCacheAll() {
     saveCacheSnapshot();
-    saveSubjectCache();
+    return saveSubjectCache();
+}
+
+void compactCachedBatch() {
+    const size_t before = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    evictCachedBatch(false);  // the caller saved the snapshot and the subjects
+    if (!loadCachedBatch()) {
+        Serial.println("[cache] batch reload after fetch failed");
+        return;
+    }
+    Serial.printf("[cache] batch reloaded compact: largest %u -> %u\n", static_cast<unsigned>(before),
+                  static_cast<unsigned>(
+                      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
 }
 
 bool loadCache() {

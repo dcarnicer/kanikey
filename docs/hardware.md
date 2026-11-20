@@ -883,6 +883,12 @@ WaniKani writes were authorized for this run.
   manual sync then completed (`canvas released for TLS (largest 28660)` on its
   second session), as did the boot sync. `heap_caps_dump` over USB trips the
   interrupt watchdog, so it is not a dev command; `hh` prints the totals.
+- **Review heap after a fresh fetch.** The first session after a batch fetch
+  had 46 KB free with a 10.2 KB largest block (R could never play): the
+  subjects were parsed between the TLS buffers. The batch is now dropped and
+  reloaded from the card after a good save (`batch reloaded compact: largest
+  10740 -> 18420`); the same session then measured 49.9 KB free / 31.7 KB
+  largest, and Home after it 106 KB / 65.5 KB with the clip queue drained.
 - **Canvas.** After a review's send loop the canvas stayed released (direct
   drawing) because the heap was fragmented at session end; it is now retried
   every 5 s once a 34 KB block exists.

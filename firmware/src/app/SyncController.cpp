@@ -1089,7 +1089,7 @@ bool runBatch() {
     state().cache.gBatch = std::move(batch);
     state().cache.gBatchEvicted = false;
     state().cache.gCachedBatchCount = state().cache.gBatch.assignments.size();
-    saveCacheAll();
+    if (saveCacheAll()) compactCachedBatch();
     state().display.gDirty = true;
     return true;
 }
