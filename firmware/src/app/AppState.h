@@ -147,6 +147,9 @@ struct ReviewState {
     // REV-06: millis() when correct feedback appeared; 0 when the auto-advance
     // timer is off.
     uint32_t feedbackCorrectAt = 0;
+    // REV-01/03: Up/Down offset of the feedback body in px. Reset by each new
+    // answer (checkCurrent); the draw clamps it to the content.
+    int feedbackScroll = 0;
     bool gNeedsSubmit = false;
     // Outbox record queued by the last completion; keeps its journal patch
     // paired with the POST (SPEED-01 sends tracked records in a loop).
@@ -201,6 +204,7 @@ struct LessonState {
     kk::LessonBrowse gLessonBrowse;
     size_t gLessonBatchLimit = 0;  // N for this list, clamped by the user setting
     kk::LessonQuiz gLessonQuiz;
+    int gLessonQuizScroll = 0;  // REV-01/03 feedback body offset (px)
     std::string gLessonQuizInput;
 #ifdef KANIKEY_DEV
     std::string gLessonQuizDirectReading;
@@ -216,6 +220,7 @@ struct LessonState {
     std::string gLessonBatchInput;
     kk::RomajiIme gLessonBatchIme;
     bool gLessonBatchFeedback = false;
+    int gLessonBatchScroll = 0;  // REV-01/03 feedback body offset (px)
 #ifdef KANIKEY_DEV
     std::string gLessonBatchDirectReading;
 #endif

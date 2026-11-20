@@ -51,6 +51,9 @@ struct ReviewView {
     // token as an on'yomi/kun'yomi group break.
     std::vector<std::string> answers;
     std::vector<std::string> synonyms;  // drawn faint after the answers
+    // REV-01/03: the feedback body's Up/Down offset (px). Read and clamped by
+    // the draw; the controller owns the value. Null outside feedback.
+    int* feedbackScroll = nullptr;
 };
 
 // Draws the review prompt or feedback frame into d. `fontPack` draws glyphs;

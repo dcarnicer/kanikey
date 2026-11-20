@@ -20,26 +20,27 @@ using namespace ui;
 
 namespace {
 
-std::string partHint(const kk::Subject& s, bool meaning) {
-    return meaning ? s.meaningHint : s.readingHint;
-}
+// The feedback body (REV-01/03): under the pill, above the hint bar, 150 px
+// wide from x 86. Its scroll track sits at x 238, as on the review screen.
+constexpr int kBodyX = 86;
+constexpr int kBodyY = 36;
+constexpr int kBodyW = 150;
+constexpr int kBodyH = 82;
 
-std::string partNote(const kk::Subject& s, bool meaning) {
-    return meaning ? s.meaningNote : s.readingNote;
-}
-
-// REV-03: a wrong answer shows the first hint sentence, then the user's note.
-// A correct answer keeps the checker text (for example the close note).
-std::string feedbackLine(const LessonQuizView& view) {
-    if (!view.subject) return std::string();
-    if (view.status == kk::AnswerStatus::Incorrect) {
-        const std::string hint = kk::firstSentence(partHint(*view.subject, view.meaning));
-        if (!hint.empty()) return hint;
-        return partNote(*view.subject, view.meaning);
-    }
-    if (view.status == kk::AnswerStatus::Warning) return view.message;
-    if (view.message.empty() || view.message == "Correct") return std::string();
-    return view.message;
+// The body's pieces, from the same fields the review feedback uses. A warning
+// carries only its message: no typed row and no answer row.
+kk::FeedbackContent feedbackContent(const LessonQuizView& view) {
+    kk::FeedbackContent c;
+    c.japanese = !view.meaning;
+    c.warning = view.status == kk::AnswerStatus::Warning;
+    c.correct = view.status == kk::AnswerStatus::Correct;
+    // REV-10: an unconverted romaji tail stays in the typed row; the layout
+    // splits it into a Latin piece, so it never goes through the kana pack.
+    c.typed = view.typed + view.pending;
+    c.answers = view.answers;
+    c.synonyms = view.synonyms;
+    c.notes = kk::feedbackNoteLines(view.subject, view.meaning, view.status, view.message);
+    return c;
 }
 
 struct LessonListCtx {
@@ -99,30 +100,6 @@ void drawLessonRow(lgfx::LovyanGFX& d, int index, int x, int y, int width, bool 
     d.setTextDatum(lgfx::top_right);
     d.drawString(item.selected ? "*" : ">", 230, y + 1);
     d.setTextDatum(lgfx::top_left);
-}
-
-void drawFeedbackLine(lgfx::LovyanGFX& d, const LessonQuizView& view, int x, int y, int w) {
-    if (view.status == kk::AnswerStatus::Correct) {
-        // Keep the checker line (REV-02's close note) and the user's note on
-        // separate lines so a long close note cannot push the note away.
-        int line = 0;
-        const std::string message = feedbackLine(view);
-        if (!message.empty()) {
-            drawWrapped(d, message, x, y, w, 1, ui::kFaint, ui::kBg, true);
-            line = 1;
-        }
-        if (view.subject) {
-            const std::string note = partNote(*view.subject, view.meaning);
-            if (!note.empty()) {
-                const std::string prefix = view.meaning ? "Note: " : "Reading note: ";
-                drawWrapped(d, prefix + note, x, y + line * 8, w, 2 - line, ui::kFaint,
-                            ui::kBg, true);
-            }
-        }
-        return;
-    }
-    const std::string text = feedbackLine(view);
-    if (!text.empty()) drawWrapped(d, text, x, y, w, 2, ui::kFaint, ui::kBg, true);
 }
 
 }  // namespace
@@ -355,58 +332,29 @@ void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
                  ok ? ui::kOk : warn ? ui::kWarn : ui::kErr,
                  ok ? ui::kOkBg : warn ? ui::kSurfaceHi : ui::kErrBg,
                  ok ? &ui::kIconCheck : warn ? nullptr : &ui::kIconCross);
-        ui::applyFont(d, ui::UiFont::Small);
-        d.setTextColor(ui::kFaint, ui::kBg);
+        // REV-01/03: the body scrolls with Up/Down and is never cut to a line
+        // count. A warning keeps the typed input and shows only its message, so
+        // the answer stays hidden.
+        const bool scrollable =
+            drawFeedbackBody(d, fontPack, kk::buildFeedbackPieces(feedbackContent(view)), kBodyX,
+                             kBodyY, kBodyW, kBodyH, view.feedbackScroll, ui::kBg);
+        // The scroll keys are named only when the body overflows. The long
+        // form keeps Esc when it fits (230 px from x 5).
         if (warn) {
-            // Warnings keep the typed input and never show the answer.
-            drawWrapped(d, view.message, 86, 40, 150, 4, ui::kFaint, ui::kBg);
-            drawHintLeft(d, pickHint("Enter: edit  Esc: card", "hold A: edit  B: card"),
+            drawHintLeft(d,
+                         scrollable ? fitHint(d, {"Enter: edit  ;/. scroll  Esc: card",
+                                                  "Enter: edit  ;/. scroll"},
+                                              230)
+                                    : pickHint("Enter: edit  Esc: card", "hold A: edit  B: card"),
                          ui::kFaint, 5, 125);
-            return;
-        }
-        const bool japanese = !meaning;
-        std::string typed = view.typed;
-        if (japanese) {
-            d.drawString("Y", 86, 40);
-            bool typedDrawn = false;
-            if (!typed.empty() || !view.pending.empty())
-                typedDrawn = drawReadingText(d, fontPack, typed, view.pending, 94, 56, 138, 44,
-                                             /*alignRight=*/false, ui::kDim, ui::kFaint, ui::kBg,
-                                             kk::ClipRect{94, 38, 236, 58});
-            if (!typedDrawn) {
-                ui::applyFont(d, ui::UiFont::Base);
-                d.setTextColor(ui::kWarn, ui::kBg);
-                const bool empty = typed.empty() && view.pending.empty();
-                d.drawString(empty ? "-" : "no glyph", 94, 44);
-            }
-            ui::applyFont(d, ui::UiFont::Small);
-            d.setTextColor(ui::kFaint, ui::kBg);
-            d.drawString("A", 86, 72);
-            const int lines = drawReadingTokens(
-                d, fontPack, view.answers, 94, 68, 142, 2, ok ? ui::kOk : ui::kErr, ui::kBg,
-                kk::ClipRect{94, 66, 236, 110});
-            if (lines < 0) {
-                ui::applyFont(d, ui::UiFont::Base);
-                d.setTextColor(ui::kWarn, ui::kBg);
-                d.drawString("no glyph", 94, 74);
-            } else if (lines <= 1) {
-                // A second reading line would collide with the note line.
-                drawFeedbackLine(d, view, 86, 96, 150);
-            }
         } else {
-            d.drawString("You typed", 86, 38);
-            ui::applyFont(d, ui::UiFont::Base);
-            d.setTextColor(ui::kDim, ui::kBg);
-            while (typed.size() > 1 && d.textWidth(typed.c_str()) > 150) typed.erase(0, 1);
-            d.drawString(typed.empty() ? "-" : typed.c_str(), 86, 47);
-            ui::applyFont(d, ui::UiFont::Small);
-            d.setTextColor(ui::kFaint, ui::kBg);
-            d.drawString("Answer", 86, 65);
-            drawAnswerTokens(d, view.answers, view.synonyms, 86, 74, 150, 2,
-                             ok ? ui::kOk : ui::kErr, ui::kFaint, ui::kBg);
-            drawFeedbackLine(d, view, 86, 92, 150);
+            drawHintLeft(d,
+                         scrollable ? fitHint(d, {"Enter: continue  ;/. scroll  Esc: card",
+                                                  "Enter: continue  ;/. scroll"},
+                                              230)
+                                    : "Enter: continue  Esc: card",
+                         ui::kFaint, 5, 125);
         }
-        drawHintLeft(d, "Enter: continue  Esc: card", ui::kFaint, 5, 125);
     } else {
         drawPill(d, 86, 20, meaning ? "MEANING" : "READING",
                  meaning ? ui::kAccentHi : ui::kReading, ui::kSurfaceHi);

@@ -67,6 +67,7 @@
 #include "platform/WkSrsCounts.h"
 #include "wk/AnswerChecker.h"
 #include "wk/AnswerDisplay.h"
+#include "wk/FeedbackLayout.h"
 #include "wk/IdSample.h"
 #include "wk/LessonOrder.h"
 #include "wk/LessonQuiz.h"
@@ -313,6 +314,7 @@ void showReview() {
     view.subject = s;
     view.part = part;
     view.feedback = state().review.feedback;
+    view.feedbackScroll = &state().review.feedbackScroll;
     int headerInfo = 0;
     view.minimalHeader =
         kk::settingsGetInt("rv.header", &headerInfo) && headerInfo == 1;
@@ -594,6 +596,7 @@ void checkCurrent() {
         state().review.gCheck.status == kk::AnswerStatus::Correct ? millis() : 0;
     state().review.feedback = true;
     state().review.feedbackCompleted = false;
+    state().review.feedbackScroll = 0;  // a new answer starts at the top
     // REV-11: the summary can show the last text the user typed wrong for each
     // part. Record it before the queue moves to the other part.
     if (state().review.gCheck.status == kk::AnswerStatus::Incorrect)
@@ -942,6 +945,15 @@ bool reviewKey(const KeyEvent& e) {
             state().review.detailFromCritical = false;
             state().review.detail = true;
             state().review.detailPage = 0;
+            state().display.gDirty = true;
+        } else if (e.key == Key::Up || e.key == Key::Down) {
+            // Up/Down scroll the feedback body (the ; and . keys). They are never
+            // an advance: on CORRECT, "." no longer starts the next answer. The
+            // scroll also cancels REV-06 for this frame, so a correct answer waits
+            // for Enter once the user is reading it.
+            state().review.feedbackCorrectAt = 0;
+            state().review.feedbackScroll =
+                kk::feedbackScrollKey(state().review.feedbackScroll, e.key == Key::Down);
             state().display.gDirty = true;
         } else if (state().review.gCheck.status == kk::AnswerStatus::Incorrect &&
                    reviewWrongActionsEnabled()) {
