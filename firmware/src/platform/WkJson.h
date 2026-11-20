@@ -1,6 +1,7 @@
 #pragma once
 // GET helpers that run a parser on each 200 body before the next request.
-// A truncated or unparsable 200 is retried, not just a transport error.
+// A truncated or unparsable 200 is retried once, not just a transport error.
+// A body that overflowed the cap is not retried (see httpRetryable).
 #include <Arduino.h>
 
 #include <string_view>
@@ -20,8 +21,8 @@ struct WkJsonResult {
 };
 
 // Each attempt calls wkGet and parses a 200 body before the next request.
-// Retries a truncated/unparsable 200, httpCode 0 and 5xx; never retries other
-// 4xx or 429. `parsed` describes the last attempt and can stay true for a
+// Retries a truncated/unparsable 200 (not a cap overflow), httpCode 0 and 5xx;
+// never retries other 4xx or 429. `parsed` describes the last attempt and can stay true for a
 // truncated body that still parsed. The previous DOM is released before each
 // request; the parser itself deep-copies whatever it keeps.
 WkJsonResult wkGetJsonRetry(const String& path, const String& token, size_t maxBodyBytes,

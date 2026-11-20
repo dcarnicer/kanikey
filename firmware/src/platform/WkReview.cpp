@@ -8,6 +8,7 @@
 #include "platform/WkLessons.h"
 #include "platform/WkReviewStatistics.h"
 #include "platform/WkStudyMaterials.h"
+#include "wk/PagePlan.h"
 
 namespace kk {
 
@@ -36,15 +37,17 @@ DueAssignments fetchDueAssignments(const String& token,
     result.assignments.reserve(std::min<size_t>(dueSubjectIds.size(), 60));
     WkSessionGuard session;
     // One page is ~450-600 B per assignment; 60 stays under the 32 KB body
-    // buffer on a real account. A truncated page retries smaller and keeps the
-    // smaller size for the following pages.
-    size_t pageSize = 60;
+    // buffer on a real account. A truncated page falls back smaller; the plan
+    // then climbs back toward 60 (see wk/PagePlan.h).
+    PagePlan plan = pagePlanStart(60);
     for (size_t begin = 0; begin < dueSubjectIds.size();) {
-        const size_t count = std::min(pageSize, dueSubjectIds.size() - begin);
+        const size_t count = std::min(plan.next, dueSubjectIds.size() - begin);
         const size_t end = begin + count;
         const String path =
             "/v2/assignments?subject_ids=" + idList(dueSubjectIds, begin, end);
         ++result.requests;
+        Serial.printf("[review] due page %u-%u, size %u\n", static_cast<unsigned>(begin),
+                      static_cast<unsigned>(end), static_cast<unsigned>(count));
         WkAssignmentsResult ar = wkGetAssignmentsRetry(path, token, 32768, count);
         result.bytes += ar.http.bytes;
         if (ar.http.httpCode != 200) {
@@ -58,12 +61,13 @@ DueAssignments fetchDueAssignments(const String& token,
                 Serial.printf("[review] due page %u-%u truncated, retrying with %u\n",
                               static_cast<unsigned>(begin), static_cast<unsigned>(end),
                               static_cast<unsigned>(smaller));
-                pageSize = smaller;
+                pagePlanTruncated(&plan, count, smaller);
                 continue;
             }
             result.error = "due assignments JSON";
             return result;
         }
+        pagePlanLoaded(&plan, count);
         for (const Assignment& a : ar.assignments) {
             if (a.hidden || a.srsStage < 1 || a.srsStage > 8) continue;
             if (a.availableAt != 0 && a.availableAt > now) continue;
@@ -75,7 +79,7 @@ DueAssignments fetchDueAssignments(const String& token,
                       static_cast<unsigned>(ar.assignments.size()));
         begin = end;
     }
-    result.pageSize = pageSize;
+    result.pageSize = plan.next;
     result.ok = !result.assignments.empty();
     if (!result.ok) result.error = "no due assignments";
     return result;
@@ -126,14 +130,15 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
         if (std::find(ids.begin(), ids.end(), a.subjectId) == ids.end())
             ids.push_back(a.subjectId);
 
-    size_t pageSize = 5;
+    PagePlan plan = pagePlanStart(5);
     for (size_t begin = 0; begin < ids.size();) {
-        const size_t count = std::min(pageSize, ids.size() - begin);
+        const size_t count = std::min(plan.next, ids.size() - begin);
         const size_t end = begin + count;
         String sp = "/v2/subjects?ids=" + idList(ids, begin, end);
         WkSubjectsResult sr = wkGetSubjectsRetry(sp, token, 32768, true);
-        Serial.printf("[review] subject page %u-%u: %u bytes%s\n", static_cast<unsigned>(begin),
-                      static_cast<unsigned>(end), static_cast<unsigned>(sr.http.bytes),
+        Serial.printf("[review] subject page %u-%u, size %u: %u bytes%s\n",
+                      static_cast<unsigned>(begin), static_cast<unsigned>(end),
+                      static_cast<unsigned>(count), static_cast<unsigned>(sr.http.bytes),
                       sr.http.truncated ? " (truncated)" : "");
         if (sr.http.httpCode != 200) {
             batch.httpCode = sr.http.httpCode;
@@ -142,13 +147,13 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
         }
         if (!sr.parsed) {
             if (sr.http.truncated && count > 1) {
-                // A truncated page is retried with 5 -> 2 -> 1 subjects. The
-                // smaller size stays for the following pages.
+                // A truncated page is retried with 5 -> 2 -> 1 subjects. The plan
+                // then climbs back toward 5 on later pages.
                 const size_t smaller = count > 2 ? 2 : 1;
                 Serial.printf("[review] subject page %u-%u truncated, retrying with %u\n",
                               static_cast<unsigned>(begin), static_cast<unsigned>(end),
                               static_cast<unsigned>(smaller));
-                pageSize = smaller;
+                pagePlanTruncated(&plan, count, smaller);
                 continue;
             }
             const size_t n = sr.http.body.size();
@@ -159,6 +164,7 @@ ReviewBatch fetchReviewBatch(const String& token, const std::vector<uint32_t>& d
             batch.error = "subjects JSON";
             return batch;
         }
+        pagePlanLoaded(&plan, count);
         std::vector<Subject> part = std::move(sr.subjects);
         for (Subject& s : part) batch.subjects.push_back(std::move(s));
         Serial.printf("[review] subjects %u/%u, total %u\n", static_cast<unsigned>(end),
