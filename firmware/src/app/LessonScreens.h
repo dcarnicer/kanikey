@@ -11,6 +11,7 @@
 #include "platform/GlyphPack.h"
 #include "ui/Theme.h"
 #include "wk/AnswerChecker.h"
+#include "wk/AudioPlan.h"
 #include "wk/Types.h"
 
 namespace kk::app {
@@ -54,6 +55,9 @@ struct LessonCardView {
     size_t page = 0;
     size_t index = 0;
     size_t total = 0;
+    // AUD-03: R on the card when the reading line is shown; `no audio` when a
+    // vocabulary clip is missing. None for kanji/radicals.
+    kk::AudioHint audio = kk::AudioHint::None;
 };
 
 // Draws the lesson card into d.

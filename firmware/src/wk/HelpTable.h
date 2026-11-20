@@ -59,6 +59,7 @@ inline constexpr HelpEntry kReviewFeedbackHelp[] = {
     {"C", "Mark correct (undo mistake)"},
     {"A", "Ask again later (undo mistake)"},
     {"Tab", "Item details"},
+    {"R", "Play audio"},
     {"Esc", "Pause"},
 };
 
@@ -67,6 +68,7 @@ inline constexpr HelpEntry kLessonCardHelp[] = {
     {"Left / Backspace", "Previous page"},
     {"Enter", "Next page / card"},
     {"Q", "Quiz this item"},
+    {"R", "Play audio"},
     {"Esc", "Back to lessons"},
 };
 

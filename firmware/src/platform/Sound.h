@@ -23,7 +23,7 @@ void soundAnswer(AnswerStatus status, bool syncing, bool portal);
 void soundTick(uint32_t now);
 
 // Stops the running cue and the speaker now. AUD-03 playback calls this before
-// it starts a clip (not wired here: that code is on another branch).
+// it starts a clip (platform/AudioPlayer.cpp audioPlayerPlay()).
 void soundStop();
 
 }  // namespace kk::sound

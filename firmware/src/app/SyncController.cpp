@@ -16,6 +16,7 @@
 
 #include "app/AboutScreen.h"
 #include "app/App.h"
+#include "app/AudioController.h"
 #include "app/AppState.h"
 #include "app/AppUi.h"
 #include "app/BootScreen.h"
@@ -1047,6 +1048,7 @@ bool runBatch() {
         state().display.gDirty = true;
         return false;
     }
+    audioPrefetchBatch(batch.subjects);
     Serial.printf("[review] %u assignments, %u subjects\n",
                   static_cast<unsigned>(batch.assignments.size()),
                   static_cast<unsigned>(batch.subjects.size()));

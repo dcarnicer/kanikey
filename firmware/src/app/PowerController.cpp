@@ -15,6 +15,7 @@
 #include "app/App.h"
 #include "app/AppState.h"
 #include "app/AppUi.h"
+#include "app/AudioController.h"
 #include "app/BootScreen.h"
 #include "app/CacheController.h"
 #include "app/DebugScreens.h"
@@ -246,6 +247,8 @@ bool powerTick(uint32_t now) {
         kk::idleDue(now, lastInput, blankMs)) {
         Serial.printf("[power] blank after %u ms idle\n",
                       static_cast<unsigned>(kk::idleAgeMs(now, lastInput)));
+        // AUD-03: no clip outlives the visible frame.
+        audioStop();
         tgc::board::setDisplayOn(false);
         state().ui.gScreenOff = true;
     }
@@ -299,6 +302,7 @@ bool powerTick(uint32_t now) {
                                         state().storage.gAssetServerActive, firmwareBusy,
                                         auxiliaryScreen);
     if (deepSleepDue && screenCanSleepNow && batteryPower) {
+        audioStop();
         if (reviewOpen) {
             // Completed items are already in the outbox; a half-typed answer is
             // dropped by endReview(false) and nothing is sent.

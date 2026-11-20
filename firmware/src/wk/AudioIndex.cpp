@@ -62,6 +62,23 @@ bool audioChooseEntry(const std::vector<AudioEntry>& entries, uint32_t subjectId
     return false;
 }
 
+bool audioChoosePlayableEntry(const std::vector<AudioEntry>& entries, uint32_t subjectId,
+                              uint8_t voice, AudioEntry* out) {
+    if (!out) return false;
+    for (const AudioEntry& entry : entries)
+        if (entry.subjectId == subjectId && entry.voice == voice &&
+            entry.format == AudioFormat::Mp3) {
+            *out = entry;
+            return true;
+        }
+    for (const AudioEntry& entry : entries)
+        if (entry.subjectId == subjectId && entry.format == AudioFormat::Mp3) {
+            *out = entry;
+            return true;
+        }
+    return false;
+}
+
 std::vector<AudioEntry> audioEvict(const std::vector<AudioEntry>& entries, uint64_t bytes,
                                    uint64_t addBytes) {
     std::vector<AudioEntry> order = entries;

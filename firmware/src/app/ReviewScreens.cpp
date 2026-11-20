@@ -7,6 +7,7 @@
 
 #include "ui/HintBar.h"
 #include "ui/Text.h"
+#include "ui/HintBar.h"
 #include "ui/UiFont.h"
 #include "ui/Widgets.h"
 #include "wk/SessionStats.h"
@@ -349,10 +350,23 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         snprintf(sending, sizeof sending, "Sending %u/%u", view.sent, view.sendTotal);
         d.drawString(sending, 6, 125);
     } else if (view.feedback) {
-        d.drawString(view.wrongShortcuts
-                         ? "C ok  A later  Tab info"
-                         : view.showDetailHint ? "Enter: next  Tab: details" : "Enter: next",
-                     6, 125);
+        // AUD-03: R takes the space of the detail hint when a clip is
+        // available (or says no audio when it is missing); Tab: details stays
+        // in the help table.
+        const char* audio = audioHintText(view.audio);
+        char hint[48];
+        if (*audio) {
+            if (view.wrongShortcuts)
+                snprintf(hint, sizeof hint, "C ok  A later  %s", audio);
+            else
+                snprintf(hint, sizeof hint, "Enter: next  %s", audio);
+            d.drawString(hint, 6, 125);
+        } else {
+            d.drawString(view.wrongShortcuts
+                             ? "C ok  A later  Tab info"
+                             : view.showDetailHint ? "Enter: next  Tab: details" : "Enter: next",
+                         6, 125);
+        }
     } else {
         d.drawString("Enter: check", 6, 125);
     }
@@ -547,7 +561,23 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
 
     ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kFaint, ui::kBg);
-    d.drawString("Space: page  Tab/Esc: back", 5, 125);
+    // AUD-03: the audio part is added only when it fits beside the exit hint.
+    // Longest first; every variant keeps Tab/Esc: back, so the card still says
+    // how to leave. Widths are measured by fitHint() on the device.
+    const char* audio = audioHintText(view.audio);
+    char withAudio[64];
+    char withAudioBack[32];
+    if (*audio) {
+        snprintf(withAudio, sizeof withAudio, "%s  Space: page  Tab/Esc: back", audio);
+        snprintf(withAudioBack, sizeof withAudioBack, "%s  Tab/Esc: back", audio);
+    } else {
+        withAudio[0] = '\0';
+        withAudioBack[0] = '\0';
+    }
+    const char* hint = ui::fitHint(d, {withAudio, "Space: page  Tab/Esc: back", withAudioBack,
+                                       "Tab/Esc: back"},
+                                   /* x 5 .. 233 */ 228);
+    d.drawString(hint, 5, 125);
 }
 
 void drawReviewSummaryScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,

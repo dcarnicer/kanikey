@@ -10,6 +10,7 @@
 #include "wk/AnswerChecker.h"
 #include "wk/Assignment.h"
 #include "wk/AudioIndex.h"
+#include "wk/AudioPlan.h"
 #include "wk/Cache.h"
 #include "wk/Catalog.h"
 #include "wk/CriticalItems.h"
@@ -1347,6 +1348,157 @@ static void test_audio_file_name_and_evict() {
         audioEvict(entries, kAudioCacheMaxBytes - 100, 150);
     TEST_ASSERT_EQUAL(1, victims.size());
     TEST_ASSERT_EQUAL_UINT32(2, victims[0].subjectId);
+}
+
+static void test_audio_plan_preferred_voice_and_mp3() {
+    const std::vector<AudioEntry> entries = {{10, 100, 0, 0, AudioFormat::Ogg},
+                                             {10, 100, 0, 0, AudioFormat::Mp3},
+                                             {10, 100, 0, 1, AudioFormat::Mp3}};
+    AudioEntry out;
+    TEST_ASSERT_TRUE(audioChoosePlayableEntry(entries, 10, 0, &out));
+    TEST_ASSERT_EQUAL_UINT8(0, out.voice);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(AudioFormat::Mp3),
+                          static_cast<int>(out.format));
+
+    AudioPlan plan = planAudio(entries, SubjectType::Vocabulary, 10, 1);
+    TEST_ASSERT_TRUE(plan.applicable);
+    TEST_ASSERT_TRUE(plan.playable);
+    TEST_ASSERT_EQUAL_UINT8(1, plan.entry.voice);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(AudioHint::Available),
+                          static_cast<int>(audioHintForPlan(plan)));
+    TEST_ASSERT_EQUAL_STRING("R: audio", audioHintText(audioHintForPlan(plan)));
+}
+
+static void test_audio_plan_fallback_voice_skips_ogg() {
+    // The preferred voice is OGG only; the other voice has the playable MP3.
+    const std::vector<AudioEntry> entries = {{11, 100, 0, 0, AudioFormat::Ogg},
+                                             {11, 100, 0, 1, AudioFormat::Mp3}};
+    AudioEntry out;
+    TEST_ASSERT_TRUE(audioChoosePlayableEntry(entries, 11, 0, &out));
+    TEST_ASSERT_EQUAL_UINT8(1, out.voice);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(AudioFormat::Mp3),
+                          static_cast<int>(out.format));
+
+    const std::vector<AudioEntry> oggOnly = {{12, 100, 0, 0, AudioFormat::Ogg}};
+    TEST_ASSERT_FALSE(audioChoosePlayableEntry(oggOnly, 12, 0, &out));
+    const AudioPlan plan = planAudio(oggOnly, SubjectType::Vocabulary, 12, 0);
+    TEST_ASSERT_TRUE(plan.applicable);
+    TEST_ASSERT_FALSE(plan.playable);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(AudioHint::Missing),
+                          static_cast<int>(audioHintForPlan(plan)));
+    TEST_ASSERT_EQUAL_STRING("no audio", audioHintText(audioHintForPlan(plan)));
+
+    const AudioPlan absent = planAudio({}, SubjectType::KanaVocabulary, 13, 0);
+    TEST_ASSERT_TRUE(absent.applicable);
+    TEST_ASSERT_FALSE(absent.playable);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(AudioHint::Missing),
+                          static_cast<int>(audioHintForPlan(absent)));
+}
+
+static void test_audio_plan_never_for_kanji_or_radical() {
+    const std::vector<AudioEntry> entries = {{14, 100, 0, 0, AudioFormat::Mp3}};
+    const AudioPlan kanji = planAudio(entries, SubjectType::Kanji, 14, 0);
+    TEST_ASSERT_FALSE(kanji.applicable);
+    TEST_ASSERT_FALSE(kanji.playable);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(AudioHint::None),
+                          static_cast<int>(audioHintForPlan(kanji)));
+    TEST_ASSERT_EQUAL_STRING("", audioHintText(audioHintForPlan(kanji)));
+
+    const AudioPlan radical = planAudio(entries, SubjectType::Radical, 14, 0);
+    TEST_ASSERT_FALSE(radical.applicable);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(AudioHint::None),
+                          static_cast<int>(audioHintForPlan(radical)));
+    TEST_ASSERT_FALSE(audioChoosePlayableEntry(entries, 14, 0, nullptr));
+}
+
+static void test_audio_heap_admission_rule() {
+    // Device sizes (xtensa sizeof, rounded to 8): decoder state 6,668 -> 6,672,
+    // decode scratch 16,236 -> 16,240; window 4,096; two mono PCM buffers 2,304.
+    const size_t mono[] = {6672, 16240, 4096, 2304, 2304};
+    const size_t monoFree = 31616 + kAudioAdmitFreeMargin;  // 56,192
+    const size_t monoLargest = 16240 + kAudioAdmitLargestMargin;  // 20,336
+    TEST_ASSERT_TRUE(audioAdmitsPieces(monoFree, monoLargest, mono, 5));
+    TEST_ASSERT_FALSE(audioAdmitsPieces(monoFree - 1, monoLargest, mono, 5));
+    TEST_ASSERT_FALSE(audioAdmitsPieces(monoFree, monoLargest - 1, mono, 5));
+    TEST_ASSERT_FALSE(audioAdmitsPieces(monoFree, monoLargest, mono, 0));
+    TEST_ASSERT_FALSE(audioAdmitsPieces(monoFree, monoLargest, nullptr, 5));
+    // Measured on the Cardputer (lesson card, second R after the speaker task):
+    // free 77,344 / largest 22,516 must be admitted ...
+    TEST_ASSERT_TRUE(audioAdmitsPieces(77344, 22516, mono, 5));
+    // ... and free 48,968 / largest 17,396 refused: the largest block is under
+    // the scratch + 4 KB.
+    TEST_ASSERT_FALSE(audioAdmitsPieces(48968, 17396, mono, 5));
+    // Enough largest block but too little free memory overall is refused too.
+    TEST_ASSERT_FALSE(audioAdmitsPieces(50000, 51188, mono, 5));
+    // Stereo PCM: 2 x 4,608 B.
+    const size_t stereo[] = {6672, 16240, 4096, 4608, 4608};
+    TEST_ASSERT_TRUE(audioAdmitsPieces(36224 + kAudioAdmitFreeMargin, monoLargest, stereo, 5));
+    TEST_ASSERT_FALSE(audioAdmitsPieces(36224 + kAudioAdmitFreeMargin - 1, monoLargest, stereo, 5));
+}
+
+static void test_audio_failure_marks_only_content_bad() {
+    // A missing, corrupt or non-MP3 clip is remembered as `no audio` for its
+    // subject; a heap refusal is transient and the next R tries again.
+    TEST_ASSERT_TRUE(audioFailureMarksBad(AudioFailure::Missing));
+    TEST_ASSERT_TRUE(audioFailureMarksBad(AudioFailure::Corrupt));
+    TEST_ASSERT_FALSE(audioFailureMarksBad(AudioFailure::NoHeap));
+}
+
+static void test_mp3_first_frame_channels() {
+    const uint8_t mono[] = {0xFF, 0xFB, 0x90, 0xC0};
+    const uint8_t stereo[] = {0xFF, 0xFB, 0x90, 0x00};
+    TEST_ASSERT_EQUAL_INT(1, mp3FirstFrameChannels(mono, sizeof mono));
+    TEST_ASSERT_EQUAL_INT(2, mp3FirstFrameChannels(stereo, sizeof stereo));
+    // Leading ID3v2 tag (size 4, syncsafe) is skipped before the frame.
+    const uint8_t tagged[] = {'I', 'D', '3', 4, 0, 0, 0, 0, 0, 4, 0xAA, 0xBB,
+                              0xCC, 0xDD, 0xFF, 0xFB, 0x90, 0xC0};
+    TEST_ASSERT_EQUAL_INT(1, mp3FirstFrameChannels(tagged, sizeof tagged));
+    // A tag that uses the whole window leaves nothing to read.
+    const uint8_t tagOnly[] = {'I', 'D', '3', 4, 0, 0, 0, 0, 0, 4, 0xFF, 0xFB, 0x90, 0xC0};
+    TEST_ASSERT_EQUAL_INT(0, mp3FirstFrameChannels(tagOnly, sizeof tagOnly));
+    // Reserved MPEG version, free-format bitrate, reserved sample rate: no frame.
+    const uint8_t reservedVersion[] = {0xFF, 0xEB, 0x90, 0xC0};
+    const uint8_t freeBitrate[] = {0xFF, 0xFB, 0x00, 0xC0};
+    const uint8_t reservedRate[] = {0xFF, 0xFB, 0x9C, 0xC0};
+    TEST_ASSERT_EQUAL_INT(0, mp3FirstFrameChannels(reservedVersion, sizeof reservedVersion));
+    TEST_ASSERT_EQUAL_INT(0, mp3FirstFrameChannels(freeBitrate, sizeof freeBitrate));
+    TEST_ASSERT_EQUAL_INT(0, mp3FirstFrameChannels(reservedRate, sizeof reservedRate));
+    // An Ogg page is not MP3 at all.
+    const uint8_t ogg[] = {'O', 'g', 'g', 'S', 0, 2, 0, 0};
+    TEST_ASSERT_EQUAL_INT(0, mp3FirstFrameChannels(ogg, sizeof ogg));
+    TEST_ASSERT_EQUAL_INT(0, mp3FirstFrameChannels(nullptr, 4));
+}
+
+static void test_audio_pick_download_mp3_first() {
+    std::vector<AudioClip> clips(3);
+    clips[0].url = "https://a/ogg-f";
+    clips[0].contentType = "audio/ogg";
+    clips[0].voice = 0;
+    clips[1].url = "https://a/mp3-f";
+    clips[1].contentType = "audio/mpeg";
+    clips[1].voice = 0;
+    clips[2].url = "https://a/mp3-m";
+    clips[2].contentType = "audio/mpeg";
+    clips[2].voice = 1;
+    size_t index = 99;
+    // Preferred female voice: its MP3, never its OGG sibling.
+    TEST_ASSERT_TRUE(audioPickDownload(clips, 0, &index));
+    TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(index));
+    // Preferred male voice has an MP3.
+    TEST_ASSERT_TRUE(audioPickDownload(clips, 1, &index));
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(index));
+    // Preferred voice only has OGG: fall back to the other voice's MP3.
+    clips[1].contentType = "audio/ogg";
+    TEST_ASSERT_TRUE(audioPickDownload(clips, 0, &index));
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(index));
+    // OGG only, or an MP3 with no URL: nothing to download.
+    clips[2].contentType = "audio/ogg";
+    TEST_ASSERT_FALSE(audioPickDownload(clips, 0, &index));
+    clips[2].contentType = "audio/mpeg";
+    clips[2].url.clear();
+    TEST_ASSERT_FALSE(audioPickDownload(clips, 0, &index));
+    TEST_ASSERT_FALSE(audioPickDownload({}, 0, &index));
+    TEST_ASSERT_FALSE(audioPickDownload(clips, 0, nullptr));
 }
 
 
@@ -4198,6 +4350,13 @@ int main(int, char**) {
     RUN_TEST(test_audio_index_round_trip);
     RUN_TEST(test_audio_choose_voice_fallback);
     RUN_TEST(test_audio_file_name_and_evict);
+    RUN_TEST(test_audio_plan_preferred_voice_and_mp3);
+    RUN_TEST(test_audio_plan_fallback_voice_skips_ogg);
+    RUN_TEST(test_audio_plan_never_for_kanji_or_radical);
+    RUN_TEST(test_audio_heap_admission_rule);
+    RUN_TEST(test_audio_failure_marks_only_content_bad);
+    RUN_TEST(test_mp3_first_frame_channels);
+    RUN_TEST(test_audio_pick_download_mp3_first);
     RUN_TEST(test_assignment_stream_matches_dom);
     RUN_TEST(test_assignment_stream_edges);
     RUN_TEST(test_subject_stream_matches_dom);

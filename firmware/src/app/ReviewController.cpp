@@ -15,6 +15,7 @@
 #include "app/App.h"
 #include "app/AppState.h"
 #include "app/AppUi.h"
+#include "app/AudioController.h"
 #include "app/BootScreen.h"
 #include "app/CacheController.h"
 #include "app/DebugScreens.h"
@@ -332,6 +333,11 @@ void showReview() {
                 view.answers = kk::acceptedReadingTokens(*s);
             }
         }
+        // AUD-03: R belongs to reading feedback (correct or wrong), not to the
+        // meaning half and not to the warning frame that hides the answer.
+        if (part == kk::ReviewPart::Reading &&
+            state().review.gCheck.status != kk::AnswerStatus::Warning)
+            view.audio = audioHintFor(*s);
     }
 
     auto& d = target();
@@ -357,6 +363,7 @@ void showReviewDetail() {
     view.page = state().review.detailPage;
     view.pages = state().review.detailPages;
     view.kind = detailPageKind(state().review.detailPage, *s);
+    view.audio = audioHintFor(*s);
     for (uint32_t id : s->componentSubjectIds) view.components.push_back(subjectById(id));
     for (uint32_t id : s->visuallySimilarSubjectIds) view.similar.push_back(subjectById(id));
     for (uint32_t id : s->amalgamationSubjectIds) view.amalgamations.push_back(subjectById(id));
@@ -371,6 +378,19 @@ void showReviewDetail() {
 
 void reviewDetailKey(const KeyEvent& e) {
     if (!e.down) return;
+    // AUD-03: R replays the item's pronunciation. Any other handled key is a
+    // page change or closing the card, so the clip stops first.
+    const char c = tgc::keyChar(e, state().ui.gShift);
+    if (e.key == Key::Other && (c == 'r' || c == 'R')) {
+        uint32_t subjectId = state().review.detailSubjectId
+                                 ? state().review.detailSubjectId
+                                 : state().review.feedbackSubjectId;
+        if (!subjectId && state().review.gQueue.current())
+            subjectId = state().review.gQueue.current()->subjectId;
+        if (const kk::Subject* s = subjectById(subjectId)) audioPlay(*s);
+        return;
+    }
+    audioStop();
     if (e.key == Key::Esc || e.key == Key::Tab) {
         state().review.detail = false;
         if (state().review.detailFromCritical) {
@@ -515,6 +535,7 @@ void sendPendingSession(bool onlyLatest = false) {
 }
 
 void checkCurrent() {
+    audioStop();
     const kk::SessionItem* item = state().review.gQueue.current();
     if (!item) return;
     const kk::Subject* s = subjectById(item->subjectId);
@@ -562,6 +583,8 @@ void checkCurrent() {
 }
 
 void advanceFeedback() {
+    // Changing item/feedback stops the clip before the screen changes.
+    audioStop();
     state().review.feedbackCorrectAt = 0;
     if (state().review.gCheck.status == kk::AnswerStatus::Warning) {
         // Keep the typed text (meaning string and IME raw) so Enter returns to
@@ -618,6 +641,7 @@ bool reviewAutoAdvance(uint32_t now) {
 }
 
 void endReview(bool send) {
+    audioStop();
     // The summary's own loop already ran; do not retry what Esc left pending
     // when Enter/Esc closes the session. Pause/End submits the session tail
     // unless the caller (SPEED-06 sleep) asks to send nothing.
@@ -667,6 +691,7 @@ void startReview() {
         needsKeyboardNotice("Reviews need a keyboard");
         return;
     }
+    audioStop();
     if (state().storage.gFsFormatPrompt) return;  // wait for the storage choice
     if (!state().session.gHaveSummary) return;
     state().lesson.quizBatch = false;
@@ -843,12 +868,28 @@ bool reviewKey(const KeyEvent& e) {
         return true;
     }
     if (state().review.feedback) {
+        // AUD-03: R replays the reading clip on reading feedback and restarts
+        // it when it is already playing. It must win over the correct-answer
+        // "any printable key advances" rule, but only for a subject that has
+        // audio (kanji and radicals keep the existing rule).
+        const char rc = tgc::keyChar(e, state().ui.gShift);
+        if (e.key == Key::Other && (rc == 'r' || rc == 'R') &&
+            state().review.feedbackPart == kk::ReviewPart::Reading &&
+            state().review.gCheck.status != kk::AnswerStatus::Warning) {
+            const kk::Subject* s = subjectById(state().review.feedbackSubjectId);
+            if (s && kk::audioSubjectPlayable(s->type)) {
+                state().review.feedbackCorrectAt = 0;
+                audioPlay(*s);
+                return true;
+            }
+        }
         if (e.key == Key::Enter) {
             advanceFeedback();
         } else if (e.key == Key::Esc) {
             state().review.feedbackCorrectAt = 0;
             openPause();
         } else if (e.key == Key::Tab && state().review.gCheck.status != kk::AnswerStatus::Warning) {
+            audioStop();
             state().review.feedbackCorrectAt = 0;
             const kk::Subject* detail = subjectById(state().review.feedbackSubjectId);
             state().review.detailPages = detail ? detailPageCount(*detail) : 5;
