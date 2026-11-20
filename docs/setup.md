@@ -460,6 +460,35 @@ were already waiting in the outbox.
 - Below 20% battery, starting reviews or lessons asks for confirmation. USB
   power skips that prompt.
 
+### Reminders and sounds
+
+Both are off by default. They are in **Settings › Reminders & sound**:
+
+| Row | Choices (default) | What it does |
+|---|---|---|
+| M1 `Reminder` | Off, 1+, 10+, 25+, 50+ due (Off) | Reminds when at least this many reviews are due. Off turns off the count reminder. |
+| M2 `Quiet hours` | Off, 22-08, 23-07 (22-08) | No reminder inside the span, which can cross midnight. A wake that falls inside it is moved to the end of the span. |
+| M3 `Daily reminder` | Off, 08:00, 12:00, 18:00, 20:00 (Off) | Also wakes the device at that local time each day. With M1 Off, it reminds when anything is due. |
+| M4 `Sounds` | Off, On (Off) | Short tones: two rising for a correct answer, one low for a wrong one, a three-note figure at the end of a session with at least one review, and a chime with the reminder. |
+| M5 `Volume` | Low, Medium, High (Medium) | Sets the tone level. It applies to the next tone; no reboot. |
+
+How a reminder works:
+
+- Reminders need battery power. The device only deep-sleeps on battery, so on
+  USB power no reminder can wake it.
+- A reminder wake does not use Wi-Fi and makes no WaniKani request. It uses the
+  counts from the last sync, so a reminder is only as current as that sync.
+  Without a saved summary there is no banner.
+- Home shows `N reviews ready` (or `1 review ready`) with `any key: continue`
+  for 30 s. A key continues the normal start, which runs the quick sync. If no
+  key is pressed, the device goes back to sleep and sets the next reminder.
+- A device without a set clock sets no reminder. Setup or a sync sets the clock.
+- Tones play only in reviews, lesson quizzes and the reminder. They are silent
+  during a sync and in the setup portal.
+
+Reminders and sounds are not yet checked on hardware; the results will be in
+[docs/hardware.md](hardware.md).
+
 ---
 
 ## 6. Offline and the outbox
@@ -608,6 +637,8 @@ The token, cache and outbox are not affected by a Wi-Fi change.
 | Firmware check fails | No Wi-Fi/TLS, no release is available, or the device is still on v0.1.0 | Check the network and try **Check now** again; if this is a v0.1.0 device, use the USB flash in §7.2. The current image is unchanged |
 | The screen is black | The device blanked or deep-slept to save power | Press a key. The first press only wakes the screen |
 | Low-battery prompt | The battery is below 20% | Charge it, or connect USB power |
+| No reminder banner | Reminders are off (M1 and M3 both Off), the device is on USB power, the clock is not set, the cached count is below M1, or the time is inside quiet hours (M2) | Set M1 or M3 in **Settings › Reminders & sound**, run the device on battery, and check the clock in About |
+| No tones | M4 `Sounds` is Off, M5 is Low, or the device is syncing | Set M4 On and check M5 |
 
 ---
 
@@ -645,8 +676,8 @@ The token, cache and outbox are not affected by a Wi-Fi change.
 - It does not ship WaniKani content. Meanings, readings, mnemonics and radical
   images are requested with your token and stored on your card. The public font
   pack contains no WaniKani content; a radical pack built from your account is
-  personal and must not be published or shared. Audio is not played yet (see
-  §12).
+  personal and must not be published or shared. Vocabulary audio is not played
+  yet (see §12).
 - It does not support phones, watches or other boards. This firmware is for the
   Cardputer ADV only.
 - It does not provide a forum, community, push notifications, an app store
