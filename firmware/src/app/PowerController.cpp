@@ -254,7 +254,15 @@ bool powerTick(uint32_t now) {
     // would roll it back; the 10-minute window bounds the wait.
     const bool firmwareBusy = state().ota.gFirmwareStep != FirmwareStep::Idle ||
                               state().ota.gOtaPending;
-    const bool batteryPower = devForceBattery() || !tgc::board::externalPower();
+#ifdef KANIKEY_DEV
+    // Dev builds only sleep when the serial test explicitly forces battery.
+    // HWCDC::isPlugged() can read false after a light sleep even while the
+    // cable is connected, which previously stranded the CDC; a dev image must
+    // stay reachable unless `O` asks for the battery path.
+    const bool batteryPower = devForceBattery();
+#else
+    const bool batteryPower = !tgc::board::externalPower();
+#endif
     // A background sync and the asset server keep working while the panel is
     // blank (SPEED-03/05); light sleep would freeze them for the whole slice.
     const bool lightSleepBusy =
