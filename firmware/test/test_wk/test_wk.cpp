@@ -3265,7 +3265,7 @@ static void test_ota_offer() {
     OfferInput in;
     in.running = "0.1.0";
     in.env = "cardputer-adv";
-    in.slotBytes = 1835008;
+    in.slotBytes = 3145728;  // the 8 MB table's OTA slot (partitions/kanikey_8MB.csv)
     Offer o = offerFor(r.manifest, in);
     TEST_ASSERT_EQUAL(OfferVerdict::Offer, o.verdict);
     TEST_ASSERT_TRUE(o.app == &r.manifest.apps[0]);
@@ -3284,7 +3284,7 @@ static void test_ota_offer() {
     o = offerFor(r.manifest, in);
     TEST_ASSERT_EQUAL(OfferVerdict::TooLarge, o.verdict);
 
-    in.slotBytes = 1835008;
+    in.slotBytes = 3145728;  // the 8 MB table's OTA slot (partitions/kanikey_8MB.csv)
     in.rolledBack = "v0.2.0";
     o = offerFor(r.manifest, in);
     TEST_ASSERT_EQUAL(OfferVerdict::RolledBack, o.verdict);

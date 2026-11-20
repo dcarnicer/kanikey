@@ -566,6 +566,58 @@ pio run -e cardputer-adv -t upload --upload-port /dev/cu.usbmodemXXXX
 This USB path is for a v0.1.0 device, whose active slot is `app0`. Do not use it
 to move a device that has already updated itself.
 
+### 7.3 Moving a device to the 8 MB table (2026-11-20, developers)
+
+Since 2026-11-20 the table has two 3 MiB app slots and LittleFS starts at
+0x610000 (it was 0x390000). Only a USB flash can change the table, and a device
+on the old table can still take over-the-air updates until one of them is
+too large for its 1.75 MiB slot. This is a developer procedure: there are no
+users and no migration. A device that moves loses its old LittleFS state, which
+holds the unsent outbox, the streak journal, the practice stats and the cache.
+Sync first if you need the outbox.
+
+Erase only the new LittleFS region, then flash. `esptool` is the one from the
+PlatformIO install (`pio` runs it for you during upload). Use the device's
+port in place of `/dev/cu.usbmodemXXXX`.
+
+```sh
+# 1. erase the new LittleFS region only (0x610000 + 0x1F0000 = 0x800000)
+~/.platformio/penv/bin/python ~/.platformio/packages/tool-esptoolpy/esptool.py \
+  --chip esp32s3 --port /dev/cu.usbmodemXXXX erase_region 0x610000 0x1F0000
+
+# 2. flash the image, the table, the boot loader and boot_app0 (cwd: firmware/)
+pio run -e cardputer-adv -t upload --upload-port /dev/cu.usbmodemXXXX
+```
+
+Use `-e cardputer-adv-dev` in step 2 for the development image. The upload
+writes the bootloader, the table at 0x8000, `boot_app0` at 0xE000 (it selects
+`app0`) and the app at 0x10000. It does not erase NVS (0x9000), so the token,
+Wi-Fi and settings survive.
+
+With step 1 done, the LittleFS region is erased, and the first boot formats it
+by itself (`[kk] LittleFS was blank: formatted ok in … ms` on the serial log):
+an erased partition cannot hold pending reviews. The cache is empty until the
+next sync, and the local journal and practice stats start empty. A brand-new
+device behaves the same way.
+
+If you skip step 1, the region still holds bytes from the old table, which are
+not a LittleFS superblock, so the first boot shows the storage prompt:
+
+```
+STORAGE
+Storage unreadable
+Pending reviews cannot be read.
+Enter: format  Esc: continue
+```
+
+`Enter` formats the LittleFS (1.94 MiB); `Esc` keeps running without storage
+(no outbox and no cache). The prompt is kept for data that exists but cannot be
+read, so a failed mount never wipes unsent reviews without asking.
+
+`esptool` arguments: `erase_region <address> <size>` in esptool 4.9.0
+(`~/.platformio/packages/tool-esptoolpy`). The same arguments work with
+`python3 -m esptool` from a pip install.
+
 ---
 
 ## 8. Changing Wi-Fi

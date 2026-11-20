@@ -18,7 +18,7 @@ KaniKey firmware for the M5Stack Cardputer ADV.
   `Esc` opens Pause (Continue / End session / Settings) instead of quitting
   immediately. Below 20% on battery, starting reviews or lessons asks for
   confirmation.
-- Firmware updates use the second 1.75 MiB app slot: an HTTPS manifest with the
+- Firmware updates use the second 3 MiB app slot: an HTTPS manifest with the
   version, size and SHA-256, `Update` streaming, and bootloader rollback if the
   new image does not reach the loop. See [docs/ota.md](../docs/ota.md).
 - On first boot, or when Wi-Fi/token are missing, starts a WPA2 setup access
@@ -134,11 +134,12 @@ development image instead:
 pio run -e cardputer-adv-dev
 ```
 
-The build uses two 1.75 MiB OTA slots and 4.44 MiB LittleFS, the same layout as
-Tangocho's Cardputer ADV image. `Version.h` is the release version and must
-match the `vX.Y.Z` tag; `platformio.ini` sets `KANIKEY_ENV="cardputer-adv"` for
-the OTA row. The release image is about 1.46 MB (79.6% of the slot); the dev
-image adds the serial remote and debug screens and is about 1.474 MB.
+The build uses two 3 MiB OTA slots (0x300000 each) and 1.94 MiB LittleFS
+(`partitions/kanikey_8MB.csv`, since 2026-11-20). `Version.h` is the release
+version and must match the `vX.Y.Z` tag; `platformio.ini` sets
+`KANIKEY_ENV="cardputer-adv"` for the OTA row. The release image is 1,664,816 B
+(52.9% of the slot) and logs at `CORE_DEBUG_LEVEL=0`; the dev image adds the
+serial remote and debug screens, keeps library logs at level 1 and is 1,735,633 B.
 
 The release image keeps a small serial console (`h`, `i`, `p`, `S`, `up`, `r`);
 build `cardputer-adv-dev` for the full remote. The loop task uses a 24 KiB
@@ -150,6 +151,10 @@ stack, enough for the lesson fetch and OTA install paths.
 pio run -e cardputer-adv -t upload --upload-port /dev/cu.usbmodemXXXX
 pio device monitor -p /dev/cu.usbmodemXXXX -b 115200
 ```
+
+A device flashed before 2026-11-20 must erase its new LittleFS region once
+before the upload; the erase and first-boot steps are in
+[docs/setup.md](../docs/setup.md) §7.3.
 
 The Cardputer's USB Serial/JTAG should appear as a `usbmodem` port. On macOS,
 `pio device list` shows it; if only Bluetooth/debug ports appear, the board is

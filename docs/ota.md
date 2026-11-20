@@ -1,9 +1,17 @@
 # Firmware updates over the air
 
 KaniKey updates itself from a GitHub release over HTTPS. The device has two
-1.75 MiB app slots (`app0`, `app1`) and an `otadata` record; one slot runs and
-the other receives the new image. Settings and Wi-Fi live in NVS and survive
-the update. `LittleFS` stays on its partition.
+app slots (`app0`, `app1`) and an `otadata` record; one slot runs and the other
+receives the new image. Settings and Wi-Fi live in NVS and survive the update.
+`LittleFS` stays on its partition.
+
+**Current table (2026-11-20, `firmware/partitions/kanikey_8MB.csv`):** each slot
+is 0x300000 B (3,145,728 B, 3 MiB), `app0` at 0x10000 and `app1` at 0x310000;
+`spiffs` (LittleFS) at 0x610000, 0x1F0000 B. Before that date the slots were
+1,835,008 B (0x1C0000) and `spiffs` was at 0x390000. The OTA code reads the
+slot size from the running table, so it follows the CSV without a code change.
+OTA never writes the partition table; a device changes table only by USB flash
+(`docs/setup.md` §7.3).
 
 ## Release assets
 
@@ -97,8 +105,9 @@ truncated URL.
 
 The install needs enough contiguous heap for TLS. The review batch is evicted
 while the user is on Home and during lessons, and the UI canvas is released for
-the download, so a 1.75 MiB slot has comfortable headroom (the release image is
-about 1.46 MB).
+the download, so a 3 MiB slot has comfortable headroom (the release image is
+1,664,816 B, about 1.66 MB, 53% of the slot). Before 2026-11-20 the slot was
+1.75 MiB and the same image still fitted it.
 
 ## Verification window
 

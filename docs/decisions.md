@@ -1391,3 +1391,36 @@ tone confirms an answer without the panel, and makes the reminder wake audible.
   the speaker.
 - Latency and heap after a session are hardware numbers still open; see
   `docs/hardware.md` when the run is done.
+
+---
+
+## 2026-11-20 — 8 MB table: 2 × 3 MiB app slots, 1.94 MiB LittleFS; no migration because there are no users; release logs at level 0
+
+**Decision:** `firmware/partitions/kanikey_8MB.csv` gives each OTA slot 0x300000
+(3,145,728 B): `app0` at 0x10000 and `app1` at 0x310000. LittleFS (`spiffs`)
+moves to 0x610000 and takes 0x1F0000 (2,031,616 B, 1.94 MiB). `nvs` and
+`otadata` keep their offsets. The release `cardputer-adv` image builds with
+`CORE_DEBUG_LEVEL=0`; `cardputer-adv-dev` and `cardputer-adv-badapi` keep 1.
+This is the owner's choice of the 3 MiB layout (`docs/spec/11-flash-headroom.md`
+§5.1 option c) over the 2.25 MiB option (b2) recommended there.
+
+**Why:** the release plus the next round's ≤ 250 KB did not fit 2 × 1.75 MiB.
+LittleFS used 94 KB of its 4.44 MiB on hardware (`fs`, FLASH-01). The app has
+no users yet, so there is no migration, no bridge release and no old-table
+compatibility to keep. Level 0 saves 38,188 B (FLASH-02, measured) and removes
+the library's log lines from the release only; the dev images keep them.
+
+**Implications:**
+- Only a USB flash changes the table. OTA never writes 0x8000. A device that
+  moves to the new table with USB loses its old LittleFS state (outbox, journal,
+  cache, practice stats). The developer procedure erases the new LittleFS region
+  and accepts the `Storage unreadable` prompt (`docs/setup.md` §7.3).
+- An over-the-air install into the old 1.75 MiB table still works and keeps
+  LittleFS, while the image fits 1,835,008 B. The release image (1,664,816 B)
+  fits both.
+- The OTA slot size comes from the running table (`Ota.cpp` `layoutIsOurs()`,
+  `slotBytes()`). `tools/release/firmware_manifest.py` checks each image against
+  the same CSV.
+- `paperdiy` keeps its 16 MB table. Its level stays 1.
+- Format time, mount time and the 3 MiB OTA install are hardware numbers still
+  open; see `docs/hardware.md` when the run is done.

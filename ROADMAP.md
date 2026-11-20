@@ -134,13 +134,16 @@ Working on hardware:
 - 554 native tests and the `cardputer-adv` build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests; the release workflow adds
   the manifest tests and a tag-driven GitHub release.
-- OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
-  bootloader rollback; Settings › Firmware and About expose it.
+- OTA uses the second 3 MiB slot (8 MB table, 2026-11-20) with a size/SHA-256
+  manifest and bootloader rollback; Settings › Firmware and About expose it.
 
-Last recorded build (FLASH-01 scanf trim): **release 1,702,545 B / 1,835,008 B
-flash (92.8%)**, **dev 1,735,633 B (94.6%)**, static RAM 105,736/105,912 B
-(32.3%); **PaperDIY `paperdiy` 1,730,945 B / 6,291,456 B (27.5%)**. Flash
-headroom and the 8 MB partition proposal: `docs/spec/11-flash-headroom.md`. The root CA is stored once (`inline constexpr`), which saved 14.6 KB
+Last recorded build (FLASH-03 8 MB table, release log level 0, 2026-11-20; the
+basis is the 3,145,728 B slot): **release 1,664,373 B / 3,145,728 B (52.9%)**
+(was 1,702,545 B of 1,835,008 B, 92.8%), **dev 1,735,633 B (55.2%)**,
+**badapi 1,728,969 B (55.0%)**, static RAM 105,536 B release and 105,912 B dev
+(32.2% and 32.3% of 327,680 B); **PaperDIY `paperdiy` 1,730,945 B / 6,291,456 B
+(27.5%)**, unchanged. Flash headroom and the 8 MB table:
+`docs/spec/11-flash-headroom.md`. The root CA is stored once (`inline constexpr`), which saved 14.6 KB
 release / 29 KB dev.
 Removing `efontJA_16` freed ~468 KB; the dev image now has ~111 KB of headroom.
 The loop task uses a 24 KiB stack;
