@@ -322,6 +322,21 @@ bool audioCacheSyncSubjects(fs::FS& sd, const std::vector<Subject>& subjects, ui
 size_t audioCacheCount() { return gAudio.open ? gAudio.entries.size() : 0; }
 uint64_t audioCacheBytes() { return gAudio.open ? gAudio.bytes : 0; }
 
+AudioPlan audioCachePlan(uint32_t subjectId, SubjectType type, uint8_t voice) {
+    if (!gAudio.open) {
+        AudioPlan plan;
+        plan.applicable = audioSubjectPlayable(type);
+        return plan;
+    }
+    return planAudio(gAudio.entries, type, subjectId, voice);
+}
+
+bool audioCachePath(const AudioEntry& entry, char* out, size_t n) {
+    if (!out || n == 0) return false;
+    audioPath(entry, out, n);
+    return out[0] != 0;
+}
+
 void audioCacheClear(fs::FS& sd) {
     clearDir(sd);
     Serial.println("[audio] cleared");

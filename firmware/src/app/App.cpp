@@ -20,6 +20,7 @@
 #include "app/App.h"
 #include "app/AppState.h"
 #include "app/AppUi.h"
+#include "app/AudioController.h"
 #include "app/CacheController.h"
 #include "app/DevConsole.h"
 #include "app/LessonController.h"
@@ -196,6 +197,7 @@ void onKeyImpl(const KeyEvent& e) {
     if (e.down && tgc::keyChar(e, state().ui.gShift) == '?') {
         const kk::HelpScreen screen = helpScreenForState();
         if (screen != kk::HelpScreen::None) {
+            audioStop();
             state().ui.gHelpActive = true;
             state().ui.gHelpScreen = screen;
             // Like any other key on correct feedback, opening help cancels the
@@ -797,23 +799,40 @@ void drawHelpOverlay() {
     view.rows = table.rows;
     view.count = table.count;
 
-    // REV-04: C/A only exist while R7 Wrong answer actions is On. The static
-    // feedback table carries them for the bar's full labels, so hide them from
-    // the help when the setting is off.
+    // REV-04: C/A only exist while R7 Wrong answer actions is On. AUD-03: R
+    // only exists when this frame's subject actually offers audio. The static
+    // tables carry the full key set, so filter the rows the screen cannot use.
+    bool hideWrong = false;
     if (state().ui.gHelpScreen == kk::HelpScreen::ReviewsFeedback) {
         int wrong = 0;
-        if (!kk::settingsGetInt("rv.wrong", &wrong) || wrong == 0) {
-            static kk::HelpEntry filtered[7];
-            size_t count = 0;
-            for (size_t i = 0; i < table.count && count < 7; ++i) {
-                if (std::strcmp(table.rows[i].keys, "C") == 0 ||
-                    std::strcmp(table.rows[i].keys, "A") == 0)
-                    continue;
-                filtered[count++] = table.rows[i];
-            }
-            view.rows = filtered;
-            view.count = count;
+        hideWrong = !kk::settingsGetInt("rv.wrong", &wrong) || wrong == 0;
+    }
+    bool hideAudio = true;
+    if (state().ui.gHelpScreen == kk::HelpScreen::ReviewsFeedback) {
+        uint32_t subjectId = state().review.feedbackSubjectId;
+        if (!subjectId && state().review.gQueue.current())
+            subjectId = state().review.gQueue.current()->subjectId;
+        const kk::Subject* s = subjectById(subjectId);
+        hideAudio = !state().review.feedback ||
+                    state().review.feedbackPart != kk::ReviewPart::Reading ||
+                    state().review.gCheck.status == kk::AnswerStatus::Warning || !s ||
+                    audioHintFor(*s) == kk::AudioHint::None;
+    } else if (state().ui.gHelpScreen == kk::HelpScreen::LessonCard) {
+        const kk::Subject* s = lessonCardSubject();
+        hideAudio = !s || audioHintFor(*s) == kk::AudioHint::None;
+    }
+    if (hideWrong || hideAudio) {
+        static kk::HelpEntry filtered[7];
+        size_t count = 0;
+        for (size_t i = 0; i < table.count && count < 7; ++i) {
+            if (hideWrong && (std::strcmp(table.rows[i].keys, "C") == 0 ||
+                              std::strcmp(table.rows[i].keys, "A") == 0))
+                continue;
+            if (hideAudio && std::strcmp(table.rows[i].keys, "R") == 0) continue;
+            filtered[count++] = table.rows[i];
         }
+        view.rows = filtered;
+        view.count = count;
     }
 
     auto& d = target();
@@ -956,6 +975,9 @@ void setup() {
     }
 
     state().storage.gSdOk = mountSd();
+    // Register the speaker buffer-release callback before the first clip; the
+    // player opens the account's audio cache lazily on the first hint/play.
+    audioBegin();
     if (state().storage.gSdOk) openGlyphPacks();
     if (state().storage.gFsFormatPrompt) {
         state().ui.gLastInputAt = millis();
@@ -1007,6 +1029,8 @@ void loop() {
 
     const uint32_t now = millis();
     firmwareTick(now);
+    // AUD-03: one decode/queue step per loop; it never waits for the speaker.
+    audioTick();
     if (powerWakeCheck(now)) {
         // The panel is blank. A background sync is not a screen and must not
         // stall until the next key; the modal Sync screen only advances while

@@ -19,6 +19,9 @@ void startLessonBatch();
 void startCurrentLesson();  // legacy notice retry: opens the confirmation
 void lessonListKey(const tgc::KeyEvent& e);
 void lessonKey(const tgc::KeyEvent& e);
+// The card's current subject, for the contextual R help row. Null outside the
+// lesson card.
+const kk::Subject* lessonCardSubject();
 void startLessonQuiz();
 void checkLessonQuiz();
 void releaseLessonData();

@@ -58,6 +58,21 @@ PlatformIO. They are MIT-licensed and are not vendored in this repository.
 `tools/mockups/render.py` embeds the Font0/Font2/Font4 bitmap tables from
 M5GFX for the screen renders; those tables keep the M5GFX MIT notice.
 
+## minimp3 — CC0 1.0
+
+AUD-03 vendors [minimp3](https://github.com/lieff/minimp3) in
+`firmware/src/audio/Minimp3.cpp` for MP3 vocabulary audio. The upstream author
+dedicated it to the public domain under CC0 1.0:
+
+> To the extent possible under law, the author(s) have dedicated all copyright
+> and related and neighboring rights to this software to the public domain
+> worldwide. This software is distributed without any warranty.
+> See <http://creativecommons.org/publicdomain/zero/1.0/>.
+
+KaniKey builds it with `MINIMP3_ONLY_MP3` and makes the decode scratch static;
+those local changes do not alter the license. The vendored file is used only
+for MP3 decoding and contains no WaniKani content.
+
 ## Arduino-ESP32 core — LGPL-2.1
 
 The firmware is statically linked with the

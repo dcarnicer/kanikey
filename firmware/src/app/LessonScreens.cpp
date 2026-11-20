@@ -268,8 +268,19 @@ void drawLessonCardScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
             d.drawString(cardPage->lines[i].c_str(), 5, 96 + static_cast<int>(i) * 9);
     }
 
-    drawHintLeft(d, "Q quiz", ui::kFaint, 5, 125);
-    drawHintRight(d, "Enter/Space: next  Esc: list", ui::kFaint, 233, 125);
+    // AUD-03: the card offers R while the reading line is drawn. The audio
+    // hint takes the left slot next to Q; the shorter right hint leaves it
+    // room, with Space/Esc: list still in the ? table.
+    const char* audio = audioHintText(view.audio);
+    if (*audio) {
+        char left[32];
+        snprintf(left, sizeof left, "Q quiz  %s", audio);
+        drawHintLeft(d, left, ui::kFaint, 5, 125);
+        drawHintRight(d, "Enter: next  Esc", ui::kFaint, 233, 125);
+    } else {
+        drawHintLeft(d, "Q quiz", ui::kFaint, 5, 125);
+        drawHintRight(d, "Enter/Space: next  Esc: list", ui::kFaint, 233, 125);
+    }
 }
 
 void drawLessonQuizScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,

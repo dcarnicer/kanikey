@@ -10,6 +10,7 @@
 #include "platform/GlyphPack.h"
 #include "ui/Theme.h"
 #include "wk/AnswerChecker.h"
+#include "wk/AudioPlan.h"
 #include "wk/ReviewQueue.h"
 #include "wk/Types.h"
 
@@ -25,6 +26,9 @@ struct ReviewView {
     // REV-04: compact `C ok  A later  Tab info` bar on Incorrect feedback
     // when R7 is On.
     bool wrongShortcuts = false;
+    // AUD-03: R on reading feedback, or `no audio` when a vocabulary clip is
+    // missing. None for meaning feedback and for kanji/radicals.
+    kk::AudioHint audio = kk::AudioHint::None;
     const char* escHint = "Esc: quit";
     // REV-05: > 0 draws `WRAP UP N` instead of the header until the summary.
     int wrapUpCount = 0;
@@ -56,6 +60,7 @@ struct ReviewDetailView {
     int page = 0;
     int pages = 1;
     int kind = 0;  // detailPageKind() for this page
+    kk::AudioHint audio = kk::AudioHint::None;
     std::vector<const kk::Subject*> components;
     std::vector<const kk::Subject*> similar;
     std::vector<const kk::Subject*> amalgamations;

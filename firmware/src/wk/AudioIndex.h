@@ -29,6 +29,12 @@ AudioFormat audioFormatFromContentType(const char* contentType);
 bool audioChooseEntry(const std::vector<AudioEntry>& entries, uint32_t subjectId, uint8_t voice,
                       AudioEntry* out);
 
+// AUD-03: the playable subset. Ignores OGG entries, prefers the requested
+// voice and then falls back to the other voice. Returns false when the subject
+// has no cached MP3.
+bool audioChoosePlayableEntry(const std::vector<AudioEntry>& entries, uint32_t subjectId,
+                              uint8_t voice, AudioEntry* out);
+
 // Returns the entries to drop, oldest `usedAt` first, until `bytes + addBytes`
 // fits the cap. Ties go to the lowest subject id.
 std::vector<AudioEntry> audioEvict(const std::vector<AudioEntry>& entries, uint64_t bytes,

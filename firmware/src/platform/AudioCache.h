@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "wk/AudioIndex.h"
+#include "wk/AudioPlan.h"
 #include "wk/Types.h"
 
 namespace kk {
@@ -18,5 +19,11 @@ bool audioCacheSyncSubjects(fs::FS& sd, const std::vector<Subject>& subjects, ui
 size_t audioCacheCount();
 uint64_t audioCacheBytes();
 void audioCacheClear(fs::FS& sd);
+
+// AUD-03: the MP3-only selection for one subject. Call audioCacheOpen() first;
+// a closed cache returns an applicable but unplayable plan.
+AudioPlan audioCachePlan(uint32_t subjectId, SubjectType type, uint8_t voice);
+// `/kanikey/audio/<subject>-<voice>.<ext>` for an index entry.
+bool audioCachePath(const AudioEntry& entry, char* out, size_t n);
 
 }  // namespace kk

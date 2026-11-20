@@ -15,6 +15,7 @@
 #include "app/App.h"
 #include "app/AppState.h"
 #include "app/AppUi.h"
+#include "app/AudioController.h"
 #include "app/BootScreen.h"
 #include "app/CacheController.h"
 #include "app/DebugScreens.h"
@@ -194,6 +195,7 @@ void settingsRunAction(const kk::SettingDef& def) {
     } else if (std::strcmp(id, "sync.clearCache") == 0) {
         if (state().storage.gFsOk) kk::cacheClearSnapshot();
         if (state().storage.gSdOk) {
+            audioStop();
             kk::cacheClearSubjects(SD);
             kk::audioCacheClear(SD);
         }
@@ -417,6 +419,7 @@ void settingsSelectEntry(const char* id) { settingsSelectEntryImpl(id); }
 
 void openPause() {
     if (kk::screenBase(state().screen) != Screen::Review) return;
+    audioStop();
     kk::screenPush(&state().screen, Modal::Pause);
     state().ui.gPauseIndex = 0;
     state().display.gDirty = true;
@@ -434,6 +437,7 @@ void settingsKey(const KeyEvent& e) {
             state().sync.gDeferredAuthIssue = SyncIssue::None;
             if (state().storage.gFsOk) kk::cacheClearSnapshot();
             if (state().storage.gSdOk) {
+                audioStop();
                 kk::cacheClearSubjects(SD);
                 kk::catalogClear(SD);
                 kk::audioCacheClear(SD);

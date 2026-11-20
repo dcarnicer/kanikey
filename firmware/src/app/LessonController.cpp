@@ -15,6 +15,7 @@
 #include "app/App.h"
 #include "app/AppState.h"
 #include "app/AppUi.h"
+#include "app/AudioController.h"
 #include "app/BootScreen.h"
 #include "app/CacheController.h"
 #include "app/DebugScreens.h"
@@ -133,6 +134,12 @@ const kk::Subject* currentLessonSubject() {
     return a ? lessonSubjectById(a->subjectId) : nullptr;
 }
 
+}  // namespace
+
+const kk::Subject* lessonCardSubject() { return currentLessonSubject(); }
+
+namespace {
+
 std::vector<std::string> wrapLines(lgfx::LovyanGFX& d, const std::string& text, int width) {
     d.setTextFont(0);
     d.setTextSize(1);
@@ -225,6 +232,7 @@ void afterLastLessonCard() {
 }
 
 void startLessonBatchQuiz() {
+    audioStop();
     std::vector<const kk::Subject*> subjects;
     subjects.reserve(state().lesson.gLessonBrowse.selectedCount());
     for (size_t pos = 0; pos < state().lesson.gLessonBrowse.selectedCount(); ++pos) {
@@ -324,6 +332,7 @@ void journalLessonStarted(const kk::LessonStartItem& item, bool offline) {
 }
 
 void runLessonStart() {
+    audioStop();
     LessonState& l = state().lesson;
     if (l.gLessonStartPlan.empty()) return;
 
@@ -506,6 +515,9 @@ void showLesson() {
     view.subject = s;
     view.meaning = meaning;
     view.reading = reading;
+    // AUD-03: R appears only when the card draws a reading; kanji/radicals
+    // resolve to None in the audio policy.
+    view.audio = reading.empty() ? kk::AudioHint::None : audioHintFor(*s);
     view.header = header;
     view.pages = std::move(pages);
     view.page = state().lesson.gLessonBrowse.page();
@@ -575,6 +587,7 @@ void showLessonBatchQuiz() {
 }
 
 void startLessonQuiz() {
+    audioStop();
     const kk::Subject* s = currentLessonSubject();
     if (!s) return;
     state().lesson.gLessonQuiz.start(*s);
@@ -1182,8 +1195,16 @@ void lessonListKey(const KeyEvent& e) {
 void lessonKey(const KeyEvent& e) {
     if (!e.down) return;
     LessonState& l = state().lesson;
+    const char c = tgc::keyChar(e, state().ui.gShift);
+    // AUD-03: R replays the card's pronunciation on a vocabulary card. Every
+    // other handled key turns the page, opens the quiz or leaves, so it stops
+    // the clip first.
+    if (e.key == Key::Other && (c == 'r' || c == 'R')) {
+        if (const kk::Subject* s = currentLessonSubject()) audioPlay(*s);
+        return;
+    }
+    audioStop();
     if (e.key == Key::Other) {
-        const char c = tgc::keyChar(e, state().ui.gShift);
         if (c == 'q' || c == 'Q') {
             startLessonQuiz();
             return;

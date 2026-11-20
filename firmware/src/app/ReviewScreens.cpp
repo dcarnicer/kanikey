@@ -348,10 +348,23 @@ void drawReviewScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         snprintf(sending, sizeof sending, "Sending %u/%u", view.sent, view.sendTotal);
         d.drawString(sending, 6, 125);
     } else if (view.feedback) {
-        d.drawString(view.wrongShortcuts
-                         ? "C ok  A later  Tab info"
-                         : view.showDetailHint ? "Enter: next  Tab: details" : "Enter: next",
-                     6, 125);
+        // AUD-03: R takes the space of the detail hint when a clip is
+        // available (or says no audio when it is missing); Tab: details stays
+        // in the help table.
+        const char* audio = audioHintText(view.audio);
+        char hint[48];
+        if (*audio) {
+            if (view.wrongShortcuts)
+                snprintf(hint, sizeof hint, "C ok  A later  %s", audio);
+            else
+                snprintf(hint, sizeof hint, "Enter: next  %s", audio);
+            d.drawString(hint, 6, 125);
+        } else {
+            d.drawString(view.wrongShortcuts
+                             ? "C ok  A later  Tab info"
+                             : view.showDetailHint ? "Enter: next  Tab: details" : "Enter: next",
+                         6, 125);
+        }
     } else {
         d.drawString("Enter: check", 6, 125);
     }
@@ -546,7 +559,15 @@ void drawReviewDetailScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
 
     ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kFaint, ui::kBg);
-    d.drawString("Space: page  Tab/Esc: back", 5, 125);
+    // Drop `/Esc` from the back hint when R: audio needs the width; Esc still
+    // closes the card, as the help-less detail frame always allowed.
+    const char* audio = audioHintText(view.audio);
+    char hint[64];
+    if (*audio)
+        snprintf(hint, sizeof hint, "%s  Space: page  Tab: back", audio);
+    else
+        snprintf(hint, sizeof hint, "Space: page  Tab/Esc: back");
+    d.drawString(hint, 5, 125);
 }
 
 void drawReviewSummaryScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,

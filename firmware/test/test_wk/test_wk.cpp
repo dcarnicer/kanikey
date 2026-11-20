@@ -10,6 +10,7 @@
 #include "wk/AnswerChecker.h"
 #include "wk/Assignment.h"
 #include "wk/AudioIndex.h"
+#include "wk/AudioPlan.h"
 #include "wk/Cache.h"
 #include "wk/Catalog.h"
 #include "wk/CriticalItems.h"
@@ -1345,6 +1346,67 @@ static void test_audio_file_name_and_evict() {
         audioEvict(entries, kAudioCacheMaxBytes - 100, 150);
     TEST_ASSERT_EQUAL(1, victims.size());
     TEST_ASSERT_EQUAL_UINT32(2, victims[0].subjectId);
+}
+
+static void test_audio_plan_preferred_voice_and_mp3() {
+    const std::vector<AudioEntry> entries = {{10, 100, 0, 0, AudioFormat::Ogg},
+                                             {10, 100, 0, 0, AudioFormat::Mp3},
+                                             {10, 100, 0, 1, AudioFormat::Mp3}};
+    AudioEntry out;
+    TEST_ASSERT_TRUE(audioChoosePlayableEntry(entries, 10, 0, &out));
+    TEST_ASSERT_EQUAL_UINT8(0, out.voice);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(AudioFormat::Mp3),
+                          static_cast<int>(out.format));
+
+    AudioPlan plan = planAudio(entries, SubjectType::Vocabulary, 10, 1);
+    TEST_ASSERT_TRUE(plan.applicable);
+    TEST_ASSERT_TRUE(plan.playable);
+    TEST_ASSERT_EQUAL_UINT8(1, plan.entry.voice);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(AudioHint::Available),
+                          static_cast<int>(audioHintForPlan(plan)));
+    TEST_ASSERT_EQUAL_STRING("R: audio", audioHintText(audioHintForPlan(plan)));
+}
+
+static void test_audio_plan_fallback_voice_skips_ogg() {
+    // The preferred voice is OGG only; the other voice has the playable MP3.
+    const std::vector<AudioEntry> entries = {{11, 100, 0, 0, AudioFormat::Ogg},
+                                             {11, 100, 0, 1, AudioFormat::Mp3}};
+    AudioEntry out;
+    TEST_ASSERT_TRUE(audioChoosePlayableEntry(entries, 11, 0, &out));
+    TEST_ASSERT_EQUAL_UINT8(1, out.voice);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(AudioFormat::Mp3),
+                          static_cast<int>(out.format));
+
+    const std::vector<AudioEntry> oggOnly = {{12, 100, 0, 0, AudioFormat::Ogg}};
+    TEST_ASSERT_FALSE(audioChoosePlayableEntry(oggOnly, 12, 0, &out));
+    const AudioPlan plan = planAudio(oggOnly, SubjectType::Vocabulary, 12, 0);
+    TEST_ASSERT_TRUE(plan.applicable);
+    TEST_ASSERT_FALSE(plan.playable);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(AudioHint::Missing),
+                          static_cast<int>(audioHintForPlan(plan)));
+    TEST_ASSERT_EQUAL_STRING("no audio", audioHintText(audioHintForPlan(plan)));
+
+    const AudioPlan absent = planAudio({}, SubjectType::KanaVocabulary, 13, 0);
+    TEST_ASSERT_TRUE(absent.applicable);
+    TEST_ASSERT_FALSE(absent.playable);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(AudioHint::Missing),
+                          static_cast<int>(audioHintForPlan(absent)));
+}
+
+static void test_audio_plan_never_for_kanji_or_radical() {
+    const std::vector<AudioEntry> entries = {{14, 100, 0, 0, AudioFormat::Mp3}};
+    const AudioPlan kanji = planAudio(entries, SubjectType::Kanji, 14, 0);
+    TEST_ASSERT_FALSE(kanji.applicable);
+    TEST_ASSERT_FALSE(kanji.playable);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(AudioHint::None),
+                          static_cast<int>(audioHintForPlan(kanji)));
+    TEST_ASSERT_EQUAL_STRING("", audioHintText(audioHintForPlan(kanji)));
+
+    const AudioPlan radical = planAudio(entries, SubjectType::Radical, 14, 0);
+    TEST_ASSERT_FALSE(radical.applicable);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(AudioHint::None),
+                          static_cast<int>(audioHintForPlan(radical)));
+    TEST_ASSERT_FALSE(audioChoosePlayableEntry(entries, 14, 0, nullptr));
 }
 
 
@@ -3878,6 +3940,9 @@ int main(int, char**) {
     RUN_TEST(test_audio_index_round_trip);
     RUN_TEST(test_audio_choose_voice_fallback);
     RUN_TEST(test_audio_file_name_and_evict);
+    RUN_TEST(test_audio_plan_preferred_voice_and_mp3);
+    RUN_TEST(test_audio_plan_fallback_voice_skips_ogg);
+    RUN_TEST(test_audio_plan_never_for_kanji_or_radical);
     RUN_TEST(test_assignment_stream_matches_dom);
     RUN_TEST(test_assignment_stream_edges);
     RUN_TEST(test_subject_stream_matches_dom);
