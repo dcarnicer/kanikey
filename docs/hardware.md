@@ -787,7 +787,12 @@ A150 G143 M81 E147 B586).
 - **TNG-03.** Fifteen native tests cover the list-window math and hint
   fallbacks. Phase 2 migrated Home hints, Settings, the Wi-Fi scan list, Outbox,
   the lesson list window and Study/critical windows to the shared primitives;
-  lesson/critical/study rows keep their custom 20 px painters. Home,
+  the 20 px lesson/critical/study rows moved to `drawList` on 2026-11-20
+  (TNG-03H): the lesson list and the Study menu captured byte-identical to the
+  earlier ARCH-04/TNG-03 captures. That comparison exposed an older bug: the
+  lesson-list prompt boxes were empty because `drawTextCentered()` received
+  the centre in the size slot; after the fix the panel shows 以/月/仕/金/映 in
+  the boxes with the frames intact. The critical list was not opened. Home,
   Settings and the Wi-Fi list rendered with the same layout after flashing;
   the remaining window/scroll cases are in the table. Phase 3 moved wrapping,
   ellipsis and UTF-8 trimming into `TextLayout` and added the 1bpp icon tables;
@@ -843,7 +848,7 @@ instead.
 | `REV-07` | Wrong meaning/reading opens the matching detail page; return | `cardputer-adv-dev` | 2026-11-19 | `partial` | R9 On: a wrong `banana` for 今夜's meaning opened `ITEM DETAIL 2/6`, `MEANING MNEMONIC`, with `Tab/Esc: back`. Reading page, return path and empty-mnemonic state remain. |
 | `REV-08` | Order fetch/selection, visible order, fallback, cached | `cardputer-adv-dev` | 2026-11-19 | `partial` | R2 `Oldest available` fetched the full due set: 8 pages, 228,077 B, 464 assignments, 20 chosen, then a 20-item queue (`二斤`, `氏`, `出す`, …), with no reset. Visible SRS/level/type order, fallback and cached-offline checks remain. |
 | `REV-09/12` | Back-to-back Off; minimal header | — | — | `todo` | Named as remaining after the 2026-11-19 REV-06 smoke; no hardware evidence. |
-| `REV-10` | Backspace repeat, Fn/Ctrl clear, kana units, 64-byte cap | — | — | `todo` | 15 native tests; the hardware hold/clear/kana/paste checks remain (2026-11-19 v1 pass). |
+| `REV-10` | Backspace repeat, Fn/Ctrl clear, kana units, 64-byte cap | `cardputer-adv-dev` | 2026-11-20 | `partial` | Real review, 学 reading prompt through the matrix IME: `tabe` showed `たべ`, Backspace left `た` (romaji `ta`); `kann` gave `たかん`, Backspace left `たか` (romaji `taka`). Meaning prompt: `tabe` + Backspace left `tab`. Only wrong answers were typed and the session was dropped by a reboot; outbox stayed 0. Held-Backspace repeat, Fn/Ctrl+Backspace clear and the 64-byte cap (the box scrolls, so the length is not visible) remain; serial `K` cannot hold keys or add modifiers. |
 | `REV-11` | Mistakes list, navigation, `R` next batch, stage updates, layout | — | — | `todo` | Six native tests; the three-row list, `R`, stage updates during the send loop and the 240×135 layout remain. |
 | `LES-01` | Browse a 5-card batch with all keys; no `[lesson] start` | `cardputer-adv-dev` | 2026-11-19 | `partial` | `L` fetched 5 lessons and showed the `1/5` list; Enter opened the `1/5 p1/4` card; no `[lesson] start`. The full page walk with Space/Left and the five-card sequence were not recorded. |
 | `LES-02` | Batch quiz of 5 with two mistakes; requeue; no outbox growth | `cardputer-adv-dev` | 2026-11-19 | `partial` | The batch quiz opened as `LESSON QUIZ 1/5`. The two-mistake requeue run and the no-outbox-growth check remain. |
