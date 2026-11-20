@@ -131,15 +131,17 @@ Working on hardware:
   failures, with `Enter` retry. The M0 debug screen is dev-build only.
 - 8-bit RGB332 canvas (32.4 KB), static 32 KB HTTP body buffer, dim/blank/deep
   sleep, screenshot capture.
-- 500 native tests and the `cardputer-adv` build run in GitHub Actions alongside
+- 546 native tests and the `cardputer-adv` build run in GitHub Actions alongside
   gitleaks on pushes to `main` and on pull requests; the release workflow adds
   the manifest tests and a tag-driven GitHub release.
 - OTA uses the second 1.75 MiB slot with a size/SHA-256 manifest and
   bootloader rollback; Settings › Firmware and About expose it.
 
-Last recorded build (PD-03 + REM-02): **release 1,667,513 B / 1,835,008 B
-flash (90.9%)**, **dev 1,741,773 B (94.9%)**, static RAM 105,520/105,704 B
-(32.2%); **PaperDIY `paperdiy` 1,697,777 B / 6,291,456 B (27.0%)**.
+Last recorded build (AUD-03 + REM-03 + PD-04): **release 1,711,269 B /
+1,835,008 B flash (93.3%)**, **dev 1,738,885 B (94.8%)**, static RAM
+105,664/105,824 B (32.2%); **PaperDIY `paperdiy` 1,739,725 B / 6,291,456 B
+(27.7%)**. The root CA is stored once (`inline constexpr`), which saved 14.6 KB
+release / 29 KB dev.
 Removing `efontJA_16` freed ~468 KB; the dev image now has ~111 KB of headroom.
 The loop task uses a 24 KiB stack;
 the lazy review batch keeps the lesson-fetch minimum free heap above ~44 KB in
@@ -152,7 +154,7 @@ the 2026-11-19 logs.
 | 1 | Radicals and `efontJA_16` removal | Early levels and lessons are incomplete; frees ~468 KB flash | Done except a real low-level radical-only lesson; the synthetic radical lesson UI passed | RAD-04 |
 | 2 | Persistent offline cache | The outbox survives reboot; cached Home/batch now do too | Done: real-account online fetch, deliberate offline reboot and cached session verified (2026-11-19) | CACHE-07 |
 | 3 | Complete lesson flow | List/picker, card, components, quiz, empty state, start and ordering exist; the round-2 browse → quiz → batch-start flow is in review | v1 flow complete; LES-01…LES-06 in review 2026-11-19 (hardware partial); the real low-level run is open | LES-01 |
-| 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; stats and local review history are live; audio remains | Stats/local history done; AUD-03 decoder probe done, playback/hardware gates remain | AUD |
+| 4 | WaniKani data and preferences | Synonyms, notes, review order, vacation, SRS, review stats, level progress, vocabulary details and related subjects are live; stats and local review history are live; audio remains | Stats/local history done; audio prefetch + `R` playback in review (hardware soak pending) | AUD |
 | 5 | Outbox and API robustness | Rejected/stuck items, the 50-attempt cap, 429 backoff, parse retries, auth gate and Home/Settings manual sync are in | Code and docs done; OUTBOX (API-01/05), 401 (API-03) and parse retry (API-04) verified 2026-11-19; 429 (API-02) and 403 still pending | — |
 | 6 | Setup, settings and pause | Setup, pause, settings, low battery and error screens work | v1 done; SETUP-09 on-device Wi-Fi is in review 2026-11-19 (scan/password mask smoked; join paths pending) | SETUP-09 |
 | 7 | UI, stats and sync | Accuracy, the SRS bar, sync screen, item detail, level progress and the Stats screen are live | UI palette audited 2026-11-20; device visual check pending | UI-08 |
@@ -160,7 +162,7 @@ the 2026-11-19 logs.
 | 9 | Technical debt, CI and release | Maintainability and shipping | Done (TECH-01…06, TECH-08); TECH-07 only if needed | TECH-07 |
 | 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | EXT-01…05 done; audio, reminders and stroke order remain; round 2 specified in `docs/spec` | STUDY |
 | 11 | Bluetooth keyboard | Optional full-size input; BLE-only, shares the 2.4 GHz radio and the no-PSRAM heap | Post-v1; BT-01 conditional go on NimBLE (compiled sizes); pairing/heap hardware run pending | BT-02 |
-| 12 | M5Stack PaperDIY port | Desk e-paper companion; 960×540, no keyboard/touch, two buttons | Post-v1; PD-01…PD-03 compile (board HAL, 4× PSRAM e-paper render, two-button read-only UI); no PaperDIY hardware yet; PD-04 cadence in progress | PD-04 |
+| 12 | M5Stack PaperDIY port | Desk e-paper companion; 960×540, no keyboard/touch, two buttons | Post-v1; PD-01…PD-04 compile (board HAL, 4× PSRAM e-paper render, two-button read-only UI, sleep frame + sync cadence); no PaperDIY hardware yet | PD-05 |
 
 ## Execution order
 
@@ -766,8 +768,8 @@ round 2.
 | EXT-03 | STUDY-01, STUDY-02 | Critical items and leeches | done (2026-11-06) |
 | EXT-04 | STUDY-03, STUDY-04, STUDY-05 | Extra study and the offline practice pool | done (2026-11-06) |
 | EXT-05 + WK-11 | STATS-01…STATS-04 | Forecast, history, streak and level progress | done (2026-11-06) |
-| EXT-06 | AUD-01…AUD-03 | Vocabulary audio | partial (AUD-01/02); AUD-03 minimp3 probe, playback/hardware gates todo |
-| EXT-09 | REM-01…REM-03 | Device-local reminders and sounds | REM-01 spike partial (timer wake, 544 ms wake, tone heap; current pending); REM-02 in review; REM-03 in progress |
+| EXT-06 | AUD-01…AUD-03 | Vocabulary audio | review: batch MP3 prefetch + on-demand `R` playback (minimp3, heap pieces) work on hardware; soak/current/M6 autoplay pending |
+| EXT-09 | REM-01…REM-03 | Device-local reminders and sounds | REM-01 spike partial (timer wake, 544 ms wake, tone heap; current pending); REM-02 and REM-03 in review (hardware pending) |
 | Complete lesson flow | LES-01, LES-02, LES-03, LES-04, LES-05, LES-06 | Browse → batch quiz → confirmed start → order/workload/topic pages | review (2026-11-19; hardware partial) |
 | LESSON-08 | LES-04 | Lesson ordering | review: WaniKani/type groups/interleave; 60-pool check pending |
 | Settings menu | CFG-01, CFG-02, CFG-03, CFG-04 | Eight sections, 48-row registry, reset, help overlay | review (2026-11-19; hardware partial) |
@@ -789,8 +791,8 @@ REM/AUD, ONB (pack and setup) and DOC (this documentation pass). ARCH-01/02 are
 merged and CFG-01/02/03/04, REV-01/02/03/04/05/06/07/08/09/10/11/12,
 LES-01…LES-06, SETUP-09, ONB-01/02 and SPEED-01/02/03/04/05/07 are in review. The
 eight-section Settings menu replaces the flat list; the registry now has 48
-rows after the Account › Wi-Fi action. Main has 500 native tests and builds at
-1,667,513 B (90.9%) release / 1,741,773 B (94.9%) dev; PaperDIY 1,697,777 B of
+rows after the Account › Wi-Fi action. Main has 546 native tests and builds at
+1,711,269 B (93.3%) release / 1,738,885 B (94.8%) dev; PaperDIY 1,739,725 B of
 6,291,456. No round-2 task is
 claimed as done
 here beyond the spec status above.
@@ -862,7 +864,7 @@ first target is a read-only companion; full reviews wait for BT-01…BT-04.
 | PD-01 | Board HAL and build target | P3 | M | none | review (2026-11-20: paperdiy build green; hardware pending) |
 | PD-02 | E-paper rendering and refresh | P3 | L | PD-01 | review (2026-11-20: 4× PSRAM canvas, refresh policy; hardware pending) |
 | PD-03 | Two-button UI and read-only scope | P3 | M | PD-02 | review (2026-11-20: ButtonNav, focus ring, read-only refusals; hardware pending) |
-| PD-04 | Power, sleep and sync cadence | P3 | M | PD-03 | todo |
+| PD-04 | Power, sleep and sync cadence | P3 | M | PD-03 | review (2026-11-20: PaperCadence, shared REM-02 timer; hardware pending) |
 | PD-05 | Hardware pass and docs | P3 | M | PD-04 | todo |
 
 - **PD-01 — Board HAL and build target.** Add `TGC_BOARD_PAPERDIY`,
