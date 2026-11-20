@@ -382,7 +382,7 @@ void reviewDetailKey(const KeyEvent& e) {
         return;
     }
     if (e.key == Key::Right ||
-        (e.key == Key::Other && tgc::cardputerCharAt(e.x, e.y, false) == ' ')) {
+        (e.key == Key::Other && tgc::keyChar(e, false) == ' ')) {
         if (state().review.detailPage + 1 < state().review.detailPages) ++state().review.detailPage;
         state().display.gDirty = true;
     } else if (e.key == Key::Left || e.key == Key::Backspace) {
@@ -846,7 +846,7 @@ bool reviewKey(const KeyEvent& e) {
                    reviewWrongActionsEnabled()) {
             // REV-04: C accepts the failed part, A puts it back without a
             // mistake. Both undo the count the queue already recorded.
-            const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
+            const char c = tgc::keyChar(e, state().ui.gShift);
             state().review.feedbackCorrectAt = 0;
             if (c == 'c' || c == 'C') {
                 if (state().review.gQueue.undoLastIncorrect()) {
@@ -866,7 +866,7 @@ bool reviewKey(const KeyEvent& e) {
         } else if (state().review.gCheck.status == kk::AnswerStatus::Correct) {
             // REV-06: a printable key skips the delay and starts the next
             // answer; any other key cancels the timer for this frame.
-            const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
+            const char c = tgc::keyChar(e, state().ui.gShift);
             if (c) {
                 advanceFeedback();
                 if (kk::screenBase(state().screen) == Screen::Review && !state().review.feedback)
@@ -905,7 +905,7 @@ bool reviewKey(const KeyEvent& e) {
         state().display.gDirty = true;
         return true;
     }
-    const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
+    const char c = tgc::keyChar(e, state().ui.gShift);
     if (c) feedReviewChar(c);
     return true;
 }
@@ -947,7 +947,7 @@ void reviewSummaryKey(const KeyEvent& e) {
         return;
     }
     if (e.key != Key::Other) return;
-    const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
+    const char c = tgc::keyChar(e, state().ui.gShift);
     if ((c == 'r' || c == 'R') && !state().study.gPracticeActive &&
         kk::summaryCanNextBatch(static_cast<unsigned>(state().session.gDueReviews)))
         startReview();

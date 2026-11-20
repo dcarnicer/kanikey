@@ -162,13 +162,24 @@ void pushLog(const char* text) {
     snprintf(state().ui.gLog[2].text, sizeof state().ui.gLog[2].text, "%s", text);
 }
 
-void updateModifier(uint8_t x, uint8_t y, bool down) {
-    switch (tgc::cardputerModifierAt(x, y)) {
-        case tgc::Modifier::Shift: state().ui.gShift = down; break;
-        case tgc::Modifier::Fn: state().ui.gFn = down; break;
-        case tgc::Modifier::Ctrl: state().ui.gCtrl = down; break;
-        case tgc::Modifier::Opt: state().ui.gOpt = down; break;
-        case tgc::Modifier::Alt: state().ui.gAlt = down; break;
+void updateModifier(const KeyEvent& e) {
+    if (e.source != tgc::KeySource::Matrix) {
+        // A BLE/button event carries the whole held set, so replace it rather
+        // than toggling one key. Fn is matrix-only (HID has no Fn) and keeps
+        // whatever the matrix last set. Gui has no Cardputer key of its own;
+        // it follows Opt, the extra modifier the app already tracks.
+        state().ui.gShift = (e.mods & tgc::kModShift) != 0;
+        state().ui.gCtrl = (e.mods & tgc::kModCtrl) != 0;
+        state().ui.gOpt = (e.mods & tgc::kModGui) != 0;
+        state().ui.gAlt = (e.mods & tgc::kModAlt) != 0;
+        return;
+    }
+    switch (tgc::cardputerModifierAt(e.x, e.y)) {
+        case tgc::Modifier::Shift: state().ui.gShift = e.down; break;
+        case tgc::Modifier::Fn: state().ui.gFn = e.down; break;
+        case tgc::Modifier::Ctrl: state().ui.gCtrl = e.down; break;
+        case tgc::Modifier::Opt: state().ui.gOpt = e.down; break;
+        case tgc::Modifier::Alt: state().ui.gAlt = e.down; break;
         case tgc::Modifier::None: break;
     }
 }

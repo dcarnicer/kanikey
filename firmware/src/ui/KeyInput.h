@@ -1,12 +1,14 @@
 // From Tamagotcho (MIT, Copyright (c) 2026 Tamagotcho contributors).
 #pragma once
 // Keyboard input on boards with a keyboard (the Cardputer ADV; docs/decisions.md,
-// 2026-10-21). The app has no text entry: it tells a handful of keys apart and
-// turns each into one of five actions, which main.cpp maps to the current
-// screen's own (what the front tap, the front hold or the side button does
-// there). This header has which key a TCA8418 event is on the Cardputer ADV's
-// wiring, the key -> action table and the arrows' auto-repeat. Pure C++, no
-// Arduino (native-tested in test_keys); the TCA8418 itself is read in
+// 2026-10-21). The app tells a handful of keys apart and turns each into one of
+// five actions, which main.cpp maps to the current screen's own (what the front
+// tap, the front hold or the side button does there). It also has the text
+// entry seam: a source-neutral KeyEvent (matrix, BLE, button) and keyChar(),
+// so screens never read the matrix grid themselves. This header has which key a
+// TCA8418 event is on the Cardputer ADV's wiring, the key -> action table and
+// the arrows' auto-repeat. The BLE HID report mapping is wk/HidKeyboard.h. Pure
+// C++, no Arduino (native-tested in test_wk); the TCA8418 itself is read in
 // board/BoardCardputerAdv.cpp.
 #include <cstdint>
 
@@ -47,18 +49,36 @@ constexpr bool keyRepeats(Key k) {
            k == Key::Backspace;
 }
 
+// Where a key event came from. Matrix is the Cardputer ADV's TCA8418; Ble is
+// a Bluetooth HID keyboard; Button is a board key or a PaperDIY button. The
+// app treats every source the same once the event is in the queue.
+enum class KeySource : uint8_t { Matrix, Ble, Button };
+
+// KeyEvent::mods bits: the modifiers held when the event was made. Matrix
+// events leave this 0 (their modifier keys arrive as their own events and the
+// app tracks gShift/gCtrl/...); BLE events replace it from every HID report.
+constexpr uint8_t kModShift = 1u << 0;
+constexpr uint8_t kModCtrl = 1u << 1;
+constexpr uint8_t kModAlt = 1u << 2;
+constexpr uint8_t kModGui = 1u << 3;
+
 // A key going down or up. Key::None going up stands for every key (the board
-// lost events, e.g. its FIFO overflowed): nothing is held any more.
+// lost events, e.g. its FIFO overflowed or a BLE keyboard disconnected):
+// nothing is held any more.
 //
 // `code` is the TCA8418 key number (1-80) and `x`/`y` the printed grid
-// position. The app needs them for text entry and for the modifier keys, which
-// Key::Other alone cannot tell apart.
+// position; they stay matrix-only (0 for Ble/Button). `ch` is the unshifted US
+// character of a Ble/Button key (0 when none), and `mods` the kMod* bits held
+// at the event. Screens ask keyChar() instead of reading x/y or ch themselves.
 struct KeyEvent {
     Key key = Key::None;
     bool down = false;
     uint8_t code = 0;
     uint8_t x = 0;
     uint8_t y = 0;
+    char ch = 0;
+    uint8_t mods = 0;
+    KeySource source = KeySource::Matrix;
 };
 
 // ---------------------------------------------------------------- Cardputer
@@ -104,6 +124,9 @@ inline bool cardputerAdvEvent(uint8_t raw, KeyEvent* out) {
     out->code = raw & 0x7F;
     out->x = static_cast<uint8_t>(x);
     out->y = static_cast<uint8_t>(y);
+    out->ch = 0;
+    out->mods = 0;
+    out->source = KeySource::Matrix;
     return true;
 }
 
@@ -128,6 +151,47 @@ constexpr char cardputerCharAt(int x, int y, bool shift) {
     return shift ? kShift[y][x] : kNormal[y][x];
 }
 
+// The Shift layer of one unshifted US character. Letters, the digit row and
+// the punctuation keys the Cardputer and a US HID keyboard print. Unknown
+// characters are returned unchanged.
+constexpr char shiftedChar(char c) {
+    if (c >= 'a' && c <= 'z') return static_cast<char>(c - 'a' + 'A');
+    switch (c) {
+        case '1': return '!';
+        case '2': return '@';
+        case '3': return '#';
+        case '4': return '$';
+        case '5': return '%';
+        case '6': return '^';
+        case '7': return '&';
+        case '8': return '*';
+        case '9': return '(';
+        case '0': return ')';
+        case '`': return '~';
+        case '-': return '_';
+        case '=': return '+';
+        case '[': return '{';
+        case ']': return '}';
+        case '\\': return '|';
+        case ';': return ':';
+        case '\'': return '"';
+        case ',': return '<';
+        case '.': return '>';
+        case '/': return '?';
+        default: return c;
+    }
+}
+
+// The character a key event prints, with Shift applied exactly once. Matrix
+// events use the printed grid and the caller's live Shift state, as before.
+// Ble/Button events carry their own `ch` and modifier mask, so the passed
+// shiftHeld is ignored: a HID report is stateful and its Shift bit is the one
+// that was true when the key went down. 0 when the event prints nothing.
+constexpr char keyChar(const KeyEvent& e, bool shiftHeld) {
+    if (e.source == KeySource::Matrix) return cardputerCharAt(e.x, e.y, shiftHeld);
+    return (e.mods & kModShift) ? shiftedChar(e.ch) : e.ch;
+}
+
 // The modifier keys, by grid position. The app tracks their down/up state;
 // the TCA8418 reports them as ordinary keys.
 enum class Modifier : uint8_t { None, Shift, Fn, Ctrl, Opt, Alt };
@@ -142,11 +206,11 @@ constexpr Modifier cardputerModifierAt(int x, int y) {
 }
 
 // ---------------------------------------------------------------- repeat
-// Auto-repeat: a key that keyRepeats() accepts acts again kKeyRepeatDelayMs
-// after its press, then every kKeyRepeatRateMs, until it comes up or another
-// key goes down (only the last key pressed repeats, as on a PC). App::loop()
-// repeats a held Backspace in the review and lesson answer fields; Enter and
-// Esc never repeat.
+// Auto-repeat: a matrix key that keyRepeats() accepts acts again
+// kKeyRepeatDelayMs after its press, then every kKeyRepeatRateMs, until it
+// comes up or another key goes down (only the last key pressed repeats, as on
+// a PC). App::loop() repeats a held Backspace in the review and lesson answer
+// fields; Enter and Esc never repeat, and a BLE keyboard repeats itself.
 constexpr uint32_t kKeyRepeatDelayMs = 400;
 constexpr uint32_t kKeyRepeatRateMs = 120;
 
@@ -157,9 +221,24 @@ public:
         held_ = keyRepeats(k) ? k : Key::None;
         next_ = now + kKeyRepeatDelayMs;
     }
+    // A matrix event went down at `now`. BLE keyboards send their own repeat
+    // reports, so a non-matrix press never becomes a local repeat and also
+    // stops the matrix key that was repeating (the last key pressed owns the
+    // repeat, and a BLE key repeats itself).
+    void down(const KeyEvent& e, uint32_t now) {
+        if (e.source != KeySource::Matrix) {
+            held_ = Key::None;
+            return;
+        }
+        down(e.key, now);
+    }
     // A key came up; Key::None: every key.
     void up(Key k) {
         if (k == Key::None || k == held_) held_ = Key::None;
+    }
+    // A matrix key came up. A BLE release must not cancel a matrix repeat.
+    void up(const KeyEvent& e) {
+        if (e.source == KeySource::Matrix) up(e.key);
     }
     void cancel() { held_ = Key::None; }
     // The held arrow when a repeat is due at `now`, else Key::None. A late call

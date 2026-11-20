@@ -562,7 +562,7 @@ void outboxKey(const KeyEvent& e) {
             state().display.gDirty = true;
         }
     } else if (e.key == Key::Other) {
-        const char c = tgc::cardputerCharAt(e.x, e.y, state().ui.gShift);
+        const char c = tgc::keyChar(e, state().ui.gShift);
         if ((c == 'd' || c == 'D') && selectedOutboxItem()) {
             kk::screenPush(&state().screen, Modal::OutboxConfirm);
             state().outbox.gOutboxNote[0] = 0;
