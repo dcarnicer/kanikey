@@ -82,6 +82,50 @@ bool drawJapaneseFit(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const std::string&
     return false;
 }
 
+namespace {
+constexpr int kTailGap = 2;        // px between the kana and the romaji tail
+constexpr int kTailMaxWidth = 40;  // the tail keeps its last letters when longer
+}  // namespace
+
+bool drawReadingText(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const std::string& kana,
+                     const std::string& pending, int x, int y, int maxWidth, int latinY,
+                     bool alignRight, uint16_t fg, uint16_t latinFg, uint16_t bg,
+                     const kk::ClipRect& clip) {
+    const int right = x + maxWidth;
+    std::string tail = pending;
+    int tailW = 0;
+    if (!tail.empty()) {
+        ui::applyFont(d, ui::UiFont::Base);
+        trimFrontToWidth(d, tail, kTailMaxWidth);
+        tailW = d.textWidth(tail.c_str());
+    }
+    const int gap = tailW ? kTailGap : 0;
+    const int kanaMax = maxWidth - tailW - gap;
+    int kanaW = 0;
+    if (!kana.empty()) {
+        kanaW = pack.textWidth(kana, 20);
+        if (kanaW < 0) return false;
+    }
+    const bool leftFit = !alignRight && kanaW <= kanaMax;
+    // Where the kana ends: before the tail when right-aligned, after the kana
+    // when it fits on the left, and at the room left of the tail when it scrolls.
+    int kanaEnd = right - tailW - gap;
+    if (!alignRight && !kana.empty() && leftFit) kanaEnd = x + kanaW;
+    if (!alignRight && !kana.empty() && !leftFit) kanaEnd = x + kanaMax;
+    if (!kana.empty()) {
+        const bool drawn = leftFit ? pack.drawText(d, kana, x, y, 20, fg, bg, clip)
+                                   : pack.drawTextRight(d, kana, kanaEnd, y, 20, fg, bg, clip);
+        if (!drawn) return false;
+    }
+    if (tailW) {
+        const int tailX = (!alignRight && kana.empty()) ? x : kanaEnd + gap;
+        ui::applyFont(d, ui::UiFont::Base);
+        d.setTextColor(latinFg, bg);
+        d.drawString(tail.c_str(), tailX, latinY);
+    }
+    return true;
+}
+
 int drawReadingTokens(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
                       const std::vector<std::string>& tokens, int x, int y, int maxWidth,
                       int maxLines, uint16_t fg, uint16_t bg, const kk::ClipRect& clip) {

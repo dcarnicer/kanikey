@@ -1121,6 +1121,8 @@ void startSync() { startSyncJob(SyncKind::Full, true, false); }
 void startSyncAuto(SyncKind kind, bool coldBoot) { startSyncJob(kind, false, coldBoot); }
 
 void syncAdvance() {
+    // A queued review's writes come before any sync step can read the outbox.
+    flushPendingReviewWrites();
     SyncJobState& j = job();
     if (!j.active) return;
     if (!kk::DevToken::has()) {

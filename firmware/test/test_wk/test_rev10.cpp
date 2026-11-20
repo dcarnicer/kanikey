@@ -188,9 +188,50 @@ static void test_key_repeat_backspace() {
     TEST_ASSERT_TRUE(repeat.poll(4000) == tgc::Key::None);
 }
 
+// REV-10 display split: the kana is drawn at 20 px from the pack and the
+// unconverted romaji tail in Latin, so `ak` never reaches the pack as `あk`.
+void test_pending_romaji_split() {
+    PendingRomaji ak = typed("ak").split();
+    TEST_ASSERT_EQUAL_STRING("あ", ak.kana.c_str());
+    TEST_ASSERT_EQUAL_STRING("k", ak.pending.c_str());
+
+    PendingRomaji aka = typed("aka").split();
+    TEST_ASSERT_EQUAL_STRING("あか", aka.kana.c_str());
+    TEST_ASSERT_TRUE(aka.pending.empty());
+
+    PendingRomaji ky = typed("ky").split();
+    TEST_ASSERT_TRUE(ky.kana.empty());
+    TEST_ASSERT_EQUAL_STRING("ky", ky.pending.c_str());
+
+    PendingRomaji sh = typed("sh").split();
+    TEST_ASSERT_TRUE(sh.kana.empty());
+    TEST_ASSERT_EQUAL_STRING("sh", sh.pending.c_str());
+
+    // Finished syllables leave nothing pending, including n and the sokuon.
+    PendingRomaji kan = typed("kan").split();
+    TEST_ASSERT_EQUAL_STRING("かん", kan.kana.c_str());
+    TEST_ASSERT_TRUE(kan.pending.empty());
+    TEST_ASSERT_EQUAL_STRING("ん", typed("n").split().kana.c_str());
+    TEST_ASSERT_EQUAL_STRING("っ", typed("tt").split().kana.c_str());
+    TEST_ASSERT_TRUE(typed("shi").split().pending.empty());
+    TEST_ASSERT_TRUE(typed("").split().kana.empty());
+    TEST_ASSERT_TRUE(typed("").split().pending.empty());
+
+    // The helper takes text that is already converted, as the feedback does.
+    PendingRomaji direct = splitPendingRomaji("あk");
+    TEST_ASSERT_EQUAL_STRING("あ", direct.kana.c_str());
+    TEST_ASSERT_EQUAL_STRING("k", direct.pending.c_str());
+
+    // A stray letter in the middle is not a pending tail; it stays with the kana.
+    PendingRomaji stray = splitPendingRomaji("kあ");
+    TEST_ASSERT_EQUAL_STRING("kあ", stray.kana.c_str());
+    TEST_ASSERT_TRUE(stray.pending.empty());
+}
+
 }  // namespace
 
 void run_rev10_tests() {
+    RUN_TEST(test_pending_romaji_split);
     RUN_TEST(test_romaji_backspace_ta);
     RUN_TEST(test_romaji_backspace_tabe);
     RUN_TEST(test_romaji_backspace_n);

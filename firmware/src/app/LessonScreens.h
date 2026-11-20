@@ -72,6 +72,8 @@ struct LessonQuizView {
     kk::AnswerStatus status = kk::AnswerStatus::Incorrect;
     std::string message;
     std::string typed;
+    // REV-10: the unconverted romaji tail of a reading (see ReviewView).
+    std::string pending;
     // Accepted answers in display order. Reading lists may contain an empty
     // token as an on'yomi/kun'yomi group break.
     std::vector<std::string> answers;

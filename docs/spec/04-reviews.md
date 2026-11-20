@@ -60,6 +60,15 @@ at 64 bytes, including the serial `y` path. 15 new native tests (355 on the
 merged main); release 1,614,753 B (88.0%), dev 1,682,265 B (91.7%). The hold,
 clear, kana-unit and 64-byte checks remain on hardware.
 
+**Follow-up (2026-11-20, owner reviews).** A typed reading shows the kana at
+20 px (was 32 px, with a 20 px fallback) and the unconverted romaji tail in the
+UI font, so `ak` no longer shows `no glyph`; `splitPendingRomaji()` is the pure
+split and has a native test. The Enter → feedback path now queues the review in
+memory, draws the frame, and then writes the outbox file, the journal record and
+the cache snapshot, in that order, in the same loop tick and before any other
+key, sync step or send. Dev builds print `[perf]` lines for each step
+(`app/FeedbackTrace.h`). Hardware timing is still to be measured.
+
 **Implementation (2026-11-19, REV-04).** With R7 `rv.wrong` On, Incorrect
 feedback accepts `C` (undo the counted mistake, mark the part correct and
 advance) and `A` (undo the mistake, ask the part again later); the compact bar

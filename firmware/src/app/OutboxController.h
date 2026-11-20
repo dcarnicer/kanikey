@@ -10,7 +10,13 @@ namespace kk::app {
 bool outboxHasAssignment(uint32_t assignmentId);
 size_t outboxFreeSlots();
 void saveOutbox();
+// REV-10 latency: queueReviewLocal() and journalPractice() update memory at
+// once and queue their file writes; the writes run in flushPendingReviewWrites()
+// right after the feedback frame. deferCacheSnapshot() queues the snapshot
+// save the same way.
 bool queueReviewLocal(const kk::SessionItem& item);
+void deferCacheSnapshot();
+void flushPendingReviewWrites();
 // Sends one queued record now. False when it did not reach WaniKani (offline,
 // gate or rejection); the caller's send loop stops on the first failure.
 bool sendQueuedReview(uint32_t seq);

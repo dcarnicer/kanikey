@@ -42,6 +42,18 @@ bool drawJapaneseFit(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const std::string&
                      int right, int y, int maxWidth, uint16_t fg, uint16_t bg,
                      const kk::ClipRect& clip);
 
+// REV-10 reading line: the kana at 20 px followed by the unconverted romaji
+// tail (`pending`, for example the k of `ak`) in the UI font, so the tail is
+// never sent to the kana pack. alignRight keeps the end of a long answer in
+// view inside the answer box; otherwise the kana stays left when it fits and
+// scrolls right-aligned only when it does not (the feedback line). `y` is the
+// kana baseline, `latinY` the top of the tail. False when the pack lacks a kana
+// glyph; the caller draws the explicit `no glyph` state.
+bool drawReadingText(lgfx::LovyanGFX& d, kk::GlyphPack& pack, const std::string& kana,
+                     const std::string& pending, int x, int y, int maxWidth, int latinY,
+                     bool alignRight, uint16_t fg, uint16_t latinFg, uint16_t bg,
+                     const kk::ClipRect& clip);
+
 // Accepted reading tokens at 20 px, wrapping on token and group boundaries into
 // at most maxLines lines whose top is `y`. An empty token starts a new group
 // (drawn with a wider gap). Returns the number of lines drawn, 0 when there is
