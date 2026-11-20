@@ -105,8 +105,8 @@ truncated URL.
 
 The install needs enough contiguous heap for TLS. The review batch is evicted
 while the user is on Home and during lessons, and the UI canvas is released for
-the download, so a 3 MiB slot has comfortable headroom (the release image is
-1,664,816 B, about 1.66 MB, 53% of the slot). Before 2026-11-20 the slot was
+the download, so a 3 MiB slot has comfortable headroom (the v0.2.0 release image is
+1,665,120 B, about 1.67 MB, 53% of the slot). Before 2026-11-20 the slot was
 1.75 MiB and the same image still fitted it.
 
 ## Verification window
@@ -152,6 +152,8 @@ NVS under `fwfailver` / `fwfailcnt`.
   logged or included in an update.
 
 ## Release process
+
+The owner's publish steps are in [release-checklist.md](release-checklist.md).
 
 1. Bump `firmware/src/Version.h` and commit.
 2. Tag the commit `vX.Y.Z` and push the tag.

@@ -18,6 +18,8 @@ from firmware_manifest import (ManifestError, build_manifest, main, parse_slot_s
 ROOT = Path(__file__).resolve().parents[2]
 PARTITIONS = ROOT / "firmware" / "partitions" / "kanikey_8MB.csv"
 VERSION_H = ROOT / "firmware" / "src" / "Version.h"
+# The tag that matches Version.h, so the header-checked tests follow each bump.
+HEADER_TAG = f"v{version_from_header(VERSION_H)}"
 
 
 def app_image(size: int = 1024) -> bytes:
@@ -71,14 +73,14 @@ class FirmwareManifestTest(unittest.TestCase):
             data = app_image(2048)
             image.write_bytes(data)
             text = build_manifest(
-                version="v0.1.0",
+                version=HEADER_TAG,
                 env="cardputer-adv",
                 image=image,
                 partition_table=PARTITIONS,
                 check_version=VERSION_H,
             )
         self.assertIn("#kanikey-firmware\t1\n", text)
-        self.assertIn("version\tv0.1.0\n", text)
+        self.assertIn(f"version\t{HEADER_TAG}\n", text)
         self.assertIn("app\tcardputer-adv\tfirmware.bin\t2048\t", text)
         self.assertIn(hashlib.sha256(data).hexdigest(), text)
 
@@ -160,7 +162,7 @@ class FirmwareManifestTest(unittest.TestCase):
             image.write_bytes(app_image())
             with self.assertRaises(ManifestError):
                 build_manifest(
-                    version="v0.2.0",
+                    version="v9.9.9",
                     env="cardputer-adv",
                     image=image,
                     partition_table=PARTITIONS,

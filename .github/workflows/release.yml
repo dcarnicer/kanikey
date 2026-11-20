@@ -111,9 +111,7 @@ jobs:
             dist/SHA256SUMS
             dist/LICENSE
             dist/THIRD_PARTY_NOTICES.md
-          generate_release_notes: true
-          body: >-
-            This release includes the public font pack `glyphs.kgp` (Noto Sans
-            JP, OFL) for **Download pack** on the setup page. The pack contains
-            no WaniKani content.
+          # Curated notes per tag (docs/releases/<tag>.md); the release fails
+          # if the file is missing, so write it before tagging.
+          body_path: docs/releases/${{ github.ref_name }}.md
           fail_on_unmatched_files: true
