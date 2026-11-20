@@ -564,14 +564,16 @@ pio run -e cardputer-adv -t upload --upload-port /dev/cu.usbmodemXXXX
 ```
 
 This USB path is for a v0.1.0 device, whose active slot is `app0`. Do not use it
-to move a device that has already updated itself.
+to move a device that has already updated itself. It keeps the old partition
+table (LittleFS at 0x390000); the move to the 8 MB table is §7.3.
 
 ### 7.3 Moving a device to the 8 MB table (2026-11-20, developers)
 
 Since 2026-11-20 the table has two 3 MiB app slots and LittleFS starts at
-0x610000 (it was 0x390000). Only a USB flash can change the table, and a device
-on the old table can still take over-the-air updates until one of them is
-too large for its 1.75 MiB slot. This is a developer procedure: there are no
+0x610000 (it was 0x390000). Only a USB flash can change the table. A v0.1.0 device
+cannot take over-the-air updates at all (§7.2). A device on the old table that
+already runs a newer image can take an over-the-air update while the image fits
+its 1.75 MiB slot, and it stays on the old table. This is a developer procedure: there are no
 users and no migration. A device that moves loses its old LittleFS state, which
 holds the unsent outbox, the streak journal, the practice stats and the cache.
 Sync first if you need the outbox.
@@ -613,6 +615,10 @@ Enter: format  Esc: continue
 `Enter` formats the LittleFS (1.94 MiB); `Esc` keeps running without storage
 (no outbox and no cache). The prompt is kept for data that exists but cannot be
 read, so a failed mount never wipes unsent reviews without asking.
+
+**A brand-new device** needs no erase. `pio run -e cardputer-adv -t upload
+--upload-port /dev/cu.usbmodemXXXX` alone writes the bootloader, the table,
+`boot_app0` and the app, and the blank LittleFS formats on first boot.
 
 `esptool` arguments: `erase_region <address> <size>` in esptool 4.9.0
 (`~/.platformio/packages/tool-esptoolpy`). The same arguments work with
@@ -728,8 +734,8 @@ The token, cache and outbox are not affected by a Wi-Fi change.
 - It does not ship WaniKani content. Meanings, readings, mnemonics and radical
   images are requested with your token and stored on your card. The public font
   pack contains no WaniKani content; a radical pack built from your account is
-  personal and must not be published or shared. Vocabulary audio is not played
-  yet (see §12).
+  personal and must not be published or shared. Vocabulary audio is MP3 only
+  (see §12).
 - It does not support phones, watches or other boards. This firmware is for the
   Cardputer ADV only.
 - It does not provide a forum, community, push notifications, an app store
@@ -747,8 +753,10 @@ These are future plans, not features you can use today:
   images. The setup page can download the published public font pack and accept
   a prepared radical pack, but it does not build either from a character list.
 - On-device rendering of characters that are not in the pack.
-- Vocabulary pronunciation playback and stroke order. The firmware can parse
-  pronunciation metadata, but playback is not enabled yet.
+- Stroke order, and playback of OGG clips (only MP3 clips play). Vocabulary
+  audio plays with `R` on a lesson card; **Autoplay audio** (Settings › Reminders
+  & sound, off by default) plays it at the reading point. Playback has not been
+  checked by ear yet.
 
 ---
 

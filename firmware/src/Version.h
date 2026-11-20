@@ -9,6 +9,6 @@ namespace kk {
 // the rollback record see a different version.
 constexpr const char* kFirmwareVersion = KANIKEY_DEV_VERSION;
 #else
-constexpr const char* kFirmwareVersion = "0.1.0";
+constexpr const char* kFirmwareVersion = "0.2.0";
 #endif
 }  // namespace kk
