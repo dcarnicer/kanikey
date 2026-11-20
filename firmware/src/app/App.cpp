@@ -52,6 +52,7 @@
 #include "platform/DeviceSettings.h"
 #include "platform/DevToken.h"
 #include "platform/DevWifi.h"
+#include "app/RemProbe.h"
 #include "platform/AudioCache.h"
 #include "platform/CriticalStore.h"
 #include "platform/GlyphPack.h"
@@ -921,6 +922,10 @@ void setup() {
     ensureCanvas();
     kk::wkSetRequestHooks(requestBefore, requestAfter);
     firmwareBoot();
+#ifdef KANIKEY_DEV
+    // REM-01 probe: a repeat run sleeps here, before storage, Wi-Fi and sync.
+    remBootProbe();
+#endif
 
     Serial.printf("\n[kk] KaniKey boot\n");
     Serial.printf("[kk] version %s (%s)\n", kk::kFirmwareVersion, kk::ota::buildEnv());
@@ -971,6 +976,9 @@ void setup() {
     Serial.println("[kk] first draw");
     draw();
     Serial.println("[kk] first draw done");
+#ifdef KANIKEY_DEV
+    remNoteBootReady();
+#endif
     state().display.gDirty = false;
     state().display.gLastDrawMs = millis();
 

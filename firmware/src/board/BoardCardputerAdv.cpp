@@ -307,7 +307,7 @@ void setDisplayOn(bool on) {
     }
 }
 
-void deepSleep() {
+void deepSleep(uint64_t timerUs) {
     M5.Display.setBrightness(0);
     M5.Display.sleep();
     M5.Display.waitDisplay();
@@ -324,6 +324,7 @@ void deepSleep() {
         rtc_gpio_pulldown_dis(kKbdIntPin);
     }
     esp_sleep_enable_ext1_wakeup(mask, ESP_EXT1_WAKEUP_ANY_LOW);
+    if (timerUs) esp_sleep_enable_timer_wakeup(timerUs);
     Serial.flush();
     esp_deep_sleep_start();
 }
