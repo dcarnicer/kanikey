@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdio>
 
+#include "ui/HintBar.h"
 #include "ui/Text.h"
 #include "ui/UiFont.h"
 #include "ui/Widgets.h"
@@ -777,7 +778,17 @@ void drawReviewSummaryScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
         return;
     }
     d.setTextColor(ui::kFaint, ui::kBg);
-    d.drawString(view.canNextBatch ? "Enter: home  R: next batch" : "Enter: home", 8, 125);
+    // REV-11: the stats view names the key that opens the mistake list, so the
+    // list is discoverable without the help table.
+    const char* hint;
+    if (view.items.empty())
+        hint = view.canNextBatch ? "Enter: home  R: next batch" : "Enter: home";
+    else if (view.canNextBatch)
+        hint = ui::fitHint(d, {"Enter: home  Tab: mistakes  R: next", "Enter  Tab: mistakes  R: next",
+                               "Enter  Tab  R: next batch"});
+    else
+        hint = ui::fitHint(d, {"Enter: home  Tab: mistakes", "Enter  Tab: mistakes"});
+    d.drawString(hint, 8, 125);
 }
 
 }  // namespace kk::app
