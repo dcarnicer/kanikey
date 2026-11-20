@@ -1567,7 +1567,7 @@ static void test_audio_heap_admission_rule() {
     // Device sizes (xtensa sizeof, rounded to 8): decoder state 6,668 -> 6,672,
     // decode scratch 16,236 -> 16,240; window 4,096; two mono PCM buffers 2,304.
     const size_t mono[] = {6672, 16240, 4096, 2304, 2304};
-    const size_t monoFree = 31616 + kAudioAdmitFreeMargin;  // 43,904
+    const size_t monoFree = 31616 + kAudioAdmitFreeMargin;  // 39,808
     const size_t monoLargest = 16240 + kAudioAdmitLargestMargin;  // 20,336
     TEST_ASSERT_TRUE(audioAdmitsPieces(monoFree, monoLargest, mono, 5));
     TEST_ASSERT_FALSE(audioAdmitsPieces(monoFree - 1, monoLargest, mono, 5));
@@ -1581,7 +1581,7 @@ static void test_audio_heap_admission_rule() {
     // the scratch + 4 KB.
     TEST_ASSERT_FALSE(audioAdmitsPieces(48968, 17396, mono, 5));
     // Enough largest block but too little free memory overall is refused too.
-    TEST_ASSERT_FALSE(audioAdmitsPieces(43000, 51188, mono, 5));
+    TEST_ASSERT_FALSE(audioAdmitsPieces(39000, 51188, mono, 5));
     // Measured in a real review (feedback R): free 50,516 / largest 27,636,
     // and ~47 KB free with the clip file open.
     TEST_ASSERT_TRUE(audioAdmitsPieces(50516, 27636, mono, 5));
@@ -1590,6 +1590,8 @@ static void test_audio_heap_admission_rule() {
     const size_t stereo[] = {6672, 16240, 4096, 4608, 4608};
     TEST_ASSERT_TRUE(audioAdmitsPieces(36224 + kAudioAdmitFreeMargin, monoLargest, stereo, 5));
     TEST_ASSERT_FALSE(audioAdmitsPieces(36224 + kAudioAdmitFreeMargin - 1, monoLargest, stereo, 5));
+    // Measured in a review: a stereo clip at free 47,408 / largest 27,636 (file open).
+    TEST_ASSERT_TRUE(audioAdmitsPieces(47408, 27636, stereo, 5));
 }
 
 static void test_audio_failure_marks_only_content_bad() {

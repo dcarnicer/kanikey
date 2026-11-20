@@ -351,6 +351,36 @@ static void test_feedback_note_lines_per_status() {
     TEST_ASSERT_TRUE(feedbackNoteLines(nullptr, true, AnswerStatus::Correct, "Correct").empty());
 }
 
+// Owner report 2026-11-20: a wrong meaning showed the reading through a hint
+// that spells it in kana. Synthetic text, not WaniKani content.
+static void test_feedback_meaning_notes_hide_kana_until_the_reading() {
+    TEST_ASSERT_TRUE(containsKana("Think of \xe3\x81\x8f\xe3\x81\xb3 here"));  // くび
+    TEST_ASSERT_TRUE(containsKana("\xe3\x82\xab"));                               // カ
+    TEST_ASSERT_FALSE(containsKana("Kanji \xe9\xa6\x96 alone"));                  // 首
+    TEST_ASSERT_FALSE(containsKana("plain"));
+
+    Subject s;
+    s.meaningHint = "Say \xe3\x81\x8f\xe3\x81\xb3 aloud. More.";  // くび
+    s.meaningNote = "My note";
+    // Reading still to come: the hint with kana falls back to the note.
+    std::vector<std::string> lines =
+        feedbackNoteLines(&s, true, AnswerStatus::Incorrect, "Incorrect meaning", true);
+    TEST_ASSERT_EQUAL_UINT(1, lines.size());
+    TEST_ASSERT_EQUAL_STRING("My note", lines[0].c_str());
+    // Without the flag (reading already answered) the hint stays.
+    lines = feedbackNoteLines(&s, true, AnswerStatus::Incorrect, "Incorrect meaning", false);
+    TEST_ASSERT_EQUAL_STRING("Say \xe3\x81\x8f\xe3\x81\xb3 aloud.", lines[0].c_str());
+    // A note with kana is dropped too, on wrong and on correct.
+    s.meaningNote = "\xe3\x81\x8f\xe3\x81\xb3";
+    TEST_ASSERT_TRUE(
+        feedbackNoteLines(&s, true, AnswerStatus::Incorrect, "Incorrect meaning", true).empty());
+    TEST_ASSERT_TRUE(feedbackNoteLines(&s, true, AnswerStatus::Correct, "Correct", true).empty());
+    // A hint without kana is kept.
+    s.meaningHint = "Think of a neck.";
+    lines = feedbackNoteLines(&s, true, AnswerStatus::Incorrect, "Incorrect meaning", true);
+    TEST_ASSERT_EQUAL_STRING("Think of a neck.", lines[0].c_str());
+}
+
 // ------------------------------------------------------------ scroll window
 
 static void test_feedback_scroll_bounds_and_keys() {
@@ -415,6 +445,7 @@ void run_feedback_tests() {
     RUN_TEST(test_feedback_long_answer_list_is_all_there_and_scrolls);
     RUN_TEST(test_feedback_long_mnemonic_wraps_in_full);
     RUN_TEST(test_feedback_note_lines_per_status);
+    RUN_TEST(test_feedback_meaning_notes_hide_kana_until_the_reading);
     RUN_TEST(test_feedback_scroll_bounds_and_keys);
     RUN_TEST(test_feedback_row_visibility_window);
     RUN_TEST(test_feedback_thumb_geometry);

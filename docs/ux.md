@@ -719,6 +719,10 @@ first with the shuffle kept inside each level.
   - The first sentence of the part's hint, else the user's note, shown in full
     (wrapped, scrollable); never the generic `Incorrect meaning` /
     `Incorrect reading` line.
+  - Meaning feedback never gives away a reading still to be asked: while the
+    item's reading part is pending, a hint or note line with kana is left out
+    (the hint falls back to the note; `Tab` still shows everything). Owner
+    report, 2026-11-20: WaniKani hints can spell the reading in kana.
 - **REV-02 typo policy (2026-11-19).** With R6 `Typos = WaniKani` (default), a
   close meaning of at least four characters is **Correct**, with
   `Close: <answer>` on the note line and no mistake; the part completes and R8

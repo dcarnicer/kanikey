@@ -329,11 +329,20 @@ bool audioPlayerPlay(const Subject& subject, uint8_t voice) {
         return false;
     }
     if (channels == 2) {
+        // Release the mono PCM buffers before the check, so admission sees the
+        // real stereo set (state + scratch + window + 2 stereo buffers) and not
+        // the mono buffers on top of it (seen refusing a stereo clip at 47 KB
+        // free in a review, 2026-11-20).
+        if (gPlayer.pcm[0]) heap_caps_free(gPlayer.pcm[0]);
+        if (gPlayer.pcm[1]) heap_caps_free(gPlayer.pcm[1]);
+        gPlayer.pcm[0] = gPlayer.pcm[1] = nullptr;
         const size_t stereoPcm[] = {pcmBytes(2), pcmBytes(2)};
         if (!admit(stereoPcm, 2) || !allocPieces(2)) {
+            Serial.printf("[audio] no heap: stereo, free %u, largest %u\n",
+                          static_cast<unsigned>(heap_caps_get_free_size(kHeapCaps)),
+                          static_cast<unsigned>(heap_caps_get_largest_free_block(kHeapCaps)));
             freePieces();
             gPlayer.file.close();
-            Serial.println("[audio] no heap: stereo");
             failClip(subject.id, voice, AudioFailure::NoHeap);
             return false;
         }

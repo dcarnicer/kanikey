@@ -49,11 +49,12 @@ inline bool audioFailureMarksBad(AudioFailure failure) {
 // Heap admission for the playback pieces (AUD-03). The request is admitted only
 // when the free total leaves kAudioAdmitFreeMargin beside the pieces and the
 // largest free block holds the biggest piece plus kAudioAdmitLargestMargin.
-// 12 KB: in a review the heap measured ~50-51 KB free / 27.6 KB largest
-// (2026-11-20; a bit less once the clip file is open) and 24 KB, then 16 KB,
-// refused every R there. Playback does no TLS, a background sync step waits
-// while a clip plays, and the pieces are freed about a second later.
-inline constexpr size_t kAudioAdmitFreeMargin = 12 * 1024;
+// 8 KB: in a review the heap measured 47-51 KB free / 27.6 KB largest
+// (2026-11-20, clip file open). 24, 16 and then 12 KB refused R there, the
+// last one on a stereo clip (36,224 B set). Playback does no TLS, a background
+// sync step waits while a clip plays, a review's file writes run right after
+// its feedback frame, and the pieces are freed about a second later.
+inline constexpr size_t kAudioAdmitFreeMargin = 8 * 1024;
 inline constexpr size_t kAudioAdmitLargestMargin = 4 * 1024;
 bool audioAdmitsPieces(size_t freeTotal, size_t largest, const size_t* pieces, size_t count);
 

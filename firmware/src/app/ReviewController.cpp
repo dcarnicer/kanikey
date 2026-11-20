@@ -315,6 +315,7 @@ void showReview() {
     view.part = part;
     view.feedback = state().review.feedback;
     view.feedbackScroll = &state().review.feedbackScroll;
+    view.hideKana = state().review.feedback && state().review.feedbackHideKana;
     int headerInfo = 0;
     view.minimalHeader =
         kk::settingsGetInt("rv.header", &headerInfo) && headerInfo == 1;
@@ -599,6 +600,10 @@ void checkCurrent() {
     state().review.feedback = true;
     state().review.feedbackCompleted = false;
     state().review.feedbackScroll = 0;  // a new answer starts at the top
+    // Decided before the queue moves on: a meaning answer whose item still has
+    // its reading to come must not show that reading in the notes.
+    state().review.feedbackHideKana =
+        meaning && item->needsReading && !item->readingDone;
     // REV-11: the summary can show the last text the user typed wrong for each
     // part. Record it before the queue moves to the other part.
     if (state().review.gCheck.status == kk::AnswerStatus::Incorrect)

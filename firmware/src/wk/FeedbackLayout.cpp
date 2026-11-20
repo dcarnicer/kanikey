@@ -37,6 +37,13 @@ bool isJapanese(uint32_t cp) {
            (cp >= 0xFF00 && cp <= 0xFFEF);
 }
 
+// Hiragana, katakana (and its phonetic extensions and half-width forms): a
+// reading. Kanji alone is not one.
+bool isKana(uint32_t cp) {
+    return (cp >= 0x3041 && cp <= 0x30FF) || (cp >= 0x31F0 && cp <= 0x31FF) ||
+           (cp >= 0xFF66 && cp <= 0xFF9D);
+}
+
 // End of the longest prefix text[begin, end) that measures <= avail, on a code
 // point boundary. Returns begin when not even one code point fits.
 size_t fitEnd(std::string_view text, size_t begin, int avail, FeedbackFace face,
@@ -234,8 +241,18 @@ std::vector<FeedbackPiece> buildFeedbackPieces(const FeedbackContent& c) {
     return out;
 }
 
+bool containsKana(std::string_view text) {
+    size_t i = 0;
+    while (i < text.size()) {
+        const size_t n = seqLen(text, i);
+        if (isKana(codePointAt(text, i, n))) return true;
+        i += n;
+    }
+    return false;
+}
+
 std::vector<std::string> feedbackNoteLines(const Subject* s, bool meaning, AnswerStatus status,
-                                           const std::string& message) {
+                                           const std::string& message, bool hideKana) {
     std::vector<std::string> lines;
     if (status == AnswerStatus::Warning) {
         if (!message.empty()) lines.push_back(message);
@@ -244,17 +261,22 @@ std::vector<std::string> feedbackNoteLines(const Subject* s, bool meaning, Answe
     if (!s) return lines;
     const std::string& hint = meaning ? s->meaningHint : s->readingHint;
     const std::string& note = meaning ? s->meaningNote : s->readingNote;
+    // A line that would show kana while the reading is still to be asked is
+    // left out (the detail card still has it).
+    const auto allowed = [hideKana](const std::string& text) {
+        return !text.empty() && !(hideKana && containsKana(text));
+    };
     if (status == AnswerStatus::Incorrect) {
         const std::string sentence = firstSentence(hint);
-        if (!sentence.empty())
+        if (allowed(sentence))
             lines.push_back(sentence);
-        else if (!note.empty())
+        else if (allowed(note))
             lines.push_back(note);
         return lines;
     }
     // Correct: the checker line (REV-02 close note), then the user's note.
     if (!message.empty() && message != "Correct") lines.push_back(message);
-    if (!note.empty()) lines.push_back((meaning ? "Note: " : "Reading note: ") + note);
+    if (allowed(note)) lines.push_back((meaning ? "Note: " : "Reading note: ") + note);
     return lines;
 }
 

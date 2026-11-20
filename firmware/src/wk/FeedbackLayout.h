@@ -139,7 +139,15 @@ std::vector<FeedbackPiece> buildFeedbackPieces(const FeedbackContent& content);
 // the first sentence of the part's hint, else the user's note; a warning shows
 // only the checker message, which never names the answer. Empty without a
 // subject, except the warning message.
+// `hideKana`: the meaning feedback of an item whose reading is still to be
+// asked. WaniKani hints sometimes spell the reading in kana (and kana now draw
+// at 20 px), so any line with kana is left out: the hint falls back to the note
+// and a note with kana is dropped (owner report, 2026-11-20).
 std::vector<std::string> feedbackNoteLines(const Subject* subject, bool meaning,
-                                           AnswerStatus status, const std::string& message);
+                                           AnswerStatus status, const std::string& message,
+                                           bool hideKana = false);
+
+// True when `text` holds hiragana or katakana.
+bool containsKana(std::string_view text);
 
 }  // namespace kk

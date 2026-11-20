@@ -150,6 +150,9 @@ struct ReviewState {
     // REV-01/03: Up/Down offset of the feedback body in px. Reset by each new
     // answer (checkCurrent); the draw clamps it to the content.
     int feedbackScroll = 0;
+    // Meaning feedback while the item's reading is still to be asked: the
+    // notes leave out any line with kana so the reading is not given away.
+    bool feedbackHideKana = false;
     bool gNeedsSubmit = false;
     // Outbox record queued by the last completion; keeps its journal patch
     // paired with the POST (SPEED-01 sends tracked records in a loop).

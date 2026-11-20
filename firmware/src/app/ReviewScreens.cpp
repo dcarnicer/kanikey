@@ -68,7 +68,7 @@ kk::FeedbackContent feedbackContent(const ReviewView& view) {
     c.answers = view.answers;
     c.synonyms = view.synonyms;
     c.notes = kk::feedbackNoteLines(view.subject, view.part == kk::ReviewPart::Meaning,
-                                    view.status, view.message);
+                                    view.status, view.message, view.hideKana);
     return c;
 }
 

@@ -54,6 +54,7 @@ struct ReviewView {
     // REV-01/03: the feedback body's Up/Down offset (px). Read and clamped by
     // the draw; the controller owns the value. Null outside feedback.
     int* feedbackScroll = nullptr;
+    bool hideKana = false;  // see ReviewState::feedbackHideKana
 };
 
 // Draws the review prompt or feedback frame into d. `fontPack` draws glyphs;
