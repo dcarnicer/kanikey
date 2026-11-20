@@ -263,6 +263,25 @@ void requestAfter() {
     if (ensureCanvas()) gCanvasReleasedForRequest = false;
 }
 
+// A canvas released for a request is restored once, when the request or the
+// session ends. If the heap was fragmented right then (after a review's send
+// loop the largest block was ~27.6 KB), it stayed in direct drawing for good
+// even after the heap recovered (seen on hardware 2026-11-20). Retry every 5 s
+// once a big enough block exists and no API session is open.
+void canvasRecoveryTick(uint32_t now) {
+    static uint32_t lastTry = 0;
+    if (!gCanvasReleasedForRequest || state().display.gCanvas || kk::wkSessionActive()) return;
+    if (now - lastTry < 5000) return;
+    lastTry = now;
+    const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (largest < 34u * 1024u) return;
+    if (ensureCanvas()) {
+        gCanvasReleasedForRequest = false;
+        state().display.gDirty = true;
+        Serial.printf("[kk] canvas restored (largest %u)\n", static_cast<unsigned>(largest));
+    }
+}
+
 const char* keyName(Key k) {
     switch (k) {
         case Key::Up: return "Up";

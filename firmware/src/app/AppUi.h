@@ -23,6 +23,9 @@ bool ensureCanvas();
 void releaseCanvas();
 void requestBefore();
 void requestAfter();
+// Retries a canvas that could not be restored after a request (heap too
+// fragmented then); call once per loop.
+void canvasRecoveryTick(uint32_t now);
 
 const char* keyName(tgc::Key k);
 void pushLog(const char* text);

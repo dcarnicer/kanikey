@@ -1296,6 +1296,7 @@ void loop() {
     // REM-03: advances a running sound cue. Before any early return below, so a
     // cue finishes even while the panel is blank.
     kk::sound::soundTick(millis());
+    canvasRecoveryTick(millis());
     handleSerial();
     // The portal closes itself after 15 idle minutes; leave Screen::Setup set
     // until here so the hooks can keep their own messages.

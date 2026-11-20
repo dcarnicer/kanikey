@@ -98,7 +98,9 @@ void finishSuccess(WifiState& wifi) {
         drawLoading("Wi-Fi connected", ssid.c_str());
         continueBootAfterStorage();
     } else {
-        snprintf(state().ui.gSettingsNote, sizeof state().ui.gSettingsNote, "Wi-Fi: %s",
+        // The owner read the bare "Wi-Fi: <ssid>" as no confirmation at all
+        // (2026-11-20); say what happened.
+        snprintf(state().ui.gSettingsNote, sizeof state().ui.gSettingsNote, "Connected to %s",
                  ssid.c_str());
         state().ui.gSettingsNoteColor = kOk;
     }

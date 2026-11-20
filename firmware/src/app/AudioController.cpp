@@ -123,8 +123,17 @@ DrainResult drainOne(bool screenIdle, uint32_t spacingMs, uint32_t handshakeSec)
     const bool savedFree = state().ui.gFreeCanvasForRequest;
     state().ui.gFreeCanvasForRequest = true;
     requestBefore();
-    const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    const size_t total = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    size_t total = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    // Home does not need the review batch in RAM (a review reloads it from the
+    // card), and a fresh 20-item batch kept the largest block at ~41 KB on
+    // hardware. Put it on disk before giving up on the heap.
+    if (!kk::audioDrainHeapOk(largest, total) && screenIdle &&
+        (!state().cache.gBatch.subjects.empty() || !state().cache.gBatch.assignments.empty())) {
+        evictCachedBatch(true);
+        largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        total = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    }
     DrainResult result = DrainResult::Refused;
     if (!kk::audioDrainHeapOk(largest, total)) {
         gDrainRefused = true;
