@@ -72,10 +72,13 @@ bool audioAutoplayWanted(bool settingOn, bool onReadingPage, SubjectType type, b
 // version, Layer III, a valid bitrate and sample-rate index.
 int mp3FirstFrameChannels(const uint8_t* p, size_t n);
 
-// AUD-02 download choice: the preferred voice's MP3 clip first, then the other
-// voice's MP3 clip. Only an explicit audio/mpeg (or mp3) content type counts;
-// OGG and unknown types are never downloaded. False when there is no MP3 clip.
+// AUD-02 download choice. A clip that speaks `reading` (the subject's primary
+// reading) comes first, in the preferred voice and then the other one; only
+// when no clip speaks it does any MP3 clip count, preferred voice first (owner
+// report 2026-11-20: 近々 played きんきん, an accepted but not the primary
+// reading). Only an explicit audio/mpeg (or mp3) content type counts; OGG and
+// unknown types are never downloaded. False when there is no MP3 clip.
 bool audioPickDownload(const std::vector<AudioClip>& clips, uint8_t preferredVoice,
-                       size_t* index);
+                       const std::string& reading, size_t* index);
 
 }  // namespace kk

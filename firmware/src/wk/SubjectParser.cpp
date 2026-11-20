@@ -141,7 +141,9 @@ public:
                     current_.blacklist.push_back(std::move(auxMeaning_));
             }
         } else if (kind == ObjKind::Audio) {
-            if (details_ && !currentAudio_.url.empty() && current_.audios.size() < 4)
+            if (details_ && !currentAudio_.url.empty() &&
+                audioClipIsMp3(currentAudio_.contentType) &&
+                current_.audios.size() < kMaxSubjectAudioClips)
                 current_.audios.push_back(std::move(currentAudio_));
         } else if (kind == ObjKind::Item) {
             if (active_ && hasSubjectData_ && current_.id) out_->push_back(std::move(current_));
@@ -239,7 +241,10 @@ public:
                 default: break;
             }
         } else if (depth_ == 7 && objectKind_[7] == ObjKind::AudioMeta) {
-            if (key == "gender") pending_ = Key::AudioGender;
+            if (key == "gender")
+                pending_ = Key::AudioGender;
+            else if (key == "pronunciation")
+                pending_ = Key::AudioPronunciation;
         }
         return true;
     }
@@ -256,6 +261,7 @@ public:
                 currentAudio_.contentType = std::string(value);
         } else if (depth_ == 7 && objectKind_[7] == ObjKind::AudioMeta) {
             if (pending_ == Key::AudioGender && value == "male") currentAudio_.voice = 1;
+            if (pending_ == Key::AudioPronunciation) currentAudio_.pronunciation = std::string(value);
         } else if (depth_ == 5 && arrayKind_[5] == ArrayKind::PartsOfSpeech) {
             if (details_ && !value.empty() && current_.partsOfSpeech.size() < 8)
                 current_.partsOfSpeech.emplace_back(value);
@@ -364,6 +370,7 @@ private:
         AudioContentType,
         AudioMetadata,
         AudioGender,
+        AudioPronunciation,
         Characters,
         Meanings,
         Readings,
@@ -606,7 +613,7 @@ std::vector<Subject> parseSubjects(const JsonValue& root, bool details) {
             if (const JsonValue* audios = d->find("pronunciation_audios");
                 audios && audios->isArray()) {
                 for (const JsonValue& a : audios->array) {
-                    if (s.audios.size() >= 4) break;
+                    if (s.audios.size() >= kMaxSubjectAudioClips) break;
                     AudioClip clip;
                     if (const JsonValue* url = a.find("url"); url && url->isString())
                         clip.url = url->string;
@@ -618,8 +625,11 @@ std::vector<Subject> parseSubjects(const JsonValue& root, bool details) {
                         if (const JsonValue* gender = meta->find("gender");
                             gender && gender->isString() && gender->string == "male")
                             clip.voice = 1;
+                        if (const JsonValue* p = meta->find("pronunciation"); p && p->isString())
+                            clip.pronunciation = p->string;
                     }
-                    if (!clip.url.empty()) s.audios.push_back(std::move(clip));
+                    if (!clip.url.empty() && audioClipIsMp3(clip.contentType))
+                        s.audios.push_back(std::move(clip));
                 }
             }
         }

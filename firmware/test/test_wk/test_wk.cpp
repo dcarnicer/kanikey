@@ -1659,23 +1659,50 @@ static void test_audio_pick_download_mp3_first() {
     clips[2].voice = 1;
     size_t index = 99;
     // Preferred female voice: its MP3, never its OGG sibling.
-    TEST_ASSERT_TRUE(audioPickDownload(clips, 0, &index));
+    TEST_ASSERT_TRUE(audioPickDownload(clips, 0, "", &index));
     TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(index));
     // Preferred male voice has an MP3.
-    TEST_ASSERT_TRUE(audioPickDownload(clips, 1, &index));
+    TEST_ASSERT_TRUE(audioPickDownload(clips, 1, "", &index));
     TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(index));
     // Preferred voice only has OGG: fall back to the other voice's MP3.
     clips[1].contentType = "audio/ogg";
-    TEST_ASSERT_TRUE(audioPickDownload(clips, 0, &index));
+    TEST_ASSERT_TRUE(audioPickDownload(clips, 0, "", &index));
     TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(index));
     // OGG only, or an MP3 with no URL: nothing to download.
     clips[2].contentType = "audio/ogg";
-    TEST_ASSERT_FALSE(audioPickDownload(clips, 0, &index));
+    TEST_ASSERT_FALSE(audioPickDownload(clips, 0, "", &index));
     clips[2].contentType = "audio/mpeg";
     clips[2].url.clear();
-    TEST_ASSERT_FALSE(audioPickDownload(clips, 0, &index));
-    TEST_ASSERT_FALSE(audioPickDownload({}, 0, &index));
-    TEST_ASSERT_FALSE(audioPickDownload(clips, 0, nullptr));
+    TEST_ASSERT_FALSE(audioPickDownload(clips, 0, "", &index));
+    TEST_ASSERT_FALSE(audioPickDownload({}, 0, "", &index));
+    TEST_ASSERT_FALSE(audioPickDownload(clips, 0, "", nullptr));
+}
+
+// Owner report 2026-11-20: a two-reading word played the other reading. The
+// clip that speaks the primary reading wins over the voice preference.
+static void test_audio_pick_download_primary_reading() {
+    std::vector<AudioClip> clips(4);
+    const char* say[] = {"\xe3\x81\x8d", "\xe3\x81\x8d", "\xe3\x81\xa1", "\xe3\x81\xa1"};  // き き ち ち
+    for (size_t i = 0; i < clips.size(); ++i) {
+        clips[i].url = "https://a/" + std::to_string(i);
+        clips[i].contentType = "audio/mpeg";
+        clips[i].voice = static_cast<uint8_t>(i % 2);
+        clips[i].pronunciation = say[i];
+    }
+    size_t index = 99;
+    TEST_ASSERT_TRUE(audioPickDownload(clips, 1, "\xe3\x81\xa1", &index));
+    TEST_ASSERT_EQUAL_UINT32(3, static_cast<uint32_t>(index));
+    TEST_ASSERT_TRUE(audioPickDownload(clips, 0, "\xe3\x81\xa1", &index));
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(index));
+    // Only the other voice speaks the primary reading: the reading wins.
+    clips[2].pronunciation = "\xe3\x81\x8d";
+    TEST_ASSERT_TRUE(audioPickDownload(clips, 0, "\xe3\x81\xa1", &index));
+    TEST_ASSERT_EQUAL_UINT32(3, static_cast<uint32_t>(index));
+    // No clip speaks it (or no reading known): any MP3, preferred voice first.
+    TEST_ASSERT_TRUE(audioPickDownload(clips, 0, "\xe3\x81\xbb", &index));
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(index));
+    TEST_ASSERT_TRUE(audioPickDownload(clips, 1, "", &index));
+    TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(index));
 }
 
 
@@ -2266,9 +2293,11 @@ static void test_subject_audio_parse() {
         "level":1,"characters":"日本",
         "pronunciation_audios":[
           {"url":"https://example.test/female.mp3","content_type":"audio/mpeg",
-           "metadata":{"gender":"female","voice_actor_name":"Kyoko"}},
+           "metadata":{"gender":"female","voice_actor_name":"Kyoko","pronunciation":"にほん"}},
           {"url":"https://example.test/male.ogg","content_type":"audio/ogg",
-           "metadata":{"gender":"male"}}]
+           "metadata":{"gender":"male","pronunciation":"にほん"}},
+          {"url":"https://example.test/male.mp3","content_type":"audio/mpeg",
+           "metadata":{"pronunciation":"にっぽん","gender":"male"}}]
     }}]})json";
     JsonParser p;
     JsonValue v;
@@ -2278,6 +2307,7 @@ static void test_subject_audio_parse() {
     TEST_ASSERT_TRUE(parseSubjectsStream(text, &stream, true));
     TEST_ASSERT_EQUAL(1, dom.size());
     TEST_ASSERT_EQUAL(1, stream.size());
+    // The OGG clip is not kept: only MP3 plays on the device.
     TEST_ASSERT_EQUAL(2, dom[0].audios.size());
     TEST_ASSERT_EQUAL(2, stream[0].audios.size());
     TEST_ASSERT_EQUAL_STRING("https://example.test/female.mp3",
@@ -2285,6 +2315,11 @@ static void test_subject_audio_parse() {
     TEST_ASSERT_EQUAL_STRING("audio/mpeg", stream[0].audios[0].contentType.c_str());
     TEST_ASSERT_EQUAL(0, stream[0].audios[0].voice);
     TEST_ASSERT_EQUAL(1, stream[0].audios[1].voice);
+    TEST_ASSERT_EQUAL_STRING("https://example.test/male.mp3", stream[0].audios[1].url.c_str());
+    for (const std::vector<Subject>* list : {&dom, static_cast<const std::vector<Subject>*>(&stream)}) {
+        TEST_ASSERT_EQUAL_STRING("にほん", (*list)[0].audios[0].pronunciation.c_str());
+        TEST_ASSERT_EQUAL_STRING("にっぽん", (*list)[0].audios[1].pronunciation.c_str());
+    }
 }
 
 static void test_subject_stream_matches_dom() {
@@ -4561,6 +4596,7 @@ int main(int, char**) {
     RUN_TEST(test_audio_autoplay_wanted_rules);
     RUN_TEST(test_mp3_first_frame_channels);
     RUN_TEST(test_audio_pick_download_mp3_first);
+    RUN_TEST(test_audio_pick_download_primary_reading);
     RUN_TEST(test_assignment_stream_matches_dom);
     RUN_TEST(test_assignment_stream_edges);
     RUN_TEST(test_subject_stream_matches_dom);

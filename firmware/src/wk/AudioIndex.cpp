@@ -9,7 +9,9 @@
 namespace kk {
 
 namespace {
-constexpr uint16_t kVersion = 1;
+// 2 (2026-11-20): clips are chosen by the primary reading; a version-1 index
+// may hold another reading's clip (近々 -> きんきん), so the cache starts over.
+constexpr uint16_t kVersion = 2;
 constexpr size_t kHeaderBytes = 16;
 constexpr size_t kEntryBytes = 16;
 

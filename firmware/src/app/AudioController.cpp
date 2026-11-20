@@ -22,6 +22,16 @@ namespace kk::app {
 
 namespace {
 
+// The reading the clip should speak: the primary accepted reading (a kana
+// vocabulary word is its own reading).
+std::string primaryReading(const kk::Subject& s) {
+    for (const kk::Reading& r : s.readings)
+        if (r.primary && r.accepted) return r.text;
+    for (const kk::Reading& r : s.readings)
+        if (r.accepted) return r.text;
+    return s.type == SubjectType::KanaVocabulary ? s.characters : std::string();
+}
+
 // True once the cache was prepared for the current visit to a review or lesson
 // card screen. Cleared on leaving, so the next visit prepares again once.
 bool gPreparedForVisit = false;
@@ -311,9 +321,10 @@ void audioPrefetchBatch(const std::vector<kk::Subject>& subjects, bool drainNow)
     size_t cached = 0;
     size_t full = 0;
     for (const kk::Subject& subject : subjects) {
-        if (subject.type != SubjectType::Vocabulary) continue;
+        if (!kk::audioSubjectPlayable(subject.type)) continue;
         size_t index = 0;
-        if (!kk::audioPickDownload(subject.audios, audioVoice(), &index)) continue;
+        if (!kk::audioPickDownload(subject.audios, audioVoice(), primaryReading(subject), &index))
+            continue;
         const kk::AudioClip& clip = subject.audios[index];
         if (kk::audioCacheHasMp3(SD, subject.id, clip.voice)) {
             ++cached;

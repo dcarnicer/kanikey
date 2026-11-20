@@ -1,6 +1,7 @@
 #pragma once
 // Pure WaniKani domain types shared by the answer checker, the review queue
 // and the native tests. No Arduino headers.
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -33,7 +34,20 @@ struct AudioClip {
     std::string url;
     std::string contentType;  // audio/mpeg or audio/ogg
     uint8_t voice = 0;        // 0 female, 1 male
+    // metadata.pronunciation: the reading this clip speaks. A vocabulary word
+    // with several readings has clips for each (近々: ちかぢか and きんきん).
+    std::string pronunciation;
 };
+
+// Only MP3 clips are decoded on the device; the parsers keep just those.
+inline bool audioClipIsMp3(const std::string& contentType) {
+    return contentType.find("mpeg") != std::string::npos ||
+           contentType.find("mp3") != std::string::npos;
+}
+
+// Clips kept per subject: every MP3 of a two-reading word in both voices, plus
+// room for a third reading.
+inline constexpr size_t kMaxSubjectAudioClips = 6;
 
 struct Subject {
     uint32_t id = 0;

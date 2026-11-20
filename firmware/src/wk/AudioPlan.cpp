@@ -77,18 +77,20 @@ int mp3FirstFrameChannels(const uint8_t* p, size_t n) {
 }
 
 bool audioPickDownload(const std::vector<AudioClip>& clips, uint8_t preferredVoice,
-                       size_t* index) {
+                       const std::string& reading, size_t* index) {
     if (!index) return false;
     auto isMp3 = [](const AudioClip& clip) {
-        if (clip.url.empty()) return false;
-        const std::string& type = clip.contentType;
-        return type.find("mpeg") != std::string::npos || type.find("mp3") != std::string::npos;
+        return !clip.url.empty() && audioClipIsMp3(clip.contentType);
     };
-    for (uint8_t voice : {preferredVoice, static_cast<uint8_t>(preferredVoice ^ 1)}) {
-        for (size_t i = 0; i < clips.size(); ++i) {
-            if (clips[i].voice != voice || !isMp3(clips[i])) continue;
-            *index = i;
-            return true;
+    for (const bool matchReading : {true, false}) {
+        if (matchReading && reading.empty()) continue;
+        for (uint8_t voice : {preferredVoice, static_cast<uint8_t>(preferredVoice ^ 1)}) {
+            for (size_t i = 0; i < clips.size(); ++i) {
+                if (clips[i].voice != voice || !isMp3(clips[i])) continue;
+                if (matchReading && clips[i].pronunciation != reading) continue;
+                *index = i;
+                return true;
+            }
         }
     }
     return false;
