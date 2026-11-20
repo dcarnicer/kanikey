@@ -161,9 +161,11 @@ void drawStatus() {
     if (!state().display.gDisp) return;
     const Screen base = kk::screenBase(state().screen);
     if (base == Screen::Debug) {
-#ifdef KANIKEY_DEV
+#if defined(KANIKEY_DEV) && !defined(TGC_BOARD_PAPERDIY)
         // The old flag kept Home set behind Tab, so the debug screen only
-        // refreshed itself when it had been opened from Boot.
+        // refreshed itself when it had been opened from Boot. E-paper (PD-02)
+        // does not repaint it once a second: that would refresh the panel
+        // every second; the screen redraws on its keys instead.
         if (state().dev.debugReturn == Screen::Boot) showDebug();
 #endif
         return;
