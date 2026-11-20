@@ -5,6 +5,7 @@
 #include <cstdio>
 
 #include "ui/HintBar.h"
+#include "ui/UiFont.h"
 
 namespace kk::app {
 
@@ -13,8 +14,7 @@ void drawHomeScreen(lgfx::LovyanGFX& d, const HomeView& view) {
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
 
-    d.setTextFont(2);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Title);
     d.setTextColor(ui::kBrand, ui::kBg);
     d.drawString("KaniKey", 6, 2);
 
@@ -24,8 +24,7 @@ void drawHomeScreen(lgfx::LovyanGFX& d, const HomeView& view) {
                  static_cast<unsigned>(view.syncTotal));
     else
         snprintf(sync, sizeof sync, "Synced %s", view.syncClock);
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextDatum(lgfx::top_right);
     d.setTextColor(view.syncTotal > 0 ? ui::kAccentHi : (view.offline ? ui::kWarn : ui::kDim),
                    ui::kBg);
@@ -58,14 +57,12 @@ void drawHomeScreen(lgfx::LovyanGFX& d, const HomeView& view) {
     snprintf(lessons, sizeof lessons, "%u", static_cast<unsigned>(view.lessons));
     d.drawString(lessons, 164, 36);
 
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString("REVIEWS DUE", 8, 73);
     d.drawString("LESSONS", 164, 73);
 
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(view.offline ? ui::kWarn : ui::kDim, ui::kBg);
     d.drawString("Next review", 8, 86);
     d.setTextDatum(lgfx::top_right);
@@ -74,8 +71,7 @@ void drawHomeScreen(lgfx::LovyanGFX& d, const HomeView& view) {
     d.setTextDatum(lgfx::top_left);
 
     // SRS distribution: one segment per stage group, then A/G/M/E/B counts.
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     if (view.srs.valid) {
         const uint32_t bucket[5] = {view.srs.apprentice, view.srs.guru, view.srs.master,
                                     view.srs.enlightened, view.srs.burned};
@@ -112,8 +108,7 @@ void drawHomeScreen(lgfx::LovyanGFX& d, const HomeView& view) {
         d.drawString("SRS: sync for counts", 8, 106);
     }
 
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     if (view.statusText[0]) {
         char status[56];
         snprintf(status, sizeof status, "%s%s", view.statusText,

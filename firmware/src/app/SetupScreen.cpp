@@ -4,6 +4,8 @@
 
 #include <cstdio>
 
+#include "ui/UiFont.h"
+
 namespace kk::app {
 namespace {
 
@@ -23,8 +25,7 @@ void drawSetupScreen(lgfx::LovyanGFX& d, const SetupView& view) {
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
 
-    d.setTextFont(2);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Title);
     d.setTextColor(ui::kBrand, ui::kBg);
     d.drawString("KaniKey", 6, 2);
     d.setTextFont(1);

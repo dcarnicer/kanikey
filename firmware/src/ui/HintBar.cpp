@@ -1,5 +1,6 @@
 // Shared hint bar drawing. The caller owns startWrite()/present().
 #include "ui/HintBar.h"
+#include "ui/UiFont.h"
 
 #include "board/Board.h"
 
@@ -7,8 +8,7 @@ namespace kk::ui {
 
 const char* fitHint(lgfx::LovyanGFX& d, std::initializer_list<const char*> hints,
                     int maxWidth) {
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     for (const char* hint : hints) {
         if (!hint || !*hint) continue;
         if (d.textWidth(hint) <= maxWidth) return hint;
@@ -21,8 +21,7 @@ const char* fitHint(lgfx::LovyanGFX& d, std::initializer_list<const char*> hints
 
 void drawHintLeft(lgfx::LovyanGFX& d, const char* text, uint16_t color, int x, int y) {
     if (!text || !*text) return;
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextDatum(lgfx::top_left);
     d.setTextColor(color, kBg);
     d.drawString(text, x, y);
@@ -30,8 +29,7 @@ void drawHintLeft(lgfx::LovyanGFX& d, const char* text, uint16_t color, int x, i
 
 void drawHintRight(lgfx::LovyanGFX& d, const char* text, uint16_t color, int rightX, int y) {
     if (!text || !*text) return;
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextDatum(lgfx::top_right);
     d.setTextColor(color, kBg);
     d.drawString(text, rightX, y);

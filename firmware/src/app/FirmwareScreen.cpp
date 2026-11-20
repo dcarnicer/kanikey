@@ -6,6 +6,7 @@
 #include <cstdio>
 
 #include "ui/Text.h"
+#include "ui/UiFont.h"
 
 namespace kk::app {
 
@@ -13,8 +14,7 @@ void drawFirmwareScreen(lgfx::LovyanGFX& d, const FirmwareView& view) {
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
-    d.setTextFont(2);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Title);
     d.setTextColor(ui::kBrand, ui::kBg);
     d.drawString("KaniKey", 6, 2);
     d.setTextFont(1);
@@ -27,8 +27,7 @@ void drawFirmwareScreen(lgfx::LovyanGFX& d, const FirmwareView& view) {
     d.setTextDatum(lgfx::top_left);
     d.drawFastHLine(4, 36, 232, ui::kLine);
 
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kText, ui::kBg);
     std::string version = view.version;
     if (!view.slot.empty()) version += "  " + view.slot;

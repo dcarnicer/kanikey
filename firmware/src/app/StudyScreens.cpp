@@ -6,6 +6,7 @@
 
 #include "ui/HintBar.h"
 #include "ui/ListView.h"
+#include "ui/UiFont.h"
 #include "ui/Widgets.h"
 #include "wk/Utf8.h"
 
@@ -31,8 +32,7 @@ void drawStudyMenuScreen(lgfx::LovyanGFX& d, const StudyMenuView& view) {
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
-    d.setTextFont(2);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Title);
     d.setTextColor(ui::kBrand, ui::kBg);
     d.drawString("EXTRA STUDY", 6, 2);
     d.drawFastHLine(4, 22, 232, ui::kLine);
@@ -46,8 +46,7 @@ void drawStudyMenuScreen(lgfx::LovyanGFX& d, const StudyMenuView& view) {
             d.fillRect(4, y - 1, 228, 19, ui::kSurfaceHi);
             d.fillRect(4, y - 1, 2, 19, ui::kAccent);
         }
-        d.setTextFont(1);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Base);
         d.setTextColor(focus ? ui::kText : ui::kDim, focus ? ui::kSurfaceHi : ui::kBg);
         d.drawString(kStudyLabels[i], 12, y + 2);
         if (view.counts[i][0]) {
@@ -73,8 +72,7 @@ void drawCriticalListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString("CRITICAL ITEMS", 6, 3);
 
@@ -111,8 +109,7 @@ void drawCriticalListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
 
         char label[72];
         snprintf(label, sizeof label, "%s", item.meaning.c_str());
-        d.setTextFont(0);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Small);
         d.setTextColor(i == view.selectedIndex ? ui::kText : ui::kDim,
                        i == view.selectedIndex ? ui::kSurfaceHi : ui::kBg);
         char* end = label + strlen(label);

@@ -2,6 +2,8 @@
 // the caller owns startWrite()/present() and passes the font and radical packs.
 #include "ui/Widgets.h"
 
+#include "ui/UiFont.h"
+
 #include <algorithm>
 
 #include "wk/Utf8.h"
@@ -9,8 +11,7 @@
 namespace kk::ui {
 
 void drawPill(lgfx::LovyanGFX& d, int x, int y, const char* text, uint16_t fg, uint16_t bg) {
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     const int w = d.textWidth(text) + 8;
     d.fillRect(x, y, w, 13, bg);
     d.setTextColor(fg, bg);
@@ -53,8 +54,7 @@ void drawMissingGlyph(lgfx::LovyanGFX& d, const kk::GlyphPack& fontPack,
     d.setTextSize(1);
     d.setTextColor(kWarn, kSurface);
     d.drawString("?", cx, cy - 8);
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(kFaint, kSurface);
     d.drawString(noFont ? "no pack" : "no glyph", cx, cy + 12);
     // "check SD" is the boot-level failure; a missing radical bitmap on a
@@ -86,8 +86,7 @@ int drawReadingTokens(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
 
     // Font0 separators keep the pack from needing ASCII glyphs. Four spaces
     // separate the on'yomi and kun'yomi groups, more than the " / " gap.
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     const int spaceW = d.textWidth(" ");
     const int slashW = d.textWidth("/");
     const int slashGap = spaceW + slashW + spaceW;
@@ -189,8 +188,7 @@ int drawReadingTokens(lgfx::LovyanGFX& d, kk::GlyphPack& pack,
             pen += pack.textWidth(entry.text, size);
         }
         if (truncated && line + 1 == lines.size()) {
-            d.setTextFont(0);
-            d.setTextSize(1);
+            ui::applyFont(d, ui::UiFont::Small);
             d.setTextColor(fg, bg);
             d.drawString(ellipsis.c_str(), pen + (lines[line].empty() ? 0 : spaceW), top + 8);
         }

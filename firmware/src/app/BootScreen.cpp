@@ -5,13 +5,14 @@
 #include <cstdio>
 #include <string>
 
+#include "ui/UiFont.h"
+
 namespace kk::app {
 namespace {
 
 void drawBootLine(lgfx::LovyanGFX& d, const char* text, int x, int y, uint16_t fg) {
     if (!text || !text[0]) return;
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(fg, ui::kBg);
     std::string s = text;
     while (s.size() > 1 && d.textWidth(s.c_str()) > 224) s.pop_back();
@@ -25,8 +26,7 @@ void drawBootScreen(lgfx::LovyanGFX& d, const BootView& view) {
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
 
-    d.setTextFont(2);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Title);
     d.setTextColor(ui::kBrand, ui::kBg);
     d.drawString("KaniKey", 6, 2);
 
@@ -49,8 +49,7 @@ void drawBootScreen(lgfx::LovyanGFX& d, const BootView& view) {
     drawBootLine(d, view.line1, 8, 82, ui::kDim);
     drawBootLine(d, view.line2, 8, 96, ui::kDim);
     if (view.action[0]) {
-        d.setTextFont(0);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Small);
         d.setTextColor(ui::kFaint, ui::kBg);
         d.drawString(view.action, 8, 120);
     }

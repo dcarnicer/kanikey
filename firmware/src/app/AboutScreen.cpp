@@ -2,14 +2,15 @@
 // startWrite()/endWrite() (the caller owns the transfer window).
 #include "app/AboutScreen.h"
 
+#include "ui/UiFont.h"
+
 namespace kk::app {
 
 void drawAboutScreen(lgfx::LovyanGFX& d, const AboutView& view) {
     d.fillScreen(ui::kBg);
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
-    d.setTextFont(2);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Title);
     d.setTextColor(ui::kBrand, ui::kBg);
     d.drawString("KaniKey", 6, 2);
     d.setTextFont(1);
@@ -21,16 +22,14 @@ void drawAboutScreen(lgfx::LovyanGFX& d, const AboutView& view) {
     d.drawString("Esc: back", 232, 5);
     d.setTextDatum(lgfx::top_left);
 
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kText, ui::kBg);
     std::string version = "KaniKey ";
     version += view.version;
     d.drawString(version.c_str(), 7, 34);
 
     for (const AboutLine& line : view.lines) {
-        d.setTextFont(0);
-        d.setTextSize(1);
+        ui::applyFont(d, ui::UiFont::Small);
         d.setTextColor(line.color, ui::kBg);
         std::string s = line.text;
         while (s.size() > 1 && d.textWidth(s.c_str()) > 226) s.pop_back();

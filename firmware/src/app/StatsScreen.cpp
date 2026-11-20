@@ -3,12 +3,13 @@
 #include <algorithm>
 #include <cstdio>
 
+#include "ui/UiFont.h"
+
 namespace kk::app {
 namespace {
 
 void drawForecast(lgfx::LovyanGFX& d, const StatsView& view) {
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString("Next 24 hours", 8, 27);
 
@@ -40,8 +41,7 @@ void drawForecast(lgfx::LovyanGFX& d, const StatsView& view) {
 }
 
 void drawSrs(lgfx::LovyanGFX& d, const StatsView& view) {
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString("SRS distribution", 8, 27);
     if (!view.srs.valid) {
@@ -74,8 +74,7 @@ void drawSrs(lgfx::LovyanGFX& d, const StatsView& view) {
 }
 
 void drawHistory(lgfx::LovyanGFX& d, const StatsView& view) {
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kFaint, ui::kBg);
     d.drawString("On this device", 8, 27);
 
@@ -135,8 +134,7 @@ void drawHistory(lgfx::LovyanGFX& d, const StatsView& view) {
 }
 
 void drawLevel(lgfx::LovyanGFX& d, const StatsView& view) {
-    d.setTextFont(1);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Base);
     d.setTextColor(ui::kDim, ui::kBg);
     d.drawString("Level progress", 8, 27);
     if (view.level.level <= 0) {
@@ -144,8 +142,7 @@ void drawLevel(lgfx::LovyanGFX& d, const StatsView& view) {
         d.drawString("Sync for level data", 8, 58);
         return;
     }
-    d.setTextFont(2);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Title);
     d.setTextColor(GOLD, ui::kBg);
     char level[16];
     snprintf(level, sizeof level, "Level %d", view.level.level);
@@ -189,8 +186,7 @@ void drawStatsScreen(lgfx::LovyanGFX& d, const StatsView& view) {
     d.setTextDatum(lgfx::top_left);
     d.setTextWrap(false);
 
-    d.setTextFont(2);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Title);
     d.setTextColor(ui::kBrand, ui::kBg);
     d.drawString("STATS", 6, 2);
     char page[16];
@@ -212,8 +208,7 @@ void drawStatsScreen(lgfx::LovyanGFX& d, const StatsView& view) {
     else
         drawHistory(d, view);
 
-    d.setTextFont(0);
-    d.setTextSize(1);
+    ui::applyFont(d, ui::UiFont::Small);
     d.setTextColor(ui::kFaint, ui::kBg);
     d.drawString("Esc: back  Left/Right: page", 8, 125);
 }
