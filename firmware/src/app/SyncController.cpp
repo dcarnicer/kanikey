@@ -47,6 +47,7 @@
 #include "board/Board.h"
 #include "Version.h"
 #include "platform/AudioCache.h"
+#include "platform/AudioPlayer.h"
 #include "platform/CacheStore.h"
 #include "platform/CriticalStore.h"
 #include "platform/DeviceSettings.h"
@@ -1160,6 +1161,10 @@ void syncAdvance() {
             return;
         }
     }
+
+    // AUD-03: a playing clip holds ~31 KB of decode pieces for about a second;
+    // a TLS handshake beside it could run out of heap, so the next step waits.
+    if (!j.modal && kk::audioPlayerIsPlaying()) return;
 
     // One socket for the steps that follow; nested batch/outbox sessions join
     // this one instead of handshaking again.
