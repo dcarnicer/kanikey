@@ -29,6 +29,9 @@ struct CriticalRowView {
 struct CriticalListView {
     std::vector<CriticalRowView> rows;
     int selectedIndex = 0;
+    // Critical items whose subject could not be loaded (not on the SD catalog
+    // and no network); the empty state says so instead of "No critical items".
+    unsigned unavailable = 0;
 };
 
 void drawCriticalListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,

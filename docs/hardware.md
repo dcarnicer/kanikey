@@ -793,11 +793,20 @@ A150 G143 M81 E147 B586).
   fallbacks. Phase 2 migrated Home hints, Settings, the Wi-Fi scan list, Outbox,
   the lesson list window and Study/critical windows to the shared primitives;
   the 20 px lesson/critical/study rows moved to `drawList` on 2026-11-20
-  (TNG-03H): the lesson list and the Study menu captured byte-identical to the
-  earlier ARCH-04/TNG-03 captures. That comparison exposed an older bug: the
+  (TNG-03H): the lesson list captured byte-identical to the earlier
+  ARCH-04/TNG-03 capture. (Correction: the first 'Study menu' capture that day
+  pressed `s`, which is Sync; the menu is `P`. It was captured later and draws
+  its four rows and counts correctly.) That comparison exposed an older bug: the
   lesson-list prompt boxes were empty because `drawTextCentered()` received
   the centre in the size slot; after the fix the panel shows 以/月/仕/金/映 in
-  the boxes with the frames intact. The critical list was not opened. Home,
+  the boxes with the frames intact. The critical list, opened later the same
+  day, showed two older bugs: with the subjects missing from the SD catalog and
+  Wi-Fi not joined (a recent cache skips the boot sync) it said `No critical
+  items` although the menu counted 7, and its 22×20 prompt boxes drew the full
+  64 px missing-glyph block for multi-kanji words, spilling over the rows. Fixed:
+  the list joins Wi-Fi on demand (7 subjects in 2 requests), says `N items could
+  not be loaded` when it cannot, and draws the first character like the lesson
+  list; the panel then showed 町/風/失/内/走/生/見 with percentages and the thumb. Home,
   Settings and the Wi-Fi list rendered with the same layout after flashing;
   the remaining window/scroll cases are in the table. Phase 3 moved wrapping,
   ellipsis and UTF-8 trimming into `TextLayout` and added the 1bpp icon tables;

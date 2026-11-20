@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 #include "ui/HintBar.h"
 #include "ui/ListView.h"
@@ -14,16 +15,31 @@ namespace {
 const char* kStudyLabels[kStudyRows] = {"Recent mistakes", "Recent lessons", "Critical items",
                                         "Current level"};
 
+// The 22x20 prompt box of a critical-list row. Like the lesson list it shows
+// the first character only (a whole word cannot fit 20 px, and the full-size
+// missing-glyph block spilled over the next rows on hardware, 2026-11-20); a
+// failure is a small "?" that stays inside the box.
 void drawPrompt(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack, kk::GlyphPack& radicalPack,
                 const kk::Subject* s, int cx, int cy) {
-    if (!s) {
-        ui::drawMissingGlyph(d, fontPack, radicalPack, cx, cy);
-        return;
+    const kk::ClipRect clip{cx - 10, cy - 9, cx + 10, cy + 9};
+    bool drawn = false;
+    if (s && s->type == kk::SubjectType::Radical)
+        drawn = radicalPack.drawRadical(d, s->id, cx, cy, 18, 18, ui::kText, ui::kSurface, clip);
+    if (!drawn && s && !s->characters.empty()) {
+        std::string first = s->characters;
+        const char* p = first.c_str();
+        kk::utf8Next(&p);
+        first.resize(static_cast<size_t>(p - first.c_str()));
+        drawn = fontPack.drawTextCentered(d, first, 20, cx, cy, 20, 20, ui::kText, ui::kSurface,
+                                          clip);
     }
-    if (!ui::drawSubjectPrompt(d, fontPack, radicalPack, *s, cx, cy, 20, 18, 18, ui::kText,
-                               ui::kSurface,
-                               kk::ClipRect{cx - 10, cy - 9, cx + 10, cy + 9}))
-        ui::drawMissingGlyph(d, fontPack, radicalPack, cx, cy);
+    if (!drawn) {
+        ui::applyFont(d, ui::UiFont::Base);
+        d.setTextColor(ui::kWarn, ui::kSurface);
+        d.setTextDatum(lgfx::middle_center);
+        d.drawString("?", cx, cy);
+        d.setTextDatum(lgfx::top_left);
+    }
 }
 
 void drawStudyRow(lgfx::LovyanGFX& d, int index, int x, int y, int width, bool focus,
@@ -116,7 +132,14 @@ void drawCriticalListScreen(lgfx::LovyanGFX& d, kk::GlyphPack& fontPack,
     if (total == 0) {
         d.setTextFont(1);
         d.setTextColor(ui::kFaint, ui::kBg);
-        d.drawString("No critical items", 8, 56);
+        if (view.unavailable) {
+            char line[40];
+            snprintf(line, sizeof line, "%u items could not be loaded", view.unavailable);
+            d.drawString(line, 8, 50);
+            d.drawString("Connect Wi-Fi and try again", 8, 62);
+        } else {
+            d.drawString("No critical items", 8, 56);
+        }
         ui::drawHintLeft(d, "Esc: back");
         return;
     }

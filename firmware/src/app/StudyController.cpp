@@ -170,6 +170,15 @@ bool resolvePracticeSubjects(const std::vector<uint32_t>& ids, std::vector<kk::S
         else
             missing->push_back(id);
     }
+    // SPEED-02 can skip the automatic sync (and its Wi-Fi join) when the cache
+    // is recent; join on demand, as the lesson flow does, so subjects missing
+    // from the SD catalog can still be fetched (seen on hardware 2026-11-20:
+    // the menu counted 7 critical items and the list showed none).
+    if (!missing->empty() && kk::DevToken::has() && !kk::DevWifi::connected() &&
+        kk::DevWifi::hasSaved()) {
+        drawLoading("Connecting Wi-Fi...", kk::DevWifi::savedSsid().c_str());
+        kk::DevWifi::connect(30000);
+    }
     if (!missing->empty() && kk::DevWifi::connected() && kk::DevToken::has()) {
         const std::vector<kk::Subject> fetched =
             kk::fetchSubjectsByIds(kk::DevToken::load(), *missing, 5);
@@ -455,6 +464,9 @@ void drawCriticalList() {
     kk::app::CriticalListView view;
     view.rows = state().study.gCriticalRows;
     view.selectedIndex = state().study.gCriticalIndex;
+    if (state().study.gCritical.size() > state().study.gCriticalRows.size())
+        view.unavailable =
+            static_cast<unsigned>(state().study.gCritical.size() - state().study.gCriticalRows.size());
     auto& d = target();
     d.startWrite();
     kk::app::drawCriticalListScreen(d, state().storage.gFontPack, state().storage.gRadicalPack,
