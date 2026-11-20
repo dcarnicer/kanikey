@@ -159,6 +159,16 @@ void presentNow() {
     epdPush(d, millis());
 }
 
+void presentFullNow() {
+    if (!state().display.gCanvas || !state().display.gDisp) return;
+    if (state().display.gDisp->displayBusy()) state().display.gDisp->waitDisplay();
+    kk::epd::Decision d;
+    d.action = kk::epd::Action::Present;
+    d.mode = kk::epd::Mode::Quality;
+    d.full = true;
+    epdPush(d, millis());
+}
+
 void presentTick(uint32_t now) {
     if (!state().display.gCanvas || !state().display.gDisp) return;
     const kk::epd::Decision d =

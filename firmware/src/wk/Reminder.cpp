@@ -131,6 +131,10 @@ bool inQuietHours(uint32_t nowUtc, const ReminderRules& rules, UtcOffsetFn offse
     return quietAtWall(wallOf(nowUtc, offsetAt), rules);
 }
 
+uint32_t skipQuietHours(uint32_t at, const ReminderRules& rules, UtcOffsetFn offsetAt) {
+    return static_cast<uint32_t>(skipQuiet(static_cast<int64_t>(at), rules, offsetAt));
+}
+
 bool reminderWanted(uint32_t dueReviews, uint32_t nowUtc, const ReminderRules& rules,
                     UtcOffsetFn offsetAt) {
     if (rules.minDue == 0 && rules.dailyMinute == 0) return false;

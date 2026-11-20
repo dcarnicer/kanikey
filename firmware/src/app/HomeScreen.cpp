@@ -172,6 +172,8 @@ void drawHomeScreen(lgfx::LovyanGFX& d, const HomeView& view) {
         // REM-02 banner: any input continues the normal boot.
         hint = buttons ? ui::fitHint(d, {"any button: continue", "any button"})
                        : ui::fitHint(d, {"any key: continue", "any key"});
+    } else if (buttons && view.asleep) {
+        hint = ui::fitHint(d, {"A or B: wake", "A or B"});
     } else if (buttons) {
         hint = ui::fitHint(d, {"A: next  hold A: open  B: settings",
                                "A next  hold A open  B settings", "A: next  hold A: open"});

@@ -911,6 +911,43 @@ Wi-Fi/TLS and refresh peaks. Treat it as a desk companion: USB for long
 sessions, timer/button wake, sync, refresh only on change, sleep. PD-04
 chooses the strategy; PD-01 needs a working deep sleep and wake path.
 
+**PD-04 status: review (2026-11-20: code; hardware pending).** The deep-sleep
+strategy (ESP32 deep sleep with both buttons and one timer, §2.5 option 1) and
+the sync cadence are in the firmware, and the native tests pass (521 cases, 21
+of them new). No PaperDIY has run them: deep-sleep current, wake-to-frame,
+refresh energy and battery life are the §2.6 measurements.
+
+**Design (proposed defaults; none is a measurement).**
+
+- *Sleeping frame.* The idle deep sleep keeps P4 (default 2 min; no new setting).
+  Before sleeping it draws the Home frame with `Asleep: on battery` or
+  `Asleep: charging` in the status (text, not colour), the hint `A or B: wake`,
+  and a full-quality refresh, then sleeps. The battery is the header percentage.
+- *One timer.* `app/ReminderController` arms the earlier of the REM-02 reminder
+  target and the cadence target (`wk/PaperCadence.h`, `planWake()`). A timer wake
+  checks which target is due, within a 60 s RTC slack. A reminder wake keeps a
+  cadence target that is still ahead; a wake that serves neither keeps it and
+  sleeps again. The Cardputer never arms a cadence.
+- *Cadence.* 30 min at ≥ 50 % battery; 60 min at 20–49 % or unknown; no sync
+  wake below 20 % (reminders still wake). A review bucket wakes the sync 60 s
+  after it opens, when that is sooner. Never sooner than 15 min after a wake. After
+  failed syncs the gap is 15, 30, then 60 min, and a WaniKani rate-limit wait is a
+  floor. M2 quiet hours move a wake to the end of the quiet span (default 22-08,
+  so the night is skipped). Y1 Off turns the cadence off; no token or saved Wi-Fi
+  means no cadence.
+- *Cadence wake.* Loads the cache without drawing, runs a Quick job in the
+  background (Wi-Fi, time, outbox, summary), redraws the sleeping frame only when
+  the due count, lessons or next review changed (PD-02 policy), then sleeps. A
+  button down or pressed during the job hands over to the normal boot. A Full sync
+  (Level, SRS, Critical, Prefetch) waits for the next button boot, so a cadence
+  wake stays short.
+- *Logs (dev builds).* `[pd] next wake <utc> in <s> s reason <bucket|periodic|reminder|lowbatt>`
+  on every arm, and `[pd] cadence wake: sync <ok|fail>, redraw <yes|no>, awake <ms> ms`.
+- *Known trade-offs.* A cadence wake with no change leaves the panel as it was, so
+  the header's `Synced HH:MM` is the last drawn frame's. PD-02's partial counter is
+  in RAM, so each deep-sleep wake starts at a full-quality refresh; an RTC-held
+  counter would allow text refreshes on cadence wakes (measure first).
+
 ### 2.6 Spike questions and measurements
 
 **PD-01 — board/build.** (1) Builds with `qio_opi`, 16 MB flash, 8 MB PSRAM?
