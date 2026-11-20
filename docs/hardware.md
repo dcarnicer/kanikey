@@ -806,7 +806,11 @@ A150 G143 M81 E147 B586).
   64 px missing-glyph block for multi-kanji words, spilling over the rows. Fixed:
   the list joins Wi-Fi on demand (7 subjects in 2 requests), says `N items could
   not be loaded` when it cannot, and draws the first character like the lesson
-  list; the panel then showed 町/風/失/内/走/生/見 with percentages and the thumb. Home,
+  list; the panel then showed 町/風/失/内/走/生/見 with percentages and the thumb.
+  The menu's `Current level` was always 0 / `Current level complete`: the
+  pool's `/assignments` entries have no lesson position and the selection
+  dropped them. Fixed (position orders, it no longer filters); the menu then
+  counted 1 and practice opened 住 (KANJI L8). Practice writes nothing. Home,
   Settings and the Wi-Fi list rendered with the same layout after flashing;
   the remaining window/scroll cases are in the table. Phase 3 moved wrapping,
   ellipsis and UTF-8 trimming into `TextLayout` and added the 1bpp icon tables;

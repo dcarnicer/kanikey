@@ -1825,6 +1825,20 @@ static void test_practice_current_level_kanji_below_guru() {
     TEST_ASSERT_EQUAL_UINT32(1, items[1].subjectId);
 }
 
+// Pool entries from /assignments have no lesson position; they still count,
+// after the ones whose position is known.
+static void test_practice_current_level_without_lesson_position() {
+    const std::vector<Assignment> assignments = {
+        practiceAssignment(7, 1, 0, SubjectType::Kanji, 0),
+        practiceAssignment(3, 2, 0, SubjectType::Kanji, 0),
+        practiceAssignment(9, 1, 0, SubjectType::Kanji, 4)};
+    const std::vector<Assignment> items = selectCurrentLevel(assignments, 5, 10);
+    TEST_ASSERT_EQUAL(3, items.size());
+    TEST_ASSERT_EQUAL_UINT32(9, items[0].subjectId);
+    TEST_ASSERT_EQUAL_UINT32(3, items[1].subjectId);
+    TEST_ASSERT_EQUAL_UINT32(7, items[2].subjectId);
+}
+
 static void test_practice_limit_and_empty() {
     const std::vector<Assignment> assignments = {practiceAssignment(1, 1, 0),
                                                   practiceAssignment(2, 1, 0)};
@@ -4414,6 +4428,7 @@ int main(int, char**) {
     RUN_TEST(test_critical_list_round_trip);
     RUN_TEST(test_practice_recent_lessons_stage_or_window);
     RUN_TEST(test_practice_current_level_kanji_below_guru);
+    RUN_TEST(test_practice_current_level_without_lesson_position);
     RUN_TEST(test_practice_limit_and_empty);
     RUN_TEST(test_practice_pool_round_trip);
     RUN_TEST(test_summary_text_parser);

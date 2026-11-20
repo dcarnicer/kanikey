@@ -62,10 +62,14 @@ std::vector<Assignment> selectCurrentLevel(const std::vector<Assignment>& assign
     for (const Assignment& a : assignments) {
         if (a.hidden || a.srsStage < 1 || a.srsStage > 4) continue;
         if (a.type != SubjectType::Kanji || a.level != level) continue;
-        if (a.lessonPosition == 0) continue;
+        // `/assignments` carries no lesson position, so most pool entries have
+        // 0; it is an ordering hint, not a filter (filtering left the mode
+        // always empty on hardware, 2026-11-20). Known positions come first.
         out.push_back(a);
     }
     std::sort(out.begin(), out.end(), [](const Assignment& a, const Assignment& b) {
+        const bool aKnown = a.lessonPosition != 0, bKnown = b.lessonPosition != 0;
+        if (aKnown != bKnown) return aKnown;
         if (a.lessonPosition != b.lessonPosition) return a.lessonPosition < b.lessonPosition;
         return a.subjectId < b.subjectId;
     });
