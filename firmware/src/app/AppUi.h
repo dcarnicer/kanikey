@@ -26,6 +26,9 @@ void requestAfter();
 // Retries a canvas that could not be restored after a request (heap too
 // fragmented then); call once per loop.
 void canvasRecoveryTick(uint32_t now);
+// AUD-03 heap lending hooks for the audio player (see AppUi.cpp).
+bool lendCanvasForAudio();
+void canvasBackFromAudio();
 
 const char* keyName(tgc::Key k);
 void pushLog(const char* text);

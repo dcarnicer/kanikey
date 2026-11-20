@@ -46,6 +46,16 @@ void audioPlayerTick();
 // True while our channel still has queued or audible PCM, or a clip is open.
 bool audioPlayerIsPlaying();
 
+// Heap lending (2026-11-20). In a review the heap can be too small for the
+// ~31.6 KB of decode pieces (36 KB free, 18 KB largest measured) while the
+// display canvas holds a 32.4 KB block and the feedback frame is already on
+// the panel. When admission fails, `borrow` may free such a block (true when
+// it did); `giveBack` runs once the pieces are freed again (end, stop or a
+// failed start). Both run on the app loop.
+using AudioHeapBorrow = bool (*)();
+using AudioHeapGiveBack = void (*)();
+void audioPlayerSetHeapLender(AudioHeapBorrow borrow, AudioHeapGiveBack giveBack);
+
 // The hint state for this subject from in-memory state only: no SD access, no
 // NVS access. Does not start playback.
 AudioHint audioPlayerHint(const Subject& subject, uint8_t voice);

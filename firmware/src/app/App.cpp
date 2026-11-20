@@ -51,6 +51,7 @@
 #include "app/SyncScreen.h"
 #include "board/Board.h"
 #include "Version.h"
+#include "platform/AudioPlayer.h"
 #include "platform/CacheStore.h"
 #include "platform/DeviceSettings.h"
 #include "platform/DevToken.h"
@@ -1204,6 +1205,7 @@ void setup() {
 
     ensureCanvas();
     kk::wkSetRequestHooks(requestBefore, requestAfter);
+    kk::audioPlayerSetHeapLender(lendCanvasForAudio, canvasBackFromAudio);
     firmwareBoot();
 #ifdef KANIKEY_DEV
     // REM-01 probe: a repeat run sleeps here, before storage, Wi-Fi and sync.

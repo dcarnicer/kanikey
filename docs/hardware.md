@@ -889,6 +889,16 @@ WaniKani writes were authorized for this run.
   reloaded from the card after a good save (`batch reloaded compact: largest
   10740 -> 18420`); the same session then measured 49.9 KB free / 31.7 KB
   largest, and Home after it 106 KB / 65.5 KB with the clip queue drained.
+- **R after the clip re-download.** R showed `no audio` on every new clip:
+  `2989: no MP3 frame: len 4096 … first 49 44 33 04` — the re-downloaded
+  clips start with an ID3v2.4 tag, and one was longer than the 4 KB window,
+  so the first-frame search failed and the clip was marked corrupt. The player
+  now reads the 10-byte ID3 header and seeks past the tag. The owner then
+  heard 2555 three times (`skipped a 338 B ID3 tag`, `(1 ch)`). The same run
+  showed a review at 37 KB free / 21.5 KB largest, under the 39.8 KB mono
+  admission; the player may now borrow the 32.4 KB display canvas for the
+  clip (`borrowed the canvas: 37024/21492 -> 69804/36852`), returned when the
+  pieces are freed (canvasRecoveryTick retries if it cannot).
 - **Canvas.** After a review's send loop the canvas stayed released (direct
   drawing) because the heap was fragmented at session end; it is now retried
   every 5 s once a 34 KB block exists.

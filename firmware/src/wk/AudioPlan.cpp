@@ -50,18 +50,22 @@ bool audioAutoplayWanted(bool settingOn, bool onReadingPage, SubjectType type, b
            !portal;
 }
 
+size_t mp3Id3v2TagBytes(const uint8_t* p, size_t n) {
+    if (!p || n < 10 || p[0] != 'I' || p[1] != 'D' || p[2] != '3') return 0;
+    // A version byte of 0xFF or a size byte with its top bit set is not a tag.
+    if (p[3] == 0xFF || p[4] == 0xFF || ((p[6] | p[7] | p[8] | p[9]) & 0x80)) return 0;
+    // ID3v2 size is a 28-bit syncsafe integer after the 10-byte header.
+    const size_t size = (static_cast<size_t>(p[6] & 0x7F) << 21) |
+                        (static_cast<size_t>(p[7] & 0x7F) << 14) |
+                        (static_cast<size_t>(p[8] & 0x7F) << 7) |
+                        static_cast<size_t>(p[9] & 0x7F);
+    return 10 + size + ((p[5] & 0x10) ? 10 : 0);  // footer flag
+}
+
 int mp3FirstFrameChannels(const uint8_t* p, size_t n) {
     if (!p) return 0;
-    size_t start = 0;
-    if (n >= 10 && p[0] == 'I' && p[1] == 'D' && p[2] == '3') {
-        // ID3v2 size is a 28-bit syncsafe integer after the 10-byte header.
-        const size_t size = (static_cast<size_t>(p[6] & 0x7F) << 21) |
-                            (static_cast<size_t>(p[7] & 0x7F) << 14) |
-                            (static_cast<size_t>(p[8] & 0x7F) << 7) |
-                            static_cast<size_t>(p[9] & 0x7F);
-        start = 10 + size + ((p[5] & 0x10) ? 10 : 0);  // footer flag
-        if (start >= n) return 0;
-    }
+    const size_t start = mp3Id3v2TagBytes(p, n);
+    if (start >= n && start > 0) return 0;
     for (size_t i = start; i + 4 <= n; ++i) {
         const uint8_t* h = p + i;
         if (h[0] != 0xFF || (h[1] & 0xE0) != 0xE0) continue;

@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <M5Unified.h>
 #include <esp_heap_caps.h>
+#include <soc/soc_memory_layout.h>
 
 #include <atomic>
 #include <cstring>
@@ -55,6 +56,7 @@ struct Player {
     // stop() discards queued requests without a release callback, so the flags
     // of those buffers may never set. The forced release covers that case.
     bool releaseForced = false;
+    bool borrowed = false;  // the app lent a block for this clip (heap lending)
     std::atomic<bool> bufferFree[2] = {};
 
     // A failed clip stays "no audio" until another subject starts, so the hint
@@ -104,6 +106,16 @@ void onBufferRelease(void*, const void* data, uint8_t channel) {
         gPlayer.bufferFree[1].store(true, std::memory_order_release);
 }
 
+AudioHeapBorrow gBorrow = nullptr;
+AudioHeapGiveBack gGiveBack = nullptr;
+
+// Returns a lent block once our pieces are gone.
+void giveBackBorrowed() {
+    if (!gPlayer.borrowed) return;
+    gPlayer.borrowed = false;
+    if (gGiveBack) gGiveBack();
+}
+
 bool admit(const size_t* pieces, size_t count) {
     return kk::audioAdmitsPieces(heap_caps_get_free_size(kHeapCaps),
                                  heap_caps_get_largest_free_block(kHeapCaps), pieces, count);
@@ -123,7 +135,10 @@ void logPieces(size_t stateB, size_t scratchB) {
 // Frees every held piece. The PCM pointers are cleared first so a late release
 // callback does nothing. Only called once the speaker can no longer read them.
 void freePieces() {
-    if (!holdsPieces()) return;
+    if (!holdsPieces()) {
+        giveBackBorrowed();
+        return;
+    }
     int16_t* pcm0 = gPlayer.pcm[0];
     int16_t* pcm1 = gPlayer.pcm[1];
     gPlayer.pcm[0] = nullptr;
@@ -141,6 +156,7 @@ void freePieces() {
     Serial.printf("[audio] freed, heap %u/%u\n",
                   static_cast<unsigned>(heap_caps_get_free_size(kHeapCaps)),
                   static_cast<unsigned>(heap_caps_get_largest_free_block(kHeapCaps)));
+    giveBackBorrowed();
 }
 
 bool holdsPieces() {
@@ -172,7 +188,10 @@ bool allocPieces(int channels) {
         if (!gPlayer.state) return false;
     }
     if (!gPlayer.window) {
-        gPlayer.window = static_cast<uint8_t*>(heap_caps_malloc(kFileBytes, kHeapCaps));
+        // The SD card reads straight into the window, so it must be DMA capable
+        // (the S3 heap also holds RTC RAM, which is not).
+        gPlayer.window = static_cast<uint8_t*>(
+            heap_caps_malloc(kFileBytes, kHeapCaps | MALLOC_CAP_DMA));
         if (!gPlayer.window) return false;
     }
     if (gPlayer.pcm[0] && gPlayer.pcmChannels != channels) {
@@ -290,17 +309,48 @@ bool audioPlayerPlay(const Subject& subject, uint8_t voice) {
         failClip(subject.id, voice, AudioFailure::Missing);
         return false;
     }
+    // Skip a leading ID3v2 tag whatever its size: the first frame search only
+    // sees one 4 KB window.
+    {
+        uint8_t header[10];
+        const int got = file.read(header, sizeof header);
+        size_t skip = got == static_cast<int>(sizeof header)
+                          ? kk::mp3Id3v2TagBytes(header, sizeof header)
+                          : 0;
+        if (skip >= file.size()) skip = 0;  // let the frame search report it
+        if (!file.seek(skip)) {
+            file.close();
+            failClip(subject.id, voice, AudioFailure::Corrupt);
+            return false;
+        }
+        if (skip)
+            Serial.printf("[audio] %u: skipped a %u B ID3 tag\n", static_cast<unsigned>(subject.id),
+                          static_cast<unsigned>(skip));
+    }
 
     // Admission on the mono set (the WaniKani clips). A refusal is transient:
     // the subject keeps `R: audio` and the next R tries again.
     const size_t monoPieces[] = {roundUp8(kk::audio::mp3StateBytes()),
                                  roundUp8(kk::audio::mp3ScratchBytes()), kFileBytes,
                                  pcmBytes(1), pcmBytes(1)};
+    if (!admit(monoPieces, 5) && gBorrow) {
+        const size_t freeBefore = heap_caps_get_free_size(kHeapCaps);
+        const size_t largestBefore = heap_caps_get_largest_free_block(kHeapCaps);
+        if (gBorrow()) {
+            gPlayer.borrowed = true;
+            Serial.printf("[audio] borrowed the canvas: %u/%u -> %u/%u (dma largest %u)\n",
+                          static_cast<unsigned>(freeBefore), static_cast<unsigned>(largestBefore),
+                          static_cast<unsigned>(heap_caps_get_free_size(kHeapCaps)),
+                          static_cast<unsigned>(heap_caps_get_largest_free_block(kHeapCaps)),
+                          static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_DMA)));
+        }
+    }
     if (!admit(monoPieces, 5)) {
         file.close();
         Serial.printf("[audio] no heap: free %u, largest %u\n",
                       static_cast<unsigned>(heap_caps_get_free_size(kHeapCaps)),
                       static_cast<unsigned>(heap_caps_get_largest_free_block(kHeapCaps)));
+        giveBackBorrowed();
         failClip(subject.id, voice, AudioFailure::NoHeap);
         return false;
     }
@@ -323,6 +373,12 @@ bool audioPlayerPlay(const Subject& subject, uint8_t voice) {
                                                          gPlayer.len - gPlayer.pos)
                              : 0;
     if (channels == 0) {
+        Serial.printf("[audio] %u: no MP3 frame: len %u pos %u eof %d window %p dma %d first %02x %02x %02x %02x\n",
+                      static_cast<unsigned>(subject.id), static_cast<unsigned>(gPlayer.len),
+                      static_cast<unsigned>(gPlayer.pos), gPlayer.eof ? 1 : 0, gPlayer.window,
+                      esp_ptr_dma_capable(gPlayer.window) ? 1 : 0,
+                      gPlayer.len > 0 ? gPlayer.window[0] : 0, gPlayer.len > 1 ? gPlayer.window[1] : 0,
+                      gPlayer.len > 2 ? gPlayer.window[2] : 0, gPlayer.len > 3 ? gPlayer.window[3] : 0);
         freePieces();
         gPlayer.file.close();
         failClip(subject.id, voice, AudioFailure::Corrupt);
@@ -466,6 +522,11 @@ void audioPlayerTick() {
             break;
         }
     }
+}
+
+void audioPlayerSetHeapLender(AudioHeapBorrow borrow, AudioHeapGiveBack giveBack) {
+    gBorrow = borrow;
+    gGiveBack = giveBack;
 }
 
 bool audioPlayerIsPlaying() { return gPlayer.playing || M5.Speaker.isPlaying(kChannel) != 0; }

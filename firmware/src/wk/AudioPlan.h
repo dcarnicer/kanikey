@@ -66,6 +66,13 @@ bool audioAdmitsPieces(size_t freeTotal, size_t largest, const size_t* pieces, s
 bool audioAutoplayWanted(bool settingOn, bool onReadingPage, SubjectType type, bool hasClip,
                          bool syncing, bool portal);
 
+// Bytes taken by a leading ID3v2 tag (header, body and optional footer), or 0
+// when p[0..n) does not start with one. Needs only the 10-byte header: a tag
+// can be far longer than the 4 KB playback window (a WaniKani clip started
+// with an ID3v2.4 tag and was refused as corrupt, 2026-11-20), so the player
+// seeks past it before looking for the first frame.
+size_t mp3Id3v2TagBytes(const uint8_t* p, size_t n);
+
 // Channels (1 or 2) of the first MPEG-1/2/2.5 Layer III frame header in
 // p[0..n), after an optional leading ID3v2 tag. 0 when no such header is in
 // the window. The checks are the ones that matter here: sync, a non-reserved

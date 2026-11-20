@@ -221,10 +221,12 @@ bool ensureCanvas() {
 #endif
             return true;
         }
-        Serial.printf("[kk] canvas attempt %d failed, heap %u largest %u\n", attempt + 1,
+        Serial.printf("[kk] canvas attempt %d failed, heap %u largest %u, dma largest %u\n",
+                      attempt + 1,
                       static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
                       static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL |
-                                                                             MALLOC_CAP_8BIT)));
+                                                                             MALLOC_CAP_8BIT)),
+                      static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_DMA)));
         delete state().display.gCanvas;
         state().display.gCanvas = nullptr;
         if (attempt < 3) delay(120);
@@ -277,6 +279,30 @@ void requestAfter() {
     // Keep the flag when allocation still fails, so the next request retries
     // exactly like the old per-request hook did.
     if (ensureCanvas()) gCanvasReleasedForRequest = false;
+}
+
+// AUD-03 heap lending: in a review the decode pieces (~31.6 KB) may not fit
+// beside the batch (36 KB free / 18 KB largest measured, 2026-11-20). The
+// feedback frame is already on the panel, so the 32.4 KB canvas is lent for
+// the clip; draws meanwhile go straight to the panel. It comes back when the
+// pieces are freed, or later through canvasRecoveryTick().
+bool lendCanvasForAudio() {
+#if defined(TGC_BOARD_PAPERDIY)
+    return false;  // the PSRAM canvas does not free internal RAM
+#else
+    if (!state().display.gCanvas) return false;
+    releaseCanvas();
+    gCanvasReleasedForRequest = true;
+    return true;
+#endif
+}
+
+void canvasBackFromAudio() {
+    if (!gCanvasReleasedForRequest || kk::wkSessionActive()) return;
+    if (ensureCanvas()) {
+        gCanvasReleasedForRequest = false;
+        state().display.gDirty = true;  // the lent buffer held decode data
+    }
 }
 
 // A canvas released for a request is restored once, when the request or the

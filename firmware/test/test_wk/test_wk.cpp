@@ -1704,6 +1704,25 @@ static void test_mp3_first_frame_channels() {
     TEST_ASSERT_EQUAL_INT(0, mp3FirstFrameChannels(nullptr, 4));
 }
 
+// A WaniKani clip began with an ID3v2.4 tag longer than the 4 KB window
+// (`49 44 33 04`, 2026-11-20); the player now seeks past the tag first.
+static void test_mp3_id3v2_tag_bytes() {
+    const uint8_t big[] = {'I', 'D', '3', 4, 0, 0, 0x00, 0x00, 0x20, 0x00};  // 4096 B body
+    TEST_ASSERT_EQUAL_UINT32(4106, static_cast<uint32_t>(mp3Id3v2TagBytes(big, sizeof big)));
+    const uint8_t footer[] = {'I', 'D', '3', 4, 0, 0x10, 0x00, 0x00, 0x00, 0x7F};
+    TEST_ASSERT_EQUAL_UINT32(147, static_cast<uint32_t>(mp3Id3v2TagBytes(footer, sizeof footer)));
+    const uint8_t maxSize[] = {'I', 'D', '3', 3, 0, 0, 0x7F, 0x7F, 0x7F, 0x7F};
+    TEST_ASSERT_EQUAL_UINT32(10 + 0x0FFFFFFF,
+                             static_cast<uint32_t>(mp3Id3v2TagBytes(maxSize, sizeof maxSize)));
+    // Not a tag: no magic, a size byte with its top bit set, too short, null.
+    const uint8_t frame[] = {0xFF, 0xFB, 0x90, 0xC0, 0, 0, 0, 0, 0, 0};
+    const uint8_t badSize[] = {'I', 'D', '3', 4, 0, 0, 0x80, 0x00, 0x00, 0x00};
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(mp3Id3v2TagBytes(frame, sizeof frame)));
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(mp3Id3v2TagBytes(badSize, sizeof badSize)));
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(mp3Id3v2TagBytes(big, 9)));
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(mp3Id3v2TagBytes(nullptr, 10)));
+}
+
 static void test_audio_pick_download_mp3_first() {
     std::vector<AudioClip> clips(3);
     clips[0].url = "https://a/ogg-f";
@@ -4666,6 +4685,7 @@ int main(int, char**) {
     RUN_TEST(test_audio_failure_marks_only_content_bad);
     RUN_TEST(test_audio_autoplay_wanted_rules);
     RUN_TEST(test_mp3_first_frame_channels);
+    RUN_TEST(test_mp3_id3v2_tag_bytes);
     RUN_TEST(test_audio_pick_download_mp3_first);
     RUN_TEST(test_audio_pick_download_primary_reading);
     RUN_TEST(test_assignment_stream_matches_dom);
