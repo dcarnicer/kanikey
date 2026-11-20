@@ -159,7 +159,7 @@ the 2026-11-19 logs.
 | 8 | Tangocho modules | Reuse the portal, OTA, widgets, storage and sleep plumbing | Portal, OTA, storage and sleep done; ListView/HintBar/TextLayout/Icons/UiFont added, most screens use UiFont; icon adoption and remaining custom rows pending | TNG-03 |
 | 9 | Technical debt, CI and release | Maintainability and shipping | Done (TECH-01…06, TECH-08); TECH-07 only if needed | TECH-07 |
 | 10 | Kakehashi-inspired extras | Valuable after v1; not all fit a keyboard device | EXT-01…05 done; audio, reminders and stroke order remain; round 2 specified in `docs/spec` | STUDY |
-| 11 | Bluetooth keyboard | Optional full-size input; BLE-only, shares the 2.4 GHz radio and the no-PSRAM heap | Post-v1; needs the BT-01 host-stack spike | BT-01 |
+| 11 | Bluetooth keyboard | Optional full-size input; BLE-only, shares the 2.4 GHz radio and the no-PSRAM heap | Post-v1; BT-01 conditional go on NimBLE (compiled sizes); pairing/heap hardware run pending | BT-02 |
 | 12 | M5Stack PaperDIY port | Desk e-paper companion; 960×540, no keyboard/touch, two buttons | Post-v1; read-only companion first, full reviews need BT | PD-01 |
 
 ## Execution order
@@ -805,8 +805,8 @@ BT-01 is a go/no-go spike before any library or stack is merged.
 
 | ID | Title | Priority | Size | Depends on | Status |
 |---|---|---|---|---|---|
-| BT-01 | Spike: BLE HID host on the S3 | P3 | M | none | todo |
-| BT-02 | Source-neutral key input | P3 | M | BT-01 | todo |
+| BT-01 | Spike: BLE HID host on the S3 | P3 | M | none | review (2026-11-20: conditional go on NimBLE; hardware pairing/heap pending) |
+| BT-02 | Source-neutral key input | P3 | M | BT-01 | todo (seam can start; BLE transport gated) |
 | BT-03 | Pairing, settings and status | P3 | M | BT-02 | todo |
 | BT-04 | Coexistence, power and hardware pass | P3 | M | BT-03 | todo |
 
