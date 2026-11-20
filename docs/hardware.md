@@ -915,6 +915,15 @@ WaniKani writes were authorized for this run.
   (−42.8 KB); review with Wi-Fi up 49,180 / 23,540. Details in
   docs/spec/12-memory.md §2.4. OTA download time, deep-sleep wake and the
   setup portal not re-run on this core yet.
+- **MEM-20 (component records) on the device.** Fresh fetch after the KKCS
+  v14 bump (`subject CRC/format error`, then `components 31/31`, `subjects
+  saved: 20 subjects, 21160 bytes`): review with Wi-Fi up 66,640 free /
+  31,732 largest (MEM-02 alone 49,180 / 23,540). The Home clip drain then
+  stalled at 34.8 KB largest / 139 KB free after one clip under the old 45 KB
+  rule; at 28 KB it downloaded the other 10 clips at ~0.65 s each. Pending
+  with the owner: the Tab components page, and the Track B image (speaker
+  on/off, 29.5 KB clip set, 16 KB loop stack, `up`/`p`), flashed but not
+  checked yet.
 - **Canvas.** After a review's send loop the canvas stayed released (direct
   drawing) because the heap was fragmented at session end; it is now retried
   every 5 s once a 34 KB block exists.
