@@ -173,6 +173,20 @@ PlatformIO rebuilds the ESP32-S3 Arduino core libraries with that section's
   with `No module named 'SCons.Tool.FortranCommon'` (seen on macOS, 2026-11-20).
   PlatformIO 6.2 loads its own SCons outside the penv path, and the platform's
   `penv_setup.py` removes that path.
+- **Pin the penv's PlatformIO Core too.** A core rebuild ends in a second
+  `pio run` taken from pioarduino's penv (`~/.platformio/penv`). A new penv gets
+  the newest `pioarduino` from PyPI (6.2.x), which fails with the same
+  `FortranCommon` error (CI, 2026-11-20). `scripts/pin_penv_core.py` creates
+  the penv with 6.1.19 and the platform keeps it. Run it with the Python that
+  runs `pio`, because the platform recreates a penv made with another minor version:
+
+  ```sh
+  cd firmware
+  uvx --from platformio==6.1.19 python scripts/pin_penv_core.py
+  ```
+
+  CI runs it before every build. Run it again whenever the penv is recreated
+  (a new `~/.platformio` or a Python upgrade).
 - **macOS CMake:** the first-build CMake configure needed no pin here. It uses the
   platform's bundled `tool-cmake` (4.0.3), not Homebrew's CMake.
 - **Stale scaffold:** if an interrupted rebuild fails with
